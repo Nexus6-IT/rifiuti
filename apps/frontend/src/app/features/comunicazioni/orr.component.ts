@@ -3,6 +3,7 @@ import { CommonModule, DatePipe } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
+import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
@@ -14,10 +15,12 @@ import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { nomeMese } from './comunicazioni.model'
 import { ComunicazioniService } from './comunicazioni.service'
 import { ConfigurazioneSedeComponent } from './configurazione-sede.component'
+import { DatiMovimentoComponent } from './dati-movimento.component'
 import {
   ATTIVITA_ORR_ETICHETTE,
   AVVISO_TRACCIATO_ORR,
   AnteprimaOrr,
+  AvvisoOrr,
   ComunicazioneOrr,
   etichettaPeriodoOrr,
 } from './orr.model'
@@ -47,7 +50,9 @@ interface SedeScelta {
     TableModule,
     TagModule,
     ConfirmDialogModule,
+    DialogModule,
     ConfigurazioneSedeComponent,
+    DatiMovimentoComponent,
   ],
   providers: [ConfirmationService, DatePipe],
   template: `
@@ -227,7 +232,22 @@ interface SedeScelta {
       <ng-template #correzione let-v>
         <span *ngIf="v.correzione as c" class="ml-2" data-testid="orr-correzione">
           <ng-container [ngSwitch]="c.tipo">
-            <a *ngSwitchCase="'MOVIMENTO'" routerLink="/registro">Apri il registro</a>
+            <ng-container *ngSwitchCase="'MOVIMENTO'">
+              <a routerLink="/registro">Apri il registro</a>
+              <ng-container *ngIf="puoScrivere()">
+                ·
+                <ng-container *ngFor="let id of v.movimentoIds">
+                  <p-button
+                    [label]="etichettaDati(v, id)"
+                    icon="pi pi-pencil"
+                    [text]="true"
+                    size="small"
+                    (onClick)="apriDatiMovimento(id)"
+                    data-testid="orr-dati-movimento-apri"
+                  ></p-button>
+                </ng-container>
+              </ng-container>
+            </ng-container>
             <span *ngSwitchCase="'ANAGRAFICA_SEDE'">
               Correggi i dati nell'anagrafica della sede:
               <a routerLink="/produttori">produttori</a> ·
@@ -240,6 +260,22 @@ interface SedeScelta {
           </ng-container>
         </span>
       </ng-template>
+
+      <p-dialog
+        [visible]="datiMovimentoId() !== null"
+        (visibleChange)="!$event && chiudiDatiMovimento()"
+        [modal]="true"
+        header="Dati O.R.R. del movimento"
+        [style]="{ width: '520px', maxWidth: '95vw' }"
+        closeAriaLabel="Chiudi i dati O.R.R. del movimento"
+      >
+        <app-dati-movimento
+          *ngIf="datiMovimentoId() as movId"
+          [movimentoId]="movId"
+          tracciato="ORR"
+          (salvato)="datiSalvati()"
+        ></app-dati-movimento>
+      </p-dialog>
 
       <div id="orr-configurazione">
         <app-configurazione-sede
@@ -338,6 +374,8 @@ export class OrrComponent implements OnInit {
   readonly caricamento = signal(false)
   readonly inCorso = signal(false)
   readonly errore = signal<string | null>(null)
+  /** Movimento di cui si stanno correggendo i dati O.R.R. (finestra aperta), altrimenti `null`. */
+  readonly datiMovimentoId = signal<string | null>(null)
 
   readonly anni = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i)
   readonly mesi = Array.from({ length: 12 }, (_, i) => ({ numero: i + 1, nome: nomeMese(i + 1) }))
@@ -362,6 +400,24 @@ export class OrrComponent implements OnInit {
       },
       error: () => this.errore.set('Impossibile caricare le sedi.'),
     })
+  }
+
+  etichettaDati(avviso: AvvisoOrr, movimentoId: string): string {
+    const m = avviso.movimenti?.find(x => x.id === movimentoId)
+    return m ? `Dati O.R.R. del n. ${m.numero}` : 'Dati O.R.R. del movimento'
+  }
+
+  apriDatiMovimento(movimentoId: string): void {
+    this.datiMovimentoId.set(movimentoId)
+  }
+
+  chiudiDatiMovimento(): void {
+    this.datiMovimentoId.set(null)
+  }
+
+  /** Dopo un salvataggio i dati cambiano gli avvisi: si ricalcola l'anteprima. */
+  datiSalvati(): void {
+    this.carica()
   }
 
   etichetta(attivita: keyof typeof ATTIVITA_ORR_ETICHETTE): string {

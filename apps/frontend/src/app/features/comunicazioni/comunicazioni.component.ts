@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule, DatePipe } from '@angular/common'
 import { FormsModule } from '@angular/forms'
+import { RouterLink } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
 import { TableModule } from 'primeng/table'
@@ -31,6 +32,7 @@ interface SedeScelta {
   imports: [
     CommonModule,
     FormsModule,
+    RouterLink,
     ButtonModule,
     DropdownModule,
     TableModule,
@@ -52,6 +54,9 @@ interface SedeScelta {
             mese e CER
           </p>
         </div>
+        <a routerLink="/comunicazioni/orr" data-testid="comunicazioni-vai-orr"
+          >Comunicazione O.R.R. Campania</a
+        >
       </header>
 
       <section class="surface-card mb-4" data-testid="comunicazioni-filtri">

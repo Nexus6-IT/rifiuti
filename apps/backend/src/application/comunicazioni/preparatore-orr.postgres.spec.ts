@@ -423,7 +423,7 @@ describe('Preparatore O.R.R. Campania — Postgres reale, ruolo wasteflow_app', 
   })
 
   it('isolamento: una sede di un’altra azienda risponde 404 e non scrive nulla', async () => {
-    const a = await nuovoScenario('O9')
+    const a = await nuovoScenario('OB')
     const b = await nuovoScenario('OA')
     await expect(
       nel(a.az, () =>

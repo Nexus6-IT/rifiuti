@@ -67,6 +67,7 @@ export class PreparatoreOrr implements PreparatoreTracciato<DatiFileOrr, Configu
     'Con anche un solo errore bloccante non si genera nessun file, come in WinWaste; in più un carattere fuori da Windows-1252 è bloccante (WinWaste non lo controlla).',
     'Campi vuoti: campo di soli spazi (WinWaste scrive uno spazio e poi riempie); i quirk di riempimento di c3 (4) e c10 (45) non si copiano.',
     'Autodemolitore (AUT): i dati di pedana (calcolapedan) non esistono in WasteFlow, il file AUT è bloccante.',
+    'Le causali con la dicitura (ORR) non sono gestite: si selezionano i movimenti con ruolo MUD rilevante, quelli ESCLUSO restano fuori da ogni file.',
     'Detentore privato: non si deduce; un movimento senza il produttore sul FIR è bloccante.',
     'Lettera di trasmissione ai Settori Provinciali ed export Excel di controllo: fuori ambito (l’anteprima sostituisce l’Excel).',
     'Vecchie comunicazioni (dichiarazione periodica tipi 1 e 2, OLDelabcampania): fuori ambito.',
@@ -80,6 +81,7 @@ export class PreparatoreOrr implements PreparatoreTracciato<DatiFileOrr, Configu
     'tipoImpiantoDestinatario() (e13): per i trasportatori derivato dal codice operazione (D->SMA, R->REC, R13/D15->STO); per gli altri dichiaranti il tipo impianto della sede',
     'tipoDetentore() (c13): PRO per ogni produttore di terzi (WinWaste legge il tipo impianto della sua unità locale)',
     'Campi riservati scritti come 00000000 (c4, c8, d4, d8, e3, e7) anche quando il soggetto manca',
+    'Data del formulario (a4) = data di trasporto del FIR (WinWaste usa datd); se c’è un FIR, la data nei dati O.R.R. del movimento non si usa.',
     'Il codice del produttore/trasportatore/destinatario è la partita IVA se presente, altrimenti il codice fiscale',
   ]
 

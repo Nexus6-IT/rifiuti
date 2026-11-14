@@ -184,6 +184,35 @@ describe('OrrComponent', () => {
     expect(orr.genera).not.toHaveBeenCalled()
   })
 
+  it('avviso su un movimento: apre i dati O.R.R. del movimento e a salvataggio ricalcola', () => {
+    const a = anteprimaDi()
+    a.file[1] = {
+      ...a.file[1],
+      bloccanti: true,
+      avvisi: [
+        {
+          codice: 'MANCA_FORMULARIO',
+          messaggio: 'Manca il formulario.',
+          movimentoIds: ['m1'],
+          movimenti: [{ id: 'm1', data: '2026-05-10', numero: '7/2026', cer: '150110' }],
+          bloccante: true,
+          correzione: { tipo: 'MOVIMENTO' },
+        },
+      ],
+    }
+    setup({ ...a, bloccanti: true })
+    const apri = q('orr-dati-movimento-apri')
+    expect(apri?.textContent).toContain('7/2026')
+    expect(component.datiMovimentoId()).toBeNull()
+    component.apriDatiMovimento('m1')
+    expect(component.datiMovimentoId()).toBe('m1')
+    orr.anteprima.calls.reset()
+    component.datiSalvati()
+    expect(orr.anteprima).toHaveBeenCalledTimes(1)
+    component.chiudiDatiMovimento()
+    expect(component.datiMovimentoId()).toBeNull()
+  })
+
   it('nessun dato: lo dice, senza pulsante Genera', () => {
     setup(anteprimaDi({ file: [], nessunDato: true }))
     expect(q('orr-nessun-dato')?.textContent).toContain('Non ci sono dati da comunicare')

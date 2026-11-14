@@ -299,6 +299,8 @@ export function costruisciFileOrr(
   let tipoImpiantoMancante = false
 
   for (const m of ordinati) {
+    // Causale non rilevante per il MUD (ruolo ESCLUSO): fuori da ogni file, come in WinWaste.
+    if (m.ruolo === 'ESCLUSO') continue
     const fir = m.firId ? ctx.dettagli.fir.get(m.firId) : undefined
     const jsonDati = ctx.dettagli.datiTracciato.get(chiaveDati(m))
     let datiOrr: {
@@ -437,7 +439,7 @@ export function costruisciFileOrr(
       if (!sedeTrasportatore) {
         raccolta.aggiungi(
           'TRASPORTATORE_NON_IN_ANAGRAFICA',
-          `Trasportatore «${fir?.carrierName ?? ''}»: non è collegato a una sede in anagrafica.`,
+          `Trasportatore «${fir?.carrierName ?? ''}»: non è collegato a una sede in anagrafica (quando il trasportatore sei tu, l'azienda va censita fra i trasportatori, con l'Albo nell'anagrafica della sede).`,
           true,
           m,
           { tipo: 'MOVIMENTO' }
@@ -486,11 +488,15 @@ export function costruisciFileOrr(
     }
 
     // Formulario, quantita', operazione.
-    const numeroFormulario = fir?.firNumero ?? m.firNumero ?? datiOrr.formulario?.numero ?? ''
+    // Il primo numero non vuoto: una stringa vuota sul FIR non deve nascondere quello dei dati O.R.R.
+    const numeroFormulario =
+      [fir?.firNumero, m.firNumero, datiOrr.formulario?.numero]
+        .map(n => (n ?? '').trim())
+        .find(n => n !== '') ?? ''
     if (numeroFormulario.trim() === '') {
       raccolta.aggiungi(
         'MANCA_FORMULARIO',
-        'Manca il numero del formulario: indicalo nei dati O.R.R. del movimento.',
+        'Manca il numero del formulario: indicalo nei dati O.R.R. del movimento (pulsante «Dati O.R.R.» accanto all’avviso).',
         true,
         m,
         { tipo: 'MOVIMENTO' }

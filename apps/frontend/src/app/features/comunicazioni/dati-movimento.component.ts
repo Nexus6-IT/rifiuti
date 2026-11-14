@@ -1,4 +1,13 @@
-import { Component, Input, OnChanges, SimpleChanges, inject, signal } from '@angular/core'
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnChanges,
+  Output,
+  SimpleChanges,
+  inject,
+  signal,
+} from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
@@ -9,9 +18,14 @@ import { DatiComunicazioniService } from './dati-comunicazioni.service'
 const PRODOTTI = ['A', 'B', 'C', 'E', 'G']
 const CAUSALI = ['B', 'E', 'U', 'M', 'D', 'L']
 const PGF = ['A', 'B', 'C', 'D', 'E']
+const ATTIVITA_ORR = [
+  { value: 'FRA', label: 'Frantumatore' },
+  { value: 'ROT', label: 'Rottamatore' },
+  { value: 'AUT', label: 'Autodemolitore' },
+]
 
 /**
- * Dati del tracciato di un movimento (4.9c-f, D2) per CONOU e COBAT: prodotto, percentuale, causale
+ * Dati del tracciato di un movimento (4.9c-f, D2) per CONOU, COBAT e O.R.R. (attività FRA/ROT/AUT e formulario manuale): prodotto, percentuale, causale
  * e scarico interno per CONOU; tipo di movimento, causa e PGF per COBAT. Si mostra nel pannello
  * della marcatura del movimento, solo per i consorzi per cui il movimento e' marcato. I dati
  * stanno nella radice della catena e non cambiano la marcatura. Scrittura ADMIN/OPERATOR.
@@ -82,6 +96,43 @@ const PGF = ['A', 'B', 'C', 'D', 'E']
               <label for="dm-scarico-interno">Scarico interno (quantità negativa)</label>
             </div>
           </ng-container>
+          <ng-container *ngSwitchCase="'ORR'">
+            <div class="campo">
+              <label for="dm-attivita">Attività O.R.R. (FRA, ROT, AUT)</label>
+              <select
+                id="dm-attivita"
+                name="attivitaOrr"
+                [(ngModel)]="attivitaOrr"
+                [disabled]="!puoModificare()"
+              >
+                <option value="">Dal tipo impianto della sede</option>
+                <option *ngFor="let a of attivitaOrrLista" [value]="a.value">
+                  {{ a.label }} ({{ a.value }})
+                </option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="dm-formulario-numero">Numero del formulario (se manca il FIR)</label>
+              <input
+                id="dm-formulario-numero"
+                name="formularioNumero"
+                type="text"
+                maxlength="15"
+                [(ngModel)]="formularioNumero"
+                [disabled]="!puoModificare()"
+              />
+            </div>
+            <div class="campo">
+              <label for="dm-formulario-data">Data del formulario</label>
+              <input
+                id="dm-formulario-data"
+                name="formularioData"
+                type="date"
+                [(ngModel)]="formularioData"
+                [disabled]="!puoModificare()"
+              />
+            </div>
+          </ng-container>
           <ng-container *ngSwitchCase="'COBAT'">
             <div class="campo">
               <label for="dm-tipo">Tipo di movimento (1-7)</label>
@@ -144,11 +195,14 @@ export class DatiMovimentoComponent implements OnChanges {
   private readonly toast = inject(ToastService)
 
   @Input({ required: true }) movimentoId!: string
-  @Input({ required: true }) tracciato!: Extract<TracciatoDati, 'CONOU' | 'COBAT'>
+  @Input({ required: true }) tracciato!: Extract<TracciatoDati, 'CONOU' | 'COBAT' | 'ORR'>
 
   readonly prodotti = PRODOTTI
   readonly causali = CAUSALI
   readonly pgfLista = PGF
+  readonly attivitaOrrLista = ATTIVITA_ORR
+  /** Emesso dopo un salvataggio o una rimozione riusciti. */
+  @Output() readonly salvato = new EventEmitter<void>()
 
   readonly caricato = signal(false)
   readonly presenti = signal(false)
@@ -164,6 +218,9 @@ export class DatiMovimentoComponent implements OnChanges {
   tipoMovimento: number | null = null
   causa: number | null = null
   pgf = ''
+  attivitaOrr = ''
+  formularioNumero = ''
+  formularioData = ''
 
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['movimentoId'] || changes['tracciato']) && this.movimentoId) this.carica()
@@ -185,6 +242,10 @@ export class DatiMovimentoComponent implements OnChanges {
         this.tipoMovimento = typeof d['tipoMovimento'] === 'number' ? d['tipoMovimento'] : null
         this.causa = typeof d['causa'] === 'number' ? d['causa'] : null
         this.pgf = String(d['pgf'] ?? '')
+        this.attivitaOrr = String(d['attivita'] ?? '')
+        const f = (d['formulario'] ?? {}) as Record<string, unknown>
+        this.formularioNumero = String(f['numero'] ?? '')
+        this.formularioData = String(f['data'] ?? '')
         this.caricato.set(true)
       },
       error: () => this.errore.set('Impossibile leggere i dati per le comunicazioni.'),
@@ -200,6 +261,14 @@ export class DatiMovimentoComponent implements OnChanges {
         d['percentualeOlio'] = this.percentuale
       if (this.causale) d['causale'] = this.causale
       if (this.scaricoInterno) d['scaricoInterno'] = true
+    } else if (this.tracciato === 'ORR') {
+      if (this.attivitaOrr) d['attivita'] = this.attivitaOrr
+      // Numero e data vanno insieme: il backend rifiuta un formulario a meta'.
+      if (this.formularioNumero.trim() || this.formularioData)
+        d['formulario'] = {
+          ...(this.formularioNumero.trim() ? { numero: this.formularioNumero.trim() } : {}),
+          ...(this.formularioData ? { data: this.formularioData } : {}),
+        }
     } else {
       if (this.tipoMovimento !== null && this.tipoMovimento !== undefined)
         d['tipoMovimento'] = this.tipoMovimento
@@ -218,6 +287,7 @@ export class DatiMovimentoComponent implements OnChanges {
         this.inCorso.set(false)
         this.presenti.set(true)
         this.toast.success('Dati salvati.')
+        this.salvato.emit()
       },
       error: err => {
         this.inCorso.set(false)
@@ -235,6 +305,7 @@ export class DatiMovimentoComponent implements OnChanges {
         this.inCorso.set(false)
         this.presenti.set(false)
         this.carica()
+        this.salvato.emit()
       },
       error: () => {
         this.inCorso.set(false)

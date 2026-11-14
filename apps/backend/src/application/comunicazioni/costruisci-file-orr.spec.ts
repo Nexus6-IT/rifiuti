@@ -306,6 +306,17 @@ describe('costruisciFileOrr: stoccaggio ricevuto da terzi', () => {
     expect(esegui({ ...s, attivita: 'REC' }).dati.record).toHaveLength(0)
   })
 
+  it('un movimento ESCLUSO trasportato da noi non produce nessun record T', () => {
+    const s = base()
+    s.movimenti = s.movimenti.map(
+      m => ({ ...m, tipo: 'SCARICO', ruolo: 'ESCLUSO' }) as MovimentoOrso
+    )
+    s.fir['fir-1'] = firDi('fir-1', { carrierCodiceFiscale: '98765432109' })
+    const t = esegui({ ...s, attivita: 'TRA' })
+    expect(t.dati.record).toHaveLength(0)
+    expect(t.movimentiInFile).toHaveLength(0)
+  })
+
   it('senza movimenti per l attivita: avviso informativo, nessun bloccante', () => {
     const r = esegui({ ...base(), attivita: 'SMA' })
     expect(r.dati.record).toHaveLength(0)
