@@ -232,6 +232,23 @@ describe('Preparatore O.R.R. Campania — Postgres reale, ruolo wasteflow_app', 
     await owner.$disconnect()
   })
 
+  it('un carattere fuori Windows-1252 nella ragione sociale del produttore -> avviso CARATTERI_NON_RAPPRESENTABILI collegato al movimento, nessun file', async () => {
+    const s = await nuovoScenario('O9')
+    const sede = await owner.sedeDitta.findUniqueOrThrow({ where: { id: s.sedeProduttoreId } })
+    await owner.ditta.update({
+      where: { id: sede.dittaId },
+      data: { ragioneSociale: 'Rossi \u{1F600} S.r.l.' },
+    })
+    const a = await nel(s.az, () => servizio.anteprima(s.az.tenantId, richiesta(s.az, 'STO')))
+    expect(a.bloccanti).toBe(true)
+    const avviso = a.avvisi.find(x => x.codice === 'CARATTERI_NON_RAPPRESENTABILI')
+    expect(avviso).toBeDefined()
+    expect(avviso?.movimentoIds).toEqual([s.movimentoId])
+    await expect(
+      nel(s.az, () => servizio.genera(s.az.tenantId, s.az.utenteId, richiesta(s.az, 'STO')))
+    ).rejects.toBeInstanceOf(ComunicazioneConBloccantiError)
+  })
+
   it('anteprima e file STO: 718 byte per riga in Windows-1252, nome file, e13 e autorizzazione dell’impianto', async () => {
     const s = await nuovoScenario('O1')
     const a = await nel(s.az, () => servizio.anteprima(s.az.tenantId, richiesta(s.az, 'STO')))

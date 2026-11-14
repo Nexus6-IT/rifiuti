@@ -1,4 +1,5 @@
 import { giornoItaliano } from '../../core/time/anno-italiano'
+import { cercaCampiNonRappresentabili } from '../../domain/comunicazioni/fisso/codifica-cp1252'
 import type { ConfigurazioneOrr } from '../../domain/comunicazioni/configurazione-sede'
 import { validaDatiTracciato } from '../../domain/comunicazioni/dati-tracciato'
 import {
@@ -547,8 +548,9 @@ export function costruisciFileOrr(
         ),
       }
       const g = giornoItaliano(m.movementDate)
-      record.push({
+      const rec: RecordOrr = {
         movimento: m.numero,
+        movimentoId: m.id,
         anno: Number(g.slice(0, 4)),
         mese: Number(g.slice(5, 7)),
         formulario: numeroFormulario,
@@ -562,7 +564,19 @@ export function costruisciFileOrr(
         detentore,
         trasportatore,
         destinatario: dest,
-      })
+      }
+      // Il file e' in Windows-1252: un carattere che non si rappresenta si segnala qui, sul
+      // movimento e col punto di correzione, prima che la validazione generica lo anonimizzi.
+      for (const c of cercaCampiNonRappresentabili(rec)) {
+        raccolta.aggiungi(
+          'CARATTERI_NON_RAPPRESENTABILI',
+          `Il campo «${c.campo}» contiene caratteri non rappresentabili in Windows-1252: ${c.caratteri.join(' ')}. Correggili prima di generare il file.`,
+          true,
+          m,
+          { tipo: 'MOVIMENTO' }
+        )
+      }
+      record.push(rec)
       inFile.push(m)
     }
   }

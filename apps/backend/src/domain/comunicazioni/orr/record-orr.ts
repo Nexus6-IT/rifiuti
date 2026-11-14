@@ -45,6 +45,8 @@ export interface DestinatarioOrr extends SoggettoOrr {
 export interface RecordOrr {
   /** Riferimento del movimento («n/anno»): serve ai messaggi di errore, non finisce nel file. */
   movimento: string
+  /** Movimento di origine: collega al movimento gli avvisi sui campi (es. caratteri non rappresentabili). */
+  movimentoId: string
   anno: number
   mese: number
   /** Numero del formulario, al massimo 15 caratteri. */

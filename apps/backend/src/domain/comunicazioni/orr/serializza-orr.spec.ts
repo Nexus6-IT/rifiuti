@@ -52,6 +52,7 @@ const impianto = {
 
 const REC_T: RecordOrr = {
   movimento: '1/2025',
+  movimentoId: 'mov-1',
   anno: 2025,
   mese: 1,
   formulario: 'AB1234567890123',
@@ -81,6 +82,7 @@ const REC_T: RecordOrr = {
 
 const REC_S: RecordOrr = {
   movimento: '2/2025',
+  movimentoId: 'mov-2',
   anno: 2025,
   mese: 1,
   formulario: 'CD9876543210987',
