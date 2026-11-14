@@ -27,12 +27,19 @@ export interface DatiManifest {
   periodoDa: string
   periodoA: string
   sede: string
-  /** `null` se i dati sono cambiati dopo la generazione e il numero non descrive piu' il file. */
+  /** `null` se il numero non e' disponibile: vedi `numeroRecordMotivo`. */
   numeroRecord: number | null
+  /**
+   * Perche' il numero non c'e': `DATI_CAMBIATI` (predefinito) se i dati sono cambiati dopo la
+   * generazione, `NON_RICALCOLABILE` se il tracciato non ha un preparatore generico (O.R.SO.).
+   */
+  numeroRecordMotivo?: 'DATI_CAMBIATI' | 'NON_RICALCOLABILE'
   /** Istante ISO di generazione. */
   generataIl: string
   stato: 'GENERATA' | 'INVIATA'
   inviataIl?: string
+  /** Chi l'ha segnata inviata. */
+  inviataDa?: string
   modificataDopoInvio: boolean
   /** Avvisi non bloccanti (i bloccanti impediscono di generare il file). */
   avvisi: AvvisoManifest[]
@@ -70,13 +77,18 @@ export function costruisciManifest(d: DatiManifest): string {
     `Codifica:         ${d.codifica}`,
     `Sede:             ${d.sede}`,
     `Periodo:          dal ${d.periodoDa} al ${d.periodoA}`,
-    `Record nel file:  ${d.numeroRecord ?? 'non disponibile (dati cambiati dopo la generazione)'}`,
+    `Record nel file:  ${
+      d.numeroRecord ??
+      (d.numeroRecordMotivo === 'NON_RICALCOLABILE'
+        ? 'non disponibile (non ricalcolabile per questo tracciato)'
+        : 'non disponibile (dati cambiati dopo la generazione)')
+    }`,
     `Hash dei dati:    ${d.hashDati}`,
     `Generato il:      ${d.generataIl}`,
     d.stato === 'INVIATA'
-      ? `Stato:            INVIATA il ${d.inviataIl ?? '?'}${
+      ? `Stato:            INVIATA il ${d.inviataIl ?? '?'}${d.inviataDa ? ` (segnata da ${d.inviataDa})` : ''}${
           ricavato
-            ? ' (conferma esplicita «Ho verificato che il consorzio accetta questo file» data al momento della segnatura)'
+            ? '; per un tracciato ricavato da WinWaste il servizio la accetta solo con la conferma «Ho verificato che il consorzio accetta questo file»'
             : ''
         }`
       : 'Stato:            GENERATA (non ancora segnata come inviata)',

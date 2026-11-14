@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Inject,
   NotFoundException,
+  UnprocessableEntityException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -30,6 +31,8 @@ import {
 import {
   COMUNICAZIONI_TRACCIATO_SERVICE,
   ConfermaVerificaRichiestaError,
+  FileNonCodificabileError,
+  TracciatoNonDisponibileError,
   RichiestaComunicazioneNonValidaError,
   type ComunicazioniTracciatoPort,
 } from '../../application/comunicazioni/comunicazioni-tracciato.port'
@@ -164,6 +167,15 @@ export class ComunicazioniController {
           message: err.message,
           error: 'RICHIESTA_COMUNICAZIONE_NON_VALIDA',
           details: { errori: err.errori },
+        })
+      }
+      if (err instanceof FileNonCodificabileError || err instanceof TracciatoNonDisponibileError) {
+        throw new UnprocessableEntityException({
+          message: err.message,
+          error:
+            err instanceof FileNonCodificabileError
+              ? 'FILE_NON_CODIFICABILE'
+              : 'TRACCIATO_NON_DISPONIBILE',
         })
       }
       if (err instanceof ComunicazioneNonTrovataError) {

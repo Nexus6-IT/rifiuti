@@ -7,7 +7,11 @@ import {
   inizioGiornoItaliano,
 } from '../../core/time/anno-italiano'
 import type { MovimentoDaClassificare } from '../../domain/comunicazioni/classifica-consorzio'
-import { codificaCp1252 } from '../../domain/comunicazioni/fisso/codifica-cp1252'
+import {
+  cercaCampiNonRappresentabili,
+  codificaCp1252,
+  nonRappresentabili,
+} from '../../domain/comunicazioni/fisso/codifica-cp1252'
 import { costruisciManifest } from '../../domain/comunicazioni/manifest'
 import {
   RegistroTracciati,
@@ -22,6 +26,8 @@ import {
 } from './comunicazioni-orso.port'
 import {
   ConfermaVerificaRichiestaError,
+  FileNonCodificabileError,
+  TracciatoNonDisponibileError,
   PREPARATORI_TRACCIATO,
   REGISTRO_TRACCIATI,
   RichiestaComunicazioneNonValidaError,
@@ -89,9 +95,13 @@ interface Calcolo {
   numeroMovimenti: number
   movimentiInFile: ReadonlyArray<MovimentoOrso>
   hashDati: string
+  /** Contenuto del file (testo); `null` se i dati non rispettano il tracciato e non si serializza. */
+  contenuto: string | null
   tracciato: TracciatoComunicazione<unknown>
   preparatore: PreparatoreTracciato
 }
+
+const MASSIMO_AVVISI_CARATTERI = 20
 
 /**
  * Comunicazione a tracciato generica (4.9c-f, A5): stessa meccanica di O.R.SO. (anteprima,
@@ -290,6 +300,34 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
         bloccante: true,
       })
     }
+    // Rete di sicurezza (valida per ogni tracciato): un carattere che la codifica non rappresenta
+    // si blocca qui, con campo e movimento, cosi' il file salvato si puo' sempre scaricare.
+    let contenuto: string | null = null
+    if (erroriTracciato.length === 0) {
+      contenuto = tracciato.serializza(preparazione.dati)
+      if (tracciato.codifica === 'windows-1252') {
+        const campi = cercaCampiNonRappresentabili(preparazione.dati)
+        const nuovi: AvvisoTracciato[] = campi.slice(0, MASSIMO_AVVISI_CARATTERI).map(c => ({
+          codice: 'CARATTERI_NON_RAPPRESENTABILI',
+          messaggio: `Il campo «${c.campo}» contiene caratteri non rappresentabili in Windows-1252: ${c.caratteri.join(' ')}. Correggili prima di generare il file.`,
+          movimentoIds: c.movimentoIds,
+          bloccante: true,
+          campo: c.campo,
+        }))
+        // Carattere introdotto dalla serializzazione stessa, fuori da qualunque campo dei dati.
+        const nelFile = nonRappresentabili(contenuto)
+        if (nuovi.length === 0 && nelFile.length > 0) {
+          nuovi.push({
+            codice: 'CARATTERI_NON_RAPPRESENTABILI',
+            messaggio: `Il file conterrebbe caratteri non rappresentabili in Windows-1252: ${nelFile.join(' ')}.`,
+            movimentoIds: [],
+            bloccante: true,
+            campo: 'file',
+          })
+        }
+        avvisi.unshift(...nuovi)
+      }
+    }
     return {
       unita,
       periodo: { da: r.da, a: r.a },
@@ -302,6 +340,7 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
       numeroMovimenti: preparazione.movimentiInFile.length,
       movimentiInFile: preparazione.movimentiInFile,
       hashDati: hashDatiTracciato(preparazione.dati),
+      contenuto,
       tracciato,
       preparatore,
     }
@@ -365,7 +404,8 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
     const esistente = await cerca()
     if (esistente) return this.vista(esistente, c.hashDati)
 
-    const contenuto = c.tracciato.serializza(c.dati)
+    // Senza bloccanti `calcola` ha gia' serializzato (dati validi): si riusa lo stesso testo.
+    const contenuto = c.contenuto ?? c.tracciato.serializza(c.dati)
     const snapshot = c.movimentiInFile.map(m => ({
       tenantId,
       movimentoId: m.id,
@@ -458,14 +498,22 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
     })
     if (!r) throw new ComunicazioneNonTrovataError()
     const t = this.tracciatoDiRiga(r)
-    const codifica = t?.codifica ?? 'utf-8'
+    // Non si indovina la codifica: un file Windows-1252 servito come UTF-8 sarebbe corrotto.
+    if (!t) throw new TracciatoNonDisponibileError(r.tracciato, r.versione)
+    let contenuto: Buffer
+    try {
+      contenuto =
+        t.codifica === 'windows-1252'
+          ? codificaCp1252(r.contenuto)
+          : Buffer.from(r.contenuto, 'utf8')
+    } catch (e) {
+      if (e instanceof RangeError) throw new FileNonCodificabileError(e.message)
+      throw e
+    }
     return {
       nomeFile: r.nomeFile,
-      contenuto:
-        codifica === 'windows-1252'
-          ? codificaCp1252(r.contenuto)
-          : Buffer.from(r.contenuto, 'utf8'),
-      contentType: contentTypeConCharset(t?.contentType ?? 'application/octet-stream', codifica),
+      contenuto,
+      contentType: contentTypeConCharset(t.contentType, t.codifica),
     }
   }
 
@@ -521,9 +569,11 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
       periodoA: comeGiorno(r.periodoA),
       sede: unita ? `${unita.denominazione} (${unita.numIscrSito})` : r.unitaLocaleId,
       numeroRecord: invariati ? attuale.numeroRecord : null,
+      numeroRecordMotivo: p ? 'DATI_CAMBIATI' : 'NON_RICALCOLABILE',
       generataIl: r.generataIl.toISOString(),
       stato,
       ...(r.inviataIl ? { inviataIl: r.inviataIl.toISOString() } : {}),
+      ...(r.inviataDa ? { inviataDa: r.inviataDa } : {}),
       modificataDopoInvio: stato === 'INVIATA' && attuale !== null && !invariati,
       avvisi,
       differenzeDaWinWaste: [...(p?.differenzeDaWinWaste ?? [])],

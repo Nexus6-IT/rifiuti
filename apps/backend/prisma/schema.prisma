@@ -4634,8 +4634,8 @@ model DatiConsorzioMovimento {
 
 /// Dati del tracciato di comunicazione per movimento (4.9c-f, D2): agganciati alla RADICE della
 /// catena, come `DatiConsorzioMovimento`, ma in tabella propria perche' una riga di quella e' una
-/// correzione manuale della marcatura. Non entra nell'`entryHash`. `dati` e' validato dallo schema
-/// Zod del tracciato (`domain/comunicazioni/dati-tracciato.ts`). CHECK solo in migration:
+/// correzione manuale della marcatura. Non entra nell'`entryHash`. `dati` e' validato dal
+/// validatore del tracciato (`domain/comunicazioni/dati-tracciato.ts`). CHECK solo in migration:
 /// `dati_tracciato_movimento_tracciato_ammesso` (CONOU, COBAT, ORR), `_dati_oggetto`, `_versione_positiva`.
 model DatiTracciatoMovimento {
   id                   String            @id(map: "dati_tracciato_movimento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -4687,7 +4687,7 @@ model AnagraficaComunicazioniSede {
 }
 
 /// Configurazione delle comunicazioni per sede propria e consorzio (4.9c-f, D4). `dati` e' validato
-/// dallo schema Zod del consorzio (`domain/comunicazioni/configurazione-sede.ts`). CHECK solo in
+/// dal validatore del consorzio (`domain/comunicazioni/configurazione-sede.ts`). CHECK solo in
 /// migration: `configurazione_comunicazione_sede_consorzio_ammesso` (CONOU, COBAT, ORSO, ORR),
 /// `_dati_oggetto`, `_versione_positiva`.
 model ConfigurazioneComunicazioneSede {
