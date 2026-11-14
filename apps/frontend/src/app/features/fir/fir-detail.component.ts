@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterModule } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { MessageModule } from 'primeng/message'
+import { TagModule } from 'primeng/tag'
+import { TooltipModule } from 'primeng/tooltip'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ToastModule } from 'primeng/toast'
@@ -88,6 +90,8 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     ButtonModule,
     PillolaStatoComponent,
     MessageModule,
+    TagModule,
+    TooltipModule,
     ProgressSpinnerModule,
     ConfirmDialogModule,
     ToastModule,
@@ -301,6 +305,18 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         @if (mostraStatoRentri(f)) {
           <section class="surface-card detail-section" aria-label="Stato verso RENTRI">
             <h2 class="section-title">Stato verso RENTRI</h2>
+            @if (f.bloccatoInvio) {
+              <p-tag
+                severity="info"
+                value="Importato: invio a RENTRI bloccato"
+                icon="pi pi-lock"
+                [pTooltip]="
+                  f.motivoBloccoInvio ||
+                  'Importato: invio a RENTRI bloccato fino alla riconciliazione'
+                "
+                data-testid="fir-detail-rentri-bloccato"
+              />
+            }
             <div class="rentri-status" data-testid="fir-detail-rentri-status">
               <app-rentri-sync-badge
                 [numeroFir]="f.numeroProgressivo || f.id"
@@ -394,6 +410,23 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   (onClick)="apriConsegna()"
                   data-testid="fir-detail-conferma-consegna"
                   [attr.aria-label]="'Conferma consegna FIR ' + (f.numeroProgressivo || f.id)"
+                />
+              }
+              @if (f.bloccatoInvio && mostraStatoRentri(f)) {
+                <p-button
+                  label="Trasmetti a RENTRI"
+                  icon="pi pi-send"
+                  [outlined]="true"
+                  [disabled]="true"
+                  [pTooltip]="
+                    f.motivoBloccoInvio ||
+                    'Importato: invio a RENTRI bloccato fino alla riconciliazione'
+                  "
+                  data-testid="fir-detail-rentri-trasmetti-bloccato"
+                  [attr.aria-label]="
+                    'Trasmissione a RENTRI bloccata per il FIR importato ' +
+                    (f.numeroProgressivo || f.id)
+                  "
                 />
               }
               @if (canTrasmettereRentri(f)) {
@@ -1135,7 +1168,12 @@ export class FirDetailComponent implements OnInit {
   }
 
   canTrasmettereRentri(fir: FIR): boolean {
-    return !!fir.canSyncToRENTRI && fir.rentriSyncStatus === 'PENDING' && this.canManageRENTRI()
+    return (
+      !fir.bloccatoInvio &&
+      !!fir.canSyncToRENTRI &&
+      fir.rentriSyncStatus === 'PENDING' &&
+      this.canManageRENTRI()
+    )
   }
 
   /**
