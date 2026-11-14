@@ -1,6 +1,7 @@
 import type { PayloadLettura } from './payload-lettura'
 import {
   AVVISO_LETTURA_SIMULATA,
+  DRIVER_AMMESSI,
   MESSAGGI_RIFIUTO,
   MINUTI_DIFFERITA,
   MINUTI_SFASAMENTO,
@@ -43,6 +44,7 @@ function ctx(extra: Partial<ContestoValutazione> = {}): ContestoValutazione {
     agenteId: AGENTE,
     strumento: { id: STRUMENTO, agenteId: AGENTE, attivo: true, portataMaxKg: 60000 },
     simulazioneAmmessa: false,
+    driverAmmessi: ['D800-MP', 'SIMULATA'],
     ricezione: RICEZIONE,
     ...extra,
   }
@@ -145,6 +147,20 @@ describe('valutaLettura: rifiuti', () => {
     })
   })
 
+  it('DRIVER_NON_AMMESSO: un driver fuori elenco è rifiutato; di default ammette solo SIMULATA', () => {
+    const r = valutaLettura(payload({ driver: 'ALTRO-1' }), ctx())
+    expect(r).toMatchObject({ esito: 'RIFIUTATA', codice: 'DRIVER_NON_AMMESSO' })
+    expect(DRIVER_AMMESSI).toEqual(['SIMULATA'])
+    const senzaElenco: ContestoValutazione = { ...ctx(), driverAmmessi: undefined }
+    expect(valutaLettura(payload(), senzaElenco)).toMatchObject({ codice: 'DRIVER_NON_AMMESSO' })
+    expect(
+      valutaLettura(payload({ driver: 'SIMULATA', simulata: true }), {
+        ...senzaElenco,
+        simulazioneAmmessa: true,
+      })
+    ).toMatchObject({ esito: 'ACCETTABILE' })
+  })
+
   it('ogni codice di rifiuto ha un messaggio in italiano (anche quelli decisi dal database)', () => {
     const codici: CodiceRifiuto[] = [
       'FIRMA_NON_VALIDA',
@@ -160,6 +176,7 @@ describe('valutaLettura: rifiuti', () => {
       'CHIAVE_RIUSATA',
       'SEQUENZA_GIA_USATA',
       'ALIBI_GIA_USATO',
+      'DRIVER_NON_AMMESSO',
     ]
     expect(Object.keys(MESSAGGI_RIFIUTO).sort()).toEqual([...codici].sort())
     for (const c of codici) expect(MESSAGGI_RIFIUTO[c].length).toBeGreaterThan(10)

@@ -82,7 +82,7 @@ e' attivo (o un secondo `esegui`) si ferma con «agente gia' in esecuzione». Tu
   `scartate\` col motivo. I codici transitori sono `OROLOGIO_AVANTI` (orologio del PC avanti: correggerlo
   basta, le letture gia' in coda diventano valide), `STRUMENTO_NON_ASSEGNATO`, `STRUMENTO_NON_ATTIVO` (assegnare
   o riattivare lo strumento in WasteFlow) e `FUORI_PORTATA` (correggere la portata). Ogni altro codice, anche
-  sconosciuto, e' definitivo (firma, agente, peso, simulazione, chiave o alibi gia' usati, payload non valido).
+  sconosciuto, e' definitivo (firma, agente, peso, simulazione, driver non ammesso (`DRIVER_NON_AMMESSO`: il backend accetta solo i driver dell'elenco `DRIVER_AMMESSI`, oggi `SIMULATA`), chiave o alibi gia' usati, payload non valido).
 - Contatore delle sequenze perso (file `sequenza` cancellato e cartelle vuote): all'avvio l'agente parte da
   `max(locale, ultimaSequenza del server)`; se il server risponde `SEQUENZA_GIA_USATA` (con `ultimaSequenza`)
   l'agente riallinea il contatore e ri-numera la lettura con una nuova sequenza e una nuova chiave,

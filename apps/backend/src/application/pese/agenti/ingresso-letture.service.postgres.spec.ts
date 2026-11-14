@@ -207,6 +207,13 @@ describe('IngressoLettureService (Postgres reale)', () => {
     expect(riga.simulata).toBe(true)
   })
 
+  it('driver non ammesso: rifiutata in modo definitivo, anche con il permesso di simulazione', async () => {
+    const s = await scenario(true)
+    const [r] = await invia(s, [lettura(s, { driver: 'ALTRO-1' })])
+    expect(r).toMatchObject({ esito: 'RIFIUTATA', codice: 'DRIVER_NON_AMMESSO' })
+    expect(await righe(s)).toBe(0)
+  })
+
   it('fuori portata e orologio avanti: rifiutate con il codice giusto', async () => {
     const s = await scenario(false, 1000)
     const [r1] = await invia(s, [lettura(s, { pesoKg: '1000.01' })])

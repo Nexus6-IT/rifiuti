@@ -30,6 +30,14 @@ export type CodiceRifiuto =
   | 'CHIAVE_RIUSATA'
   | 'SEQUENZA_GIA_USATA'
   | 'ALIBI_GIA_USATO'
+  | 'DRIVER_NON_AMMESSO'
+
+/**
+ * Driver da cui il backend accetta letture. Oggi solo `SIMULATA` (decisione di prodotto): un driver
+ * reale si aggiunge qui con una riga (o, per i collaudi, con `PESE_DRIVER_AMMESSI`). Un driver
+ * fuori elenco darebbe una pesata «Da strumento» che nessun agente rilasciato può produrre.
+ */
+export const DRIVER_AMMESSI: readonly string[] = ['SIMULATA']
 
 export const MESSAGGI_RIFIUTO: Readonly<Record<CodiceRifiuto, string>> = {
   FIRMA_NON_VALIDA: 'Firma della lettura non valida.',
@@ -46,6 +54,7 @@ export const MESSAGGI_RIFIUTO: Readonly<Record<CodiceRifiuto, string>> = {
   SEQUENZA_GIA_USATA:
     'Sequenza già usata da un’altra lettura di questo agente: riallineare il contatore.',
   ALIBI_GIA_USATO: 'Alibi già registrato per questo strumento.',
+  DRIVER_NON_AMMESSO: 'Driver dello strumento non ammesso da questo server.',
 }
 
 export interface StrumentoPerLettura {
@@ -62,6 +71,8 @@ export interface ContestoValutazione {
   /** strumento del payload letto nell'azienda del token; null se non esiste lì */
   strumento: StrumentoPerLettura | null
   simulazioneAmmessa: boolean
+  /** driver accettati (default `DRIVER_AMMESSI`) */
+  driverAmmessi?: readonly string[]
   /** ora del server alla ricezione */
   ricezione: Date
 }
@@ -103,6 +114,9 @@ export function avvisiLettura(l: DatiPerAvvisi): string[] {
 
 export function valutaLettura(p: PayloadLettura, ctx: ContestoValutazione): EsitoValutazione {
   if (p.agenteId !== ctx.agenteId) return rifiuto('AGENTE_DIVERSO')
+  if (!(ctx.driverAmmessi ?? DRIVER_AMMESSI).includes(p.driver)) {
+    return rifiuto('DRIVER_NON_AMMESSO')
+  }
   const s = ctx.strumento
   if (!s || s.id !== p.strumentoId || s.agenteId !== ctx.agenteId) {
     return rifiuto('STRUMENTO_NON_ASSEGNATO')

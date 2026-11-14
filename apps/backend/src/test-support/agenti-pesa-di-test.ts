@@ -10,6 +10,10 @@ import { hashSegreto, improntaChiave } from '../domain/pese/agenti/credenziali-a
 import { PREFISSO_FIRMA_LETTURA } from '../domain/pese/agenti/payload-lettura'
 import { partitaIvaValida } from './anagrafiche-di-test'
 
+// Le letture di prova usano il driver `D800-MP`, che il backend di produzione NON ammette (solo
+// SIMULATA): qui lo si abilita per i test che passano dall'ingresso delle letture.
+process.env.PESE_DRIVER_AMMESSI ??= 'D800-MP'
+
 export interface CoppiaChiavi {
   privata: KeyObject
   /** 32 byte grezzi in base64 standard (quello che l'agente invia all'abbinamento) */

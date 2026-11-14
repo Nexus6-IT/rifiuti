@@ -6,6 +6,7 @@ import {
   type PayloadLettura,
 } from '../../../domain/pese/agenti/payload-lettura'
 import {
+  DRIVER_AMMESSI,
   MESSAGGI_RIFIUTO,
   avvisiLettura,
   valutaLettura,
@@ -14,6 +15,18 @@ import {
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { AgentePesaNonTrovatoError, LottoOltreTempoError } from '../errori-pese'
 import { nelContestoTenant } from '../nel-contesto-tenant'
+
+/**
+ * Driver accettati: `DRIVER_AMMESSI` più, solo per collaudi e ambienti di prova, quelli elencati
+ * (separati da virgola) in `PESE_DRIVER_AMMESSI`. In produzione la variabile non c'è.
+ */
+export function driverAmmessi(): readonly string[] {
+  const extra = (process.env.PESE_DRIVER_AMMESSI ?? '')
+    .split(',')
+    .map(d => d.trim())
+    .filter(d => d.length > 0)
+  return [...DRIVER_AMMESSI, ...extra]
+}
 
 export interface ElementoLettura {
   /** byte esatti firmati, base64 standard */
@@ -165,6 +178,7 @@ export class IngressoLettureService {
             portataMaxKg: strumento.portataMaxKg === null ? null : Number(strumento.portataMaxKg),
           },
           simulazioneAmmessa,
+          driverAmmessi: driverAmmessi(),
           ricezione,
         })
         if (v.esito === 'RIFIUTATA') return rifiutata(p.chiaveIdempotenza, v.codice, v.messaggio)

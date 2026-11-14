@@ -294,7 +294,7 @@ func TestRifiutoTransitorioRestaInCodaEPoiArriva(t *testing.T) {
 
 func TestRifiutoDefinitivoOSconosciutoVaInScartate(t *testing.T) {
 	for _, codice := range []string{"FIRMA_NON_VALIDA", "AGENTE_DIVERSO", "PESO_INSTABILE", "PESO_NON_VALIDO", "SIMULAZIONE_NON_AMMESSA",
-		"CHIAVE_RIUSATA", "ALIBI_GIA_USATO", "PAYLOAD_NON_VALIDO", "CODICE_DEL_FUTURO", ""} {
+		"CHIAVE_RIUSATA", "ALIBI_GIA_USATO", "DRIVER_NON_AMMESSO", "PAYLOAD_NON_VALIDO", "CODICE_DEL_FUTURO", ""} {
 		t.Run(codice, func(t *testing.T) {
 			f := nuovo(t, 1, func(w http.ResponseWriter, r *http.Request, f *fixture) {
 				esitiPer(w, 1, func(int) map[string]any {
