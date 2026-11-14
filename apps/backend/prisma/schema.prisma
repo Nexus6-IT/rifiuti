@@ -138,6 +138,7 @@ model Tenant {
   allegatiPesa          AllegatoPesa[]
   collegamentiAccesso   CollegamentoAccesso[]
   agentiPesa            AgentePesa[]
+  lottiImport           LottoImport[]
   lettureAgentePesa     LetturaPesa[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
@@ -564,6 +565,7 @@ model FIR {
 
   // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
   // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
+
   @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
@@ -3041,6 +3043,10 @@ enum StatoTrasmissioneRentri {
   INCERTA
   /// Dichiarata presente da altro programma o dal portale.
   GIA_SU_RENTRI
+  /// Fase 3 (3.1): movimento importato da un altro programma, bloccato all'invio finche' la
+  /// riconciliazione (3.6) non lo sblocca. Origine sempre `IMPORTAZIONE`, sempre bloccato; non si
+  /// esce da questo stato ne' si cancella la riga (trigger nella migration, non in Prisma).
+  DA_RICONCILIARE
 
   @@map("stato_trasmissione_rentri")
 }
@@ -3051,6 +3057,8 @@ enum OrigineTrasmissioneRentri {
   AUTOMATICA
   CORREZIONE
   DICHIARATA
+  /// Fase 3 (3.1): riga creata dal caricamento di un archivio importato (sempre `DA_RICONCILIARE`).
+  IMPORTAZIONE
 
   @@map("origine_trasmissione_rentri")
 }
@@ -4622,4 +4630,54 @@ model DatiConsorzioMovimento {
   @@unique([tenantId, movimentoOriginaleId, consorzio], map: "dati_consorzio_movimento_unico_key")
   @@index([tenantId, consorzio], map: "dati_consorzio_movimento_consorzio_idx")
   @@map("dati_consorzio_movimento")
+}
+
+/// Fase 3 (3.1): che cosa carica un lotto di import.
+enum AmbitoLottoImport {
+  ANAGRAFICHE
+  REGISTRO
+  GIACENZE
+  FIR
+
+  @@map("ambito_lotto_import")
+}
+
+/// Fase 3 (3.1): ciclo di vita di un lotto. `ANNULLATO` esiste solo come valore (l'annullamento e'
+/// un pezzo successivo).
+enum StatoLottoImport {
+  IN_CORSO
+  COMPLETATO
+  FALLITO
+  ANNULLATO
+
+  @@map("stato_lotto_import")
+}
+
+/// Fase 3 (3.1): un caricamento di un archivio importato per un'azienda e un ambito. Un lotto non si
+/// cancella (si annulla). L'unico parziale «un solo IN_CORSO per (tenant, archivio, ambito)» e i CHECK
+/// (`archivio` `^WW[0-9]{8}$`, `hash_staging` esadecimale di 64) stanno solo nella migration: Prisma
+/// non li conosce, quindi `migrate diff` resta pulito. `conteggi` = `{ lette, inserite, saltate,
+/// scartate, blocchi }`.
+model LottoImport {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  importSource   String            @map("import_source") @db.VarChar(30)
+  archivio       String            @db.VarChar(10)
+  ambito         AmbitoLottoImport
+  formatoStaging String            @map("formato_staging") @db.VarChar(40)
+  hashStaging    String            @map("hash_staging") @db.VarChar(64)
+  stato          StatoLottoImport  @default(IN_CORSO)
+  conteggi       Json              @default("{}")
+  errore         String?           @db.VarChar(1000)
+  avviatoDa      String?           @map("avviato_da") @db.Uuid
+  avviatoIl      DateTime          @default(now()) @map("avviato_il") @db.Timestamptz(3)
+  conclusoIl     DateTime?         @map("concluso_il") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
+  @@index([tenantId], map: "lotti_import_tenant_id_idx")
+  @@map("lotti_import")
 }
