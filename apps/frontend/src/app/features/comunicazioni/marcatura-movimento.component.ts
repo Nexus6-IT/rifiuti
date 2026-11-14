@@ -213,14 +213,20 @@ export class MarcaturaMovimentoComponent implements OnChanges {
 
   private applica(chiamata: ReturnType<ConsorziService['impostaOverride']>): void {
     this.inCorso.set(true)
-    chiamata.pipe(takeUntilDestroyed(this.distrutto)).subscribe({
+    // Scrittura: NON si annulla alla distruzione del componente (il server può averla già
+    // ricevuta e l'esito non si vedrebbe più). Si lascia finire e si ignora solo l'aggiornamento
+    // della vista, che non esiste più.
+    let vivo = true
+    this.distrutto.onDestroy(() => (vivo = false))
+    chiamata.subscribe({
       next: m => {
+        if (!vivo) return
         this.inCorso.set(false)
         this.corrente.set(m)
         this.cambiato.emit(m)
       },
       error: () => {
-        this.inCorso.set(false)
+        if (vivo) this.inCorso.set(false)
         this.toast.error('Operazione non riuscita.')
       },
     })
