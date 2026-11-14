@@ -274,7 +274,9 @@ describe('PDFService - PDF reale', () => {
 
 describe('escapeXml (testo dentro l SVG della filigrana)', () => {
   it('neutralizza i caratteri speciali XML', () => {
-    expect(escapeXml(`<a href="x">&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&apos;&lt;/a&gt;')
+    expect(escapeXml(`<a href="x">&'</a>`)).toBe(
+      '&lt;a href=&quot;x&quot;&gt;&amp;&apos;&lt;/a&gt;'
+    )
   })
   it('lascia invariata la dicitura di bozza', () => {
     expect(escapeXml('BOZZA – NON VALIDO')).toBe('BOZZA – NON VALIDO')
