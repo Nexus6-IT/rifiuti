@@ -19,10 +19,7 @@ import { ThrottlerAgenteGuard } from './throttler-agente.guard'
  * short/medium/long non toccano).
  */
 @Module({
-  imports: [
-    PrismaModule,
-    ModuliAttiviModule,
-  ],
+  imports: [PrismaModule, ModuliAttiviModule],
   controllers: [IngressoAgenteController],
   providers: [
     RisoluzioneAgenteService,
