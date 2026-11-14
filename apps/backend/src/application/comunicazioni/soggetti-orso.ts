@@ -113,7 +113,9 @@ const normalizza = (t: string | null | undefined) =>
 /**
  * Senza FIR il soggetto è la ditta indicata come controparte del movimento: la denominazione deve
  * coincidere con la ragione sociale di una ditta in anagrafica. Con più sedi decide l'indirizzo
- * (via e comune, poi il solo comune); se non basta il movimento resta non identificato.
+ * (via e comune, poi il solo comune); anche con una sola ditta, se il movimento ha un indirizzo
+ * il comune della sede deve comparire in esso; se non basta il movimento resta non identificato
+ * (bloccante: va controllata la controparte).
  */
 function sedeDaControparte(
   m: MovimentoPerSoggetto,
@@ -121,9 +123,16 @@ function sedeDaControparte(
 ): SedeDettaglio | null {
   if (!m.controparte || compatta(m.controparte) === '') return null
   const candidate = dettagli.sediPerControparte.get(chiaveControparte(m.controparte)) ?? []
-  if (candidate.length <= 1) return candidate[0] ?? null
   const indirizzoMov = normalizza(m.indirizzoControparte)
-  if (indirizzoMov === '') return null
+  if (candidate.length === 1) {
+    const unica = candidate[0]
+    const comune = normalizza(unica.comune)
+    // Con l'indirizzo scritto, il comune della sede deve comparire: altrimenti è un altro soggetto.
+    return indirizzoMov === '' || comune === '' || ` ${indirizzoMov} `.includes(` ${comune} `)
+      ? unica
+      : null
+  }
+  if (candidate.length === 0 || indirizzoMov === '') return null
   const contiene = (c: string) => c !== '' && ` ${indirizzoMov} `.includes(` ${c} `)
   const perViaEComune = candidate.filter(
     c => contiene(normalizza(c.via)) && contiene(normalizza(c.comune))

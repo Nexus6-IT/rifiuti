@@ -92,7 +92,7 @@ const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
     'Movimento senza descrizione del rifiuto: il tracciato richiede da 1 a 100 caratteri.',
   DATI_NON_VALIDI: 'I dati non rispettano il tracciato O.R.SO.',
   SOGGETTO_NON_IDENTIFICATO:
-    'Conferitore o destinatario non identificabile: in modalità dettagliata ogni movimento deve avere il suo soggetto. Con il FIR lo si ricava dalla sede della ditta indicata sul formulario; senza FIR dalla controparte del movimento, la cui denominazione deve coincidere con la ragione sociale di una ditta in anagrafica (con l’indirizzo, se la ditta ha più sedi). Correggi la controparte nel movimento del registro o la ditta in anagrafica.',
+    'Conferitore o destinatario non identificabile: in modalità dettagliata ogni movimento deve avere il suo soggetto. Con il FIR lo si ricava dalla sede della ditta indicata sul formulario; senza FIR dalla controparte del movimento, la cui denominazione deve coincidere con la ragione sociale di una ditta in anagrafica (con l’indirizzo, se la ditta ha più sedi; se il movimento ha un indirizzo, il comune della sede deve comparire in esso). Controlla la controparte: potrebbe essere un soggetto omonimo di un altro comune. Correggi la controparte nel movimento del registro o la ditta in anagrafica.',
   ISTAT_SOGGETTO_NON_VALIDO:
     'Il codice ISTAT del comune della sede del soggetto non è utilizzabile: correggilo nell’anagrafica della sede della ditta.',
   CODICE_FISCALE_SOGGETTO_NON_VALIDO:

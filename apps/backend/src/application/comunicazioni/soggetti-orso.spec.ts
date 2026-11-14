@@ -342,6 +342,22 @@ describe('risolviSoggettiOrso', () => {
       expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'I', codice: '55' })
     })
 
+    it('una sola ditta ma comune dell’indirizzo diverso: non identificata (review N1)', async () => {
+      const dd = dettagli([rossi], [], [], { controparti: [['ditta s1', [rossi]]] })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('a', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Roma 1, Torino (TO)' }),
+          mov('b', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'VIA ROMA 1,  MILANO (MI)' }),
+          mov('c', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Roma 1, Milano (MI)' }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.has('a')).toBe(false)
+      expect(r.soggetti.get('b')).toMatchObject({ tipo: 'I', codice: '55' })
+      expect(r.soggetti.has('c')).toBe(true)
+    })
+
     it('più sedi: le distingue l’indirizzo, altrimenti il soggetto resta assente', async () => {
       const dd = dettagli([rossi, rossiBo], [], [], {
         controparti: [['ditta s1', [rossi, rossiBo]]],
