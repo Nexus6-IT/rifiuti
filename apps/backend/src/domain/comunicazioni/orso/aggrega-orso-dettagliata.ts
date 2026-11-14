@@ -96,7 +96,9 @@ export function aggregaOrsoDettagliata(
     // I mesi non ancora dichiarabili non entrano nel file e quindi non servono di soggetto.
     if (m.mese > ultimoMese) continue
     const g = grammi(m)
-    if (g === null) continue // già un avviso bloccante del normale
+    // g nullo = già un avviso bloccante del normale; g = 0 non si scrive (come WinWaste: q ≠ 0) e
+    // non consuma un progressivo `Inew`.
+    if (g === null || g === 0) continue
 
     const cer = chiaveConfrontoCer(m.cer)
     const chiaveNodo = `${m.mese}|${cer}|${descrizionePulita(m.descrizione).toLowerCase()}`

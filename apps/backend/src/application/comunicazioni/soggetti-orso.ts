@@ -1,7 +1,11 @@
 import type { ImpiantoNuovoOrso, SoggettoOrso } from '../../domain/comunicazioni/orso/aggregato'
 import type { IndirizzoDati } from '../../domain/comunicazioni/orso/impianto-mesi'
 import type { RisoluzioneIstat } from './anagrafica-comunicazioni.port'
-import type { DettagliTracciato, SedeDettaglio } from './lettore-dettagli-tracciato'
+import {
+  chiaveControparte,
+  type DettagliTracciato,
+  type SedeDettaglio,
+} from './lettore-dettagli-tracciato'
 
 /**
  * Risoluzione dei soggetti di O.R.SO. modalità dettagliata (4.9e, C3, D12): dalla sede della ditta
@@ -28,7 +32,16 @@ export interface MovimentoPerSoggetto {
   id: string
   tipo: 'CARICO' | 'SCARICO'
   firId: string | null
+  /** Denominazione della controparte scritta nel registro (conta solo senza FIR). */
+  controparte: string | null
+  /** Indirizzo della controparte scritto nel registro (distingue le sedi di una stessa ditta). */
+  indirizzoControparte: string | null
 }
+
+type DettagliPerSoggetti = Pick<
+  DettagliTracciato,
+  'fir' | 'sedi' | 'sedeLegalePerDitta' | 'destinatari' | 'produttori' | 'sediPerControparte'
+>
 
 export interface RisoluzioneSoggetti {
   /** Soggetto per id del movimento; assente = non identificato (lo segnala l'aggregatore). */
@@ -88,19 +101,63 @@ function indirizzo(sede: SedeDettaglio, istat6: string): IndirizzoDati {
   }
 }
 
-/** Sede che identifica il soggetto: produttore del FIR per i carichi, destinatario per gli scarichi. */
-function sedeDelFir(
+const normalizza = (t: string | null | undefined) =>
+  compatta(t)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/**
+ * Senza FIR il soggetto è la ditta indicata come controparte del movimento: la denominazione deve
+ * coincidere con la ragione sociale di una ditta in anagrafica. Con più sedi decide l'indirizzo
+ * (via e comune, poi il solo comune); se non basta il movimento resta non identificato.
+ */
+function sedeDaControparte(
   m: MovimentoPerSoggetto,
-  dettagli: Pick<DettagliTracciato, 'fir' | 'sedi'>
+  dettagli: Pick<DettagliPerSoggetti, 'sediPerControparte'>
 ): SedeDettaglio | null {
-  const fir = m.firId ? dettagli.fir.get(m.firId) : undefined
-  const sedeId = m.tipo === 'CARICO' ? fir?.producerSedeId : fir?.receiverSedeId
+  if (!m.controparte || compatta(m.controparte) === '') return null
+  const candidate = dettagli.sediPerControparte.get(chiaveControparte(m.controparte)) ?? []
+  if (candidate.length <= 1) return candidate[0] ?? null
+  const indirizzoMov = normalizza(m.indirizzoControparte)
+  if (indirizzoMov === '') return null
+  const contiene = (c: string) => c !== '' && ` ${indirizzoMov} `.includes(` ${c} `)
+  const perViaEComune = candidate.filter(
+    c => contiene(normalizza(c.via)) && contiene(normalizza(c.comune))
+  )
+  if (perViaEComune.length === 1) return perViaEComune[0]
+  if (perViaEComune.length > 1) return null
+  const perComune = candidate.filter(c => contiene(normalizza(c.comune)))
+  return perComune.length === 1 ? perComune[0] : null
+}
+
+/**
+ * Sede che identifica il soggetto. Con il FIR: produttore per i carichi, destinatario per gli
+ * scarichi; per i FIR creati prima del 31/10 (senza colonne di sede) si ripiega sul produttore o
+ * sul destinatario di anagrafica. Senza FIR: la controparte del movimento.
+ */
+function sedeDelMovimento(
+  m: MovimentoPerSoggetto,
+  dettagli: DettagliPerSoggetti
+): SedeDettaglio | null {
+  if (!m.firId) return sedeDaControparte(m, dettagli)
+  const fir = dettagli.fir.get(m.firId)
+  if (!fir) return null
+  const sedeId =
+    m.tipo === 'CARICO'
+      ? (fir.producerSedeId ??
+        (fir.producerId ? dettagli.produttori.get(fir.producerId)?.sedeId : null))
+      : (fir.receiverSedeId ??
+        (fir.receiverId ? dettagli.destinatari.get(fir.receiverId)?.sedeId : null))
   return (sedeId ? dettagli.sedi.get(sedeId) : undefined) ?? null
 }
 
 export async function risolviSoggettiOrso(
   movimenti: readonly MovimentoPerSoggetto[],
-  dettagli: Pick<DettagliTracciato, 'fir' | 'sedi' | 'sedeLegalePerDitta'>,
+  dettagli: DettagliPerSoggetti,
   risolviIstat: RisolviIstatSede
 ): Promise<RisoluzioneSoggetti> {
   const istatPerSede = new Map<string, Promise<RisoluzioneIstat>>()
@@ -119,12 +176,13 @@ export async function risolviSoggettiOrso(
     const e = errori.get(k) ?? { codice, dettaglio, movimentoIds: [] }
     e.movimentoIds.push(movimentoId)
     errori.set(k, e)
+    return k
   }
   // Un soggetto per sede e verso: carichi e scarichi della stessa sede si calcolano una volta.
-  const cache = new Map<string, SoggettoOrso | 'ERRORE'>()
+  const cache = new Map<string, SoggettoOrso | { errore: string }>()
 
   for (const m of movimenti) {
-    const sede = sedeDelFir(m, dettagli)
+    const sede = sedeDelMovimento(m, dettagli)
     if (!sede) continue
     const nomeSede = `${sede.ditta.ragioneSociale} (${compatta(sede.comune) || 'comune mancante'})`
     const ana = sede.anagrafica
@@ -141,32 +199,33 @@ export async function risolviSoggettiOrso(
       if (comeComune) {
         s = istat6
           ? { tipo: 'C', istat: istat6, etichetta: `Comune di ${compatta(sede.comune)}` }
-          : 'ERRORE'
-        if (s === 'ERRORE') {
-          errore(
-            'ISTAT_SOGGETTO_NON_VALIDO',
-            `${nomeSede}: ${ris.codice === null ? MOTIVI_ISTAT[ris.motivo] : 'codice ISTAT non di 6 cifre'}`,
-            m.id
-          )
-        }
+          : {
+              errore: errore(
+                'ISTAT_SOGGETTO_NON_VALIDO',
+                `${nomeSede}: ${ris.codice === null ? MOTIVI_ISTAT[ris.motivo] : 'codice ISTAT non di 6 cifre'}`,
+                m.id
+              ),
+            }
       } else if (RE_CODICE_ARPA.test(codiceOrso)) {
         s = { tipo: 'I', codice: codiceOrso, etichetta: `${nomeSede}, ARPA ${codiceOrso}` }
       } else {
         const codfis = codfisPivaSoggetto(sede.ditta.codiceFiscale, sede.ditta.partitaIva)
         if (!codfis) {
-          errore(
-            'CODICE_FISCALE_SOGGETTO_NON_VALIDO',
-            `${nomeSede}: codice fiscale o partita IVA non di 11 o 16 caratteri`,
-            m.id
-          )
-          s = 'ERRORE'
+          s = {
+            errore: errore(
+              'CODICE_FISCALE_SOGGETTO_NON_VALIDO',
+              `${nomeSede}: codice fiscale o partita IVA non di 11 o 16 caratteri`,
+              m.id
+            ),
+          }
         } else if (!istat6) {
-          errore(
-            'ISTAT_SOGGETTO_NON_VALIDO',
-            `${nomeSede}: ${ris.codice === null ? MOTIVI_ISTAT[ris.motivo] : 'codice ISTAT non di 6 cifre'}`,
-            m.id
-          )
-          s = 'ERRORE'
+          s = {
+            errore: errore(
+              'ISTAT_SOGGETTO_NON_VALIDO',
+              `${nomeSede}: ${ris.codice === null ? MOTIVI_ISTAT[ris.motivo] : 'codice ISTAT non di 6 cifre'}`,
+              m.id
+            ),
+          }
         } else {
           const legale = dettagli.sedeLegalePerDitta.get(sede.dittaId)
           // La sede legale è facoltativa nell'XSD: senza ISTAT valido si omette.
@@ -177,7 +236,9 @@ export async function risolviSoggettiOrso(
               indirizzoSL = indirizzo(legale, r.codice)
           }
           const impianto: ImpiantoNuovoOrso = {
-            ragioneSociale: compatta(sede.ditta.ragioneSociale).slice(0, MAX_RAGIONE_SOCIALE).trim(),
+            ragioneSociale: compatta(sede.ditta.ragioneSociale)
+              .slice(0, MAX_RAGIONE_SOCIALE)
+              .trim(),
             codfisPiva: codfis,
             ...(indirizzoSL ? { indirizzoSL } : {}),
             indirizzoUL: indirizzo(sede, istat6),
@@ -186,13 +247,11 @@ export async function risolviSoggettiOrso(
         }
       }
       cache.set(chiaveCache, s)
-    } else if (s === 'ERRORE') {
-      // Stessa sede già in errore: il movimento va comunque nell'elenco degli errori.
-      for (const e of errori.values()) {
-        if (e.dettaglio.startsWith(nomeSede)) e.movimentoIds.push(m.id)
-      }
+    } else if ('errore' in s) {
+      // Stessa sede già in errore: il movimento va comunque nell'elenco di quell'errore.
+      errori.get(s.errore)?.movimentoIds.push(m.id)
     }
-    if (s !== 'ERRORE') soggetti.set(m.id, s)
+    if (!('errore' in s)) soggetti.set(m.id, s)
   }
 
   return {

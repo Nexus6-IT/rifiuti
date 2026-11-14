@@ -32,7 +32,7 @@ import {
   pulisciAziendeMud,
   type AziendaMud,
 } from '../mud/aggregazione/mud-seed.postgres-spec'
-import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { ComunicazioniOrsoService } from './comunicazioni-orso.service'
 import { ComunicazioneConBloccantiError } from './comunicazioni-orso.port'
 
@@ -170,6 +170,7 @@ describe('ComunicazioniOrsoService, modalità dettagliata: Postgres reale, ruolo
 
   afterAll(async () => {
     await owner.comunicazioneConsorzio.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+    await owner.produttore.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await pulisciAziendeMud(owner, tenantCreati)
     await app.onModuleDestroy?.()
     await owner.$disconnect()
@@ -299,5 +300,178 @@ describe('ComunicazioniOrsoService, modalità dettagliata: Postgres reale, ruolo
     const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
     expect(f.xml).toContain('ts="C" s="015146"')
     expect(f.xml).not.toContain('NuovoImpianto')
+  })
+
+  it('FIR creati prima del 31/10 (sede NULL): soggetto dal produttore e dal destinatario di anagrafica', async () => {
+    const az = await nuovaAzienda('OD5')
+    await dettagliata(az)
+    const prod = await creaDittaConRuolo(owner, az.tenantId, 'PRODUTTORE', {
+      ragioneSociale: 'Produttore Storico',
+      comune: 'Milano',
+      provincia: 'MI',
+    })
+    const dest = await creaDittaConRuolo(owner, az.tenantId, 'DESTINATARIO', {
+      ragioneSociale: 'Destinatario Storico',
+      comune: 'Milano',
+      provincia: 'MI',
+    })
+    for (const [sedeId, istat] of [
+      [prod.sedeId, '015146'],
+      [dest.sedeId, '016024'],
+    ]) {
+      await owner.anagraficaComunicazioniSede.create({
+        data: { tenantId: az.tenantId, sedeDittaId: sedeId, codiceIstatComune: istat },
+      })
+    }
+    const firDi = async (tipo: 'CARICO' | 'SCARICO', kg: number, giorno: string) => {
+      const trasp = { ragioneSociale: 'Trasp', partitaIva: partitaIvaUnica() }
+      const trasportatoreId = await creaSoggettoMud(owner, az.tenantId, 'TRASPORTATORE', trasp)
+      const firId = await creaFirConFirma(owner, az, {
+        numero: `FIR-ORSO-S-${++contatore}-${Date.now()}`,
+        giornoTrasporto: giorno,
+        destinatarioId: dest.ruoloId,
+        destinatario: { ragioneSociale: 'Destinatario Storico', partitaIva: partitaIvaUnica() },
+        trasportatoreId,
+        trasportatore: trasp,
+        cerCode: '20 03 01',
+        quantita: kg,
+      })
+      // Come un FIR di prima della migration: colonne di sede NULL, solo i riferimenti di anagrafica.
+      await owner.fIR.update({
+        where: { id: firId },
+        data: { producerId: prod.ruoloId, producerSedeId: null, receiverSedeId: null },
+      })
+      const m = await creaMovimento(owner, az, {
+        type: tipo,
+        causale: tipo === 'CARICO' ? 'INGRESSO_ESTERNO' : 'AVVIO_RECUPERO',
+        cerCode: '20 03 01',
+        quantita: kg,
+        unita: 'KG',
+        giorno,
+        firId,
+        operationCode: 'R13',
+      })
+      await owner.wasteMovement.update({
+        where: { id: m.id },
+        data: { wasteDescription: 'Rifiuti urbani' },
+      })
+    }
+    await firDi('CARICO', 800, '2025-06-10')
+    await firDi('SCARICO', 300, '2025-06-20')
+
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(a.avvisi).toEqual([])
+    expect(a.mesi[5].ricevuti[0].soggetti?.map(s => s.ts)).toEqual(['Inew'])
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
+    )
+    const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    expect(f.xml).toContain('RagioneSociale="Produttore Storico"')
+    expect(f.xml).toContain('RagioneSociale="Destinatario Storico"')
+    const esito = await validateXML({
+      xml: [{ fileName: 'f.xml', contents: f.xml }],
+      schema: [XSD],
+    })
+    expect(esito.errors).toEqual([])
+  })
+
+  it('movimenti senza FIR: soggetto dalla controparte del registro, f=0, file valido sull XSD', async () => {
+    const az = await nuovaAzienda('OD6')
+    await dettagliata(az)
+    await sedeSoggetto(az, 'Comune di Prova', { istat: '015146', comune: true })
+    await sedeSoggetto(az, 'Rossi Rifiuti S.r.l.', { istat: '015146' })
+    await sedeSoggetto(az, 'Destinazione Nord', { arpa: '999' })
+    const senzaFir = async (
+      tipo: 'CARICO' | 'SCARICO',
+      nome: string,
+      kg: number,
+      giorno: string
+    ) => {
+      const m = await creaMovimento(owner, az, {
+        type: tipo,
+        causale: tipo === 'CARICO' ? 'INGRESSO_ESTERNO' : 'AVVIO_RECUPERO',
+        cerCode: '20 03 01',
+        quantita: kg,
+        giorno,
+        operationCode: 'R13',
+        counterpartName: nome,
+        counterpartAddress: 'Via Prova 1, Milano (MI)',
+      })
+      await owner.wasteMovement.update({
+        where: { id: m.id },
+        data: { wasteDescription: 'Rifiuti urbani' },
+      })
+      return m.id
+    }
+    await senzaFir('CARICO', 'COMUNE DI PROVA', 1000, '2025-07-10')
+    await senzaFir('CARICO', ' rossi  rifiuti s.r.l. ', 400, '2025-07-11')
+    await senzaFir('SCARICO', 'Destinazione Nord', 600, '2025-07-20')
+
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(a.avvisi).toEqual([])
+    expect(a.mesi[6].ricevuti[0].soggetti?.map(s => s.ts)).toEqual(['C', 'Inew'])
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
+    )
+    const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    expect(f.xml).toMatch(/<In [^>]*f="0"[^>]*ts="C" s="015146"/)
+    expect(f.xml).not.toContain('f="1"')
+    expect(f.xml).toContain('ts="I" s="999"')
+    const esito = await validateXML({
+      xml: [{ fileName: 'f.xml', contents: f.xml }],
+      schema: [XSD],
+    })
+    expect(esito.errors).toEqual([])
+  })
+
+  it('movimento senza FIR con controparte sconosciuta o ambigua: bloccante con messaggio chiaro', async () => {
+    const az = await nuovaAzienda('OD7')
+    await dettagliata(az)
+    await sedeSoggetto(az, 'Doppia Sede', { arpa: '12' })
+    const ditta = await owner.sedeDitta.findFirstOrThrow({
+      where: { tenantId: az.tenantId, ditta: { ragioneSociale: 'Doppia Sede' } },
+    })
+    await owner.sedeDitta.create({
+      data: {
+        tenantId: az.tenantId,
+        dittaId: ditta.dittaId,
+        via: 'Via Altra',
+        civico: '2',
+        cap: '40100',
+        comune: 'Bologna',
+        provincia: 'BO',
+        principale: false,
+      },
+    })
+    const mov = async (nome: string | null, indirizzo: string | null, giorno: string) => {
+      const m = await creaMovimento(owner, az, {
+        type: 'CARICO',
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '20 03 01',
+        quantita: 100,
+        giorno,
+        operationCode: 'R13',
+        counterpartName: nome ?? undefined,
+        counterpartAddress: indirizzo ?? undefined,
+      })
+      await owner.wasteMovement.update({
+        where: { id: m.id },
+        data: { wasteDescription: 'Rifiuti urbani' },
+      })
+      return m.id
+    }
+    const ignota = await mov('Ditta Inesistente', null, '2025-08-10')
+    const ambigua = await mov('Doppia Sede', null, '2025-08-11')
+    const nessuna = await mov(null, null, '2025-08-12')
+
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(a.bloccanti).toBe(true)
+    const nonId = a.avvisi.find(x => x.codice === 'SOGGETTO_NON_IDENTIFICATO')
+    expect([...(nonId?.movimentoIds ?? [])].sort()).toEqual([ignota, ambigua, nessuna].sort())
+    expect(nonId?.messaggio).toMatch(/controparte del movimento/)
+    expect(nonId?.messaggio).toMatch(/ragione sociale/)
+    await expect(
+      nelTenant(az, () => servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025))
+    ).rejects.toBeInstanceOf(ComunicazioneConBloccantiError)
   })
 })

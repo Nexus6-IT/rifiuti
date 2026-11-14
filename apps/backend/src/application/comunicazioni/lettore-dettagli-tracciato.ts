@@ -18,6 +18,7 @@ export type DbDettagli = Pick<
   | 'anagraficaComunicazioniSede'
   | 'trasportatore'
   | 'destinatario'
+  | 'produttore'
   | 'datiTracciatoMovimento'
 >
 
@@ -27,6 +28,8 @@ export interface FirDettaglio {
   transportDate: Date
   actualArrivalDate: Date | null
   producerSedeId: string | null
+  /** Produttore di anagrafica: ripiego per la sede dei FIR creati prima della migration delle sedi. */
+  producerId: string | null
   receiverSedeId: string | null
   producerCodiceFiscale: string | null
   carrierCodiceFiscale: string | null
@@ -100,13 +103,29 @@ export interface DettagliTracciato {
   destinatari: ReadonlyMap<string, DestinatarioDettaglio>
   /** Dati del tracciato per radice del movimento (solo se richiesto il tracciato). */
   datiTracciato: ReadonlyMap<string, Prisma.JsonValue>
+  /** Produttori di anagrafica per id, con la loro sede (ripiego per i FIR senza `producerSedeId`). */
+  produttori: ReadonlyMap<string, { id: string; sedeId: string }>
+  /**
+   * Sedi delle ditte la cui ragione sociale coincide con la denominazione della controparte di un
+   * movimento senza FIR (chiave: `chiaveControparte`). Solo per le denominazioni richieste.
+   */
+  sediPerControparte: ReadonlyMap<string, readonly SedeDettaglio[]>
 }
+
+/** Chiave di confronto fra la denominazione scritta nel registro e la ragione sociale di una ditta. */
+export const chiaveControparte = (nome: string): string =>
+  nome.trim().replace(/\s+/g, ' ').toLowerCase()
 
 export interface RichiestaDettagli {
   tenantId: string
   movimenti: ReadonlyArray<{ firId: string | null; radiceId: string }>
   /** Se presente si leggono anche i dati del tracciato per movimento. */
   tracciato?: TracciatoDati
+  /**
+   * Denominazioni della controparte dei movimenti senza FIR (O.R.SO. dettagliata): si cercano le
+   * ditte con quella ragione sociale (senza distinzione di maiuscole) e le loro sedi.
+   */
+  controparti?: ReadonlyArray<string>
 }
 
 const univoci = (v: ReadonlyArray<string | null | undefined>): string[] => [
@@ -131,6 +150,7 @@ export async function leggiDettagliTracciato(
             transportDate: true,
             actualArrivalDate: true,
             producerSedeId: true,
+            producerId: true,
             receiverSedeId: true,
             producerCodiceFiscale: true,
             carrierCodiceFiscale: true,
@@ -187,14 +207,44 @@ export async function leggiDettagliTracciato(
       : Promise.resolve([]),
   ])
 
+  // Produttori dei FIR senza `producerSedeId` (creati prima del 31/10): la sede è quella di anagrafica.
+  const produttoreIds = univoci(firRighe.flatMap(f => (f.producerSedeId ? [] : [f.producerId])))
+  const produttoriRighe = produttoreIds.length
+    ? await db.produttore.findMany({
+        where: { tenantId, id: { in: produttoreIds } },
+        select: { id: true, sedeId: true },
+      })
+    : []
+
   const sedeIds = univoci([
     ...firRighe.flatMap(f => [f.producerSedeId, f.receiverSedeId]),
+    ...produttoriRighe.map(p => p.sedeId),
     ...trasportatoriRighe.map(t => t.sedeId),
     ...destinatariRighe.map(d => d.sedeId),
   ])
-  const sediBase = sedeIds.length
-    ? await db.sedeDitta.findMany({ where: { tenantId, id: { in: sedeIds } } })
+  const nomiControparti = univoci((r.controparti ?? []).map(n => n.trim().replace(/\s+/g, ' ')))
+  const ditteControparti = nomiControparti.length
+    ? await db.ditta.findMany({
+        where: {
+          tenantId,
+          OR: nomiControparti.map(n => ({
+            ragioneSociale: { equals: n, mode: 'insensitive' as const },
+          })),
+        },
+        select: { id: true, ragioneSociale: true },
+      })
     : []
+  const [sediIds, sediControparti] = await Promise.all([
+    sedeIds.length
+      ? db.sedeDitta.findMany({ where: { tenantId, id: { in: sedeIds } } })
+      : Promise.resolve([]),
+    ditteControparti.length
+      ? db.sedeDitta.findMany({
+          where: { tenantId, dittaId: { in: ditteControparti.map(d => d.id) } },
+        })
+      : Promise.resolve([]),
+  ])
+  const sediBase = [...new Map([...sediIds, ...sediControparti].map(s => [s.id, s])).values()]
   const dittaIds = univoci([
     ...sediBase.map(s => s.dittaId),
     ...trasportatoriRighe.map(t => t.dittaId),
@@ -255,6 +305,7 @@ export async function leggiDettagliTracciato(
       transportDate: f.transportDate,
       actualArrivalDate: f.actualArrivalDate,
       producerSedeId: f.producerSedeId,
+      producerId: f.producerId,
       receiverSedeId: f.receiverSedeId,
       producerCodiceFiscale: f.producerCodiceFiscale,
       carrierCodiceFiscale: f.carrierCodiceFiscale,
@@ -282,6 +333,14 @@ export async function leggiDettagliTracciato(
     })
   }
 
+  const sediPerControparte = new Map<string, SedeDettaglio[]>()
+  for (const d of ditteControparti) {
+    const chiave = chiaveControparte(d.ragioneSociale)
+    const elenco = sediPerControparte.get(chiave) ?? []
+    for (const s of sedi.values()) if (s.dittaId === d.id) elenco.push(s)
+    sediPerControparte.set(chiave, elenco)
+  }
+
   return {
     fir,
     sedi,
@@ -289,5 +348,7 @@ export async function leggiDettagliTracciato(
     trasportatori: new Map(trasportatoriRighe.map(t => [t.id, t])),
     destinatari: new Map(destinatariRighe.map(d => [d.id, d])),
     datiTracciato: new Map(datiRighe.map(d => [d.movimentoOriginaleId, d.dati])),
+    produttori: new Map(produttoriRighe.map(p => [p.id, p])),
+    sediPerControparte,
   }
 }

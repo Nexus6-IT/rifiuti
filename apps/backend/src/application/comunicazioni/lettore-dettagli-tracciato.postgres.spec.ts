@@ -50,6 +50,7 @@ describe('Lettore dettagli tracciato — Postgres reale, ruolo wasteflow_app', (
       'anagraficaComunicazioniSede',
       'trasportatore',
       'destinatario',
+      'produttore',
       'datiTracciatoMovimento',
     ] as const
     const db = Object.fromEntries(

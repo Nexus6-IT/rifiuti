@@ -46,17 +46,36 @@ const ISTAT: Record<string, RisoluzioneIstat> = {
   'legale-d-s1': { codice: '015200', origine: 'DA_NOME' },
 }
 
-const mov = (id: string, tipo: 'CARICO' | 'SCARICO', firId: string | null) => ({ id, tipo, firId })
+const mov = (
+  id: string,
+  tipo: 'CARICO' | 'SCARICO',
+  firId: string | null,
+  controparte: { nome: string | null; indirizzo?: string | null } = { nome: null }
+) => ({
+  id,
+  tipo,
+  firId,
+  controparte: controparte.nome,
+  indirizzoControparte: controparte.indirizzo ?? null,
+})
 
 function dettagli(
   sedi: SedeDettaglio[],
   firs: Array<[string, FirDettaglio]>,
-  legali: SedeDettaglio[] = []
+  legali: SedeDettaglio[] = [],
+  extra: {
+    destinatari?: Array<{ id: string; sedeId: string | null }>
+    produttori?: Array<{ id: string; sedeId: string }>
+    controparti?: Array<[string, SedeDettaglio[]]>
+  } = {}
 ) {
   return {
     fir: new Map(firs),
     sedi: new Map(sedi.map(s => [s.id, s])),
     sedeLegalePerDitta: new Map(legali.map(s => [s.dittaId, s])),
+    destinatari: new Map((extra.destinatari ?? []).map(d => [d.id, d])) as never,
+    produttori: new Map((extra.produttori ?? []).map(p => [p.id, p])),
+    sediPerControparte: new Map(extra.controparti ?? []),
   }
 }
 
@@ -252,5 +271,131 @@ describe('risolviSoggettiOrso', () => {
     )
     expect(r.errori).toHaveLength(1)
     expect(r.errori[0].movimentoIds).toEqual(['a', 'b'])
+  })
+
+  describe('ripiego per i FIR senza sede (creati prima del 31/10)', () => {
+    it('lo scarico usa il destinatario del FIR, il carico il produttore', async () => {
+      const dd = dettagli(
+        [sede('s1'), sede('s2', {}, { codiceOrso: '9' })],
+        [
+          [
+            'f1',
+            {
+              id: 'f1',
+              producerSedeId: null,
+              producerId: 'p1',
+              receiverSedeId: null,
+              receiverId: 'r1',
+            } as FirDettaglio,
+          ],
+        ],
+        [],
+        { destinatari: [{ id: 'r1', sedeId: 's2' }], produttori: [{ id: 'p1', sedeId: 's1' }] }
+      )
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', 'f1'), mov('m2', 'SCARICO', 'f1')],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'Inew', chiave: 's1' })
+      expect(r.soggetti.get('m2')).toMatchObject({ tipo: 'I', codice: '9' })
+    })
+
+    it('la sede del FIR, se c’è, ha la precedenza sul ripiego', async () => {
+      const dd = dettagli(
+        [sede('s1'), sede('s2', {}, { codiceOrso: '9' })],
+        [
+          [
+            'f1',
+            {
+              id: 'f1',
+              producerSedeId: 's2',
+              producerId: 'p1',
+              receiverSedeId: null,
+            } as FirDettaglio,
+          ],
+        ],
+        [],
+        { produttori: [{ id: 'p1', sedeId: 's1' }] }
+      )
+      const r = await risolviSoggettiOrso([mov('m1', 'CARICO', 'f1')], dd, istat)
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'I', codice: '9' })
+    })
+  })
+
+  describe('movimenti senza FIR: soggetto dalla controparte del registro', () => {
+    const rossi = sede('s1', { comune: 'Milano', via: 'Via Roma' }, { codiceOrso: '55' })
+    const rossiBo = sede('s2', {
+      dittaId: 'd-s1',
+      comune: 'Bologna',
+      via: 'Via Emilia',
+      ditta: rossi.ditta,
+    })
+
+    it('una sola sede: si usa, senza guardare l’indirizzo (maiuscole e spazi non contano)', async () => {
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', null, { nome: 'Ditta s1' })],
+        dettagli([rossi], [], [], { controparti: [['ditta s1', [rossi]]] }),
+        istat
+      )
+      expect(r.errori).toEqual([])
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'I', codice: '55' })
+    })
+
+    it('più sedi: le distingue l’indirizzo, altrimenti il soggetto resta assente', async () => {
+      const dd = dettagli([rossi, rossiBo], [], [], {
+        controparti: [['ditta s1', [rossi, rossiBo]]],
+      })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('a', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Emilia 3, Bologna (BO)' }),
+          mov('b', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Roma 1, Milano (MI)' }),
+          mov('c', 'CARICO', null, { nome: 'Ditta s1' }),
+          mov('d', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Piazza Unica, Torino (TO)' }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('a')).toMatchObject({ tipo: 'Inew', chiave: 's2' })
+      expect(r.soggetti.get('b')).toMatchObject({ tipo: 'I', codice: '55' })
+      expect(r.soggetti.has('c')).toBe(false)
+      expect(r.soggetti.has('d')).toBe(false)
+    })
+
+    it('controparte assente o sconosciuta: nessun soggetto e nessun errore di sede', async () => {
+      const r = await risolviSoggettiOrso(
+        [mov('a', 'CARICO', null, { nome: null }), mov('b', 'CARICO', null, { nome: 'Ignota' })],
+        dettagli([rossi], []),
+        istat
+      )
+      expect(r.soggetti.size).toBe(0)
+      expect(r.errori).toEqual([])
+    })
+  })
+
+  it('due sedi con lo stesso nome ma errori diversi non si scambiano i movimenti (review M1)', async () => {
+    const ditta = (id: string, cf: string | null) => ({
+      id: `d-${id}`,
+      ragioneSociale: 'Uguale',
+      partitaIva: cf,
+      codiceFiscale: null,
+    })
+    const a = sede('a', { ditta: ditta('a', 'XYZ') })
+    const b = sede('b', { ditta: ditta('b', '01234567890') })
+    const r = await risolviSoggettiOrso(
+      [
+        mov('m1', 'CARICO', 'f1'),
+        mov('m2', 'CARICO', 'f2'),
+        mov('m3', 'CARICO', 'f1'),
+        mov('m4', 'CARICO', 'f2'),
+      ],
+      dettagli([a, b], [fir('f1', 'a', null), fir('f2', 'b', null)]),
+      istat
+    )
+    const per = Object.fromEntries(r.errori.map(e => [e.codice, e.movimentoIds]))
+    expect(per).toEqual({
+      CODICE_FISCALE_SOGGETTO_NON_VALIDO: ['m1', 'm3'],
+      ISTAT_SOGGETTO_NON_VALIDO: ['m2', 'm4'],
+    })
   })
 })
