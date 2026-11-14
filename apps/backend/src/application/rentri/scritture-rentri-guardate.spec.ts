@@ -38,6 +38,9 @@ const SCRITTURE = [
   'confermaCopiaCartacea',
   'eliminaCopiaDigitaleCaricata',
   'eliminaCopiaCartaceaCaricata',
+  // RentriXfirClient: carica l'xFIR di un formulario (POST /formulari/{numeroFir}/xfir). Non censito:
+  // `validaXfir` e `RentriRegistriClient.validaRegistro` (validazioni senza stato, non scrivono sull'ente).
+  'caricaXfir',
 ]
 // Indipendente dal nome del ricevitore (`this.trasmissioniClient.`, `copie.`, `a?.b.`, ...).
 // Non censiti di proposito: `RentriVidimazioneClient.vidimaFir/annullaFir` (operano su blocchi di
@@ -45,10 +48,15 @@ const SCRITTURE = [
 // `RentriRegistriClient.inviaMovimenti` (movimenti, guardati da `trasmetti-lotto-registro`).
 // Unica eccezione: un ricevitore che finisce in `UseCase` e' un'altra facciata applicativa (es.
 // `gestisciAllegatiFIRUseCase.caricaAllegato` nel controller), che a sua volta e' un chiamante censito.
-const CHIAMATA = new RegExp(`(\\w+)\\s*\\??\\.\\s*(${SCRITTURE.join('|')})\\s*\\(`, 'g')
+// Il lookbehind esclude solo un ricevitore che finisce in `UseCase` (con `?` opzionale): qualunque
+// altro ricevitore (identificatore, `)`, `]`, factory per tenant) e' una chiamata; `<T>` generico ammesso.
+const CHIAMATA = new RegExp(
+  `(?<!UseCase\\s*\\??)\\s*\\.\\s*(${SCRITTURE.join('|')})\\s*(?:<[^>]*>)?\\s*\\(`,
+  'g'
+)
 
 function metodiScrittura(testo: string): string[] {
-  return [...testo.matchAll(CHIAMATA)].filter(m => !/UseCase$/i.test(m[1])).map(m => m[2])
+  return [...testo.matchAll(CHIAMATA)].map(m => m[1])
 }
 
 /** File che DEVONO risultare guardati (se uno sparisce dal censimento il test lo dice). */
@@ -87,9 +95,15 @@ describe('Fase 3: ogni scrittura verso RENTRI su un FIR passa da verificaFirNonB
       'await this.trasmissioniClient.inviaTrasmissione(x)',
       'this.copie\n  .caricaCopiaCartacea (y)',
       'a?.b.estraiDatiXfir(z)',
+      'this.factory.per(t).inviaTrasmissione(x)',
+      '(await this.c()).inviaTrasmissione(x)',
+      'this.clients[0].inviaTrasmissione(x)',
+      'this.c.inviaTrasmissione<T>(x)',
+      'this.xfir.caricaXfir(n, x, t)',
     ]
     for (const c of casi) expect(metodiScrittura(c)).toHaveLength(1)
     expect(metodiScrittura('this.gestisciAllegatiFIRUseCase.caricaAllegato(x)')).toHaveLength(0)
+    expect(metodiScrittura('this.gestisciAllegatiFIRUseCase?.caricaAllegato(x)')).toHaveLength(0)
   })
 
   it("il censimento trova i chiamanti attesi (il test non puo' passare a vuoto)", () => {

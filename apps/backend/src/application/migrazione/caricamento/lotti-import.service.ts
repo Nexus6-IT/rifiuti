@@ -73,11 +73,11 @@ export class LottiImportService {
     lottoId: string,
     blocco: { lette: number; inserite: number; saltate: number; scartate?: number }
   ): Promise<ConteggiLotto> {
-    // FOR UPDATE: due caricatori sullo stesso lotto si accodano invece di perdere aggiornamenti.
+    // FOR NO KEY UPDATE: due caricatori sullo stesso lotto si accodano invece di perdere aggiornamenti.
     const righe = await tx.$queryRaw<Array<{ conteggi: unknown }>>`
       SELECT "conteggi" FROM "lotti_import"
       WHERE "id" = ${lottoId}::uuid AND "tenant_id" = ${tenantId}::uuid AND "stato" = 'IN_CORSO'
-      FOR UPDATE`
+      FOR NO KEY UPDATE`
     if (righe.length === 0) throw new LottoNonInCorsoError(lottoId)
     const c = { ...CONTEGGI_VUOTI, ...(righe[0].conteggi as Partial<ConteggiLotto>) }
     const nuovi: ConteggiLotto = {
