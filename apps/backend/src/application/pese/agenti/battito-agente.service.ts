@@ -119,6 +119,12 @@ export class BattitoAgenteService {
     return this.strumenti.get(agenteId) ?? new Map()
   }
 
+  /** Dimentica lo stato in memoria di un agente (alla revoca: niente strumenti «OK» fantasma). */
+  dimentica(agenteId: string): void {
+    this.strumenti.delete(agenteId)
+    this.scrittoAl.delete(agenteId)
+  }
+
   private nuovaData(): Date {
     return new Date()
   }
