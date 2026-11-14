@@ -715,6 +715,40 @@ stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrati
 migration_name = '20261101600000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
 allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
 
+#### Pese 4.8b: agenti di pesa e letture firmate (`20261113100000_pese_fonte_simulata`, `20261113100100_pese_agenti`)
+
+Due migration additive. La prima aggiunge solo il valore `SIMULATA` all'enum `fonte_pesata` (un valore
+enum non e' usabile nella transazione in cui nasce: per questo sta da sola). La seconda crea
+`stato_agente_pesa`, `agenti_pesa` e `letture_pesa` (RLS, 84 tabelle con `tenant_id` in tutto), le colonne
+`strumenti_pesa.agente_id`, `pesate.lettura_id` e `tenants.pese_simulazione_ammessa` (default false), i
+trigger `letture_pesa_immutabile`, `agenti_pesa_controlli`, `pesate_da_lettura` e il CHECK
+`pesate_lettura_check`. **Precondizione:** `SELECT count(*) FROM pesate WHERE fonte = 'STRUMENTO'`
+deve dare 0 (da 8b `STRUMENTO` richiede una lettura firmata). Dopo il deploy rilanciare `ops/db-ruoli.sh`
+(`letture_pesa` solo SELECT e INSERT, `agenti_pesa` senza DELETE).
+
+Ripristino: vedi il commento di testa della seconda migration (`DROP TRIGGER pesate_da_lettura`, `DROP
+COLUMN`, `DROP TABLE letture_pesa, agenti_pesa`, `DROP TYPE stato_agente_pesa`). **Il valore `SIMULATA`
+non si toglie da un enum PostgreSQL**: resta inutilizzato.
+
+**Rollback del codice (4.8b).** Il codice precedente ignora `agenti_pesa`, `letture_pesa` e le nuove
+colonne. Le rotte `/agenti-pesa/*` spariscono: gli agenti ricevono 404, trattano la risposta come un
+errore transitorio (restano in coda con backoff, nessuna lettura persa) e riprendono da soli a
+rilascio ripristinato. Le pesate create da lettura (`fonte` STRUMENTO o `SIMULATA`, `lettura_id`)
+restano valide e leggibili: il vecchio codice le mostra come pesate qualunque. **Ripristino a mano**
+(solo su un database SENZA agenti ne' letture, vedi sopra): `SIMULATA` non si rimuove dall'enum
+`fonte_pesata`. Per spegnere le pesate simulate di un'azienda senza toccare il codice:
+`UPDATE tenants SET pese_simulazione_ammessa = false WHERE id = '<azienda>';` (le letture simulate
+gia' arrivate restano). Revocare un agente smarrito: dalla pagina Agenti (la coda sul PC e' conservata).
+
+**`TRUST_PROXY` (limiti per IP).** In produzione la catena e' client -> nginx dell'host (127.0.0.1) ->
+nginx del container frontend (rete docker, IP privato) -> `backend:3000`, e entrambi aggiungono
+`X-Forwarded-For`. Il default del backend e' `loopback, linklocal, uniquelocal`: `req.ip` e' il primo
+indirizzo non fidato risalendo la catena, cioe' il client reale (un XFF inventato dal client a sinistra
+non conta). Con il solo `loopback` il backend vedrebbe l'IP del container frontend e il limite per IP
+(abbinamento, token rifiutati, battito, altri throttler) diventerebbe globale. Sovrascrivibile con
+`TRUST_PROXY` (numero di hop, subnet; `true` e' rifiutato). Dopo il deploy verificare che nei log o
+nella colonna `ultimoIp` degli agenti compaia l'IP del client e non un IP privato (192.168.x o 172.x).
+
 #### Pese 4.8a: privilegi, trigger, rilascio e rollback
 
 La migration `20261101600100_pese_cancellazione_e_indici` completa la precedente (entrambe mai applicate

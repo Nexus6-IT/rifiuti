@@ -8,7 +8,17 @@ import { validaPesataManuale } from '../../domain/pese/regole-pesata'
 import type { FontePesataDominio, ModoPesaturaDominio } from '../../domain/pese/tipi'
 import type { AllegatoSalvato, AllegatiPesaService } from './allegati-pesa.service'
 import type { FileCaricato, PesataManualeDati } from './accessi-pesa.tipi'
-import { AlibiGiaUsatoError, RegolaPesataError } from './errori-pese'
+import {
+  ORE_AVVISO_LETTURA_VECCHIA,
+  ORE_VALIDITA_LETTURA,
+  avvisiLettura,
+} from '../../domain/pese/agenti/regole-lettura'
+import {
+  AlibiGiaUsatoError,
+  LetturaNonTrovataError,
+  RegolaPesataError,
+  StatoAccessoNonValidoError,
+} from './errori-pese'
 import type { StrumentoVista } from './strumenti-pesa.service'
 
 /** Il fuso orario deve essere scritto: "02:30" da solo e' ambiguo nella notte del cambio ora. */
@@ -283,5 +293,158 @@ export async function inserisciPesataTaraAnagrafica(
     taraAggiornataIl,
     automezzoId,
     avvisi: [],
+  }
+}
+
+export const MSG_LETTURA_GIA_USATA = 'Questa lettura è già stata usata in un\u2019altra pesata.'
+export const MSG_ACCESSO_SIMULATO = 'Accesso con pesate simulate: non si usa nei documenti.'
+const MS_ORA = 60 * 60 * 1000
+
+export interface ContestoPesataDaLettura {
+  tenantId: string
+  utenteId: string
+  accessoId: string
+  /** registro (sede) dell'accesso: lo strumento della lettura deve essere di quella sede o senza sede */
+  registroId: string
+  ordine: 1 | 2
+  modo: ModoPesaturaDominio
+  chiaveIdempotenza: string
+  adesso: Date
+  /** Solo seconda pesata: la prima, per verificare che la lettura sia successiva. */
+  prima?: { letturaId: string | null; oraStrumento: Date | null } | null
+}
+
+/**
+ * Pesata da una lettura firmata dell'agente (D12): STRUMENTO, o SIMULATA se la lettura lo e'.
+ * Peso, alibi, ora e firma si COPIANO dalla lettura (il trigger `pesate_da_lettura` impone che
+ * coincidano: la RIGA della pesata non si modifica). Una rettifica del peso resta ammessa, e' una riga a
+ * parte nelle rettifiche con avviso «peso dello strumento rettificato a mano» (review B4-B7, I3). Il chiamante tiene gia'
+ * i lock dell'accesso; qui si prende `lettura-pesa|<id>` e l'unico `pesate_lettura_id_key` e' la
+ * rete. Mai `FOR SHARE`/`FOR UPDATE` su `letture_pesa` (D4).
+ */
+export async function inserisciPesataDaLettura(
+  tx: Prisma.TransactionClient,
+  ctx: ContestoPesataDaLettura,
+  letturaId: string
+): Promise<PesataScritta> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lettura-pesa|${letturaId}`}))`
+  const lettura = await tx.letturaPesa.findFirst({
+    where: { id: letturaId, tenantId: ctx.tenantId },
+  })
+  if (!lettura) throw new LetturaNonTrovataError()
+  const usata = await tx.pesata.findFirst({
+    where: { tenantId: ctx.tenantId, letturaId },
+    select: { id: true },
+  })
+  if (usata) throw new StatoAccessoNonValidoError(MSG_LETTURA_GIA_USATA)
+
+  const strumento = await tx.strumentoPesa.findFirst({
+    where: { id: lettura.strumentoId, tenantId: ctx.tenantId },
+    select: { attivo: true, registroId: true },
+  })
+  if (!strumento) throw new RegolaPesataError(['Lo strumento della lettura non esiste più.'])
+  if (!strumento.attivo) throw new RegolaPesataError(['Lo strumento non è attivo.'])
+  if (strumento.registroId && strumento.registroId !== ctx.registroId) {
+    throw new RegolaPesataError(['Lo strumento appartiene a un’altra sede.'])
+  }
+
+  const eta = ctx.adesso.getTime() - lettura.oraAgente.getTime()
+  if (eta > ORE_VALIDITA_LETTURA * MS_ORA) {
+    throw new RegolaPesataError([
+      `La lettura è più vecchia di ${ORE_VALIDITA_LETTURA} ore: non si può più usare. Ripetere la pesata.`,
+    ])
+  }
+  const azienda = await tx.tenant.findUnique({
+    where: { id: ctx.tenantId },
+    select: { peseSimulazioneAmmessa: true },
+  })
+  if (lettura.simulata && !azienda?.peseSimulazioneAmmessa) {
+    throw new RegolaPesataError([
+      'Lettura simulata: la simulazione non è ammessa per questa azienda.',
+    ])
+  }
+
+  if (ctx.ordine === 2 && ctx.prima) {
+    const primaLettura = ctx.prima.letturaId
+      ? await tx.letturaPesa.findFirst({
+          where: { id: ctx.prima.letturaId, tenantId: ctx.tenantId },
+          select: { oraAgente: true, oraStrumento: true },
+        })
+      : null
+    const oraAgentePrima = primaLettura?.oraAgente ?? null
+    const oraStrumentoPrima = primaLettura?.oraStrumento ?? ctx.prima.oraStrumento
+    // Prima MANUALE con un'ora dello strumento digitata: la lettura (che ha sempre `oraAgente`)
+    // non puo' essere piu' vecchia (review B4-B7, M5).
+    const oraManualePrima = primaLettura ? null : ctx.prima.oraStrumento
+    if (
+      (oraManualePrima && lettura.oraAgente.getTime() <= oraManualePrima.getTime()) ||
+      (oraAgentePrima && lettura.oraAgente.getTime() <= oraAgentePrima.getTime()) ||
+      (oraStrumentoPrima &&
+        lettura.oraStrumento &&
+        lettura.oraStrumento.getTime() <= oraStrumentoPrima.getTime())
+    ) {
+      throw new RegolaPesataError(['La seconda lettura deve essere successiva alla prima.'])
+    }
+  }
+
+  const fonte: FontePesataDominio = lettura.simulata ? 'SIMULATA' : 'STRUMENTO'
+  verificaCoerenzaFonteModo(ctx.modo, ctx.ordine, fonte)
+
+  const pesoKg = lettura.pesoKg.toFixed(2)
+  const impronta = improntaPesata({
+    tenantId: ctx.tenantId,
+    accessoId: ctx.accessoId,
+    ordine: ctx.ordine,
+    fonte,
+    strumentoId: lettura.strumentoId,
+    alibiId: lettura.alibiId,
+    pesoKg,
+    stabile: lettura.stabile,
+    oraStrumento: lettura.oraStrumento,
+    oraRicezione: lettura.oraRicezione,
+    operatoreId: ctx.utenteId,
+    chiaveIdempotenza: ctx.chiaveIdempotenza,
+    letturaId: lettura.id,
+    firmaAgente: lettura.firma,
+  })
+  const riga = await tx.pesata.create({
+    data: {
+      tenantId: ctx.tenantId,
+      accessoId: ctx.accessoId,
+      ordine: ctx.ordine,
+      fonte,
+      strumentoId: lettura.strumentoId,
+      alibiId: lettura.alibiId,
+      pesoKg,
+      stabile: lettura.stabile,
+      oraStrumento: lettura.oraStrumento,
+      oraRicezione: lettura.oraRicezione,
+      operatoreId: ctx.utenteId,
+      chiaveIdempotenza: ctx.chiaveIdempotenza,
+      firmaAgente: lettura.firma,
+      letturaId: lettura.id,
+      impronta,
+    },
+  })
+  const avvisi = avvisiLettura({
+    oraAgente: lettura.oraAgente,
+    oraStrumento: lettura.oraStrumento,
+    oraRicezione: lettura.oraRicezione,
+    simulata: lettura.simulata,
+  })
+  if (eta > ORE_AVVISO_LETTURA_VECCHIA * MS_ORA) {
+    avvisi.push(`Lettura di ${Math.round(eta / MS_ORA)} ore fa.`)
+  }
+  return {
+    id: riga.id,
+    ordine: ctx.ordine,
+    fonte,
+    pesoKg: Number(pesoKg),
+    stabile: lettura.stabile,
+    oraStrumento: lettura.oraStrumento,
+    oraRicezione: lettura.oraRicezione,
+    taraAggiornataIl: null,
+    automezzoId: null,
+    avvisi,
   }
 }

@@ -17,6 +17,11 @@ import {
   SOGLIA_RIDIMENSIONAMENTO_BYTE,
   type MotoreImmagine,
   uuidV4,
+  tempoTrascorso,
+  tempoDa,
+  scartoOrologioTesto,
+  contoAllaRovescia,
+  indirizzoServerAgente,
 } from './pese-formato'
 import type { PesataVista } from './pese.service'
 
@@ -102,7 +107,7 @@ describe('etichette e badge', () => {
   it('integra false aggiunge Dato alterato; tara anagrafica da Tara dichiarata', () => {
     expect(badgePesata(pesata({ integra: false }))).toContain('Dato alterato')
     expect(badgePesata(pesata({ fonte: 'TARA_ANAGRAFICA' }))).toEqual(['Tara dichiarata'])
-    expect(badgePesata(pesata({ fonte: 'STRUMENTO' }))).toEqual([])
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO' }))).toEqual(['Da strumento'])
   })
 })
 
@@ -207,5 +212,58 @@ describe('uuidV4', () => {
   })
   it('con randomUUID lo usa', () => {
     expect(uuidV4({ getRandomValues: a => a, randomUUID: () => 'x' })).toBe('x')
+  })
+})
+
+describe('formati degli agenti di pesa', () => {
+  const adesso = new Date('2026-11-13T12:00:00Z')
+
+  it('tempo trascorso e "non in linea da"', () => {
+    expect(tempoTrascorso(null, adesso)).toBe('mai')
+    expect(tempoTrascorso('2026-11-13T11:59:40Z', adesso)).toBe('adesso')
+    expect(tempoTrascorso('2026-11-13T11:55:00Z', adesso)).toBe('5 min fa')
+    expect(tempoTrascorso('2026-11-13T09:00:00Z', adesso)).toBe('3 h fa')
+    expect(tempoTrascorso('2026-11-10T12:00:00Z', adesso)).toBe('3 g fa')
+    expect(tempoDa('2026-11-13T11:55:00Z', adesso)).toBe('5 min')
+    expect(tempoDa(null, adesso)).toBe('sempre')
+  })
+
+  it('scarto dell orologio: solo oltre 60 s, col verso', () => {
+    expect(scartoOrologioTesto(null)).toBeNull()
+    expect(scartoOrologioTesto(-60)).toBeNull()
+    expect(scartoOrologioTesto(400)).toBe('Orologio del PC avanti di 7 min')
+    expect(scartoOrologioTesto(-130)).toBe('Orologio del PC indietro di 2 min')
+  })
+
+  it('conto alla rovescia mm:ss e scaduto', () => {
+    expect(contoAllaRovescia('2026-11-13T12:14:05Z', adesso)).toBe('14:05')
+    expect(contoAllaRovescia('2026-11-13T11:59:59Z', adesso)).toBe('scaduto')
+  })
+
+  it('indirizzo del server per l agente: assoluto, senza barra finale, con /api/v1', () => {
+    expect(indirizzoServerAgente('/api/v1', 'https://app.example.it')).toBe(
+      'https://app.example.it/api/v1'
+    )
+    expect(indirizzoServerAgente('http://localhost:3000/api/v1/', 'http://x')).toBe(
+      'http://localhost:3000/api/v1'
+    )
+  })
+})
+
+describe('badge delle pesate da strumento', () => {
+  it('Da strumento con firma verificata o non verificata; Simulata a parte', () => {
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO', firmaValida: true }))).toEqual([
+      'Da strumento',
+      'Firma verificata',
+    ])
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO', firmaValida: false }))).toEqual([
+      'Da strumento',
+      'Firma non verificata',
+    ])
+    expect(badgePesata(pesata({ fonte: 'SIMULATA', firmaValida: true }))).toEqual([
+      'Simulata',
+      'Firma verificata',
+    ])
+    expect(etichettaFonte('SIMULATA')).toBe('Simulata')
   })
 })

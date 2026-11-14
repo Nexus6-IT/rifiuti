@@ -256,6 +256,12 @@ export class AutomezziService {
               'Una tara dichiarata non può diventare la tara dell’automezzo: serve una pesata vera.',
             ])
           }
+          // Un peso simulato non e' un peso reale: non puo' diventare la tara che poi entra nei documenti.
+          if (pesata.fonte === 'SIMULATA') {
+            throw new RegolaPesataError([
+              'Una pesata simulata non può diventare la tara dell’automezzo: serve una pesata vera.',
+            ])
+          }
           if (!pesata.stabile) {
             throw new RegolaPesataError(['Una pesata instabile non è un peso.'])
           }

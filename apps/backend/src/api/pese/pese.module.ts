@@ -10,6 +10,10 @@ import { AccessiPesaService } from '../../application/pese/accessi-pesa.service'
 import { AllegatiPesaService } from '../../application/pese/allegati-pesa.service'
 import { RettifichePesoService } from '../../application/pese/rettifiche-peso.service'
 import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
+import { AgentiPesaService } from '../../application/pese/agenti/agenti-pesa.service'
+import { LetturePesaService } from '../../application/pese/agenti/letture-pesa.service'
+import { AgentiPesaIngressoModule } from '../agenti-pesa/agenti-pesa-ingresso.module'
+import { AgentiPesaController } from './agenti-pesa.controller'
 import { PeseController } from './pese.controller'
 
 /**
@@ -19,8 +23,15 @@ import { PeseController } from './pese.controller'
  * `RegistroModule` esporta `RegistriService`, che serviranno gli accessi (Task 4).
  */
 @Module({
-  imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule, RegistroModule],
-  controllers: [PeseController],
+  imports: [
+    PrismaModule,
+    LoggerModule,
+    AuthModule,
+    RuoloEffettivoModule,
+    RegistroModule,
+    AgentiPesaIngressoModule,
+  ],
+  controllers: [PeseController, AgentiPesaController],
   providers: [
     StrumentiPesaService,
     AutomezziService,
@@ -28,6 +39,8 @@ import { PeseController } from './pese.controller'
     AccessiPesaService,
     RettifichePesoService,
     CollegamentiAccessoService,
+    AgentiPesaService,
+    LetturePesaService,
   ],
   exports: [
     StrumentiPesaService,

@@ -1,0 +1,8 @@
+{
+  "descrizione": "Contratto di firma delle letture v1: stesso seed e stesso payload danno la stessa firma (Ed25519 e' deterministico). Verificato dal test Go e da payload-lettura.spec.ts.",
+  "seedHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "chiavePubblicaB64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "prefissoDominio": "wasteflow-lettura-pesa-v1\n",
+  "payloadB64": "eyJ2IjoxLCJhZ2VudGVJZCI6IjZmMWMyZjdlLTNkNWEtNGI4ZS05YTQxLTBjMmQ3ZTViOWExMCIsInN0cnVtZW50b0lkIjoiYTNiOGQxYjYtMGIzYi00YjNhLThhMWEtNWMxZDJlM2Y0YTViIiwiY2hpYXZlSWRlbXBvdGVuemEiOiIwYjljNmYwZS04ZDJhLTRjNTctOWUxYi03YTNmNWQyYzRlNjgiLCJzZXF1ZW56YSI6NDEsInBlc29LZyI6IjEyMzQwLjAwIiwidW5pdGEiOiJrZyIsInN0YWJpbGUiOnRydWUsImFsaWJpSWQiOiJTSU0tMDAwMDQxIiwib3JhU3RydW1lbnRvIjoiMjAyNi0xMS0xM1QxMDoxNTowMiswMTowMCIsIm9yYUFnZW50ZSI6IjIwMjYtMTEtMTNUMDk6MTU6MDMuMTIzWiIsImRyaXZlciI6IlNJTVVMQVRBIiwic2ltdWxhdGEiOnRydWUsImdyZXp6byI6IlUxUXNSMU1zSUNBeE1qTTBNQzR3TUd0bkRRbz0ifQ==",
+  "firmaB64": "HpVk6Xyqtp2VPIJDDZIvDx0l0Pn89yyx6ck8UJDVJnkqVGVgUhWLenq2vJh9h/ZvpKLzHv1J/+Azw3o3U7yCAQ=="
+}

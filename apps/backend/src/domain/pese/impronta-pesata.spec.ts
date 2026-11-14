@@ -54,6 +54,35 @@ describe('improntaPesata', () => {
     expect(improntaPesata({ ...base, ...diff })).not.toBe(improntaPesata(base))
   })
 
+  describe('versione 2 (fonti STRUMENTO e SIMULATA)', () => {
+    const daLettura: CampiImprontaPesata = {
+      ...base,
+      fonte: 'STRUMENTO',
+      strumentoEsterno: null,
+      letturaId: 'l1',
+      firmaAgente: 'FIRMA',
+    }
+
+    it('cambia se cambia letturaId o firmaAgente', () => {
+      const a = improntaPesata(daLettura)
+      expect(improntaPesata({ ...daLettura, letturaId: 'l2' })).not.toBe(a)
+      expect(improntaPesata({ ...daLettura, firmaAgente: 'ALTRA' })).not.toBe(a)
+      expect(improntaPesata({ ...daLettura, fonte: 'SIMULATA' })).not.toBe(a)
+    })
+
+    it('per le altre fonti letturaId e firmaAgente non entrano: l’impronta p1 resta quella di prima', () => {
+      expect(improntaPesata({ ...base, letturaId: 'x', firmaAgente: 'y' })).toBe(
+        improntaPesata(base)
+      )
+    })
+
+    it('MANUALE, FILE e TARA_ANAGRAFICA restano p1: valori fissati (non cambiano senza una nuova versione)', () => {
+      expect(improntaPesata(base)).toBe(
+        '7137fc894b5e7a6625165250b0ca9ef297b406fc4dfb5634b455503926ffb0b0'
+      )
+    })
+  })
+
   it("pesoKg 12340, '12340.00' e '12340' danno la stessa impronta", () => {
     expect(improntaPesata({ ...base, pesoKg: '12340.00' })).toBe(improntaPesata(base))
     expect(improntaPesata({ ...base, pesoKg: '12340' })).toBe(improntaPesata(base))

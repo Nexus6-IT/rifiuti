@@ -45,7 +45,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   anomalie: 'Rilevamento anomalie',
   rentri: 'Interoperabilità RENTRI',
   reference_data: 'Dati di riferimento (ISTAT/ATECO)',
-  pese: 'Pese (inserimento manuale)',
+  pese: 'Pese',
   ritiri: 'Ritiri programmati',
   comunicazioni: 'Comunicazioni a consorzi e osservatori',
 }

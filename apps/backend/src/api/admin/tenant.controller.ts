@@ -21,6 +21,7 @@ import { TenantService } from '../../application/admin/tenant.service'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
 import { SetTenantStatusDto } from './dto/set-tenant-status.dto'
+import { SetPeseSimulazioneDto } from './dto/set-pese-simulazione.dto'
 
 /**
  * TenantController (admin)
@@ -105,5 +106,21 @@ export class TenantController {
     @Body() dto: SetTenantStatusDto
   ) {
     return this.tenantService.setStatus(currentUser, id, dto.status)
+  }
+
+  /**
+   * PATCH /api/v1/admin/tenants/:id/pese-simulazione
+   * Ammette (o toglie) le letture SIMULATE dell'agente di pesa per l'azienda (solo SUPER_ADMIN):
+   * un'azienda con il permesso e' di prova per definizione. Audit in ogni caso.
+   * Body: { ammessa: boolean }.
+   */
+  @Patch(':id/pese-simulazione')
+  @Roles('SUPER_ADMIN')
+  async setPeseSimulazione(
+    @CurrentUser() currentUser: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetPeseSimulazioneDto
+  ) {
+    return this.tenantService.impostaSimulazionePese(currentUser, id, dto.ammessa)
   }
 }

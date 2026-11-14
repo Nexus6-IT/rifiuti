@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Pese: agente di pesa e letture firmate (Fase 4 pezzo 8b, solo driver SIMULATA)
+
+Nuova scheda Agenti nelle Pese e programma `agente-pesa` per il PC della pesa (Go, eseguibile unico
+per Windows, servizio con coda su file). L'amministratore crea l'agente e legge un codice monouso
+(15 minuti); `agente-pesa abbina --server https://<backend>/api/v1 --codice ...` lo scambia con un
+token e registra la chiave pubblica Ed25519 (la privata non lascia il PC). Ogni lettura stabile e'
+firmata e inviata al backend, che verifica la firma, e' idempotente (chiave di idempotenza e
+sequenza) e la conserva immutabile. L'operatore apre un accesso o registra la seconda pesata
+scegliendo una lettura (`Da strumento`) invece di digitare il peso; il peso digitato resta come
+`Manuale` con avviso. Letture e pesate da strumento hanno badge «Simulata», «In differita», «Firma
+non verificata». Orologio: lo scarto fra PC e server e' mostrato; l'ora dell'agente oltre 5 minuti
+nel futuro e' rifiutata (`OROLOGIO_AVANTI`) e la lettura resta in coda (codici transitori:
+`OROLOGIO_AVANTI`, `STRUMENTO_NON_ASSEGNATO`, `STRUMENTO_NON_ATTIVO`, `FUORI_PORTATA`; riprova
+10-20-40 minuti, poi ogni ora, scadenza 7 giorni). Se il contatore delle sequenze si perde l'agente
+si riallinea (`SEQUENZA_GIA_USATA`) e ri-numera la lettura senza perderla. Il SUPER_ADMIN ammette le
+pesate simulate azienda per azienda (solo aziende di prova). Nessun driver reale: seriale e TCP
+arrivano col pilota (domande Q1-Q8 del piano). Il backend ammette solo i driver di `DRIVER_AMMESSI`
+(oggi `SIMULATA`; un'altra lettura e' rifiutata con `DRIVER_NON_AMMESSO`, definitivo per l'agente);
+una pesata simulata non puo' diventare la tara di un automezzo. Migration additive `20261113100000_pese_fonte_simulata`
+e `20261113100100_pese_agenti` (precondizione: nessuna pesata con fonte STRUMENTO esistente; dopo il deploy
+rilanciare `ops/db-ruoli.sh`; il valore `SIMULATA` non si toglie dall'enum). Rilascio: l'impronta
+SHA-256 dell'eseguibile (non firmato) si pubblica nel README della release (`agente-pesa.exe.sha256`).
+
+### Changed — `TRUST_PROXY` predefinito su `loopback, linklocal, uniquelocal`
+
+Dietro i due nginx (host e container frontend) il backend vedeva come client l'IP del container
+frontend e i limiti per IP (abbinamento, token rifiutati, throttler globale) erano di fatto uno solo
+per tutti. Ora `req.ip` e' il client reale. Sovrascrivibile con `TRUST_PROXY` (numero di hop o
+subnet; `true` resta rifiutato). Dopo il deploy controllare che `ultimoIp` degli agenti non sia un IP privato (192.168.x o 172.x).
+
 ### Added — Filigrana «BOZZA – NON VALIDO» sui FIR in bozza
 
 Ogni PDF di un FIR in stato DRAFT (singolo da `GET /pdf/fir/:id`, serie da `POST /ritiri/stampa-fir`)

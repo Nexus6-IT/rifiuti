@@ -638,4 +638,42 @@ export class TenantService {
 
     return await this.perUtente(currentUser, tenant)
   }
+
+  /**
+   * Ammette o toglie le letture SIMULATE dell'agente di pesa (4.8b, Q2): solo SUPER_ADMIN (lo
+   * garantisce la rotta). Il permesso sta nella colonna `pese_simulazione_ammessa`; l'audit
+   * (`PESA_SIMULAZIONE_AMMESSA` / `PESA_SIMULAZIONE_REVOCATA`) e' scritto nell'azienda interessata,
+   * nella stessa transazione.
+   * @throws NotFoundException se il tenant non esiste.
+   */
+  async impostaSimulazionePese(currentUser: CurrentUser, id: string, ammessa: boolean) {
+    assertNonPiattaforma(id)
+    await this.getById(id, true)
+    const tenant = await this.inAzienda(id, () =>
+      this.prisma.$transaction(async tx => {
+        const prima = await tx.tenant.findUniqueOrThrow({
+          where: { id },
+          select: { peseSimulazioneAmmessa: true },
+        })
+        const riga = await tx.tenant.update({
+          where: { id },
+          data: { peseSimulazioneAmmessa: ammessa },
+        })
+        await tx.activityLog.create({
+          data: {
+            tenantId: id,
+            userId: currentUser.id,
+            action: ammessa ? 'PESA_SIMULAZIONE_AMMESSA' : 'PESA_SIMULAZIONE_REVOCATA',
+            description: ammessa
+              ? 'Letture simulate dell’agente di pesa ammesse'
+              : 'Letture simulate dell’agente di pesa revocate',
+            metadata: { prima: prima.peseSimulazioneAmmessa, dopo: ammessa },
+          },
+        })
+        return riga
+      })
+    )
+    this.logger.info('Pese: simulazione impostata', { tenantId: id, ammessa })
+    return await this.perUtente(currentUser, tenant)
+  }
 }

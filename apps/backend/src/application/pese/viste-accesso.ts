@@ -17,6 +17,9 @@ import {
   type ConfrontoDocumento,
 } from '../../domain/pese/confronto-documento'
 import { etichettaFir } from '../../domain/fir/stati-fir'
+import { chiavePubblicaDaBase64 } from '../../domain/pese/agenti/credenziali-agente'
+import { leggiPayloadLettura } from '../../domain/pese/agenti/payload-lettura'
+import { avvisiLettura } from '../../domain/pese/agenti/regole-lettura'
 import { AccessoNonTrovatoError } from './errori-pese'
 import { leggiMovimentiCollegati } from './movimenti-collegati'
 import { AVVISO_ALIBI_ESTERNO } from './pesate-scrittura'
@@ -42,6 +45,25 @@ export interface AllegatoVistaPesa {
   dimensioneByte: number
 }
 
+export const AVVISO_FIRMA_NON_VERIFICATA = 'Firma della lettura non verificata.'
+
+/**
+ * Riverifica la firma di una lettura: i byte conservati (`payload`, UTF-8) con la chiave pubblica
+ * dell'agente. `false` se la chiave manca o la firma non corrisponde (o il contenuto e' stato alterato).
+ */
+export function firmaLetturaValida(
+  lettura: { payload: string; firma: string },
+  chiavePubblicaB64: string | null
+): boolean {
+  const chiave = chiavePubblicaB64 ? chiavePubblicaDaBase64(chiavePubblicaB64) : null
+  if (!chiave) return false
+  return leggiPayloadLettura(
+    Buffer.from(lettura.payload, 'utf8').toString('base64'),
+    lettura.firma,
+    chiave
+  ).ok
+}
+
 export interface PesataVista {
   id: string
   ordine: number
@@ -54,6 +76,12 @@ export interface PesataVista {
   alibiId: string | null
   oraStrumento: string | null
   oraRicezione: string
+  /** Lettura firmata da cui la pesata e' copiata (fonti STRUMENTO e SIMULATA), altrimenti null. */
+  letturaId: string | null
+  /** Firma della lettura riverificata con la chiave dell'agente; null se la pesata non ha lettura. */
+  firmaValida: boolean | null
+  /** Descrizione dell'agente che ha letto lo strumento. */
+  agente: string | null
   operatore: string | null
   motivo: string | null
   allegato: AllegatoVistaPesa | null
@@ -134,6 +162,10 @@ export interface AccessoRiepilogo {
   nettoKg: number | null
   qualita: QualitaNetto | null
   manuale: boolean
+  /** almeno una pesata arrivata da uno strumento (reale o simulata) */
+  daStrumento: boolean
+  /** almeno una pesata SIMULATA: non e' un peso reale */
+  simulato: boolean
   rettificato: boolean
   collegato: boolean
 }
@@ -197,6 +229,31 @@ export async function leggiVistaAccesso(
       utenteIds.add(r.autoreId)
     }
   }
+  const letturaIds = [...new Set(pesate.flatMap(p => (p.letturaId ? [p.letturaId] : [])))]
+  const letture = letturaIds.length
+    ? await tx.letturaPesa.findMany({
+        where: { tenantId, id: { in: letturaIds } },
+        select: {
+          id: true,
+          agenteId: true,
+          payload: true,
+          firma: true,
+          oraAgente: true,
+          oraStrumento: true,
+          oraRicezione: true,
+          simulata: true,
+        },
+      })
+    : []
+  const agentiIds = [...new Set(letture.map(l => l.agenteId))]
+  const agenti = agentiIds.length
+    ? await tx.agentePesa.findMany({
+        where: { tenantId, id: { in: agentiIds } },
+        select: { id: true, chiavePubblica: true, descrizione: true },
+      })
+    : []
+  const perLettura = new Map(letture.map(l => [l.id, l]))
+  const perAgente = new Map(agenti.map(a => [a.id, a]))
   const esterni = pesate.filter(p => p.strumentoEsterno && p.alibiId)
   type Doppione = {
     id: string
@@ -262,6 +319,8 @@ export async function leggiVistaAccesso(
         automezzoId: p.automezzoId,
         taraAggiornataIl: p.taraAggiornataIl,
         chiaveIdempotenza: p.chiaveIdempotenza,
+        letturaId: p.letturaId,
+        firmaAgente: p.firmaAgente,
       }) === p.impronta
     const rettifiche = p.rettifiche.map<RettificaVista>(r => ({
       id: r.id,
@@ -320,6 +379,16 @@ export async function leggiVistaAccesso(
     ) {
       avvisi.push(AVVISO_ALIBI_ESTERNO)
     }
+    const lettura = p.letturaId ? (perLettura.get(p.letturaId) ?? null) : null
+    const agente = lettura ? (perAgente.get(lettura.agenteId) ?? null) : null
+    // Una pesata da lettura e' valida solo se la firma della lettura si riverifica ora.
+    const firmaValida = p.letturaId
+      ? lettura !== null &&
+        firmaLetturaValida(lettura, agente?.chiavePubblica ?? null) &&
+        lettura.firma === p.firmaAgente
+      : null
+    if (lettura) avvisi.push(...avvisiLettura(lettura))
+    if (firmaValida === false) avvisi.push(AVVISO_FIRMA_NON_VERIFICATA)
     if (!integraPesata || rettifiche.some(r => !r.integra)) avvisi.push(AVVISO_NON_INTEGRA)
     const perNetto = comePerNetto(p)
     return {
@@ -339,6 +408,9 @@ export async function leggiVistaAccesso(
       alibiId: p.alibiId,
       oraStrumento: p.oraStrumento ? p.oraStrumento.toISOString() : null,
       oraRicezione: p.oraRicezione.toISOString(),
+      letturaId: p.letturaId,
+      firmaValida,
+      agente: agente?.descrizione ?? null,
       operatore: p.operatoreId ? (nomi.get(p.operatoreId) ?? null) : null,
       motivo: p.motivoManuale,
       allegato: vistaAllegato(p.allegatoId),
@@ -509,6 +581,8 @@ export async function leggiRiepiloghi(
       nettoKg: netto.nettoKg,
       qualita: netto.qualita,
       manuale: netto.manuale,
+      daStrumento: sue.some(p => p.fonte === 'STRUMENTO' || p.fonte === 'SIMULATA'),
+      simulato: netto.simulato,
       rettificato: netto.rettificato,
       collegato: collegati.has(a.id),
     }

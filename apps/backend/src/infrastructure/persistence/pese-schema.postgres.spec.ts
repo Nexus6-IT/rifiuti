@@ -182,7 +182,11 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
     tenant_id: a.t,
     accesso_id: accessoId,
     ordine: 1,
-    fonte: 'STRUMENTO',
+    // Dal pezzo 8b `STRUMENTO` richiede una lettura firmata (`pesate_lettura_check`): la pesata di
+    // base e' manuale; le prove sulle fonti STRUMENTO/SIMULATA stanno in pese-agenti-schema.
+    fonte: 'MANUALE',
+    operatore_id: a.user,
+    motivo_manuale: 'scontrino',
     strumento_id: a.strumento,
     peso_kg: 1000,
     stabile: true,

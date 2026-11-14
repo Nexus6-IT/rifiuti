@@ -1,19 +1,26 @@
 /**
- * Pagina delle pese: accessi, automezzi e strumenti di pesa in tre schede. Le schede si
+ * Pagina delle pese: accessi, automezzi, strumenti di pesa e agenti in quattro schede. Le schede si
  * montano solo quando servono. Lo stato della scheda attiva e' annunciato con aria-selected.
  */
 import { CommonModule } from '@angular/common'
 import { Component, signal } from '@angular/core'
+import { AgentiPesaComponent } from './agenti-pesa.component'
 import { AccessiComponent } from './accessi.component'
 import { AutomezziComponent } from './automezzi.component'
 import { StrumentiPesaComponent } from './strumenti-pesa.component'
 
-type Scheda = 'accessi' | 'automezzi' | 'strumenti'
+type Scheda = 'accessi' | 'automezzi' | 'strumenti' | 'agenti'
 
 @Component({
   selector: 'app-pese',
   standalone: true,
-  imports: [CommonModule, AccessiComponent, AutomezziComponent, StrumentiPesaComponent],
+  imports: [
+    CommonModule,
+    AccessiComponent,
+    AutomezziComponent,
+    StrumentiPesaComponent,
+    AgentiPesaComponent,
+  ],
   template: `
     <div class="page">
       <h1 class="titolo">Pese</h1>
@@ -39,6 +46,7 @@ type Scheda = 'accessi' | 'automezzi' | 'strumenti'
         <app-pese-accessi *ngIf="attiva() === 'accessi'"></app-pese-accessi>
         <app-pese-automezzi *ngIf="attiva() === 'automezzi'"></app-pese-automezzi>
         <app-pese-strumenti *ngIf="attiva() === 'strumenti'"></app-pese-strumenti>
+        <app-pese-agenti *ngIf="attiva() === 'agenti'"></app-pese-agenti>
       </div>
     </div>
   `,
@@ -52,7 +60,8 @@ type Scheda = 'accessi' | 'automezzi' | 'strumenti'
       }
       .schede {
         display: flex;
-        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+        gap: 0 var(--spacing-sm);
         border-bottom: 1px solid var(--surface-border);
         margin-bottom: var(--spacing-base);
       }
@@ -78,6 +87,7 @@ export class PeseComponent {
     { id: 'accessi', etichetta: 'Accessi' },
     { id: 'automezzi', etichetta: 'Automezzi' },
     { id: 'strumenti', etichetta: 'Strumenti di pesa' },
+    { id: 'agenti', etichetta: 'Agenti' },
   ]
   readonly attiva = signal<Scheda>('accessi')
 

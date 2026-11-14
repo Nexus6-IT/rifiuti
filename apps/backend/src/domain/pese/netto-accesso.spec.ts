@@ -1,6 +1,8 @@
 import {
   AVVISO_MANUALE,
+  AVVISO_SIMULATA,
   AVVISO_RETTIFICATO,
+  AVVISO_PESO_STRUMENTO_RETTIFICATO,
   AVVISO_SINGOLA,
   AVVISO_TARA_DICHIARATA,
   calcolaNetto,
@@ -144,6 +146,28 @@ describe('calcolaNetto', () => {
     expect(e.avvisi).toContain(AVVISO_MANUALE)
   })
 
+  it('una pesata SIMULATA si calcola come STRUMENTO: simulato true, AVVISO_SIMULATA, manuale false', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [
+        pesata({ ordine: 1, pesoKg: 24880, fonte: 'SIMULATA' }),
+        pesata({ ordine: 2, pesoKg: 12540, fonte: 'SIMULATA' }),
+      ],
+      OGGI
+    )
+    expect(e).toMatchObject({ stato: 'CALCOLATO', nettoKg: 12340, simulato: true, manuale: false })
+    expect(e.avvisi).toContain(AVVISO_SIMULATA)
+    const reale = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [pesata({ ordine: 1, pesoKg: 24880 }), pesata({ ordine: 2, pesoKg: 12540 })],
+      OGGI
+    )
+    expect(reale.simulato).toBe(false)
+    expect(reale.avvisi).not.toContain(AVVISO_SIMULATA)
+  })
+
   it('rettifiche 3 e 1 in disordine: vale la numero 3', () => {
     const p = pesata({
       ordine: 1,
@@ -158,6 +182,46 @@ describe('calcolaNetto', () => {
     expect(e.nettoKg).toBe(12360)
     expect(e.rettificato).toBe(true)
     expect(e.avvisi).toContain(AVVISO_RETTIFICATO)
+  })
+
+  it.each(['STRUMENTO', 'SIMULATA'] as const)(
+    'peso %s rettificato: avviso dedicato oltre a quello generico',
+    fonte => {
+      const e = calcolaNetto(
+        'CARICO',
+        'DOPPIA',
+        [
+          pesata({
+            ordine: 1,
+            fonte,
+            pesoKg: 24880,
+            rettifiche: [{ numero: 1, pesoNuovoKg: 24000 }],
+          }),
+          pesata({ ordine: 2, fonte, pesoKg: 12540 }),
+        ],
+        OGGI
+      )
+      expect(e.avvisi).toContain(AVVISO_RETTIFICATO)
+      expect(e.avvisi).toContain(AVVISO_PESO_STRUMENTO_RETTIFICATO)
+    }
+  )
+
+  it('peso MANUALE rettificato: niente avviso dello strumento', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [
+        pesata({
+          ordine: 1,
+          fonte: 'MANUALE',
+          pesoKg: 24880,
+          rettifiche: [{ numero: 1, pesoNuovoKg: 24000 }],
+        }),
+        pesata({ ordine: 2, fonte: 'MANUALE', pesoKg: 12540 }),
+      ],
+      OGGI
+    )
+    expect(e.avvisi).not.toContain(AVVISO_PESO_STRUMENTO_RETTIFICATO)
   })
 
   it('stabile false → NON_VALIDO "Una pesata instabile non è un peso."', () => {

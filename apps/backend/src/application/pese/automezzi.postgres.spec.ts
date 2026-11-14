@@ -26,6 +26,11 @@ import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafi
 import { AutomezziService } from './automezzi.service'
 import { AutomezzoDuplicatoError, TrasportatoreNonTrovatoError } from './errori-pese'
 import { StrumentiPesaService } from './strumenti-pesa.service'
+import {
+  creaAgenteAttivoDiProva,
+  creaLetturaDiProva,
+  creaStrumentoDiProva,
+} from '../../test-support/agenti-pesa-di-test'
 
 const HASH = 'a'.repeat(64)
 
@@ -194,9 +199,9 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
     for (const [k, peso] of pesi.entries()) {
       const [p] = await owner.$queryRaw<{ id: string }[]>`
         INSERT INTO pesate (tenant_id, accesso_id, ordine, fonte, strumento_id, peso_kg, stabile,
-                            ora_ricezione, chiave_idempotenza, impronta)
-        VALUES (${a.tenantId}::uuid, ${acc.id}::uuid, ${k + 1}, 'STRUMENTO', ${strumentoId}::uuid,
-                ${peso}, true, ${ora}, gen_random_uuid(), ${HASH})
+                            ora_ricezione, operatore_id, motivo_manuale, chiave_idempotenza, impronta)
+        VALUES (${a.tenantId}::uuid, ${acc.id}::uuid, ${k + 1}, 'MANUALE', ${strumentoId}::uuid,
+                ${peso}, true, ${ora}, ${a.utenteId}::uuid, 'scontrino', gen_random_uuid(), ${HASH})
         RETURNING id::text AS id`
       ids.push(p.id)
     }
@@ -327,6 +332,37 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
 
       await expect(tara(a, mezzo.id, daB.pesate[1])).rejects.toThrow('Pesata non trovata.')
     })
+  })
+
+  it('tara da una pesata SIMULATA: rifiutata, la tara non cambia', async () => {
+    const a = await azienda()
+    const mezzo = await nelTenant(a.tenantId, () =>
+      automezzi.crea(a.tenantId, a.utenteId, { targa: 'SI111MU' })
+    )
+    const agente = await creaAgenteAttivoDiProva(owner, a)
+    const strumentoId = await creaStrumentoDiProva(owner, a, { agenteId: agente.id })
+    const letturaId = await creaLetturaDiProva(owner, agente, a.tenantId, strumentoId, {
+      simulata: true,
+    })
+    const [acc] = await owner.$queryRaw<{ id: string }[]>`
+      INSERT INTO accessi_pesa (tenant_id, registro_id, anno, numero, verso, modo, automezzo_id, aperto_da)
+      VALUES (${a.tenantId}::uuid, ${a.registroId}::uuid, 2026, ${++n}, 'SCARICO'::"waste_movement_type",
+              'DOPPIA'::"modo_pesatura", ${mezzo.id}::uuid, ${a.utenteId}::uuid)
+      RETURNING id::text AS id`
+    const [p] = await owner.$queryRaw<{ id: string }[]>`
+      INSERT INTO pesate (tenant_id, accesso_id, ordine, fonte, strumento_id, alibi_id, peso_kg, stabile,
+                          ora_strumento, ora_ricezione, operatore_id, firma_agente, lettura_id,
+                          chiave_idempotenza, impronta)
+      SELECT l.tenant_id, ${acc.id}::uuid, 1, 'SIMULATA'::fonte_pesata, l.strumento_id, l.alibi_id,
+             l.peso_kg, l.stabile, l.ora_strumento, l.ora_ricezione, ${a.utenteId}::uuid, l.firma,
+             l.id, gen_random_uuid(), ${HASH}
+      FROM letture_pesa l WHERE l.id = ${letturaId}::uuid
+      RETURNING id::text AS id`
+
+    await expect(tara(a, mezzo.id, p.id)).rejects.toThrow(/pesata simulata/i)
+    const dopo = await owner.automezzo.findUniqueOrThrow({ where: { id: mezzo.id } })
+    expect(dopo.taraKg).toBeNull()
+    expect(dopo.taraOrigine).toBeNull()
   })
 
   it('tara da una pesata inesistente: 404', async () => {

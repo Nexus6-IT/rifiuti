@@ -40,7 +40,7 @@ test.describe('Pese e MUD: apertura delle pagine', () => {
     await accediUiComeAzienda(page, azienda, 'admin')
   })
 
-  test('Pese: si apre col titolo, ha le tre schede e si passa dall’una all’altra', async ({
+  test('Pese: si apre col titolo, ha le quattro schede e si passa dall’una all’altra', async ({
     page,
   }) => {
     await page.goto('/pese')
@@ -48,7 +48,7 @@ test.describe('Pese e MUD: apertura delle pagine', () => {
       timeout: ATTESA_SERVER,
     })
     const schede = page.getByRole('tablist', { name: 'Sezioni delle pese' }).getByRole('tab')
-    await expect(schede).toHaveCount(3)
+    await expect(schede).toHaveCount(4)
     await expect(page.getByTestId('pese-scheda-accessi')).toHaveAttribute('aria-selected', 'true')
     await page.getByTestId('pese-scheda-strumenti').click()
     await expect(page.getByTestId('pese-scheda-strumenti')).toHaveAttribute('aria-selected', 'true')

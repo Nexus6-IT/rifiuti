@@ -69,10 +69,12 @@ describe('AccessiComponent (DOM)', () => {
     pese = jasmine.createSpyObj<PeseService>('PeseService', [
       'elencaAccessi',
       'elencaStrumenti',
+      'elencaAgenti',
       'elencaAutomezzi',
       'dettaglioAccesso',
     ])
     pese.elencaStrumenti.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: false }))
     pese.elencaAutomezzi.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
     registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     TestBed.configureTestingModule({
@@ -114,6 +116,28 @@ describe('AccessiComponent (DOM)', () => {
     expect(t).toContain('Rettificato')
     expect(t).toContain('Collegato')
     expect(t).toContain('16.000 kg')
+  })
+
+  it('la riga mostra «Da strumento» per le letture reali e «Simulata» per quelle simulate', async () => {
+    registri.listRegistri.and.returnValue(of([reg('r1', true)]))
+    pese.elencaAccessi.and.returnValue(
+      of(
+        elenco([
+          riga('s1', { daStrumento: true, simulato: false }),
+          riga('s2', { daStrumento: true, simulato: true }),
+          riga('s3', { manuale: true }),
+        ])
+      )
+    )
+    fixture = TestBed.createComponent(AccessiComponent)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('ac-strumento-s1')?.textContent).toContain('Da strumento')
+    expect(q('ac-simulato-s1')).toBeNull()
+    expect(q('ac-simulato-s2')?.textContent).toContain('Simulata')
+    expect(q('ac-strumento-s2')).toBeNull()
+    expect(q('ac-strumento-s3')).toBeNull()
   })
 
   it('filtra per stato, periodo e targa', async () => {
@@ -273,10 +297,12 @@ describe('PeseComponent (schede)', () => {
     const pese = jasmine.createSpyObj<PeseService>('PeseService', [
       'elencaAccessi',
       'elencaStrumenti',
+      'elencaAgenti',
       'elencaAutomezzi',
     ])
     pese.elencaAccessi.and.returnValue(of(elenco([])))
     pese.elencaStrumenti.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: false }))
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: false }))
     pese.elencaAutomezzi.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: false }))
     const registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     registri.listRegistri.and.returnValue(of([]))

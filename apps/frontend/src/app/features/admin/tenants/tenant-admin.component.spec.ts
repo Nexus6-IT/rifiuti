@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { signal } from '@angular/core'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ConfirmationService } from 'primeng/api'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 
 import { TenantAdminComponent } from './tenant-admin.component'
 import { Tenant, TenantAdminService } from './tenant-admin.service'
@@ -391,5 +391,122 @@ describe('TenantAdminComponent - moduli (feature flags) azienda', () => {
     expect(component.form.featureFlags).toContain('mud') // nuovo del piano
     expect(component.form.featureFlags).toContain('esg') // aggiunto, resta
     expect(component.form.featureFlags).not.toContain('cer') // tolto, resta tolto
+  })
+})
+
+describe('TenantAdminComponent - permesso delle pesate simulate', () => {
+  let fixture: ComponentFixture<TenantAdminComponent>
+  let component: TenantAdminComponent
+  let service: jasmine.SpyObj<TenantAdminService>
+  let toast: jasmine.SpyObj<ToastService>
+
+  async function avvia(ruolo: 'SUPER_ADMIN' | 'ADMIN'): Promise<void> {
+    service = jasmine.createSpyObj<TenantAdminService>('TenantAdminService', [
+      'list',
+      'create',
+      'update',
+      'setStatus',
+      'setPeseSimulazione',
+    ])
+    service.list.and.returnValue(of([]))
+    service.setPeseSimulazione.and.returnValue(of(tenant({ peseSimulazioneAmmessa: true })))
+    const userService = jasmine.createSpyObj<UserAdminService>('UserAdminService', ['list'])
+    userService.list.and.returnValue(of([]))
+    toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'info', 'warn'])
+    await TestBed.configureTestingModule({
+      imports: [TenantAdminComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: TenantAdminService, useValue: service },
+        { provide: UserAdminService, useValue: userService },
+        {
+          provide: AuthService,
+          useValue: { currentUser: signal({ id: 'u1', email: 'u@test.com', role: ruolo }) },
+        },
+        { provide: ToastService, useValue: toast },
+      ],
+    }).compileComponents()
+    fixture = TestBed.createComponent(TenantAdminComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  }
+
+  async function apriModifica(t: Tenant): Promise<void> {
+    component.openEditDialog(t)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+  }
+
+  const interruttore = () =>
+    document.body.querySelector<HTMLInputElement>('[data-testid="pese-simulazione"]')
+
+  /** Le conferme si accettano o si rifiutano via spy: il dialog di PrimeNG non e' il soggetto. */
+  function conferma(esito: 'accept' | 'reject'): jasmine.Spy {
+    const cs = fixture.debugElement.injector.get(ConfirmationService)
+    return spyOn(cs, 'confirm').and.callFake(c => {
+      c[esito]?.()
+      return cs
+    })
+  }
+
+  it("l'ADMIN non vede l'interruttore", async () => {
+    await avvia('ADMIN')
+    await apriModifica(tenant())
+    expect(interruttore()).toBeNull()
+  })
+
+  it('il SUPER_ADMIN lo vede spento e, con conferma, lo accende', async () => {
+    await avvia('SUPER_ADMIN')
+    await apriModifica(tenant())
+    expect(interruttore()!.checked).toBeFalse()
+    const conf = conferma('accept')
+    interruttore()!.click()
+    fixture.detectChanges()
+    expect(conf).toHaveBeenCalledTimes(1)
+    expect(conf.calls.mostRecent().args[0].message).toContain('Ecologia Srl')
+    expect(service.setPeseSimulazione).toHaveBeenCalledOnceWith('t1', true)
+    expect(interruttore()!.checked).toBeTrue()
+    expect(toast.success).toHaveBeenCalled()
+  })
+
+  it('senza conferma non cambia nulla e la casella resta com era', async () => {
+    await avvia('SUPER_ADMIN')
+    await apriModifica(tenant())
+    conferma('reject')
+    interruttore()!.click()
+    fixture.detectChanges()
+    expect(service.setPeseSimulazione).not.toHaveBeenCalled()
+    expect(interruttore()!.checked).toBeFalse()
+  })
+
+  it('parte acceso se l azienda ha il permesso e lo toglie con conferma', async () => {
+    await avvia('SUPER_ADMIN')
+    await apriModifica(tenant({ peseSimulazioneAmmessa: true }))
+    expect(interruttore()!.checked).toBeTrue()
+    service.setPeseSimulazione.and.returnValue(of(tenant({ peseSimulazioneAmmessa: false })))
+    conferma('accept')
+    interruttore()!.click()
+    fixture.detectChanges()
+    expect(service.setPeseSimulazione).toHaveBeenCalledOnceWith('t1', false)
+    expect(interruttore()!.checked).toBeFalse()
+  })
+
+  it('un errore del backend lascia lo stato com era e lo dice', async () => {
+    await avvia('SUPER_ADMIN')
+    await apriModifica(tenant())
+    service.setPeseSimulazione.and.returnValue(
+      throwError(() => ({ error: { message: 'Azienda non trovata' } }))
+    )
+    conferma('accept')
+    interruttore()!.click()
+    fixture.detectChanges()
+    expect(interruttore()!.checked).toBeFalse()
+    expect(toast.error).toHaveBeenCalledWith('Azienda non trovata')
+  })
+
+  it("l'etichetta del modulo nel catalogo e Pese", async () => {
+    await avvia('SUPER_ADMIN')
+    expect(component.featureCatalog.find(f => f.key === 'pese')?.label).toBe('Pese')
   })
 })

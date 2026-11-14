@@ -5,6 +5,7 @@ const FONTI: Record<FontePesata, string> = {
   FILE: 'File dello strumento',
   MANUALE: 'Manuale',
   TARA_ANAGRAFICA: 'Tara dichiarata',
+  SIMULATA: 'Simulata',
 }
 
 const QUALITA: Record<QualitaNetto, string> = {
@@ -26,6 +27,10 @@ export function badgePesata(p: PesataVista): string[] {
   if (p.rettifiche.length > 0) badge.push('Rettificato')
   if (p.fonte === 'MANUALE' && !p.allegato) badge.push('Senza prova documentale')
   if (!p.integra) badge.push('Dato alterato')
+  if (p.fonte === 'STRUMENTO') badge.push('Da strumento')
+  if (p.fonte === 'SIMULATA') badge.push('Simulata')
+  if (p.firmaValida === true) badge.push('Firma verificata')
+  if (p.firmaValida === false) badge.push('Firma non verificata')
   return badge
 }
 
@@ -232,3 +237,60 @@ export function uuidV4(motore: MotoreUuid = crypto as unknown as MotoreUuid): st
   const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
+
+// --- agenti di pesa (4.8b) -------------------------------------------------------------------
+
+/** Oltre questo tempo senza battito un agente attivo e' "non in linea". */
+export const MINUTI_NON_IN_LINEA = 3
+/** Scarto dell'orologio del PC oltre il quale lo si segnala. */
+export const SECONDI_SCARTO_OROLOGIO = 60
+
+/** "adesso", "5 min fa", "3 h fa", "2 g fa" rispetto a `adesso`; "mai" senza contatto. */
+export function tempoTrascorso(iso: string | null, adesso: Date = new Date()): string {
+  if (!iso) return 'mai'
+  const s = Math.max(0, Math.round((adesso.getTime() - new Date(iso).getTime()) / 1000))
+  if (s < 60) return 'adesso'
+  const min = Math.floor(s / 60)
+  if (min < 60) return `${min} min fa`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h} h fa`
+  return `${Math.floor(h / 24)} g fa`
+}
+
+/** "Da 4 min" per "non in linea da ...": senza il "fa" finale. */
+export const tempoDa = (iso: string | null, adesso: Date = new Date()): string => {
+  const t = tempoTrascorso(iso, adesso)
+  return t === 'mai' ? 'sempre' : t === 'adesso' ? 'meno di un minuto' : t.replace(/ fa$/, '')
+}
+
+/** Scarto dell'orologio da mostrare: solo se oltre la soglia, con il segno (+ = PC avanti). */
+export function scartoOrologioTesto(s: number | null): string | null {
+  if (s === null || Math.abs(s) <= SECONDI_SCARTO_OROLOGIO) return null
+  const min = Math.round(Math.abs(s) / 60)
+  const durata = min >= 1 ? `${min} min` : `${Math.abs(s)} s`
+  return `Orologio del PC ${s > 0 ? 'avanti' : 'indietro'} di ${durata}`
+}
+
+/** Conto alla rovescia "mm:ss" fino alla scadenza; "scaduto" a tempo finito. */
+export function contoAllaRovescia(scadeIl: string, adesso: Date = new Date()): string {
+  const s = Math.ceil((new Date(scadeIl).getTime() - adesso.getTime()) / 1000)
+  if (s <= 0) return 'scaduto'
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** Indirizzo del backend da dare all'agente: assoluto e con `/api/v1` in coda (e' gia' in apiUrl). */
+export function indirizzoServerAgente(apiUrl: string, origine: string): string {
+  return new URL(apiUrl, origine).href.replace(/\/+$/, '')
+}
+
+const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
+  timeZone: FUSO,
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+/** "13/11, 09:15:03" in ora di Roma. */
+export const dataOraItaliana = (iso: string): string => formatoDataOra.format(new Date(iso))

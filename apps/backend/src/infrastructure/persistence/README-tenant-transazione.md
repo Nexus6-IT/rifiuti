@@ -135,7 +135,7 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `rentri_credentials`, `rentri_numeri_vidimati`, `rentri_sync_logs`, `rentri_unita_locali`,
   `resource_ownership`, `role_change_history`, `roles`, `soglie_deposito_temporaneo`, `temporary_permission_grants`,
   `trasportatori`, `user_role_assignments`, `users`, `waste_movements`; pese (8a): `strumenti_pesa`, `automezzi`,
-  `accessi_pesa`, `pesate`, `rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`;
+  `accessi_pesa`, `pesate`, `rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`; pese (8b): `agenti_pesa`, `letture_pesa`;
   fatturazione (4.1a, 4.1b): `condizioni_pagamento`, `conti_correnti`, `spese_accessorie`, `registri_iva`,
   `testi_fatturazione`, `codifiche_contratto`, `agenti`, `clienti`, `contratti_cliente`,
   `periodi_fatturazione_cliente`, `allegati_contratto_cliente`; listino (4.2a): `codici_iva`,

@@ -61,6 +61,8 @@ export interface Tenant {
    * dall'admin corrente ai fini della quota.
    */
   ownerUserId?: string | null
+  /** Solo SUPER_ADMIN: l'azienda e' di prova e puo' usare le letture simulate dell'agente di pesa. */
+  peseSimulazioneAmmessa?: boolean
   createdAt: string
   _count?: {
     users: number
@@ -139,5 +141,10 @@ export class TenantAdminService {
   /** Sospende o riattiva un tenant. */
   setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE'): Observable<Tenant> {
     return this.http.patch<Tenant>(`${this.API_URL}/${id}/status`, { status })
+  }
+
+  /** Ammette o toglie le pesate simulate dell'agente di pesa (solo SUPER_ADMIN, con audit). */
+  setPeseSimulazione(id: string, ammessa: boolean): Observable<Tenant> {
+    return this.http.patch<Tenant>(`${this.API_URL}/${id}/pese-simulazione`, { ammessa })
   }
 }

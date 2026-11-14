@@ -251,17 +251,18 @@ describe('Ruoli database (Postgres reale)', () => {
     }
   })
 
-  const SOLO_INSERIMENTO = ['pesate', 'rettifiche_peso', 'allegati_pesa']
+  const SOLO_INSERIMENTO = ['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa']
   const SENZA_CANCELLAZIONE = [
     'accessi_pesa',
     'collegamenti_accesso',
     'automezzi',
     'strumenti_pesa',
+    'agenti_pesa',
   ]
   const INSERIMENTO = { SELECT: true, INSERT: true, UPDATE: false, DELETE: false, TRUNCATE: false }
   const SENZA_DELETE = { SELECT: true, INSERT: true, UPDATE: true, DELETE: false, TRUNCATE: false }
 
-  it('pesate, rettifiche_peso, allegati_pesa: i due ruoli fanno SELECT e INSERT, UPDATE/DELETE/TRUNCATE danno 42501', async () => {
+  it('pesate, rettifiche_peso, allegati_pesa, letture_pesa: i due ruoli fanno SELECT e INSERT, UPDATE/DELETE/TRUNCATE danno 42501', async () => {
     for (const [ruolo, pwd] of [
       ['wasteflow_app', PWD_APP_1],
       ['wasteflow_sistema', PWD_SIS_1],
@@ -281,7 +282,7 @@ describe('Ruoli database (Postgres reale)', () => {
     }
   })
 
-  it('accessi_pesa, collegamenti_accesso, automezzi, strumenti_pesa: niente DELETE né TRUNCATE', async () => {
+  it('accessi_pesa, collegamenti_accesso, automezzi, strumenti_pesa, agenti_pesa: niente DELETE né TRUNCATE', async () => {
     for (const [ruolo, pwd] of [
       ['wasteflow_app', PWD_APP_1],
       ['wasteflow_sistema', PWD_SIS_1],

@@ -27,6 +27,7 @@ import {
 } from './errori-pese'
 import { leggiMovimentiCollegati, leggiRadiceOrdinaria } from './movimenti-collegati'
 import { nelContestoTenant } from './nel-contesto-tenant'
+import { MSG_ACCESSO_SIMULATO } from './pesate-scrittura'
 import { leggiVistaAccesso, type AccessoVista } from './viste-accesso'
 
 export const MSG_GIA_COLLEGATO = "L'accesso o il documento è già collegato."
@@ -65,6 +66,7 @@ export class CollegamentiAccessoService {
     return this.esegui(tenantId, async tx => {
       const accesso = await bloccaAccesso(tx, tenantId, accessoId)
       this.richiediChiuso(accesso)
+      await this.richiediNonSimulato(tx, tenantId, accessoId)
       const radice = await leggiRadiceOrdinaria(tx, tenantId, movimentoId)
       if (!radice) throw new CollegamentoNonValidoError('Annotazione non trovata.')
       if (radice.tipoAnnotazione !== 'ORDINARIA') {
@@ -185,6 +187,7 @@ export class CollegamentiAccessoService {
     return this.esegui(tenantId, async tx => {
       const accesso = await bloccaAccesso(tx, tenantId, accessoId)
       this.richiediChiuso(accesso)
+      await this.richiediNonSimulato(tx, tenantId, accessoId)
       if (accesso.verso !== 'CARICO') {
         throw new CollegamentoNonValidoError(
           'Il peso della pesa si usa per la consegna solo con un accesso di carico.'
@@ -241,6 +244,24 @@ export class CollegamentiAccessoService {
     if (accesso.stato !== 'CHIUSO') throw new StatoAccessoNonValidoError(MSG_SOLO_CHIUSO)
   }
 
+  /**
+   * Q1: un accesso con pesate SIMULATE entra nei documenti (FIR, registro) solo finche' l'azienda ha
+   * la simulazione ammessa (azienda di prova); tolto il permesso, 422.
+   */
+  private async richiediNonSimulato(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    accessoId: string
+  ): Promise<void> {
+    const simulate = await tx.pesata.count({ where: { tenantId, accessoId, fonte: 'SIMULATA' } })
+    if (simulate === 0) return
+    const azienda = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: { peseSimulazioneAmmessa: true },
+    })
+    if (!azienda?.peseSimulazioneAmmessa) throw new CollegamentoNonValidoError(MSG_ACCESSO_SIMULATO)
+  }
+
   private async leggiFirCollegabile(tx: Prisma.TransactionClient, tenantId: string, firId: string) {
     const fir = await tx.fIR.findFirst({
       where: { id: firId, tenantId },
@@ -276,6 +297,7 @@ export class CollegamentiAccessoService {
     idempotente = false
   ): Promise<void> {
     this.richiediChiuso(accesso)
+    await this.richiediNonSimulato(tx, tenantId, accesso.id)
     if (!idempotente) await this.leggiFirCollegabile(tx, tenantId, firId)
     const esistente = await tx.collegamentoAccesso.findFirst({
       where: {

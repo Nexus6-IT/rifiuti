@@ -143,4 +143,48 @@ describe('PeseService', () => {
     )
     r.flush({})
   })
+
+  it('agenti: elenco, creazione, nuovo codice, revoca e assegnazione', () => {
+    service.elencaAgenti().subscribe()
+    expect(http.expectOne(`${base}/agenti`).request.method).toBe('GET')
+    service.creaAgente({ descrizione: 'PC pesa', registroId: 'r1' }).subscribe()
+    const c = http.expectOne(`${base}/agenti`)
+    expect(c.request.method).toBe('POST')
+    expect(c.request.body).toEqual({ descrizione: 'PC pesa', registroId: 'r1' })
+    service.nuovoCodiceAgente('g1').subscribe()
+    expect(http.expectOne(`${base}/agenti/g1/codice`).request.method).toBe('POST')
+    service.revocaAgente('g1', 'PC sostituito').subscribe()
+    expect(http.expectOne(`${base}/agenti/g1/revoca`).request.body).toEqual({
+      motivo: 'PC sostituito',
+    })
+    service.assegnaStrumento('s1', null).subscribe()
+    const a = http.expectOne(`${base}/strumenti/s1/agente`)
+    expect(a.request.method).toBe('PUT')
+    expect(a.request.body).toEqual({ agenteId: null })
+  })
+
+  it('letture: manda solo i filtri valorizzati', () => {
+    service.elencaLetture({ registroId: 'r1', libere: true, dal: '' }).subscribe()
+    const r = http.expectOne(x => x.url === `${base}/letture`)
+    expect(r.request.params.get('registroId')).toBe('r1')
+    expect(r.request.params.get('libere')).toBe('true')
+    expect(r.request.params.has('dal')).toBeFalse()
+    r.flush({ righe: [] })
+  })
+
+  it('apre un accesso da una lettura: il corpo porta solo letturaId', () => {
+    service
+      .apriAccesso({
+        chiaveIdempotenza: 'k',
+        verso: 'CARICO',
+        modo: 'DOPPIA',
+        pesata: { letturaId: 'l1' },
+      })
+      .subscribe()
+    const r = http.expectOne(`${base}/accessi`)
+    expect(JSON.parse((r.request.body as FormData).get('dati') as string).pesata).toEqual({
+      letturaId: 'l1',
+    })
+    r.flush({})
+  })
 })

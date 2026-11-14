@@ -170,6 +170,23 @@ export class RettifichePesoService {
                 conAllegato: salvato !== null,
               }
             )
+            // I3: rettificare un peso dello strumento e' ammesso, ma lascia una traccia propria.
+            if (pesata.fonte === 'STRUMENTO' || pesata.fonte === 'SIMULATA') {
+              await scriviAuditPese(
+                tx,
+                tenantId,
+                utente.id,
+                'PESA_PESO_STRUMENTO_RETTIFICATO',
+                'Rettificato a mano il peso arrivato dallo strumento',
+                {
+                  pesataId,
+                  numero,
+                  fonte: pesata.fonte,
+                  precedente: Number(precedenteTesto),
+                  nuovo: Number(nuovoTesto),
+                }
+              )
+            }
             const mezzi = await tx.automezzo.findMany({
               where: { tenantId, taraPesataId: pesataId },
               select: { targa: true },

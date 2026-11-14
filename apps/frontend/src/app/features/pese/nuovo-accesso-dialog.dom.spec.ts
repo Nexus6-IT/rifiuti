@@ -4,7 +4,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { RegistroVista } from '../registro/registro.service'
 import { NuovoAccessoDialogComponent } from './nuovo-accesso-dialog.component'
-import { AccessoVista, Automezzo, PeseService } from './pese.service'
+import { AccessoVista, Automezzo, DatiPesataManuale, PeseService } from './pese.service'
 import { By } from '@angular/platform-browser'
 import { accesso, incolla, q, qb, scegli, scrivi } from './pese-test-utils'
 
@@ -121,8 +121,9 @@ describe('NuovoAccessoDialogComponent (DOM)', () => {
     expect(dati.verso).toBe('SCARICO')
     expect(dati.modo).toBe('DOPPIA')
     expect(dati.targa).toBe('ab 123 cd')
-    expect(dati.pesata.pesoKg).toBe(24000)
-    expect(dati.pesata.strumentoEsterno).toBe('Pesa del cliente')
+    const manuale = dati.pesata as DatiPesataManuale
+    expect(manuale.pesoKg).toBe(24000)
+    expect(manuale.strumentoEsterno).toBe('Pesa del cliente')
   })
 
   it('con la tara registrata serve un automezzo dell elenco', () => {

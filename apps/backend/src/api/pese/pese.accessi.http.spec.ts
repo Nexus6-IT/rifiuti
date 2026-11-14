@@ -150,6 +150,28 @@ describe('PeseController (accessi, rettifiche, allegati) - catena HTTP', () => {
       expect(accessi.apri.mock.calls[0][3]).toBeUndefined()
     })
 
+    it('pesata da lettura dello strumento ({ letturaId }): 201, il servizio riceve solo l’id', async () => {
+      const LETTURA = '7d7d7d7d-0000-4000-8000-000000000009'
+      await post()
+        .field('dati', JSON.stringify({ ...apertura, pesata: { letturaId: LETTURA } }))
+        .expect(201)
+      expect(accessi.apri.mock.calls[0][2].pesata).toEqual({ letturaId: LETTURA })
+    })
+
+    it('pesata da lettura con un peso digitato accanto → 400 (il peso viene dalla lettura)', async () => {
+      const LETTURA = '7d7d7d7d-0000-4000-8000-000000000009'
+      await post()
+        .field(
+          'dati',
+          JSON.stringify({ ...apertura, pesata: { letturaId: LETTURA, pesoKg: 1000 } })
+        )
+        .expect(400)
+      await post()
+        .field('dati', JSON.stringify({ ...apertura, pesata: { letturaId: 'non-uuid' } }))
+        .expect(400)
+      expect(accessi.apri).not.toHaveBeenCalled()
+    })
+
     it('dati non JSON → 400', async () => {
       const r = await post().field('dati', '{non json').expect(400)
       expect(r.body.message).toContain('JSON')

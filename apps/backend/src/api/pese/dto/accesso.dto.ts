@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import {
   Equals,
@@ -79,6 +79,19 @@ export class PesataManualeDto {
   stabileDichiarato!: true
 }
 
+/** Pesata presa da una lettura firmata dell'agente di pesa: il peso non si digita (4.8b, D12). */
+export class PesataDaLetturaDto {
+  @ApiProperty({ description: 'Lettura dello strumento arrivata dall’agente' })
+  @IsUUID('all', { message: 'Lettura non valida.' })
+  letturaId!: string
+}
+
+/** Sceglie il DTO dalla forma dell'oggetto: con `letturaId` e' una lettura, altrimenti manuale. */
+const tipoPesata = ({ object }: { object: Record<string, unknown> }) =>
+  object?.pesata && typeof object.pesata === 'object' && 'letturaId' in object.pesata
+    ? PesataDaLetturaDto
+    : PesataManualeDto
+
 export class AperturaAccessoDto {
   @ApiProperty({ description: 'Chiave di idempotenza scelta dal client (UUID)' })
   @IsUUID('all', { message: 'Chiave di idempotenza non valida.' })
@@ -132,12 +145,14 @@ export class AperturaAccessoDto {
   @MaxLength(1000, { message: 'Le note possono avere al massimo 1000 caratteri.' })
   note?: string | null
 
-  @ApiProperty({ type: PesataManualeDto })
+  @ApiProperty({
+    oneOf: [{ $ref: getSchemaPath(PesataManualeDto) }, { $ref: getSchemaPath(PesataDaLetturaDto) }],
+  })
   @IsDefined({ message: 'Mancano i dati della pesata.' })
   @IsObject({ message: 'I dati della pesata non sono validi.' })
   @ValidateNested()
-  @Type(() => PesataManualeDto)
-  pesata!: PesataManualeDto
+  @Type(tipoPesata as never)
+  pesata!: PesataManualeDto | PesataDaLetturaDto
 }
 
 export class SecondaPesataDto {
@@ -145,12 +160,14 @@ export class SecondaPesataDto {
   @IsUUID('all', { message: 'Chiave di idempotenza non valida.' })
   chiaveIdempotenza!: string
 
-  @ApiProperty({ type: PesataManualeDto })
+  @ApiProperty({
+    oneOf: [{ $ref: getSchemaPath(PesataManualeDto) }, { $ref: getSchemaPath(PesataDaLetturaDto) }],
+  })
   @IsDefined({ message: 'Mancano i dati della pesata.' })
   @IsObject({ message: 'I dati della pesata non sono validi.' })
   @ValidateNested()
-  @Type(() => PesataManualeDto)
-  pesata!: PesataManualeDto
+  @Type(tipoPesata as never)
+  pesata!: PesataManualeDto | PesataDaLetturaDto
 }
 
 export class RettificaDto {

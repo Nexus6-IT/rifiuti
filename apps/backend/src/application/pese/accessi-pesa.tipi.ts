@@ -24,6 +24,14 @@ export interface PesataManualeDati {
   stabileDichiarato: boolean
 }
 
+/** Pesata presa da una lettura firmata dell'agente (4.8b, D12): peso e alibi non si digitano. */
+export interface PesataDaLetturaDati {
+  letturaId: string
+}
+
+export const eDaLettura = (p: PesataManualeDati | PesataDaLetturaDati): p is PesataDaLetturaDati =>
+  'letturaId' in p
+
 export interface AperturaAccessoDati {
   chiaveIdempotenza: string
   registroId?: string | null
@@ -35,12 +43,12 @@ export interface AperturaAccessoDati {
   cerCode?: string | null
   descrizione?: string | null
   note?: string | null
-  pesata: PesataManualeDati
+  pesata: PesataManualeDati | PesataDaLetturaDati
 }
 
 export interface SecondaPesataDati {
   chiaveIdempotenza: string
-  pesata: PesataManualeDati
+  pesata: PesataManualeDati | PesataDaLetturaDati
 }
 
 export interface FiltriAccessi {

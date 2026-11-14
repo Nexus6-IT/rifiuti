@@ -27,8 +27,8 @@
 -- esecuzione. I default privileges restano CRUD (valgono per le tabelle future):
 -- una nuova tabella globale in sola lettura va AGGIUNTA a quell'elenco.
 --
--- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a): `v_solo_inserimento` (`pesate`,
--- `rettifiche_peso`, `allegati_pesa`) ricevono solo SELECT e INSERT, con una REVOKE esplicita di
+-- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a; `letture_pesa` dal pezzo 8b): `v_solo_inserimento`
+-- (`pesate`, `rettifiche_peso`, `allegati_pesa`, `letture_pesa`) ricevono solo SELECT e INSERT, con una REVOKE esplicita di
 -- UPDATE/DELETE/TRUNCATE a ogni esecuzione (sono documentazione del registro e del FIR: i trigger
 -- dei loro modelli le proteggono anche dal proprietario). `v_senza_cancellazione` (`accessi_pesa`,
 -- `collegamenti_accesso`, `automezzi`, `strumenti_pesa`) ricevono SELECT, INSERT, UPDATE e una REVOKE
@@ -47,9 +47,9 @@ DECLARE
   v_pwd     text;
   v_tabella text;
   v_sola_lettura text[] := ARRAY['causali_registro'];
-  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa'];
+  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa'];
   v_senza_cancellazione text[] :=
-    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri'];
+    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa'];
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;
