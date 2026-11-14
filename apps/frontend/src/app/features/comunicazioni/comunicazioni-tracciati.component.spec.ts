@@ -28,7 +28,7 @@ describe('ComunicazioniTracciatiComponent', () => {
     const unita = jasmine.createSpyObj<RentriUnitaLocaleService>('RentriUnitaLocaleService', [
       'list',
     ])
-    unita.list.and.returnValue(of(sedi as never))
+    unita.list.and.returnValue(of(sedi as unknown as never[]))
     const tracciati = jasmine.createSpyObj<TracciatiService>('TracciatiService', [
       'anteprima',
       'genera',

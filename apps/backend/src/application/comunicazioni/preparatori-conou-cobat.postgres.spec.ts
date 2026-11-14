@@ -281,7 +281,7 @@ describe('Preparatori CONOU e COBAT — Postgres reale, ruolo wasteflow_app', ()
     expect(perc).toEqual(['8499', '5000', '8499'])
     expect(righe[0].slice(0, 16).trim()).toBe('05555555555')
     expect(righe[0].slice(181, 189).trim()).toBe('45.20.10')
-    expect(righe[0].slice(189, 198)).toBe("003998001")
+    expect(righe[0].slice(189, 198)).toBe('003998001')
     expect(righe[0].slice(198, 208).trim()).toBe('BG001')
     expect(righe[0].slice(216, 222).trim()).toBe('ABC')
 

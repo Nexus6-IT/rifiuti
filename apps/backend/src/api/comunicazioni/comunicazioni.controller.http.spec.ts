@@ -54,13 +54,11 @@ describe('ComunicazioniController - catena HTTP', () => {
       manifest: jest
         .fn()
         .mockResolvedValue({ nomeFile: 'Movi.txt.manifest.txt', testo: 'MANIFEST' }),
-      anteprima: jest
-        .fn()
-        .mockResolvedValue({
-          numeroRecord: 2,
-          bloccanti: false,
-          affidabilita: 'RICAVATO_WINWASTE',
-        }),
+      anteprima: jest.fn().mockResolvedValue({
+        numeroRecord: 2,
+        bloccanti: false,
+        affidabilita: 'RICAVATO_WINWASTE',
+      }),
       genera: jest
         .fn()
         .mockResolvedValue({ id: ID, stato: 'GENERATA', affidabilita: 'RICAVATO_WINWASTE' }),
