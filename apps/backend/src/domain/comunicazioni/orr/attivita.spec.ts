@@ -117,6 +117,8 @@ describe('tipoImpiantoDestinatario (e13)', () => {
     expect(tipoImpiantoDestinatario('SMA', 'R/S', 'D1', 'D', undefined)).toBe('SMA')
     expect(tipoImpiantoDestinatario('REC', 'R/S', 'R3', 'R', undefined)).toBe('REC')
     expect(tipoImpiantoDestinatario('FRA', 'FRA', 'R3', 'R', undefined)).toBe('FRA')
+    expect(tipoImpiantoDestinatario('FRA', 'STO', 'R3', 'R', undefined)).toBe('FRA')
+    expect(tipoImpiantoDestinatario('ROT', 'REC', 'R3', 'R', undefined)).toBe('ROT')
     expect(tipoImpiantoDestinatario('REC', undefined, 'R3', 'R', undefined)).toBe('REC')
   })
 })

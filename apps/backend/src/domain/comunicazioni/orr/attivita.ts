@@ -95,8 +95,8 @@ export function tipoDetentore(tipoImpiantoProduttore: TipoImpiantoOrr | undefine
  * Tipo impianto del destinatario (`e13`, 3 caratteri).
  * - dichiarante `TRA`: dal codice operazione (`R13`/`D15` -> `STO`, `D` -> `SMA`, `R` -> `REC`), con il
  *   flag `FRA`/`ROT`/`AUT` del movimento che ha la precedenza;
- * - altro dichiarante: il tipo impianto della sede se e' `STO SMA REC FRA ROT AUT`, altrimenti
- *   (`R/S` o mancante) l'attivita' stessa del file.
+ * - `FRA`/`ROT`/`AUT`: l'attivita' stessa; `STO`/`SMA`/`REC`: il tipo impianto della sede se non e'
+ *   `R/S`, altrimenti l'attivita' del file.
  */
 export function tipoImpiantoDestinatario(
   dichiarante: AttivitaOrr,
@@ -106,6 +106,8 @@ export function tipoImpiantoDestinatario(
   flag: DatiOrr['attivita'] | undefined
 ): string {
   if (dichiarante !== 'TRA') {
+    // Frantumatore, rottamatore e autodemolitore arrivano dal flag del movimento: il tipo e' quello.
+    if (dichiarante === 'FRA' || dichiarante === 'ROT' || dichiarante === 'AUT') return dichiarante
     return tipoImpiantoSede && tipoImpiantoSede !== 'R/S' ? tipoImpiantoSede : dichiarante
   }
   if (flag) return flag
