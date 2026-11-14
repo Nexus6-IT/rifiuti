@@ -286,7 +286,7 @@ così all'arrivo di un file reale si cambia in un punto solo.
   - ORR: `tipoImpianto` (`STO`, `SMA`, `REC`, `R/S`, `AUT`, `ROT`, `FRA`), `autorizzazioneImpiantoId`,
     `atecoProduttoreMancanteComeZero` (l'`atec00` di WinWaste), `usaAutorizzazioniPredefinite` (`sino`).
 - **D5. Una sola migration additiva**, nella PR A, per le tre tabelle (B, C, D non toccano lo schema):
-  `20261114100000_comunicazioni_tracciati`. RLS ENABLE + FORCE, policy `isolamento_azienda` e
+  `20261114130000_comunicazioni_tracciati`. RLS ENABLE + FORCE, policy `isolamento_azienda` e
   `sola_lettura`, conteggio `rls-catalogo` 84 → 87, modelli in `prisma-rls.extension.ts`.
 - **D6. Codifica Windows-1252 propria e pura** (`domain/comunicazioni/fisso/codifica-cp1252.ts`): mappa
   dei 27 caratteri di 0x80-0x9F più Latin-1; `rappresentabile(testo)` e `codifica(testo): Buffer`. Prima
@@ -475,7 +475,7 @@ generato (test 4.9a invariati).
 
 ## Task A2: migration e modelli (le tre tabelle)
 
-**Dipende da A1.** **File:** `prisma/migrations/20261114100000_comunicazioni_tracciati/migration.sql`,
+**Dipende da A1.** **File:** `prisma/migrations/20261114130000_comunicazioni_tracciati/migration.sql`,
 `prisma/schema.prisma` (modelli `DatiTracciatoMovimento`, `AnagraficaComunicazioniSede`,
 `ConfigurazioneComunicazioneSede` in coda; relazioni inverse in fondo a `Tenant`, `WasteMovement`,
 `SedeDitta`, `RentriUnitaLocale`; commento di `DatiConsorzioMovimento.dati` aggiornato),
