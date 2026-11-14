@@ -95,7 +95,8 @@ const NON_PASSATE: Record<string, string> = {
   JWT_AUDIENCE: 'default nel codice (wasteflow-api)',
   JWT_ISSUER: 'default nel codice (wasteflow.it)',
   REDIS_DB: 'default 0',
-  TRUST_PROXY: 'default loopback, linklocal, uniquelocal (nginx host + nginx del container frontend); da dichiarare solo se la topologia cambia',
+  TRUST_PROXY:
+    'default loopback, linklocal, uniquelocal (nginx host + nginx del container frontend); da dichiarare solo se la topologia cambia',
   REDIS_MODE: 'Redis standalone in produzione',
   REFDATA_SEED_ON_BOOT: 'default: seed se vuoto',
   SWAGGER_ENABLED: 'spento in produzione di proposito, si accende solo per diagnosi',
