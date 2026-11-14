@@ -1,0 +1,437 @@
+{
+  "formato": "winwaste-rapporto-sorgente/1",
+  "archivio": "WW00012026",
+  "ditta": "0001",
+  "anno": 2026,
+  "estrattoIl": "2026-11-14T00:00:00.000Z",
+  "hashManifest": "fa93fdec2e39c5fb3f9b22c078439ecc6ab52b6b4826a07cbd2e94899895def9",
+  "avvisiStaging": [],
+  "scartiPerCodice": [
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "CER_FORMATO",
+      "conteggio": 1
+    },
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "DTUK_NON_VALIDA",
+      "conteggio": 1
+    },
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "OPER_SCONOSCIUTO",
+      "conteggio": 1
+    },
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "RELAZIONE_MANCANTE",
+      "conteggio": 1
+    },
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "RELAZ_LUNGHEZZA",
+      "conteggio": 1
+    },
+    {
+      "tabella": "FORMULARI",
+      "codice": "C7_SCONOSCIUTO",
+      "conteggio": 1
+    }
+  ],
+  "avvisiPerCodice": [
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "DATR_DTUK_DIVERSE",
+      "conteggio": 1
+    },
+    {
+      "tabella": "MOVIMENTI",
+      "codice": "KGNUM_INCOERENTE",
+      "conteggio": 1
+    }
+  ],
+  "scarti": [
+    {
+      "codice": "RELAZIONE_MANCANTE",
+      "dettaglio": "RELAZ: manca la relazione di carico/scarico richiesta dall OPER",
+      "tabella": "MOVIMENTI",
+      "cod": "7",
+      "riga": 7
+    },
+    {
+      "codice": "DTUK_NON_VALIDA",
+      "dettaglio": "DTUK: attesa una data aaaammgg valida",
+      "tabella": "MOVIMENTI",
+      "cod": "8",
+      "riga": 8
+    },
+    {
+      "codice": "OPER_SCONOSCIUTO",
+      "dettaglio": "OPER: codice non presente nella tabella di §2.4",
+      "tabella": "MOVIMENTI",
+      "cod": "11",
+      "riga": 11
+    },
+    {
+      "codice": "RELAZ_LUNGHEZZA",
+      "dettaglio": "RELAZ: lunghezza non multipla di 34 caratteri",
+      "tabella": "MOVIMENTI",
+      "cod": "16",
+      "riga": 16
+    },
+    {
+      "codice": "CER_FORMATO",
+      "dettaglio": "CER: attese 6 cifre",
+      "tabella": "MOVIMENTI",
+      "cod": "17",
+      "riga": 17
+    },
+    {
+      "codice": "C7_SCONOSCIUTO",
+      "dettaglio": "C7: stato del formulario non previsto",
+      "tabella": "FORMULARI",
+      "cod": "6",
+      "riga": 6
+    }
+  ],
+  "scartiTroncati": false,
+  "confronto1": {
+    "perTabella": [
+      {
+        "tabella": "MOVIMENTI",
+        "presente": true,
+        "righeDichiarate": 18,
+        "righeLette": 18,
+        "record": 13,
+        "scartate": 5,
+        "conAvvisi": 2
+      },
+      {
+        "tabella": "FORMULARI",
+        "presente": true,
+        "righeDichiarate": 6,
+        "righeLette": 6,
+        "record": 5,
+        "scartate": 1,
+        "conAvvisi": 0
+      },
+      {
+        "tabella": "GIACENZE RIFIUTI",
+        "presente": true,
+        "righeDichiarate": 3,
+        "righeLette": 3,
+        "record": 3,
+        "scartate": 0,
+        "conAvvisi": 0
+      },
+      {
+        "tabella": "CAUSALI RIFIUTI",
+        "presente": true,
+        "righeDichiarate": 14,
+        "righeLette": 14,
+        "record": 14,
+        "scartate": 0,
+        "conAvvisi": 0
+      },
+      {
+        "tabella": "REGISTRI RIFIUTI",
+        "presente": true,
+        "righeDichiarate": 4,
+        "righeLette": 4,
+        "record": 4,
+        "scartate": 0,
+        "conAvvisi": 0
+      },
+      {
+        "tabella": "VERSIS",
+        "presente": true,
+        "righeDichiarate": 3,
+        "righeLette": 3,
+        "record": 3,
+        "scartate": 0,
+        "conAvvisi": 0
+      },
+      {
+        "tabella": "RENregistrazioni",
+        "presente": true,
+        "righeDichiarate": 2,
+        "righeLette": 2,
+        "record": 2,
+        "scartate": 0,
+        "conAvvisi": 0
+      }
+    ],
+    "movimentiPerCausale": [
+      {
+        "causale": "01",
+        "attivi": 5,
+        "annullati": 1
+      },
+      {
+        "causale": "05",
+        "attivi": 1,
+        "annullati": 0
+      },
+      {
+        "causale": "10",
+        "attivi": 4,
+        "annullati": 0
+      },
+      {
+        "causale": "18",
+        "attivi": 1,
+        "annullati": 0
+      },
+      {
+        "causale": "50",
+        "attivi": 1,
+        "annullati": 0
+      }
+    ],
+    "movimentiPerOper": [
+      {
+        "oper": "10",
+        "tipo": "CARICO",
+        "dedotta": false,
+        "attivi": 1,
+        "annullati": 0
+      },
+      {
+        "oper": "20",
+        "tipo": "CARICO",
+        "dedotta": false,
+        "attivi": 5,
+        "annullati": 1
+      },
+      {
+        "oper": "21",
+        "tipo": "SCARICO",
+        "dedotta": false,
+        "attivi": 1,
+        "annullati": 0
+      },
+      {
+        "oper": "23",
+        "tipo": "SCARICO",
+        "dedotta": false,
+        "attivi": 4,
+        "annullati": 0
+      },
+      {
+        "oper": "60",
+        "tipo": "SOLO_FATTURAZIONE",
+        "dedotta": false,
+        "attivi": 1,
+        "annullati": 0
+      }
+    ],
+    "formulariPerStato": [
+      {
+        "stato": "ANNULLATO",
+        "conteggio": 1
+      },
+      {
+        "stato": "EMESSO",
+        "conteggio": 1
+      },
+      {
+        "stato": "PORTALE",
+        "conteggio": 1
+      },
+      {
+        "stato": "RICOPIATO",
+        "conteggio": 2
+      }
+    ]
+  },
+  "confronto2": {
+    "righe": [
+      {
+        "anno": 2026,
+        "cer": "(assente)",
+        "tipo": "SOLO_FATTURAZIONE",
+        "movimenti": 1,
+        "kgnum": 0,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "13 02 05*",
+        "tipo": "CARICO",
+        "movimenti": 1,
+        "kgnum": 1800,
+        "mcnum": 2,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "15 01 02",
+        "tipo": "CARICO",
+        "movimenti": 3,
+        "kgnum": 2120,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "15 01 02",
+        "tipo": "SCARICO",
+        "movimenti": 1,
+        "kgnum": 400,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "15 01 10*",
+        "tipo": "CARICO",
+        "movimenti": 1,
+        "kgnum": 1000,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "15 01 10*",
+        "tipo": "SCARICO",
+        "movimenti": 4,
+        "kgnum": 1050,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      },
+      {
+        "anno": 2026,
+        "cer": "17 05 04",
+        "tipo": "CARICO",
+        "movimenti": 1,
+        "kgnum": 900,
+        "mcnum": 0,
+        "senzaKgnum": 0
+      }
+    ]
+  },
+  "confronto3": {
+    "carichiEsaminati": 6,
+    "sogliaKg": 0.001,
+    "differenze": [
+      {
+        "cod": 2,
+        "cer": "15 01 02",
+        "kgnum": 2000,
+        "giascar": 450,
+        "scaricatoDaRelaz": 500,
+        "differenza": -50
+      }
+    ],
+    "carichiCitatiInesistenti": [],
+    "scaricatoDaGiacenzeIniziali": {
+      "G0": 0,
+      "G1": 100,
+      "G2": 0,
+      "G3": 0,
+      "G4": 0,
+      "G5": 0
+    },
+    "scaricatoDaAnnoPrecedente": 50,
+    "giacenzaAlTaglio": [
+      {
+        "cer": "13 02 05*",
+        "classe": "R",
+        "posizione": "001",
+        "magazzino": "001",
+        "carichi": 1,
+        "residuoDaRelaz": 1800,
+        "residuoDaGiascar": 1800,
+        "differenza": 0
+      },
+      {
+        "cer": "15 01 02",
+        "classe": "R",
+        "posizione": "001",
+        "magazzino": "001",
+        "carichi": 2,
+        "residuoDaRelaz": 1550,
+        "residuoDaGiascar": 1600,
+        "differenza": 50
+      },
+      {
+        "cer": "15 01 02",
+        "classe": "T",
+        "posizione": "001",
+        "magazzino": "001",
+        "carichi": 1,
+        "residuoDaRelaz": 70,
+        "residuoDaGiascar": 70,
+        "differenza": 0
+      },
+      {
+        "cer": "15 01 10*",
+        "classe": "R",
+        "posizione": "001",
+        "magazzino": "001",
+        "carichi": 1,
+        "residuoDaRelaz": 200,
+        "residuoDaGiascar": 200,
+        "differenza": 0
+      },
+      {
+        "cer": "17 05 04",
+        "classe": "R",
+        "posizione": "001",
+        "magazzino": "001",
+        "carichi": 1,
+        "residuoDaRelaz": 900,
+        "residuoDaGiascar": 900,
+        "differenza": 0
+      }
+    ]
+  },
+  "confronto4": {
+    "registri": [
+      {
+        "registro": "0002",
+        "anno": 2026,
+        "conteggio": 9,
+        "primo": 1,
+        "ultimo": 11,
+        "buchi": [
+          5,
+          7
+        ],
+        "buchiTotali": 2,
+        "duplicati": [],
+        "ultimoStampato": 7
+      }
+    ],
+    "firPerSerie": [
+      {
+        "serie": "XRIF",
+        "anno2": "26",
+        "conteggio": 4,
+        "primo": 1,
+        "ultimo": 4
+      }
+    ]
+  },
+  "confronto5": {
+    "versis": {
+      "presente": true,
+      "righe": 3,
+      "perPrefisso": {
+        "HUBRW": 1,
+        "XRENTRI": 2
+      },
+      "righeSensibili": 1
+    },
+    "renRegistrazioni": {
+      "presente": true,
+      "righe": 2,
+      "inviate": 1,
+      "conIdRentri": 1,
+      "inviateSenzaIdRentri": 0,
+      "movimentiRiferitiInesistenti": 0
+    }
+  },
+  "corrispondenzeDedotte": []
+}
