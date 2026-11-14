@@ -45,13 +45,17 @@ describe('decodificaDecimaleSql', () => {
     ['-2.5', -2.5],
     ['7', 7],
     ['0.000000', 0],
+    ['0', 0],
+    ['1.2345678901234567E+3', 1234.5678901234567],
+    ['-5E-2', -0.05],
+    ['1e3', 1000],
   ])('%s', (t, atteso) => {
     expect(decodificaDecimaleSql(t)).toEqual({ ok: true, valore: atteso })
   })
   it.each([[''], [null]])('vuoto (%p)', v => {
     expect(decodificaDecimaleSql(v)).toEqual({ ok: true, valore: null })
   })
-  it.each([['1,5'], ['1.2.3'], ['abc']])('scarta %s', t => {
+  it.each([['1,5'], ['1.2.3'], ['abc'], ['1E'], ['E5'], ['1e+'], ['1.5e2.0']])('scarta %s', t => {
     expect(decodificaDecimaleSql(t)).toMatchObject({ ok: false, codice: 'DECIMALE_SQL' })
   })
 })

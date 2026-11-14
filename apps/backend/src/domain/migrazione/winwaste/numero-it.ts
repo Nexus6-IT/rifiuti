@@ -14,7 +14,8 @@ import { errore, Esito, ok } from './risultato'
  */
 const IT_CON_VIRGOLA = /^-?(\d+|\d{1,3}(\.\d{3})+),\d+$/
 const IT_INTERO = /^-?\d+$/
-const SQL_DECIMALE = /^-?\d+(\.\d+)?$/
+/** Accetta anche la notazione scientifica di `CONVERT` stile 3 (`1.23E+3`). */
+const SQL_DECIMALE = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/
 
 function normalizza(n: number): number {
   return n === 0 ? 0 : n // evita -0

@@ -400,6 +400,18 @@ describe('parsaCausaliRifiuti / parsaRegistriRifiuti / parsaVersis / parsaRenReg
     expect(JSON.stringify(r)).not.toContain('SEGRETO')
   })
 
+  it('VERSIS: lo scarto COD_DUPLICATO di FIRMARENTRI<CF> non espone il codice fiscale', async () => {
+    const v = (cod: string): Valori => ({ COD: cod })
+    const r = await parsaVersis(
+      sorgenteInMemoria('VERSIS', [
+        v('FIRMARENTRIRSSMRA80A01H501U'),
+        v(' FIRMARENTRIRSSMRA80A01H501U'),
+      ])
+    )
+    expect(r.scarti.map(s => [s.codice, s.cod])).toEqual([['COD_DUPLICATO', 'FIRMARENTRI']])
+    expect(JSON.stringify(r)).not.toContain('RSSMRA80A01H501U')
+  })
+
   it('VERSIS: FIRMARENTRI<CF> e prefissi hub sono sensibili e il prefisso e un insieme chiuso (nessun frammento di CF)', async () => {
     const v = (cod: string): Valori => ({ COD: cod })
     const r = await parsaVersis(

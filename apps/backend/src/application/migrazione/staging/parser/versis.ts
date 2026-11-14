@@ -38,18 +38,19 @@ export async function parsaVersis(sorgente: SorgenteRighe): Promise<EsitoParser<
     if (cod === '') {
       return { cod, scarto: { codice: 'COD_VUOTO', dettaglio: 'COD: obbligatorio' }, avvisi: [] }
     }
+    const prefisso = prefissoVersis(cod)
+    const sensibile = prefisso !== '' && !NON_SENSIBILI.includes(prefisso)
+    // Una chiave sensibile puo' contenere un codice fiscale: si conserva solo il prefisso
+    // (anche nel rapporto degli scarti).
+    const codNoto = sensibile ? prefisso : cod
     if (viste.has(cod)) {
       return {
-        cod,
+        cod: codNoto,
         scarto: { codice: 'COD_DUPLICATO', dettaglio: 'COD gia presente nella tabella' },
         avvisi: [],
       }
     }
     viste.add(cod)
-    const prefisso = prefissoVersis(cod)
-    const sensibile = prefisso !== '' && !NON_SENSIBILI.includes(prefisso)
-    // Una chiave sensibile puo' contenere un codice fiscale: si conserva solo il prefisso.
-    const codNoto = sensibile ? prefisso : cod
     return {
       cod: codNoto,
       avvisi: [],
