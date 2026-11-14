@@ -247,6 +247,7 @@ export class PreparatoreConou implements PreparatoreTracciato<DatiFileConou, Con
 
       const riga: RigaConou = {
         riferimento: m.numero,
+        movimentoId: m.id,
         cfDetentore: cf,
         cap: raccolta && comuneRaccolta?.cap ? comuneRaccolta.cap : (sede?.cap ?? ''),
         partitaIva: piva,

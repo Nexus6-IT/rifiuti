@@ -400,6 +400,40 @@ describe('Preparatori CONOU e COBAT — Postgres reale, ruolo wasteflow_app', ()
     expect(g2.hashDati).not.toBe(g.hashDati)
   })
 
+  it('COBAT: un carattere fuori Windows-1252 nella descrizione campagna -> avviso bloccante collegato al movimento, nessun file', async () => {
+    const az = await nuovaAzienda('B3')
+    const c = await creaControparti(az)
+    const firId = await creaFir(az, c, {
+      numero: 'ABC127/26',
+      destinatarioNoi: true,
+      cer: '16 06 01*',
+    })
+    const m = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '16 06 01*',
+      quantita: 1250,
+      unita: 'KG',
+      giorno: '2026-05-10',
+      firId,
+      operationCode: 'R13',
+    })
+    await nel(az, () =>
+      configurazioni.imposta(az.tenantId, az.unitaLocaleId, 'COBAT', {
+        campagnaPredefinita: { codice: '01', descrizione: 'Prova \u{1F600}' },
+        pgfPerCer: { '160601': 'A' },
+      })
+    )
+    const a = await nel(az, () => servizio.anteprima(az.tenantId, richiesta(az, 'COBAT')))
+    // Il validatore del record lo intercetta per primo; la rete del servizio generico copre il resto.
+    const avviso = a.avvisi.find(x => x.bloccante && /Windows-1252/.test(x.messaggio))
+    expect(avviso).toBeDefined()
+    expect(avviso?.movimentoIds).toContain(m.id)
+    await expect(
+      nel(az, () => servizio.genera(az.tenantId, az.utenteId, richiesta(az, 'COBAT')))
+    ).rejects.toBeInstanceOf(ComunicazioneConBloccantiError)
+  })
+
   it('COBAT: senza regione/ISTAT del comune della controparte e bloccante con il link alla sede', async () => {
     const az = await nuovaAzienda('B2')
     const c = await creaControparti(az)

@@ -204,6 +204,7 @@ describe('PreparatoreCobat', () => {
     expect(bloccanti(p)).toEqual([])
     expect(p.dati.record).toHaveLength(1)
     const r = p.dati.record[0]
+    expect(r.movimentoId).toBe('m1')
     expect(r).toMatchObject({
       dataRegistrazione: '2026-04-02',
       progressivo: '000012',

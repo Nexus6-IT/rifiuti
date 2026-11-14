@@ -395,6 +395,7 @@ describe('PreparatoreConou', () => {
     )
     expect(p.dati.righe.map(r => r.protocollo)).toEqual([9, 17])
     expect(p.dati.righe.map(r => r.riferimento)).toEqual(['9/2026', '17/2026'])
+    expect(p.dati.righe.map(r => r.movimentoId)).toEqual(['m2', 'm1'])
   })
 
   it('stessi dati, stesso risultato (nessuna dipendenza dall ordine delle sedi)', async () => {

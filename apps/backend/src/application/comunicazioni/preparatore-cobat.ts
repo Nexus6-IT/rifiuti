@@ -437,6 +437,7 @@ export class PreparatoreCobat implements PreparatoreTracciato<DatiFileCobat, Con
 
       const rec: RecordCobat = {
         riferimento: m.numero,
+        movimentoId: m.id,
         dataRegistrazione: giornoItaliano(m.movementDate),
         progressivo: progressivi[i],
         codazi: codazi?.codice ?? '',

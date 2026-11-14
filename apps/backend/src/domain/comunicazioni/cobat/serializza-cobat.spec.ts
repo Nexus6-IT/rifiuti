@@ -68,6 +68,7 @@ const noiUl = ul({
 
 const base: RecordCobat = {
   riferimento: '12/2026',
+  movimentoId: 'mov-12',
   dataRegistrazione: '2026-04-02',
   progressivo: '000012',
   codazi: '09876543210',
@@ -129,6 +130,7 @@ const base: RecordCobat = {
 const secondo: RecordCobat = {
   ...base,
   riferimento: '13/2026',
+  movimentoId: 'mov-13',
   dataRegistrazione: '2026-04-15',
   progressivo: '000013',
   codazi: '11122233344',

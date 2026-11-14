@@ -6,6 +6,8 @@
 export interface RigaConou {
   /** Movimento di origine (per i messaggi di errore); non finisce nel file. */
   riferimento: string
+  /** Movimento di origine: collega al movimento gli avvisi sui campi (es. caratteri non rappresentabili). */
+  movimentoId: string
   cfDetentore: string
   cap: string
   partitaIva: string

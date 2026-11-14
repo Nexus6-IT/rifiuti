@@ -11,6 +11,7 @@ const campi: Array<{ campo: string; offset: number; lunghezza: number }> = JSON.
 
 const base: RigaConou = {
   riferimento: '1/2026',
+  movimentoId: 'mov-1',
   cfDetentore: '01234567890',
   cap: '24100',
   partitaIva: '01234567890',
@@ -41,6 +42,7 @@ const righe: RigaConou[] = [
   {
     ...base,
     riferimento: '2/2026',
+    movimentoId: 'mov-2',
     cfDetentore: '10987654321',
     cap: '20100',
     partitaIva: '10987654321',
@@ -61,6 +63,7 @@ const righe: RigaConou[] = [
   {
     ...base,
     riferimento: '3/2026',
+    movimentoId: 'mov-3',
     cfDetentore: '02345678901',
     cap: '25121',
     partitaIva: '02345678901',
