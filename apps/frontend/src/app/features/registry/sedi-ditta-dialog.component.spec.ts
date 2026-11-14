@@ -3,6 +3,8 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { MessageService } from 'primeng/api'
 import { SediDittaDialogComponent } from './sedi-ditta-dialog.component'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { DatiComunicazioniService } from '../comunicazioni/dati-comunicazioni.service'
 import { RegistryService } from './registry.service'
 import { Ditta, SedeDitta } from '../../shared/models/registry.model'
 
@@ -46,6 +48,7 @@ describe('SediDittaDialogComponent', () => {
   let fixture: ComponentFixture<SediDittaDialogComponent>
   let component: SediDittaDialogComponent
   let registry: jasmine.SpyObj<RegistryService>
+  let moduliAttivi: string[]
   /** Il dialog aperto (PrimeNG lo monta nel body): le query restano dentro di lui, non su tutto il documento. */
   const dialog = (): ParentNode => document.querySelector('.p-dialog') ?? document.body
   const q = <T extends HTMLElement>(sel: string) => dialog().querySelector(sel) as T | null
@@ -75,6 +78,7 @@ describe('SediDittaDialogComponent', () => {
   }
 
   beforeEach(async () => {
+    moduliAttivi = []
     registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
       'getDitta',
       'creaSede',
@@ -92,7 +96,25 @@ describe('SediDittaDialogComponent', () => {
     })
     await TestBed.configureTestingModule({
       imports: [SediDittaDialogComponent, NoopAnimationsModule],
-      providers: [{ provide: RegistryService, useValue: registry }, MessageService],
+      providers: [
+        { provide: RegistryService, useValue: registry },
+        MessageService,
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => moduliAttivi.includes(k) },
+        },
+        {
+          provide: DatiComunicazioniService,
+          useValue: {
+            anagraficaSede: () =>
+              of({
+                anagrafica: { sedeDittaId: 's2', eComune: false, esclusaOrr: false },
+                istat: { codice: null, motivo: 'COMUNE_NON_TROVATO' },
+                puoModificare: false,
+              }),
+          },
+        },
+      ],
     }).compileComponents()
     fixture = TestBed.createComponent(SediDittaDialogComponent)
     component = fixture.componentInstance
@@ -197,6 +219,31 @@ describe('SediDittaDialogComponent', () => {
       's2',
       jasmine.objectContaining({ via: 'Via Milano', civico: '11' })
     )
+  })
+
+  it('modifica con il modulo comunicazioni attivo: mostra i dati per i consorzi; senza modulo o in aggiunta no', async () => {
+    moduliAttivi = ['comunicazioni']
+    await apri()
+    q<HTMLButtonElement>('[data-testid="sede-modifica-s2"] button')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('app-anagrafica-sede')).not.toBeNull()
+    // In aggiunta la sede non esiste ancora: nessun pannello.
+    q<HTMLButtonElement>('[data-testid="sede-annulla"] button')!.click()
+    fixture.detectChanges()
+    q<HTMLButtonElement>('[data-testid="sede-aggiungi"] button')!.click()
+    fixture.detectChanges()
+    expect(q('app-anagrafica-sede')).toBeNull()
+  })
+
+  it('modifica senza il modulo comunicazioni: nessun pannello per i consorzi', async () => {
+    await apri()
+    q<HTMLButtonElement>('[data-testid="sede-modifica-s2"] button')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('app-anagrafica-sede')).toBeNull()
   })
 
   it("modifica: svuotando l'email di una sede esistente il PUT invia email: null", async () => {

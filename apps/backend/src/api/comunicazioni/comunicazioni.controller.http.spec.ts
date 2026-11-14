@@ -14,6 +14,10 @@ import {
   ComunicazioneConBloccantiError,
   ComunicazioneNonTrovataError,
 } from '../../application/comunicazioni/comunicazioni-orso.port'
+import {
+  COMUNICAZIONI_TRACCIATO_SERVICE,
+  ConfermaVerificaRichiestaError,
+} from '../../application/comunicazioni/comunicazioni-tracciato.port'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -28,6 +32,7 @@ describe('ComunicazioniController - catena HTTP', () => {
   let app: INestApplication
   let ruolo: string
   let orso: Record<string, jest.Mock>
+  let tracciato: Record<string, jest.Mock>
   let ruoloEffettivo: jest.Mock
   let moduliAttivi: jest.Mock
 
@@ -37,7 +42,19 @@ describe('ComunicazioniController - catena HTTP', () => {
       anteprima: jest.fn().mockResolvedValue({ anno: 2026, mesi: [], bloccanti: false }),
       genera: jest.fn().mockResolvedValue({ id: ID, stato: 'GENERATA' }),
       elenca: jest.fn().mockResolvedValue([]),
-      file: jest.fn().mockResolvedValue({ nomeFile: 'Orso 2026.xml', xml: '<ImpiantoMesi/>' }),
+      segnaInviata: jest.fn().mockResolvedValue({ id: ID, stato: 'INVIATA' }),
+    }
+    // `file`, `manifest` e `segna inviata` degli altri tracciati passano dal servizio generico.
+    tracciato = {
+      file: jest.fn().mockResolvedValue({
+        nomeFile: 'Orso 2026.xml',
+        contenuto: Buffer.from('<ImpiantoMesi/>', 'utf8'),
+        contentType: 'application/xml; charset=utf-8',
+      }),
+      manifest: jest
+        .fn()
+        .mockResolvedValue({ nomeFile: 'Movi.txt.manifest.txt', testo: 'MANIFEST' }),
+      consorzioDi: jest.fn().mockResolvedValue('ORSO'),
       segnaInviata: jest.fn().mockResolvedValue({ id: ID, stato: 'INVIATA' }),
     }
     ruoloEffettivo = jest.fn(async () => ruolo)
@@ -52,6 +69,7 @@ describe('ComunicazioniController - catena HTTP', () => {
       controllers: [ComunicazioniController],
       providers: [
         { provide: COMUNICAZIONI_ORSO_SERVICE, useValue: orso },
+        { provide: COMUNICAZIONI_TRACCIATO_SERVICE, useValue: tracciato },
         { provide: RuoloEffettivoService, useValue: { ruoloEffettivo } },
         { provide: ModuliAttiviService, useValue: { moduliAttivi } },
         { provide: APP_INTERCEPTOR, useClass: ModuloAttivoInterceptor },
@@ -174,21 +192,84 @@ describe('ComunicazioniController - catena HTTP', () => {
     const r = await request(app.getHttpServer()).get(`/comunicazioni/${ID}/file`).expect(200)
     expect(r.headers['content-type']).toContain('application/xml')
     expect(r.headers['content-disposition']).toMatch(/^attachment; filename="Orso 2026\.xml"/)
+    expect(r.headers['content-type']).toBe('application/xml; charset=utf-8')
     expect(r.text).toBe('<ImpiantoMesi/>')
+    expect(tracciato.file).toHaveBeenCalledWith(TENANT_TOKEN, ID)
     ruolo = 'VIEWER'
     await request(app.getHttpServer()).get(`/comunicazioni/${ID}/file`).expect(200)
   })
 
   it('file e inviata: id non UUID -> 400; comunicazione inesistente -> 404', async () => {
     await request(app.getHttpServer()).get('/comunicazioni/xx/file').expect(400)
-    orso.segnaInviata.mockRejectedValue(new ComunicazioneNonTrovataError())
+    tracciato.consorzioDi.mockRejectedValue(new ComunicazioneNonTrovataError())
     const r = await request(app.getHttpServer()).post(`/comunicazioni/${ID}/inviata`).expect(404)
     expect(JSON.stringify(r.body)).toContain('COMUNICAZIONE_NON_TROVATA')
   })
 
-  it('inviata: passa tenant, utente e id', async () => {
+  it('inviata: O.R.SO. passa dal suo servizio con tenant, utente e id', async () => {
     await request(app.getHttpServer()).post(`/comunicazioni/${ID}/inviata`).expect(201)
     expect(orso.segnaInviata).toHaveBeenCalledWith(TENANT_TOKEN, UTENTE, ID)
+    expect(tracciato.segnaInviata).not.toHaveBeenCalled()
+  })
+
+  it('inviata: gli altri tracciati passano dal servizio generico, con la conferma di verifica', async () => {
+    tracciato.consorzioDi.mockResolvedValue('CONOU')
+    await request(app.getHttpServer())
+      .post(`/comunicazioni/${ID}/inviata`)
+      .send({ confermaVerifica: true })
+      .expect(201)
+    expect(tracciato.segnaInviata).toHaveBeenCalledWith(TENANT_TOKEN, UTENTE, ID, true)
+    expect(orso.segnaInviata).not.toHaveBeenCalled()
+    await request(app.getHttpServer()).post(`/comunicazioni/${ID}/inviata`).expect(201)
+    expect(tracciato.segnaInviata).toHaveBeenLastCalledWith(TENANT_TOKEN, UTENTE, ID, undefined)
+  })
+
+  it('inviata: senza la conferma richiesta -> 400 CONFERMA_VERIFICA_RICHIESTA; conferma non booleana -> 400', async () => {
+    tracciato.consorzioDi.mockResolvedValue('CONOU')
+    tracciato.segnaInviata.mockRejectedValue(new ConfermaVerificaRichiestaError())
+    const r = await request(app.getHttpServer()).post(`/comunicazioni/${ID}/inviata`).expect(400)
+    expect(JSON.stringify(r.body)).toContain('CONFERMA_VERIFICA_RICHIESTA')
+    await request(app.getHttpServer())
+      .post(`/comunicazioni/${ID}/inviata`)
+      .send({ confermaVerifica: 'si' })
+      .expect(400)
+  })
+
+  it('inviata: ruolo di sola lettura -> 403, nessun servizio chiamato', async () => {
+    ruolo = 'VIEWER'
+    await request(app.getHttpServer()).post(`/comunicazioni/${ID}/inviata`).expect(403)
+    expect(tracciato.consorzioDi).not.toHaveBeenCalled()
+    expect(orso.segnaInviata).not.toHaveBeenCalled()
+  })
+
+  it('file con un tracciato in Windows-1252: byte e Content-Type dal tracciato', async () => {
+    tracciato.file.mockResolvedValue({
+      nomeFile: 'Movi.txt',
+      contenuto: Buffer.from([0x80, 0x20, 0xe0]),
+      contentType: 'text/plain; charset=windows-1252',
+    })
+    const r = await request(app.getHttpServer())
+      .get(`/comunicazioni/${ID}/file`)
+      .buffer(true)
+      .parse((res, cb) => {
+        const pezzi: Buffer[] = []
+        res.on('data', (c: Buffer) => pezzi.push(c))
+        res.on('end', () => cb(null, Buffer.concat(pezzi)))
+      })
+      .expect(200)
+    expect(r.headers['content-type']).toBe('text/plain; charset=windows-1252')
+    expect([...(r.body as Buffer)]).toEqual([0x80, 0x20, 0xe0])
+  })
+
+  it('manifest: testo UTF-8 scaricabile, lettura per ogni ruolo', async () => {
+    ruolo = 'VIEWER'
+    const r = await request(app.getHttpServer()).get(`/comunicazioni/${ID}/manifest`).expect(200)
+    expect(r.headers['content-type']).toBe('text/plain; charset=utf-8')
+    expect(r.headers['content-disposition']).toMatch(
+      /^attachment; filename="Movi\.txt\.manifest\.txt"/
+    )
+    expect(r.text).toBe('MANIFEST')
+    expect(tracciato.manifest).toHaveBeenCalledWith(TENANT_TOKEN, ID)
   })
 
   it('senza il modulo comunicazioni: 403 MODULO_NON_ATTIVO su ogni rotta, servizio non chiamato', async () => {
@@ -199,10 +280,13 @@ describe('ComunicazioniController - catena HTTP', () => {
       await request(server).post('/comunicazioni/orso').send({ unitaLocaleId: SEDE, anno: 2026 }),
       await request(server).get('/comunicazioni'),
       await request(server).get(`/comunicazioni/${ID}/file`),
+      await request(server).get(`/comunicazioni/${ID}/manifest`),
       await request(server).post(`/comunicazioni/${ID}/inviata`),
     ]
-    expect(risposte.map(r => r.status)).toEqual([403, 403, 403, 403, 403])
+    expect(risposte.map(r => r.status)).toEqual([403, 403, 403, 403, 403, 403])
     expect(JSON.stringify(risposte[0].body)).toContain('MODULO_NON_ATTIVO')
-    for (const m of Object.values(orso)) expect(m).not.toHaveBeenCalled()
+    for (const m of [...Object.values(orso), ...Object.values(tracciato)]) {
+      expect(m).not.toHaveBeenCalled()
+    }
   })
 })

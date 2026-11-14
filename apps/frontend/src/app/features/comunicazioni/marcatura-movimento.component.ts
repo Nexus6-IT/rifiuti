@@ -14,6 +14,7 @@ import { ButtonModule } from 'primeng/button'
 import { ToastService } from '../../core/services/toast.service'
 import { CONSORZI, Consorzio, MarcaturaMovimento, etichettaConsorzio } from './consorzi.model'
 import { ConsorziService } from './consorzi.service'
+import { DatiMovimentoComponent } from './dati-movimento.component'
 
 interface RigaConsorzio {
   consorzio: Consorzio
@@ -35,7 +36,7 @@ interface RigaConsorzio {
 @Component({
   selector: 'app-marcatura-movimento',
   standalone: true,
-  imports: [CommonModule, ButtonModule],
+  imports: [CommonModule, ButtonModule, DatiMovimentoComponent],
   template: `
     <section class="marcatura-mov" data-testid="marcatura-movimento" aria-label="Consorzi">
       <h3 class="section-title">Consorzi</h3>
@@ -102,6 +103,12 @@ interface RigaConsorzio {
           </ng-container>
         </li>
       </ul>
+      <!-- Dati del tracciato (4.9c/4.9d): solo per i consorzi per cui il movimento e' marcato. -->
+      <app-dati-movimento
+        *ngFor="let t of tracciatiMarcati()"
+        [movimentoId]="movimentoId"
+        [tracciato]="t"
+      ></app-dati-movimento>
     </section>
   `,
 })
@@ -161,6 +168,14 @@ export class MarcaturaMovimentoComponent implements OnChanges {
           this.puoModificare.set(false)
         },
       })
+  }
+
+  /** Tracciati con dati per movimento (CONOU, COBAT) per cui il movimento risulta marcato. */
+  tracciatiMarcati(): Array<'CONOU' | 'COBAT'> {
+    return this.righe()
+      .filter(r => r.stato === 'REGOLA' || r.stato === 'MANUALE')
+      .map(r => r.consorzio)
+      .filter((c): c is 'CONOU' | 'COBAT' => c === 'CONOU' || c === 'COBAT')
   }
 
   etichettaTogli(r: RigaConsorzio): string {

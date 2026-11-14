@@ -4,6 +4,7 @@ import { MarcaturaMovimentoComponent } from './marcatura-movimento.component'
 import { ConsorziService } from './consorzi.service'
 import { MarcaturaMovimento } from './consorzi.model'
 import { ToastService } from '../../core/services/toast.service'
+import { DatiComunicazioniService } from './dati-comunicazioni.service'
 
 const vuoto: MarcaturaMovimento = { marcature: [], esclusi: [] }
 
@@ -32,6 +33,12 @@ describe('MarcaturaMovimentoComponent', () => {
       providers: [
         { provide: ConsorziService, useValue: svc },
         { provide: ToastService, useValue: toast },
+        {
+          provide: DatiComunicazioniService,
+          useValue: {
+            datiMovimento: () => of({ dati: null, puoModificare: false }),
+          },
+        },
       ],
     })
     fixture = TestBed.createComponent(MarcaturaMovimentoComponent)
@@ -121,6 +128,10 @@ describe('MarcaturaMovimentoComponent', () => {
       providers: [
         { provide: ConsorziService, useValue: svc },
         { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },
+        {
+          provide: DatiComunicazioniService,
+          useValue: { datiMovimento: () => of({ dati: null, puoModificare: false }) },
+        },
       ],
     })
     fixture = TestBed.createComponent(MarcaturaMovimentoComponent)
@@ -205,5 +216,23 @@ describe('MarcaturaMovimentoComponent', () => {
       fixture.detectChanges()
       expect(q('marcatura-riprova')).toBeNull()
     })
+  })
+
+  it('mostra i dati del tracciato solo per i consorzi con dati per movimento in cui il movimento e marcato', () => {
+    setup(false, {
+      marcature: [
+        { consorzio: 'CONOU', origine: 'REGOLA' },
+        { consorzio: 'COREPLA', origine: 'MANUALE' },
+      ],
+      esclusi: ['COBAT'],
+    })
+    const pannelli = fixture.nativeElement.querySelectorAll('app-dati-movimento')
+    expect(pannelli.length).toBe(1)
+    expect(fixture.componentInstance.tracciatiMarcati()).toEqual(['CONOU'])
+  })
+
+  it('nessun pannello dei dati se il movimento non e marcato CONOU o COBAT', () => {
+    setup(false)
+    expect(fixture.nativeElement.querySelectorAll('app-dati-movimento').length).toBe(0)
   })
 })
