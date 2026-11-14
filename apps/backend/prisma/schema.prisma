@@ -566,6 +566,13 @@ model FIR {
   // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
   // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
 
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "firs_lotto_import_fkey")
+
   @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
@@ -1345,6 +1352,13 @@ model Produttore {
 
   ritiri Ritiro[]
 
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_lotto_import_fkey")
+
   @@unique([tenantId, dittaId], map: "produttori_tenant_id_ditta_id_key")
   @@unique([id, tenantId], map: "produttori_id_tenant_id_key")
   @@index([tenantId])
@@ -1391,6 +1405,13 @@ model Trasportatore {
   automezzi Automezzo[]
   ritiri    Ritiro[]
 
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_lotto_import_fkey")
+
   @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
   @@unique([id, tenantId], map: "trasportatori_id_tenant_id_key")
   @@index([tenantId])
@@ -1435,6 +1456,13 @@ model Destinatario {
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
 
   ritiri Ritiro[]
+
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_lotto_import_fkey")
 
   @@unique([tenantId, dittaId], map: "destinatari_tenant_id_ditta_id_key")
   @@unique([id, tenantId], map: "destinatari_id_tenant_id_key")
@@ -2051,6 +2079,13 @@ model WasteMovement {
   legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
   legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
 
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_lotto_import_fkey")
+
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
   @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
@@ -2559,6 +2594,13 @@ model Ditta {
   clienti       Cliente[]
   agenti        Agente[]
 
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ditte_lotto_import_fkey")
+
   @@unique([id, tenantId], map: "ditte_id_tenant_id_key")
   @@unique([tenantId, partitaIva], map: "ditte_tenant_id_partita_iva_key")
   @@unique([tenantId, codiceFiscale], map: "ditte_tenant_id_codice_fiscale_key")
@@ -2598,6 +2640,13 @@ model SedeDitta {
   contrattiCliente ContrattoCliente[]
   ritiriProduttore   Ritiro[] @relation("RitiroProduttoreSede")
   ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
+
+  /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "sedi_ditte_lotto_import_fkey")
 
   @@unique([id, tenantId], map: "sedi_ditte_id_tenant_id_key")
   @@unique([id, dittaId, tenantId], map: "sedi_ditte_id_ditta_id_tenant_id_key")
@@ -4676,6 +4725,15 @@ model LottoImport {
   updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Fase 3 (3.1): record che portano la provenienza di questo lotto.
+  movimentiImportati       WasteMovement[]
+  firImportati             FIR[]
+  ditteImportate           Ditta[]
+  sediImportate            SedeDitta[]
+  produttoriImportati      Produttore[]
+  trasportatoriImportati   Trasportatore[]
+  destinatariImportati     Destinatario[]
 
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
