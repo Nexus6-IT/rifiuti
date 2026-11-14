@@ -1,0 +1,122 @@
+[
+  {
+    "campo": "cfDetentore",
+    "offset": 1,
+    "lunghezza": 16
+  },
+  {
+    "campo": "cap",
+    "offset": 17,
+    "lunghezza": 5
+  },
+  {
+    "campo": "partitaIva",
+    "offset": 22,
+    "lunghezza": 11
+  },
+  {
+    "campo": "ragioneSociale",
+    "offset": 33,
+    "lunghezza": 60
+  },
+  {
+    "campo": "indirizzo",
+    "offset": 93,
+    "lunghezza": 40
+  },
+  {
+    "campo": "civico",
+    "offset": 133,
+    "lunghezza": 7
+  },
+  {
+    "campo": "provincia",
+    "offset": 140,
+    "lunghezza": 2
+  },
+  {
+    "campo": "comune",
+    "offset": 142,
+    "lunghezza": 40
+  },
+  {
+    "campo": "ateco",
+    "offset": 182,
+    "lunghezza": 8
+  },
+  {
+    "campo": "istat",
+    "offset": 190,
+    "lunghezza": 9
+  },
+  {
+    "campo": "codiceDeposito",
+    "offset": 199,
+    "lunghezza": 10
+  },
+  {
+    "campo": "dataRegistrazione",
+    "offset": 209,
+    "lunghezza": 8
+  },
+  {
+    "campo": "serie",
+    "offset": 217,
+    "lunghezza": 6
+  },
+  {
+    "campo": "numero",
+    "offset": 223,
+    "lunghezza": 10
+  },
+  {
+    "campo": "anno",
+    "offset": 233,
+    "lunghezza": 4
+  },
+  {
+    "campo": "dataFormulario",
+    "offset": 237,
+    "lunghezza": 8
+  },
+  {
+    "campo": "cfTrasportatore",
+    "offset": 245,
+    "lunghezza": 16
+  },
+  {
+    "campo": "targa",
+    "offset": 261,
+    "lunghezza": 8
+  },
+  {
+    "campo": "cer",
+    "offset": 269,
+    "lunghezza": 6
+  },
+  {
+    "campo": "percentualeX100",
+    "offset": 275,
+    "lunghezza": 4
+  },
+  {
+    "campo": "protocollo",
+    "offset": 279,
+    "lunghezza": 8
+  },
+  {
+    "campo": "quantitaKg",
+    "offset": 287,
+    "lunghezza": 11
+  },
+  {
+    "campo": "prodotto",
+    "offset": 298,
+    "lunghezza": 1
+  },
+  {
+    "campo": "causale",
+    "offset": 299,
+    "lunghezza": 1
+  }
+]
