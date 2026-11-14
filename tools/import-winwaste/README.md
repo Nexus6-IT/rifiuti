@@ -22,9 +22,10 @@ nel backend. **Non scrive mai nel database sorgente e non tocca il database di W
 - **Testo identico a quello del server**: ogni colonna e' convertita in `NVARCHAR` sul server
   (nessun numero JavaScript, niente dipendenza dalla collation `Latin1_General_CI_AS`); `NULL`
   resta `null`, `''` resta `''`. Campi `text` con a capo, tabulazioni, `§` e accenti passano intatti.
-- **Segreti**: da `VERSIS` le colonne `C1..C5` delle righe `HUBRW:*` e `FIRMARENTRI*` (host, utente,
-  password cifrata, licenza dell'hub) non vengono lette (`CASE` nella `SELECT`) e vengono comunque
-  svuotate in Node.
+- **Segreti**: da `VERSIS` le colonne `C1..C5` non vengono lette per nessuna riga (la `SELECT` le
+  sostituisce con `N''`) e vengono comunque svuotate in Node.
+- **Permessi e destinazione**: cartella 0700, file 0600; una cartella non vuota e' rifiutata, `--forza`
+  la svuota. Cifrare la cartella intera (`tar | age`) prima di spostarla.
 - **Ripetibile**: `ORDER BY` sulla chiave primaria; due estrazioni identiche danno file identici.
 - **Destinazione fuori dal repository**: rifiutata se sta dentro un repo git, salvo una cartella
   chiamata `staging-winwaste` (ignorata da `.gitignore`).

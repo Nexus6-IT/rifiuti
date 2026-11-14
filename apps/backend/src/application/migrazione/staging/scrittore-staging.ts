@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { createWriteStream } from 'fs'
-import { mkdir, writeFile } from 'fs/promises'
+import { chmod, mkdir, readdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { once } from 'events'
 import { tabellaDocumentata } from './colonne-documentate'
@@ -56,7 +56,12 @@ async function scriviFile(
   tab: TabellaDaScrivere
 ): Promise<Pick<ManifestTabella, 'righe' | 'sha256'>> {
   const hash = createHash('sha256')
-  const out = createWriteStream(percorso)
+  const out = createWriteStream(percorso, { mode: 0o600 })
+  // Un errore di scrittura (disco pieno) emesso fuori da un `once` non deve far crashare il processo.
+  let erroreScrittura: Error | undefined
+  out.on('error', e => {
+    erroreScrittura = e
+  })
   let righe = 0
   for await (const valori of tab.righe as AsyncIterable<readonly (string | null)[]>) {
     if (valori.length !== tab.colonne.length) {
@@ -65,25 +70,61 @@ async function scriviFile(
         `tabella ${tab.nome}: riga ${righe + 1} con ${valori.length} valori, attese ${tab.colonne.length}`
       )
     }
+    if (erroreScrittura) throw erroreScrittura
     const linea = `${serializzaRiga(valori)}\n`
     hash.update(linea, 'utf8')
     righe++
     if (!out.write(linea, 'utf8')) await once(out, 'drain')
   }
+  if (erroreScrittura) throw erroreScrittura
   out.end()
   await once(out, 'finish')
+  await chmod(percorso, 0o600)
   return { righe, sha256: hash.digest('hex') }
 }
 
-/** Scrive la cartella di staging (`<radice>/WW<ditta><anno>/`) e restituisce il manifest. */
+export interface OpzioniScrittura {
+  /** Svuota una cartella di destinazione non vuota invece di rifiutarla. */
+  readonly svuota?: boolean
+}
+
+export class ScritturaStagingError extends Error {
+  constructor(
+    readonly codice: 'CARTELLA_NON_VUOTA',
+    dettaglio: string
+  ) {
+    super(`${codice}: ${dettaglio}`)
+    this.name = 'ScritturaStagingError'
+  }
+}
+
+/**
+ * Scrive la cartella di staging (`<radice>/WW<ditta><anno>/`, permessi 0700,
+ * file 0600: contiene dati personali in chiaro) e restituisce il manifest.
+ * Una cartella di destinazione non vuota e' rifiutata (`CARTELLA_NON_VUOTA`):
+ * file di un'estrazione precedente non piu' elencati nel manifest resterebbero
+ * sul disco; con `svuota` vengono rimossi prima.
+ */
 export async function scriviStaging(
   radice: string,
   meta: MetaStaging,
-  tabelle: readonly TabellaDaScrivere[]
+  tabelle: readonly TabellaDaScrivere[],
+  opzioni: OpzioniScrittura = {}
 ): Promise<{ cartella: string; manifest: ManifestStaging }> {
   const databaseOrigine = `WW${meta.ditta}${meta.anno}`
   const cartella = join(radice, databaseOrigine)
-  await mkdir(cartella, { recursive: true })
+  await mkdir(cartella, { recursive: true, mode: 0o700 })
+  await chmod(cartella, 0o700)
+  const presenti = await readdir(cartella)
+  if (presenti.length > 0) {
+    if (!opzioni.svuota) {
+      throw new ScritturaStagingError(
+        'CARTELLA_NON_VUOTA',
+        `${cartella} contiene gia ${presenti.length} elementi: usare una cartella nuova o --forza per svuotarla`
+      )
+    }
+    for (const f of presenti) await rm(join(cartella, f), { recursive: true, force: true })
+  }
   const manifestTabelle: Record<string, ManifestTabella> = {}
   for (const tab of tabelle) {
     const file = tab.file ?? nomeFileTabella(tab.nome)
@@ -99,6 +140,9 @@ export async function scriviStaging(
     ...(meta.estrattore ? { estrattore: meta.estrattore } : {}),
     tabelle: manifestTabelle,
   }
-  await writeFile(join(cartella, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  await writeFile(join(cartella, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
   return { cartella, manifest }
 }

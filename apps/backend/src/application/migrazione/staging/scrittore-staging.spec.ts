@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises'
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
@@ -33,6 +33,39 @@ describe('scrittore dello staging', () => {
     const byte = await readFile(join(cartella, t.file))
     expect(t.sha256).toBe(createHash('sha256').update(byte).digest('hex'))
     expect(byte.toString('utf8')).toBe('["1",null]\n["2","à\\n"]\n')
+  })
+
+  const unaTabella = [{ nome: 'T', colonne: ['A'], righe: [['1']] }]
+
+  it('cartella 0700 e file (dati, manifest) 0600', async () => {
+    const { cartella } = await scriviStaging(radice, meta, unaTabella)
+    expect((await stat(cartella)).mode & 0o777).toBe(0o700)
+    for (const f of await readdir(cartella)) {
+      expect((await stat(join(cartella, f))).mode & 0o777).toBe(0o600)
+    }
+  })
+
+  it('rifiuta una cartella di destinazione non vuota', async () => {
+    const { cartella } = await scriviStaging(radice, meta, unaTabella)
+    await writeFile(join(cartella, 'vecchio.jsonl'), 'x')
+    await expect(scriviStaging(radice, meta, unaTabella)).rejects.toThrow(/CARTELLA_NON_VUOTA/)
+    expect(await readdir(cartella)).toContain('vecchio.jsonl')
+  })
+
+  it('con svuota: rimuove i file precedenti e stringe i permessi della cartella', async () => {
+    const { cartella } = await scriviStaging(radice, meta, unaTabella)
+    await writeFile(join(cartella, 'vecchio.jsonl'), 'x')
+    await chmod(cartella, 0o755)
+    await scriviStaging(radice, meta, unaTabella, { svuota: true })
+    expect((await readdir(cartella)).sort()).toEqual(['manifest.json', 't.jsonl'])
+    expect((await stat(cartella)).mode & 0o777).toBe(0o700)
+  })
+
+  it('una cartella esistente ma vuota va bene', async () => {
+    const { cartella } = await scriviStaging(radice, meta, unaTabella)
+    await rm(cartella, { recursive: true })
+    await scriviStaging(radice, meta, unaTabella)
+    expect(await readdir(cartella)).toContain('manifest.json')
   })
 
   it('usa il nome di file documentato per le tabelle note', () => {

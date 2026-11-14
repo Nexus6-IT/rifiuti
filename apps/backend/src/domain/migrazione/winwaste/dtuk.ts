@@ -44,7 +44,9 @@ export function decodificaDtuk(
       ? ok({ annullato: true, data, causa: 'PREFISSO_ANNULLO' })
       : errore('DTUK_NON_VALIDA', 'DTUK: dopo il prefisso $$ attesi aammgg validi')
   }
-  // Confronto per codice di carattere, come `dtuk > '0'` con collation binaria.
+  // Confronto per codice di carattere (semantica di WinWaste `dtuk > '0'`; la collation del
+  // database e' Latin1_General_CI_AS). Valori che iniziano con un carattere < '0' (`-`, `#`...)
+  // diventano 'annullato' senza avviso: lasciato cosi' (M5 della review, da decidere).
   if (t <= '0') return ok({ annullato: true, data: null, causa: 'NON_POSITIVA' })
   const data = dataDaOtto(t)
   return data

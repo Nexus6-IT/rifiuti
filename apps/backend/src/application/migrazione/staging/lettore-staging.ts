@@ -197,7 +197,7 @@ export async function apriStaging(cartella: string): Promise<StagingAperto> {
     hashManifest,
     avvisi,
     tabelle: () => Object.keys(manifest.tabelle),
-    ha: t => t in manifest.tabelle,
+    ha: t => Object.prototype.hasOwnProperty.call(manifest.tabelle, t),
     colonne: t => manifest.tabelle[t]?.colonne ?? [],
     leggi,
   }

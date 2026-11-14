@@ -31,7 +31,7 @@ const ABILITATO = process.env.WASTEFLOW_TEST_MSSQL === '1'
 const descrivi = ABILITATO ? describe : describe.skip
 
 const IMMAGINE = 'mcr.microsoft.com/mssql/server:2022-latest'
-const CONTAINER = 'wasteflow-mssql-import'
+const CONTAINER = `wasteflow-mssql-import-${randomBytes(4).toString('hex')}`
 const MDF = '005_ww00002014_data.mdf'
 const DIR_MDF = process.env.WASTEFLOW_MDF_DIR ?? join(homedir(), 'Progetti/winwaste/estratto')
 const FIXTURE = join(__dirname, '../../../apps/backend/test/fixtures/winwaste/WW00012026')

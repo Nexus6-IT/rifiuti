@@ -26,6 +26,17 @@ function codice(fn: () => unknown): string {
 }
 
 describe('validaManifest', () => {
+  it('rifiuta __proto__ come nome di tabella o di colonna', () => {
+    const t = valido()
+    ;(t.tabelle as Record<string, unknown>) = JSON.parse(
+      `{"__proto__":{"file":"x.jsonl","righe":0,"sha256":"${SHA}","colonne":["A"]}}`
+    )
+    expect(codice(() => validaManifest(t, 'WW00012026'))).toBe('MANIFEST_NON_VALIDO')
+    const c = valido()
+    ;(c.tabelle as Record<string, { colonne: string[] }>).MOVIMENTI.colonne = ['COD', '__proto__']
+    expect(codice(() => validaManifest(c, 'WW00012026'))).toBe('MANIFEST_NON_VALIDO')
+  })
+
   it('accetta un manifest coerente con la cartella', () => {
     const m = validaManifest(valido(), 'WW00012026')
     expect(m.ditta).toBe('0001')

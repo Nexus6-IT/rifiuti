@@ -82,9 +82,16 @@ Ogni riga e' un **array JSON** di valori nell'ordine di `colonne`:
   tramite numeri JavaScript (si perderebbe la precisione);
 - a capo, tabulazioni e `§` dentro un valore sono preservati (JSON li escapa); U+2028 e U+2029
   sono escapati dallo scrittore perche' `readline` li tratterebbe come fine riga;
-- **dati segreti**: da `VERSIS` l'estrattore non copia `C1..C5` delle righe `HUBRW:*` e
-  `FIRMARENTRI*` (host, utente, password cifrata, licenza dell'hub): vengono sostituiti da
-  stringa vuota. Il parser non li copia comunque nei record.
+- **dati segreti**: da `VERSIS` l'estrattore non copia `C1..C5` di NESSUNA riga (nelle righe hub
+  `HUBRW/HUBRP/HUBRD/HUBWW` sono host, utente, password cifrata, licenza): sono sostituiti da
+  stringa vuota gia' dalla `SELECT`. Il parser non li copia comunque nei record.
+- **permessi**: cartella 0700, file 0600 (anagrafiche, registro e FIR in chiaro). Una cartella di
+  destinazione non vuota e' rifiutata (`CARTELLA_NON_VUOTA`) o svuotata con `--forza`. Per portare
+  lo staging fuori dalla workstation cifrare la cartella intera (`tar | age`).
+- **manifest non ripetibile**: `estrattoIl` cambia a ogni estrazione, quindi anche `hashManifest`;
+  la ripetibilita' vale per i file `.jsonl`.
+- **float/real/money**: convertiti con `CONVERT(..., 3)` (17 cifre) e `CONVERT(..., 2)` (4 decimali);
+  il float esce in notazione scientifica e il parser lo scarta (`DECIMALE_SQL`) invece di alterarlo.
 
 ## Verifiche del lettore
 

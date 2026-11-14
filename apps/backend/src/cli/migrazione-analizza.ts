@@ -1,4 +1,4 @@
-import { access, writeFile } from 'fs/promises'
+import { access, chmod, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { analizzaArchivio } from '../application/migrazione/analisi/analizza-archivio'
 import { rapportoInMarkdown } from '../application/migrazione/analisi/rapporto-sorgente'
@@ -31,6 +31,12 @@ async function esiste(percorso: string): Promise<boolean> {
   }
 }
 
+/** Scrive un file 0600 (anche se esisteva con permessi piu' larghi). */
+async function scriviRiservato(percorso: string, testo: string): Promise<void> {
+  await writeFile(percorso, testo, { encoding: 'utf8', mode: 0o600 })
+  await chmod(percorso, 0o600)
+}
+
 export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Promise<number> {
   const forza = argv.includes('--forza')
   const posizionali = argv.filter(a => !a.startsWith('--'))
@@ -49,8 +55,8 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
       return 1
     }
     const rapporto = await analizzaArchivio(staging)
-    await writeFile(json, `${JSON.stringify(rapporto, null, 2)}\n`, 'utf8')
-    await writeFile(md, rapportoInMarkdown(rapporto), 'utf8')
+    await scriviRiservato(json, `${JSON.stringify(rapporto, null, 2)}\n`)
+    await scriviRiservato(md, rapportoInMarkdown(rapporto))
     const scartate = rapporto.confronto1.perTabella.reduce((s, t) => s + t.scartate, 0)
     uscita.scrivi(`archivio ${rapporto.archivio}: rapporto scritto in ${staging.cartella}`)
     uscita.scrivi(

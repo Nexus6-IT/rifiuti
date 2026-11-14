@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { chmod, cp, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { eseguiCli, UscitaCli } from './migrazione-analizza'
@@ -36,6 +36,15 @@ describe('CLI migrazione:analizza', () => {
     )
     expect(out.join('\n')).toContain('righe scartate: 6')
     expect(err).toEqual([])
+  })
+
+  it('i rapporti sono scritti 0600, anche sovrascrivendo un file esistente con --forza', async () => {
+    const json = join(cartella, 'rapporto-sorgente.json')
+    await writeFile(json, '{}')
+    await chmod(json, 0o644)
+    expect(await eseguiCli([cartella, '--forza'], uscita)).toBe(0)
+    expect((await stat(json)).mode & 0o777).toBe(0o600)
+    expect((await stat(join(cartella, 'rapporto-sorgente.md'))).mode & 0o777).toBe(0o600)
   })
 
   it('non sovrascrive un rapporto esistente senza --forza', async () => {

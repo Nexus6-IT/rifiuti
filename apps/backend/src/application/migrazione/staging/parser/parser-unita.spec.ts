@@ -400,6 +400,33 @@ describe('parsaCausaliRifiuti / parsaRegistriRifiuti / parsaVersis / parsaRenReg
     expect(JSON.stringify(r)).not.toContain('SEGRETO')
   })
 
+  it('VERSIS: FIRMARENTRI<CF> e prefissi hub sono sensibili e il prefisso e un insieme chiuso (nessun frammento di CF)', async () => {
+    const v = (cod: string): Valori => ({ COD: cod })
+    const r = await parsaVersis(
+      sorgenteInMemoria('VERSIS', [
+        v('FIRMARENTRIRSSMRA80A01H501U'),
+        v('HUBRP:X90000'),
+        v('HUBRD:X90000'),
+        v('HUBWWX90000'),
+        v('XRENATS:1'),
+        v('XRENOPW:1'),
+        v('PREFISSOINVENTATO:1'),
+        v('abcdef'),
+      ])
+    )
+    expect(r.record.map(x => [x.prefisso, x.sensibile])).toEqual([
+      ['FIRMARENTRI', true],
+      ['HUBRP', true],
+      ['HUBRD', true],
+      ['HUBWW', true],
+      ['XRENATS', false],
+      ['XRENOPW', false],
+      ['(altro)', true],
+      ['(altro)', true],
+    ])
+    expect(JSON.stringify(r)).not.toContain('RSSMRA')
+  })
+
   it('RENregistrazioni: CODMOVIMENTO non valido e chiave duplicata', async () => {
     const rr = (o: Valori = {}): Valori => ({
       CODMOVIMENTO: '3',

@@ -19,10 +19,11 @@ import { scriviStaging, TabellaDaScrivere } from '../staging/scrittore-staging'
  *  - ogni colonna e' convertita in testo dal server (`CAST` a `NVARCHAR`):
  *    nessun valore passa da numeri JavaScript e la codifica del testo non
  *    dipende dalla collation (`Latin1_General_CI_AS`) ne dal driver;
- *  - da `VERSIS` `C1..C5` delle righe `HUBRW:*` e `FIRMARENTRI*` (host,
- *    utente, password cifrata, licenza) non vengono letti: la `SELECT` li
- *    sostituisce con stringa vuota gia' sul server (`CASE`) e `redigiRiga` lo
- *    ripete in Node come seconda difesa, prima che arrivino al file.
+ *  - da `VERSIS` `C1..C5` non vengono letti per NESSUNA riga (nelle righe hub
+ *    `HUBRW/HUBRP/HUBRD/HUBWW` contengono host, utente, password cifrata,
+ *    licenza; un denylist di prefissi sarebbe fragile): la `SELECT` li
+ *    sostituisce con stringa vuota gia' sul server e `redigiRiga` lo ripete in
+ *    Node come seconda difesa, prima che arrivino al file.
  */
 export type CodiceErroreEstrazione =
   | 'LOGIN_CON_SCRITTURA'
@@ -75,7 +76,9 @@ export function eScrittura(permesso: string): boolean {
 const quota = (nome: string): string => `[${nome.replace(/]/g, ']]')}]`
 
 const TIPI_INTERI = new Set(['int', 'bigint', 'smallint', 'tinyint'])
-const TIPI_DECIMALI = new Set(['decimal', 'numeric', 'money', 'smallmoney', 'float', 'real'])
+const TIPI_DECIMALI = new Set(['decimal', 'numeric'])
+const TIPI_VIRGOLA_MOBILE = new Set(['float', 'real'])
+const TIPI_MONETARI = new Set(['money', 'smallmoney'])
 const TIPI_TESTO = new Set(['varchar', 'nvarchar', 'char', 'nchar', 'text', 'ntext', 'sysname'])
 const TIPI_DATA = new Set([
   'date',
@@ -94,6 +97,10 @@ export function espressioneColonna(alias: string, c: ColonnaSql): string {
   let espr: string
   if (TIPI_INTERI.has(t)) espr = `CAST(${col} AS NVARCHAR(40))`
   else if (TIPI_DECIMALI.has(t)) espr = `CAST(${col} AS NVARCHAR(64))`
+  // CAST di float a testo darebbe 6 cifre in notazione scientifica e di money 2 decimali:
+  // stile 3 = 17 cifre (round-trip esatto), stile 2 = 4 decimali senza separatori.
+  else if (TIPI_VIRGOLA_MOBILE.has(t)) espr = `CONVERT(NVARCHAR(64), ${col}, 3)`
+  else if (TIPI_MONETARI.has(t)) espr = `CONVERT(NVARCHAR(64), ${col}, 2)`
   else if (TIPI_TESTO.has(t)) espr = `CAST(${col} AS NVARCHAR(MAX))`
   else if (t === 'bit') espr = `CAST(${col} AS NVARCHAR(1))`
   else if (t === 'uniqueidentifier') espr = `CAST(${col} AS NVARCHAR(36))`
@@ -103,7 +110,6 @@ export function espressioneColonna(alias: string, c: ColonnaSql): string {
   return espr
 }
 
-const SEGRETI_VERSIS = /^(HUBRW|FIRMARENTRI)/i
 const COLONNE_SEGRETE_VERSIS = new Set(['C1', 'C2', 'C3', 'C4', 'C5'])
 
 /** Colonne di ordinamento (chiave primaria) per un'estrazione ripetibile. */
@@ -130,11 +136,12 @@ export function costruisciSelect(tabella: string, colonne: readonly ColonnaSql[]
   const nomi = new Set(colonne.map(c => c.nome))
   const elenco = colonne
     .map(c => {
-      let espr = espressioneColonna(alias, c)
-      if (tabella === 'VERSIS' && COLONNE_SEGRETE_VERSIS.has(c.nome) && nomi.has('COD')) {
-        const cod = `${quota(alias)}.${quota('COD')}`
-        espr = `CASE WHEN ${cod} LIKE N'HUBRW%' OR ${cod} LIKE N'FIRMARENTRI%' THEN N'' ELSE ${espr} END`
-      }
+      // C1..C5 di VERSIS non si leggono MAI (allowlist: il parser non li usa):
+      // la colonna esce vuota gia' dal server, per qualsiasi prefisso del COD.
+      const espr =
+        tabella === 'VERSIS' && COLONNE_SEGRETE_VERSIS.has(c.nome)
+          ? "N''"
+          : espressioneColonna(alias, c)
       return `${espr} AS ${quota(c.nome)}`
     })
     .join(', ')
@@ -144,21 +151,21 @@ export function costruisciSelect(tabella: string, colonne: readonly ColonnaSql[]
   return `SELECT ${elenco} FROM ${quota('dbo')}.${quota(tabella)} AS ${quota(alias)}${orderBy}`
 }
 
-/** Oscura i segreti di `VERSIS`; per le altre tabelle restituisce la riga com'e'. */
+/** Svuota `C1..C5` di `VERSIS` in ogni riga (seconda difesa); le altre tabelle restano com'e'. */
 export function redigiRiga(
   tabella: string,
   colonne: readonly ColonnaSql[],
   valori: (string | null)[]
 ): (string | null)[] {
   if (tabella !== 'VERSIS') return valori
-  const iCod = colonne.findIndex(c => c.nome === 'COD')
-  if (iCod < 0 || !SEGRETI_VERSIS.test((valori[iCod] ?? '').trim())) return valori
   return valori.map((v, i) => (COLONNE_SEGRETE_VERSIS.has(colonne[i].nome) ? '' : v))
 }
 
 export interface OpzioniEstrazione {
   readonly estrattoIl?: string
   readonly estrattore?: { readonly nome: string; readonly versione: string }
+  /** Svuota la cartella di destinazione se non e' vuota (altrimenti `CARTELLA_NON_VUOTA`). */
+  readonly svuota?: boolean
 }
 
 export interface EsitoEstrazione {
@@ -221,7 +228,8 @@ export async function estraiStaging(
       estrattoIl: opzioni.estrattoIl ?? new Date().toISOString(),
       estrattore: opzioni.estrattore ?? { nome: 'import-winwaste', versione: '1' },
     },
-    tabelle
+    tabelle,
+    { svuota: opzioni.svuota }
   )
   return { cartella, manifest, tabelleAssenti: assenti }
 }

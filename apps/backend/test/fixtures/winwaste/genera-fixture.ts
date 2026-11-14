@@ -499,7 +499,8 @@ const versis = costruttore('VERSIS')
 const VERSIS: Riga[] = [
   versis({ COD: 'XRENTRI:X90000.0002', IDSIS: 'SITO-0002', VERSIS: '1', VERTOT: '1' }),
   versis({ COD: 'XRENTRI:0002', IDSIS: 'REG-0002', VERSIS: '1' }),
-  // riga con segreti (host, utente, password cifrata, licenza): non deve mai finire nei rapporti
+  // riga con segreti INVENTATI (host .invalid, valori *-FINTA): serve a provare che parser ed
+  // estrattore non li leggono; NON e' lo staging reale (l'estrattore svuota C1..C5 di ogni riga).
   versis({
     COD: 'HUBRW:X90000',
     IDSIS: '',

@@ -73,6 +73,9 @@ function oggetto(valore: unknown, dove: string): Record<string, unknown> {
 }
 
 function validaTabella(nome: string, valore: unknown): ManifestTabella {
+  if (nome === '__proto__') {
+    throw new StagingError('MANIFEST_NON_VALIDO', 'nome di tabella non ammesso')
+  }
   const t = oggetto(valore, `tabelle["${nome}"]`)
   const { file, righe, sha256, colonne } = t
   if (typeof file !== 'string' || !PATTERN_FILE.test(file)) {
@@ -87,7 +90,7 @@ function validaTabella(nome: string, valore: unknown): ManifestTabella {
   if (
     !Array.isArray(colonne) ||
     colonne.length === 0 ||
-    colonne.some(c => typeof c !== 'string' || c.length === 0) ||
+    colonne.some(c => typeof c !== 'string' || c.length === 0 || c === '__proto__') ||
     new Set(colonne).size !== colonne.length
   ) {
     throw new StagingError(

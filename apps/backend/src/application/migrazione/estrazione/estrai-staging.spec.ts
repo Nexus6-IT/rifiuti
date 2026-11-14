@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { analizzaArchivio } from '../analisi/analizza-archivio'
@@ -126,42 +126,56 @@ describe('costruisciSelect', () => {
     expect(() => costruisciSelect('MOVIMENTI]; DROP TABLE x;--', [])).toThrow(EstrazioneError)
   })
 
-  it('VERSIS: i segreti sono oscurati dalla query stessa', () => {
+  it('VERSIS: C1..C5 non sono mai letti dalla query (per nessuna riga)', () => {
     const sql = costruisciSelect('VERSIS', colonneDi('VERSIS'))
-    expect(sql).toContain(
-      "CASE WHEN [t].[COD] LIKE N'HUBRW%' OR [t].[COD] LIKE N'FIRMARENTRI%' THEN N'' ELSE CAST([t].[C3] AS NVARCHAR(MAX)) END AS [C3]"
-    )
-    expect(sql).not.toContain(
-      "CASE WHEN [t].[COD] LIKE N'HUBRW%' OR [t].[COD] LIKE N'FIRMARENTRI%' THEN N'' ELSE CAST([t].[IDSIS]"
-    )
+    for (const c of ['C1', 'C2', 'C3', 'C4', 'C5']) {
+      expect(sql).toContain(`N'' AS [${c}]`)
+      expect(sql).not.toContain(`[t].[${c}]`)
+    }
+    expect(sql).not.toContain('CASE')
+    expect(sql).toContain('CAST([t].[IDSIS] AS NVARCHAR')
   })
 
-  it('VERSIS senza colonna COD: nessun CASE (la riga non e riconoscibile, ci pensa il parser)', () => {
-    expect(costruisciSelect('VERSIS', [{ nome: 'C3', tipo: 'varchar' }])).not.toContain('CASE')
+  it('VERSIS senza colonna COD: C1..C5 comunque non letti', () => {
+    const sql = costruisciSelect('VERSIS', [{ nome: 'C3', tipo: 'varchar' }])
+    expect(sql).toBe("SELECT N'' AS [C3] FROM [dbo].[VERSIS] AS [t]")
+  })
+
+  it('float/real con CONVERT stile 3 (17 cifre), money con stile 2 (4 decimali), decimal con CAST', () => {
+    const sql = costruisciSelect('MOVIMENTI', [
+      { nome: 'A', tipo: 'float' },
+      { nome: 'B', tipo: 'real' },
+      { nome: 'C', tipo: 'money' },
+      { nome: 'D', tipo: 'smallmoney' },
+      { nome: 'E', tipo: 'decimal' },
+    ])
+    expect(sql).toContain('CONVERT(NVARCHAR(64), [t].[A], 3) AS [A]')
+    expect(sql).toContain('CONVERT(NVARCHAR(64), [t].[B], 3) AS [B]')
+    expect(sql).toContain('CONVERT(NVARCHAR(64), [t].[C], 2) AS [C]')
+    expect(sql).toContain('CONVERT(NVARCHAR(64), [t].[D], 2) AS [D]')
+    expect(sql).toContain('CAST([t].[E] AS NVARCHAR(64)) AS [E]')
   })
 })
 
 describe('redigiRiga', () => {
   const colonne = colonneDi('VERSIS')
   const riga = (cod: string) => [cod, 'id', '1', '1', 'host', 'utente', 'pwd', 'licenza', '1']
-  it('svuota C1..C5 delle righe HUBRW e FIRMARENTRI', () => {
-    expect(redigiRiga('VERSIS', colonne, riga('HUBRW:X90000'))).toEqual([
-      'HUBRW:X90000',
-      'id',
-      '1',
-      '1',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ])
-    expect(redigiRiga('VERSIS', colonne, riga('firmarentri'))[6]).toBe('')
+  const vuota = (cod: string) => [cod, 'id', '1', '1', '', '', '', '', '']
+  it.each([
+    'HUBRW:X90000',
+    'HUBRP:X90000',
+    'HUBRD:X90000',
+    'HUBWWX90000',
+    'firmarentri',
+    'XRENTRI:0002',
+    'INVENTATO:1',
+    '',
+  ])('svuota C1..C5 della riga con COD %p', cod => {
+    expect(redigiRiga('VERSIS', colonne, riga(cod))).toEqual(vuota(cod))
   })
-  it('lascia intatte le altre righe e le altre tabelle', () => {
-    expect(redigiRiga('VERSIS', colonne, riga('XRENTRI:0002'))).toEqual(riga('XRENTRI:0002'))
+  it('svuota C1..C5 anche senza colonna COD; non tocca le altre tabelle', () => {
+    expect(redigiRiga('VERSIS', [{ nome: 'C3', tipo: 'varchar' }], ['x'])).toEqual([''])
     expect(redigiRiga('MOVIMENTI', colonne, riga('HUBRW'))).toEqual(riga('HUBRW'))
-    expect(redigiRiga('VERSIS', [{ nome: 'C3', tipo: 'varchar' }], ['x'])).toEqual(['x'])
   })
 })
 
@@ -209,6 +223,17 @@ describe('estraiStaging', () => {
     delete rapporto.hashManifest
     delete atteso.hashManifest
     expect(rapporto).toEqual(atteso)
+  })
+
+  it('rifiuta una cartella di destinazione non vuota; con svuota la ripulisce', async () => {
+    const sorgente = await sorgenteDaFixture()
+    const { cartella } = await estraiStaging(sorgente, radice)
+    await writeFile(join(cartella, 'avanzo.jsonl'), 'x')
+    await expect(estraiStaging(await sorgenteDaFixture(), radice)).rejects.toThrow(
+      /CARTELLA_NON_VUOTA/
+    )
+    await estraiStaging(await sorgenteDaFixture(), radice, { svuota: true })
+    expect(await readdir(cartella)).not.toContain('avanzo.jsonl')
   })
 
   it('legge solo con SELECT (nessuna scrittura nelle query inviate)', async () => {
