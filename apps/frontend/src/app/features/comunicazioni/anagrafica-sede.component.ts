@@ -88,6 +88,11 @@ const nullo = (s: string): string | null => (s.trim() === '' ? null : s.trim())
             [disabled]="!puoModificare()"
             maxlength="9"
           />
+          <small data-testid="anagrafica-orso-aiuto">
+            Serve alla modalità dettagliata di O.R.SO.: con il codice ARPA la sede è un impianto
+            noto; senza, è descritta nel file come nuovo impianto. L’elenco ARPA non si importa: il
+            codice si inserisce a mano.
+          </small>
         </div>
         <div class="campo">
           <input

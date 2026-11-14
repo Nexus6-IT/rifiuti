@@ -133,6 +133,20 @@ interface SedeScelta {
           </p>
         </section>
 
+        <section
+          *ngIf="a.modalita === 'DETTAGLIATA'"
+          class="surface-card mb-4"
+          data-testid="comunicazioni-nota-dettagliata"
+        >
+          <p-tag value="Modalità dettagliata" severity="info"></p-tag>
+          <p class="mt-2 mb-0">
+            {{ a.notaAffidabilita }} Ogni quota è attribuita al conferitore o al destinatario
+            ricavato dal FIR; i soggetti senza codice ARPA sono descritti per esteso come nuovi
+            impianti ({{ a.nuoviImpianti ?? 0 }} in questo file). Il codice ARPA si inserisce
+            nell'anagrafica della sede della ditta.
+          </p>
+        </section>
+
         <section class="surface-card mb-4">
           <div class="flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <h2 class="section-title m-0">Anno {{ a.anno }} — {{ a.unitaLocale.nome }}</h2>
@@ -164,6 +178,7 @@ interface SedeScelta {
                   <th scope="col">Tipo</th>
                   <th scope="col">CER</th>
                   <th scope="col">Descrizione</th>
+                  <th scope="col" *ngIf="anteprima()?.modalita === 'DETTAGLIATA'">Soggetto</th>
                   <th scope="col">Operazioni</th>
                   <th scope="col" class="num-col">Quantità</th>
                   <th scope="col">Dettaglio</th>
@@ -175,6 +190,12 @@ interface SedeScelta {
                   <td>{{ r.direzione }}</td>
                   <td class="cell-mono">{{ r.cer }}</td>
                   <td>{{ r.descrizione }}</td>
+                  <td
+                    *ngIf="anteprima()?.modalita === 'DETTAGLIATA'"
+                    data-testid="comunicazioni-soggetto"
+                  >
+                    {{ r.soggetto }}
+                  </td>
                   <td>{{ r.operazioni }}</td>
                   <td class="num-col">{{ r.quantita }}</td>
                   <td class="text-secondary">{{ r.dettaglio }}</td>

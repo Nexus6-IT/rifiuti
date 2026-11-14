@@ -117,6 +117,14 @@ describe('AnagraficaSedeComponent', () => {
     expect(svc.impostaAnagraficaSede).not.toHaveBeenCalled()
   })
 
+  it('spiega a cosa serve il codice ARPA (modalità dettagliata, inserimento a mano)', async () => {
+    setup()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('anagrafica-orso-aiuto')?.textContent).toContain('modalità dettagliata')
+    expect(q('anagrafica-orso-aiuto')?.textContent).toContain('a mano')
+  })
+
   it('lettura fallita: messaggio di errore', async () => {
     svc = jasmine.createSpyObj<DatiComunicazioniService>('DatiComunicazioniService', [
       'anagraficaSede',

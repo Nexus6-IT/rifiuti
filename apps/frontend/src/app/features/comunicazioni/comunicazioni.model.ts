@@ -13,6 +13,18 @@ export interface RigaRicevuto {
   totT: string
   extraT: string
   conFir: boolean
+  /** Solo in modalità dettagliata (4.9e): una quota per conferitore. */
+  soggetti?: SoggettoAnteprima[]
+}
+
+/** Conferitore o destinatario di una riga in modalità dettagliata. */
+export interface SoggettoAnteprima {
+  /** `C` comune, `I` impianto dell'elenco ARPA, `Inew` nuovo impianto. */
+  ts: 'C' | 'I' | 'Inew'
+  s: string
+  etichetta: string
+  qT: string
+  conFir?: boolean
 }
 
 export interface RigaProdotto {
@@ -21,6 +33,8 @@ export interface RigaProdotto {
   operazioni: string[]
   totT: string
   giacenzaFineMeseT: string
+  /** Solo in modalità dettagliata: una quota per destinatario. */
+  soggetti?: SoggettoAnteprima[]
 }
 
 export interface MeseAnteprima {
@@ -69,7 +83,15 @@ export interface ComunicazioneVista {
   notaAffidabilita?: string
 }
 
+export type ModalitaOrso = 'NORMALE' | 'DETTAGLIATA'
+
 export interface AnteprimaOrso {
+  /** Modalità della sede (configurazione); assente = normale. */
+  modalita?: ModalitaOrso
+  /** Nuovi impianti descritti nel file (solo dettagliata). */
+  nuoviImpianti?: number
+  affidabilita?: 'UFFICIALE' | 'RICAVATO_WINWASTE'
+  notaAffidabilita?: string
   unitaLocale: UnitaLocaleAnteprima
   anno: number
   mesi: MeseAnteprima[]
@@ -96,6 +118,8 @@ export interface RigaTabella {
   operazioni: string
   quantita: string
   dettaglio: string
+  /** Solo in modalità dettagliata: conferitore o destinatario della quota. */
+  soggetto?: string
 }
 
 const MESI = [
@@ -124,11 +148,39 @@ export function formattaTonnellate(valore: string): string {
   return `${n.toLocaleString('it-IT', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} t`
 }
 
+const NOME_TIPO_SOGGETTO: Record<SoggettoAnteprima['ts'], string> = {
+  C: 'Comune',
+  I: 'Impianto ARPA',
+  Inew: 'Nuovo impianto',
+}
+
+/** «Nuovo impianto n. 2 · Ditta Rossi»: tipo, identificativo e nome del soggetto. */
+export function testoSoggetto(s: SoggettoAnteprima): string {
+  return `${NOME_TIPO_SOGGETTO[s.ts]} ${s.ts === 'Inew' ? 'n. ' : ''}${s.s} · ${s.etichetta}`
+}
+
 /** Appiattisce i mesi in righe mese × CER (ricevuti, poi prodotti); i mesi vuoti non hanno righe. */
 export function righeDaAnteprima(mesi: MeseAnteprima[]): RigaTabella[] {
   const out: RigaTabella[] = []
   for (const m of [...mesi].sort((a, b) => a.mese - b.mese)) {
     for (const r of m.ricevuti) {
+      if (r.soggetti && r.soggetti.length > 0) {
+        // Modalità dettagliata: una riga per conferitore.
+        for (const s of r.soggetti) {
+          out.push({
+            mese: m.mese,
+            meseNome: nomeMese(m.mese),
+            direzione: 'Ricevuto',
+            cer: r.cer,
+            descrizione: r.descrizione,
+            operazioni: r.operazioni.join(', '),
+            quantita: formattaTonnellate(s.qT),
+            dettaglio: s.conFir ? 'con FIR' : 'senza FIR',
+            soggetto: testoSoggetto(s),
+          })
+        }
+        continue
+      }
       out.push({
         mese: m.mese,
         meseNome: nomeMese(m.mese),
@@ -141,6 +193,22 @@ export function righeDaAnteprima(mesi: MeseAnteprima[]): RigaTabella[] {
       })
     }
     for (const p of m.prodotti) {
+      if (p.soggetti && p.soggetti.length > 0) {
+        for (const s of p.soggetti) {
+          out.push({
+            mese: m.mese,
+            meseNome: nomeMese(m.mese),
+            direzione: 'Prodotto',
+            cer: p.cer,
+            descrizione: p.descrizione,
+            operazioni: p.operazioni.join(', '),
+            quantita: formattaTonnellate(s.qT),
+            dettaglio: `giacenza a fine mese ${formattaTonnellate(p.giacenzaFineMeseT)}`,
+            soggetto: testoSoggetto(s),
+          })
+        }
+        continue
+      }
       out.push({
         mese: m.mese,
         meseNome: nomeMese(m.mese),
