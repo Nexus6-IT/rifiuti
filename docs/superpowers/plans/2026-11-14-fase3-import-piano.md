@@ -714,6 +714,8 @@ pesanti insieme.
 
 ## Domande aperte per Graziano (con proposta)
 
+**Decisioni di Graziano (14/11):** Q1-Q8 confermate come proposte. Q6: chiavi da riconfermare anche sullo schema dei .mdf modello dell'installer (docs/schema-db-winwaste.md di ~/Progetti/winwaste). Q8: Task 14 sui .mdf modello in un container SQL Server usa e getta.
+
 | # | Domanda | Proposta (applicata dal piano) | Impatto se la risposta è diversa |
 |---|---|---|---|
 | Q1 | Come si blocca la riga di trasmissione di un movimento importato? | **Stato nuovo `DA_RICONCILIARE`** con origine `IMPORTAZIONE`, bloccato, da cui si esce solo con lo sblocco di 3.6. Gli stati e l'esclusione esistenti hanno già un significato (in coda, già su RENTRI) che l'importato non ha. | Riusare `GIA_SU_RENTRI` per chi ha `IDRENTRI` e l'esclusione per gli altri: niente enum nuovo, ma l'esclusione si toglie da ADMIN senza riconciliazione (contro la decisione del 24/10) e `GIA_SU_RENTRI` è immutabile. Task 4 e 6 da rifare. |
