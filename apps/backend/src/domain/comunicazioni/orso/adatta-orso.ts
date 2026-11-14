@@ -1,5 +1,5 @@
 import { giornoItaliano } from '../../../core/time/anno-italiano'
-import type { AggregatoOrso, MovimentoOrso } from './aggregato'
+import type { AggregatoOrso, AggregatoOrsoDettagliato, MovimentoOrso } from './aggregato'
 import type { ImpiantoMesiDati, RifiutoProdottoDati, RifiutoRicevutoDati } from './impianto-mesi'
 
 /**
@@ -89,6 +89,49 @@ export function aggregatoInImpiantoMesi(
     ),
   }))
   return { ...(autore ? { autore } : {}), anni: [{ anno: a.anno, mesi }] }
+}
+
+/**
+ * Uscita dell'aggregatore dettagliato (4.9e) → dati del serializzatore: `In`/`Out` per soggetto,
+ * senza `Tot` né `Extra`, e i `NuovoImpianto`. Come in modalità normale, tutti i mesi fino a
+ * `ultimoMese` (un mese vuoto dice a O.R.SO. che non ci sono stati movimenti).
+ */
+export function aggregatoDettagliatoInImpiantoMesi(
+  a: AggregatoOrsoDettagliato,
+  autore?: string,
+  ultimoMese = 12
+): ImpiantoMesiDati {
+  const perMese = new Map(a.mesi.map(m => [m.mese, m]))
+  const mesi = Array.from({ length: ultimoMese }, (_, i) => {
+    const m = perMese.get(i + 1)
+    return {
+      mese: i + 1,
+      ricevuti: (m?.ricevuti ?? []).map(
+        (r): RifiutoRicevutoDati => ({
+          cer: r.cer,
+          descrizione: r.descrizione,
+          operazioni: r.operazioni,
+          ingressi: r.ingressi.map(x => ({ q: x.totale, f: x.f, ts: x.ts, s: x.s })),
+        })
+      ),
+      prodotti: (m?.prodotti ?? []).map(
+        (p): RifiutoProdottoDati => ({
+          cer: p.cer,
+          descrizione: p.descrizione,
+          quantitaTrattataInternamente: p.giacenzaFineMese,
+          // Un'uscita di quantità zero non è ammessa dall'XSD (`tQuantitaNZ`).
+          uscite: p.uscite
+            .filter(u => NON_ZERO.test(u.totale))
+            .map(u => ({ q: u.totale, ts: u.ts, s: u.s })),
+        })
+      ),
+    }
+  })
+  return {
+    ...(autore ? { autore } : {}),
+    anni: [{ anno: a.anno, mesi }],
+    ...(a.nuoviImpianti.length > 0 ? { nuoviImpianti: a.nuoviImpianti } : {}),
+  }
 }
 
 /**
