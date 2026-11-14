@@ -48,7 +48,10 @@ const NOVE_TABELLE = [
   'contatori_file_fatturapa',
 ]
 
-/** Colonne di `waste_movements` su master `8e991f87`: la 4.4 non ne aggiunge (scritte a mano, mai lette a runtime). */
+/**
+ * Colonne di `waste_movements` su master `8e991f87`: la 4.4 non ne aggiunge (scritte a mano, mai lette a
+ * runtime). In coda le tre della provenienza di import (Fase 3, 3.1, migration `20261114100200`).
+ */
 const COLONNE_WASTE_MOVEMENTS_ATTESE = [
   'id',
   'tenant_id',
@@ -82,6 +85,9 @@ const COLONNE_WASTE_MOVEMENTS_ATTESE = [
   'motivo_annotazione',
   'hash_versione',
   'causale_azienda_id',
+  'import_source',
+  'legacy_key',
+  'lotto_import_id',
 ]
 
 describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)', () => {

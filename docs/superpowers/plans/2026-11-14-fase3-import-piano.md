@@ -149,10 +149,17 @@ estendibile da migration). `legacy_key VARCHAR(200)` con CHECK sul formato `^[0-
 tenant_id) → lotti_import(id, tenant_id)`. CHECK «tutti o nessuno» sulle tre colonne. Chiavi
 (costruite solo da `domain/migrazione/chiavi-legacy.ts`):
 - movimenti e FIR: `ditta|anno|TABELLA|COD` (es. `0001|2026|MOVIMENTI|12345`), come rapporto 04 §4.4;
-- anagrafiche: schema proposto in Q6, **non usato in questo blocco** oltre ai test del motore.
+- anagrafiche (confermate il 14/11 sullo schema reale dei `.mdf` modello, `docs/schema-db-winwaste.md`
+  §2.2; costruttori in `chiavi-legacy.ts`, **non usate in questo blocco** oltre ai test del motore):
+  ditta `ditta|FISC|<P.IVA o CF>`; ruolo/soggetto `ditta|<PRECOD>|<COD>` con `PRECOD` = `C` o `F`
+  (`CLIFOR.PRECOD` e' varchar(1) cliente/fornitore, NON il ruolo P/T/S/I, che viene dalle
+  autorizzazioni e dai campi `PROD/TRAS/SMAL/INTE` dei movimenti) e `COD` varchar(6); sede
+  `ditta|<PRECOD>|<COD>|<UL>` con `UL` = `UNITA LOCALI.COD` varchar(4) (`UNITA LOCALI.PRECOD` e'
+  varchar(7) = `PRECOD`+`COD` del soggetto). Le tabelle `SEDI LEGALI` e `UNITA LOCALI` non hanno PK:
+  i duplicati vanno trattati dal mapping 3.3, non dalla chiave.
 
-**D2. Immutabilità.** Funzione unica `provenienza_import_immutabile()` + trigger `BEFORE UPDATE` su
-ogni tabella con le colonne: le tre colonne non cambiano mai, neppure da NULL a valore (un record
+**D2. Immutabilità.** Funzione unica `provenienza_import_immutabile()` + trigger **`AFTER UPDATE ... WHEN (una delle tre cambia)`** su
+ogni tabella con le colonne (un BEFORE per riga fa prendere all'UPDATE il lock FOR UPDATE invece di FOR NO KEY UPDATE quando nomina `tenant_id`, e fa aspettare i FOR KEY SHARE: lo ha trovato `fir-prisma.repository.postgres.spec.ts`; un AFTER che solleva annulla lo stesso lo statement): le tre colonne non cambiano mai, neppure da NULL a valore (un record
 nato in WasteFlow non diventa «importato»). Vale anche per il proprietario: è un trigger, non un
 GRANT.
 
@@ -641,6 +648,28 @@ checklist sotto, `CHANGELOG.md`.
 comandi eseguiti.
 
 ---
+
+## Esito Task 0-4 (14/11, agente A)
+
+Commit: `1b0dac1c` (T1), `70eebb31` (T2), `672bf69f` (T3), `e1c08d91` (T4). Scostamenti dal piano:
+
+- **Chiavi legacy anagrafiche** confermate/precisate sullo schema reale (D1 sopra): il piano parlava
+  di ruoli P/T/S/I in `PRECOD`, invece `CLIFOR.PRECOD` e' `C`/`F`; costruttori `chiaveDitta`,
+  `chiaveSoggetto`, `chiaveSede` aggiunti al Task 1 (il piano elencava solo i movimenti). Il pattern
+  `^[0-9]{4}\|[^|]+(\|[^|]+)+$` le accetta tutte.
+- **CHECK di provenienza**: ogni termine con `IS NOT NULL` esplicito. La prima stesura, `NULL IN (...)`,
+  lasciava passare le provenienze a meta' (un CHECK accetta NULL): trovato dai test del Task 3.
+- **Trigger di immutabilita'**: `AFTER UPDATE ... WHEN`, non `BEFORE` (D2 aggiornato).
+- **Vincolo differito e Prisma 5.22**: l'errore sollevato dal COMMIT non arriva all'applicazione
+  (rollback silenzioso). Il motore del Task 9 deve chiudere ogni blocco con `SET CONSTRAINTS
+  "waste_movements_importato_bloccato" IMMEDIATE`; la rete regge comunque (nessuna riga persiste).
+- **Trigger sulle righe di trasmissione**: movimento non trovato = nessun errore dal trigger (lasciano
+  l'errore la RLS e la FK), per non cambiare il messaggio atteso da `trasmissione-rentri.schema`.
+- **Task 5 (FIR)**: l'UPDATE-guard deve essere un trigger AFTER con WHEN, non BEFORE (stesso motivo di D2);
+  lo sblocco e' vietato solo per i FIR importati (un blocco a mano di un FIR non importato resta libero).
+- **`migrate diff` non e' vuoto sul master**: due scarti preesistenti (estensione `pgcrypto` e il default di
+  `notifications.expires_at`), identici con e senza le nostre migration. Il criterio «vuoto» va letto
+  come «invariato».
 
 ## Da ri-verificare all'arrivo del `.bak` (checklist del blocco 2)
 
