@@ -97,6 +97,7 @@ const NON_PASSATE: Record<string, string> = {
   REDIS_DB: 'default 0',
   TRUST_PROXY:
     'default loopback, linklocal, uniquelocal (nginx host + nginx del container frontend); da dichiarare solo se la topologia cambia',
+  PESE_DRIVER_AMMESSI: 'solo collaudi: in produzione ammette solo SIMULATA (DRIVER_AMMESSI)',
   REDIS_MODE: 'Redis standalone in produzione',
   REFDATA_SEED_ON_BOOT: 'default: seed se vuoto',
   SWAGGER_ENABLED: 'spento in produzione di proposito, si accende solo per diagnosi',
