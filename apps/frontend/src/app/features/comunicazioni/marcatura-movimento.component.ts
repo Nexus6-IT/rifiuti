@@ -135,10 +135,13 @@ export class MarcaturaMovimentoComponent implements OnChanges {
       this.corrente.set(this.marcatura)
       return
     }
-    this.servizio.consorziDeiMovimenti([this.movimentoId]).subscribe({
-      next: m => this.corrente.set(m[this.movimentoId] ?? { marcature: [], esclusi: [] }),
-      error: () => this.errore.set('Impossibile leggere i consorzi del movimento.'),
-    })
+    this.servizio
+      .consorziDeiMovimenti([this.movimentoId])
+      .pipe(takeUntilDestroyed(this.distrutto))
+      .subscribe({
+        next: m => this.corrente.set(m[this.movimentoId] ?? { marcature: [], esclusi: [] }),
+        error: () => this.errore.set('Impossibile leggere i consorzi del movimento.'),
+      })
   }
 
   /** Legge il permesso di modifica; no-op se gia' letto o in corso. Dopo un errore si puo' ripetere. */
@@ -210,7 +213,7 @@ export class MarcaturaMovimentoComponent implements OnChanges {
 
   private applica(chiamata: ReturnType<ConsorziService['impostaOverride']>): void {
     this.inCorso.set(true)
-    chiamata.subscribe({
+    chiamata.pipe(takeUntilDestroyed(this.distrutto)).subscribe({
       next: m => {
         this.inCorso.set(false)
         this.corrente.set(m)
