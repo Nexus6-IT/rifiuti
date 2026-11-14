@@ -27,11 +27,29 @@ const SCRITTURE = [
   'eliminaAllegato',
   'rilasciaVisibilita',
   'acquisisciVisibilita',
+  // RentriTrasmissioniClient (trasmissione dati FIR, obbligo dal 15/09/2026): oggi senza chiamanti.
+  'inviaTrasmissione',
+  'annullaTrasmissione',
+  'estraiDatiXfir',
+  // RentriCopieClient (copie digitali/cartacee del FIR): oggi senza chiamanti.
+  'caricaCopiaDigitale',
+  'caricaCopiaCartacea',
+  'confermaCopiaDigitale',
+  'confermaCopiaCartacea',
+  'eliminaCopiaDigitaleCaricata',
+  'eliminaCopiaCartaceaCaricata',
 ]
-const CHIAMATA = new RegExp(
-  `\\b(?:rentriApiClient|apiClient|rentriClient|client)\\s*\\.\\s*(${SCRITTURE.join('|')})\\s*\\(`,
-  'g'
-)
+// Indipendente dal nome del ricevitore (`this.trasmissioniClient.`, `copie.`, `a?.b.`, ...).
+// Non censiti di proposito: `RentriVidimazioneClient.vidimaFir/annullaFir` (operano su blocchi di
+// numeri vidimati, non su un FIR dell'archivio: un importato non ci passa) e
+// `RentriRegistriClient.inviaMovimenti` (movimenti, guardati da `trasmetti-lotto-registro`).
+// Unica eccezione: un ricevitore che finisce in `UseCase` e' un'altra facciata applicativa (es.
+// `gestisciAllegatiFIRUseCase.caricaAllegato` nel controller), che a sua volta e' un chiamante censito.
+const CHIAMATA = new RegExp(`(\\w+)\\s*\\??\\.\\s*(${SCRITTURE.join('|')})\\s*\\(`, 'g')
+
+function metodiScrittura(testo: string): string[] {
+  return [...testo.matchAll(CHIAMATA)].filter(m => !/UseCase$/i.test(m[1])).map(m => m[2])
+}
 
 /** File che DEVONO risultare guardati (se uno sparisce dal censimento il test lo dice). */
 const ATTESI = [
@@ -60,9 +78,19 @@ describe('Fase 3: ogni scrittura verso RENTRI su un FIR passa da verificaFirNonB
     // Il client stesso definisce i metodi: non e' un chiamante.
     if (rel.startsWith('infrastructure/rentri/')) continue
     const testo = readFileSync(file, 'utf8')
-    const metodi = [...testo.matchAll(CHIAMATA)].map(m => m[1])
+    const metodi = metodiScrittura(testo)
     if (metodi.length > 0) trovati.set(rel, metodi)
   }
+
+  it('la regex riconosce qualunque ricevitore, anche su piu righe', () => {
+    const casi = [
+      'await this.trasmissioniClient.inviaTrasmissione(x)',
+      'this.copie\n  .caricaCopiaCartacea (y)',
+      'a?.b.estraiDatiXfir(z)',
+    ]
+    for (const c of casi) expect(metodiScrittura(c)).toHaveLength(1)
+    expect(metodiScrittura('this.gestisciAllegatiFIRUseCase.caricaAllegato(x)')).toHaveLength(0)
+  })
 
   it("il censimento trova i chiamanti attesi (il test non puo' passare a vuoto)", () => {
     expect([...trovati.keys()].sort()).toEqual([...ATTESI].sort())
