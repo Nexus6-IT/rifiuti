@@ -573,6 +573,11 @@ model FIR {
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
   lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "firs_lotto_import_fkey")
 
+  /// Fase 3 (3.1): FIR bloccato all'invio a RENTRI (gli importati nascono bloccati: trigger e CHECK nella migration
+  /// `20261114100400_blocco_invio_fir_importati`; uno sblocco e' vietato per gli importati fino a 3.6).
+  bloccatoInvio     Boolean @default(false) @map("bloccato_invio")
+  motivoBloccoInvio String? @map("motivo_blocco_invio") @db.VarChar(500)
+
   @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello

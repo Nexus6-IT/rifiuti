@@ -181,9 +181,11 @@ describe('Fase 3 (3.1): provenienza di import su sette tabelle (Postgres reale)'
               transportDate: new Date('2026-03-05T08:00:00Z'),
               provenienza: 'SPECIALE',
               firNumber: `FIR/PROV/${seme}/${n}`,
+              // I FIR importati nascono bloccati all'invio (D4, Task 5).
+              ...(prov.importSource
+                ? { bloccatoInvio: true, motivoBloccoInvio: 'Importato: invio bloccato' }
+                : {}),
               ...prov,
-              // I FIR importati nascono bloccati all'invio (D4, Task 5): il helper lo fa gia' ora
-              // quando le colonne esistono; qui non le citiamo per restare valido prima del Task 5.
             },
           })
         ).id
