@@ -21,10 +21,14 @@ import { CONFIGURAZIONE_COMUNICAZIONI_SERVICE } from '../../application/comunica
 import { ConfigurazioneComunicazioniService } from '../../application/comunicazioni/configurazione-comunicazioni.service'
 import { DATI_TRACCIATO_SERVICE } from '../../application/comunicazioni/dati-tracciato.port'
 import { DatiTracciatoService } from '../../application/comunicazioni/dati-tracciato.service'
+import { COMUNICAZIONI_ORR_SERVICE } from '../../application/comunicazioni/comunicazioni-orr.port'
+import { ComunicazioniOrrService } from '../../application/comunicazioni/comunicazioni-orr.service'
+import { PreparatoreOrr } from '../../application/comunicazioni/preparatore-orr'
 import { registroTracciati } from '../../domain/comunicazioni/registro-tracciati'
 import { ComunicazioniController } from './comunicazioni.controller'
 import { DatiComunicazioniController } from './dati-comunicazioni.controller'
 import { MarcaturaConsorziController } from './marcatura-consorzi.controller'
+import { OrrController } from './orr.controller'
 
 /**
  * ComunicazioniModule (4.9a, esteso da 4.9c-f): API `/comunicazioni`. Il provider di `COMUNICAZIONI_ORSO_SERVICE`
@@ -32,7 +36,12 @@ import { MarcaturaConsorziController } from './marcatura-consorzi.controller'
  */
 @Module({
   imports: [AuthModule, RuoloEffettivoModule],
-  controllers: [ComunicazioniController, MarcaturaConsorziController, DatiComunicazioniController],
+  controllers: [
+    ComunicazioniController,
+    MarcaturaConsorziController,
+    DatiComunicazioniController,
+    OrrController,
+  ],
   providers: [
     ComunicazioniOrsoService,
     { provide: COMUNICAZIONI_ORSO_SERVICE, useExisting: ComunicazioniOrsoService },
@@ -50,10 +59,17 @@ import { MarcaturaConsorziController } from './marcatura-consorzi.controller'
       useExisting: ConfigurazioneComunicazioniService,
     },
     // Un tracciato nuovo = un preparatore qui (PR B, C, D) e una riga in `registro-tracciati.ts`.
-    { provide: PREPARATORI_TRACCIATO, useValue: [] },
+    PreparatoreOrr,
+    {
+      provide: PREPARATORI_TRACCIATO,
+      useFactory: (orr: PreparatoreOrr) => [orr],
+      inject: [PreparatoreOrr],
+    },
     { provide: REGISTRO_TRACCIATI, useValue: registroTracciati },
     ComunicazioniTracciatoService,
     { provide: COMUNICAZIONI_TRACCIATO_SERVICE, useExisting: ComunicazioniTracciatoService },
+    ComunicazioniOrrService,
+    { provide: COMUNICAZIONI_ORR_SERVICE, useExisting: ComunicazioniOrrService },
   ],
 })
 export class ComunicazioniModule {}
