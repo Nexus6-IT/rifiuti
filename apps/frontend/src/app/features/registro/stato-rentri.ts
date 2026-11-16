@@ -11,6 +11,8 @@ export type StatoRentri =
   | 'IN_INVIO'
   | 'ATTESA_ESITO'
   | 'INCERTA'
+  /** Fase 3: movimento importato da un altro programma, bloccato all'invio fino alla riconciliazione. */
+  | 'DA_RICONCILIARE'
   | 'TRASMESSA'
   | 'GIA_SU_RENTRI'
   | 'RIFIUTATA'
@@ -21,6 +23,7 @@ export const STATI_RENTRI: StatoRentri[] = [
   'IN_INVIO',
   'ATTESA_ESITO',
   'INCERTA',
+  'DA_RICONCILIARE',
   'TRASMESSA',
   'GIA_SU_RENTRI',
   'RIFIUTATA',
@@ -34,6 +37,7 @@ const ETICHETTE: Record<StatoRentri, string> = {
   IN_INVIO: 'In invio',
   ATTESA_ESITO: "In attesa dell'esito",
   INCERTA: 'Esito incerto',
+  DA_RICONCILIARE: 'Importata, da riconciliare',
   TRASMESSA: 'Trasmessa',
   GIA_SU_RENTRI: 'Già su RENTRI',
   RIFIUTATA: 'Rifiutata',
@@ -45,6 +49,7 @@ const SEVERITA: Record<StatoRentri, SeveritaTag> = {
   IN_INVIO: 'info',
   ATTESA_ESITO: 'info',
   INCERTA: 'warning',
+  DA_RICONCILIARE: 'info',
   TRASMESSA: 'success',
   GIA_SU_RENTRI: 'success',
   RIFIUTATA: 'danger',
@@ -100,6 +105,8 @@ export function tooltipStatoRentri(
       return "Inviata a RENTRI, non ancora confermata: in attesa dell'esito. Puoi verificarla."
     case 'INCERTA':
       return `Esito incerto: verificare su RENTRI prima di trasmettere di nuovo.${m ? ' ' + m : ''}`
+    case 'DA_RICONCILIARE':
+      return "Importata da un altro programma: l'invio a RENTRI è bloccato fino alla riconciliazione."
     case 'TRASMESSA':
       return 'Confermata da RENTRI.'
     case 'GIA_SU_RENTRI':

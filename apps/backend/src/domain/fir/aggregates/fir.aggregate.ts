@@ -514,6 +514,14 @@ export class FIR extends AggregateRoot {
   /** Le tratte aggiuntive sono cambiate nell'ultima `modificaBozza` (lo legge il repository). */
   private _tratteModificate = false
 
+  /**
+   * Fase 3 (3.1): FIR bloccato all'invio a RENTRI (gli importati nascono bloccati; il database ne
+   * vieta lo sblocco fino alla riconciliazione). Sola lettura: valorizzato da `toDomain`, mai
+   * riscritto dal repository.
+   */
+  private _bloccatoInvio = false
+  private _motivoBloccoInvio: string | null = null
+
   static create(props: CreateFIRProps): FIR {
     const rifiuto: FIRRifiuto = {
       cerCode: props.rifiuto.cerCode,
@@ -880,7 +888,9 @@ export class FIR extends AggregateRoot {
    * esclude un sync già in corso e un fallimento permanente).
    */
   canSyncToRENTRI(): boolean {
-    return this.emessoENonGiaLegatoARentri() && this._rentriSyncStatus.canRetry()
+    return (
+      !this._bloccatoInvio && this.emessoENonGiaLegatoARentri() && this._rentriSyncStatus.canRetry()
+    )
   }
 
   /**
@@ -906,6 +916,7 @@ export class FIR extends AggregateRoot {
   avviaTentativoRentri(ora: Date): void {
     const ripresaDaStallo = this._rentriSyncStatus.getStatus() === 'SYNCING'
     if (
+      this._bloccatoInvio ||
       !this.emessoENonGiaLegatoARentri() ||
       !(ripresaDaStallo || this._rentriSyncStatus.canRetry())
     ) {
@@ -1452,6 +1463,15 @@ export class FIR extends AggregateRoot {
   }
 
   /** Istante di avvio dell'ultimo tentativo di trasmissione. */
+  /** Fase 3: il FIR e' bloccato all'invio a RENTRI (importato, in attesa di riconciliazione). */
+  get bloccatoInvio(): boolean {
+    return this._bloccatoInvio
+  }
+
+  get motivoBloccoInvio(): string | null {
+    return this._motivoBloccoInvio
+  }
+
   get rentriSyncAvviatoAt(): Date | null {
     return this._rentriSyncAvviatoAt
   }

@@ -4,6 +4,7 @@ import { DomainException } from '../../domain/shared/domain-exception'
 import { argomentiCustom } from '../../test-support/argomenti-handler'
 
 describe('RENTRISyncController.syncFIR', () => {
+  const firRepo = { findById: jest.fn() }
   const queue = { addSyncJob: jest.fn() }
   const ruolo = { ruoloEffettivo: jest.fn() }
   const riapri = { execute: jest.fn() }
@@ -27,7 +28,8 @@ describe('RENTRISyncController.syncFIR', () => {
       {} as any,
       logger as any,
       ruolo as any,
-      riapri as any
+      riapri as any,
+      firRepo as any
     )
   })
 
@@ -113,7 +115,8 @@ describe('RENTRISyncController: @TenantId è l’azienda selezionata', () => {
       {} as any,
       logger as any,
       {} as any,
-      {} as any
+      {} as any,
+      { findById: jest.fn() } as any
     )
     const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
     const arg = argomentiCustom(RENTRISyncController, 'getSyncStatus', request)
@@ -132,6 +135,7 @@ describe('RENTRISyncController: @TenantId è l’azienda selezionata', () => {
 })
 
 describe('RENTRISyncController: ruolo effettivo sulle scritture', () => {
+  const firRepo = { findById: jest.fn() }
   const req = { user: { id: 'u1', role: 'ADMIN', tenantId: 'A' } }
   const ruolo = { ruoloEffettivo: jest.fn() }
   const conferma = { execute: jest.fn() }
@@ -153,7 +157,8 @@ describe('RENTRISyncController: ruolo effettivo sulle scritture', () => {
       {} as any,
       logger as any,
       ruolo as any,
-      {} as any
+      {} as any,
+      firRepo as any
     )
   })
 

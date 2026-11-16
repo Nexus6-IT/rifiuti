@@ -102,6 +102,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'adozione delle righe di trasmissione: ogni annotazione e una registrazione RENTRI, anche una correzione',
   },
+  'application/rentri/registro/catena-importata.ts': {
+    scelta: 'tutte',
+    motivo:
+      'frammento SQL della Fase 3: risale la catena delle correzioni (movimento_rettificato_id) per non adottare una correzione di un importato non riconciliato; non calcola nulla',
+  },
   'application/rentri/registro/accoda-trasmissione-rentri.use-case.ts': {
     scelta: 'tutte',
     motivo:
@@ -164,6 +169,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo:
       'legge per chiave primaria i movimenti della pagina (testa vigente e movimento fatturato) per confrontare quantita, CER e causale; nessun conteggio ne` ambito',
+  },
+  'test-support/migrazione/movimento-importato.ts': {
+    scelta: 'tutte',
+    motivo:
+      'fixture degli spec Postgres della Fase 3: crea un movimento importato con la sua riga di blocco; non calcola nulla',
   },
   'test-support/fatturazione-annullo-di-test.ts': {
     scelta: 'tutte',

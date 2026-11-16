@@ -24,6 +24,7 @@ import { LoggerService } from '../../../core/logger/logger.service'
 import { TenantContext } from '../../../core/context/tenant-context'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import type { EsitoPerRiga } from './esito-movimenti-rentri'
+import { NESSUNA_CATENA_DA_RICONCILIARE } from './catena-importata'
 import type { CandidataLotto } from './selezione-lotto-rentri'
 
 type Tx = Prisma.TransactionClient
@@ -488,6 +489,8 @@ export class TrasmissioniRegistroRepository {
    * D3: adotta i movimenti SENZA riga creati da `invio_rentri_automatico_dal` in poi (registro
    * senza data: nessuno). Una correzione si adotta qui solo se anche il suo predecessore e' nato
    * dopo la data; le altre le gestisce `adottaCorrezioni`. Ordine (anno, progressivo), al piu' `limite`.
+   * Fase 3: un movimento importato (`import_source` non nullo) e una correzione la cui catena parte da
+   * un importato `DA_RICONCILIARE` non si adottano mai (hanno gia' la loro riga di blocco o nessuna).
    */
   async adottaAutomatiche(tenantId: string, limite: number): Promise<number> {
     return this.nelTenant(
@@ -503,6 +506,8 @@ export class TrasmissioniRegistroRepository {
           ON p."id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND r."invio_rentri_automatico_dal" IS NOT NULL
+          AND m."import_source" IS NULL
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
           AND m."created_at" >= r."invio_rentri_automatico_dal"
           AND (m."movimento_rettificato_id" IS NULL
                OR p."created_at" >= r."invio_rentri_automatico_dal")
@@ -532,6 +537,8 @@ export class TrasmissioniRegistroRepository {
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND m."movimento_rettificato_id" IS NOT NULL
           AND p."stato" IN ('TRASMESSA', 'GIA_SU_RENTRI')
+          AND m."import_source" IS NULL
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
           AND NOT EXISTS (
             SELECT 1 FROM "movimenti_trasmissione_rentri" t WHERE t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id")
         ORDER BY m."progressive_year", m."progressive_number"

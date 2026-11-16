@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { verificaFirNonBloccato } from '../../domain/fir/guardia-invio-rentri'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FIR, RentriOrigineLegame } from '../../domain/fir/aggregates/fir.aggregate'
@@ -130,6 +131,10 @@ export class AcquisisciFormularioRENTRIUseCase {
         // 404, non 403: non conferma a un altro tenant che l'id esiste.
         throw DomainException.notFound('FIR', input.scelta.firId)
       }
+      // Fase 3 (D4): collegare un FIR IMPORTATO scrive su RENTRI (presa in carico) prima della
+      // riconciliazione: bloccato. Il ramo NUOVO crea un FIR che nasce legato e NON e' un import
+      // (nessun `import_source`, `bloccatoInvio` falso): non passa da qui.
+      verificaFirNonBloccato(firTarget)
       if (firTarget.rentriNumeroFir) {
         throw DomainException.businessRuleViolation(
           'FIR_GIA_LEGATO',

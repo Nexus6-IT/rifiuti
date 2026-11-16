@@ -104,6 +104,10 @@ export class TriggerBatchSyncUseCase {
    * Get reason why FIR was skipped
    */
   private getSkipReason(fir: FIR): string {
+    if (fir.bloccatoInvio) {
+      return 'FIR importato: invio a RENTRI bloccato fino alla riconciliazione'
+    }
+
     const statoEmesso =
       fir.stato === FIRStato.EMESSO ||
       fir.stato === FIRStato.IN_TRANSITO ||
