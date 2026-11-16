@@ -1,6 +1,6 @@
 import { decodificaC4 } from '../../../../domain/migrazione/winwaste/c4'
 import { decodificaCer } from '../../../../domain/migrazione/winwaste/cer'
-import { chiaveLegacyWinwaste } from '../../../../domain/migrazione/winwaste/chiave-legacy'
+import { chiaveMovimento } from '../../../../domain/migrazione/chiavi-legacy'
 import {
   confrontaConDtuk,
   decodificaDatr,
@@ -170,7 +170,7 @@ export function decodificaCorpo(
     corpo: {
       cod,
       riga: riga.numeroRiga,
-      legacyKey: chiaveLegacyWinwaste(contesto.ditta, contesto.anno, tabella, cod),
+      legacyKey: chiaveMovimento(contesto.ditta, contesto.anno, tabella, cod),
       annullato: dtuk.valore.annullato,
       causaAnnullo: dtuk.valore.annullato ? dtuk.valore.causa : null,
       data: dtuk.valore.data,

@@ -813,6 +813,9 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
           'fir_id_ricopia',
           'hash_versione',
           'id',
+          'import_source', // Fase 3 (3.1): provenienza di import
+          'legacy_key',
+          'lotto_import_id',
           'motivo_annotazione',
           'movement_date',
           'movimento_originale_id',

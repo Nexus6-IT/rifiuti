@@ -21,6 +21,7 @@ import {
   SedeNonModificabileError,
   SedeNonTrovataError,
 } from '../domain/errors'
+import { FirBloccatoAllInvioError } from '../../domain/fir/guardia-invio-rentri'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
 
@@ -125,6 +126,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.CONFLICT
       errorCode = FirModificatoNelFrattempoError.CODICE
       message = FirModificatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // FIR importato bloccato all'invio a RENTRI (Fase 3, D4): 409 senza id e senza il motivo interno.
+    else if (exception instanceof FirBloccatoAllInvioError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirBloccatoAllInvioError.CODICE
+      message = FirBloccatoAllInvioError.MESSAGGIO_UTENTE
     }
     // Bozza non modificabile: 409 col messaggio del motivo (senza id).
     else if (exception instanceof FirNonModificabileError) {

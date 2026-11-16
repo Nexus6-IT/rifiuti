@@ -258,6 +258,7 @@ describe('Ruoli database (Postgres reale)', () => {
     'automezzi',
     'strumenti_pesa',
     'agenti_pesa',
+    'lotti_import',
   ]
   const INSERIMENTO = { SELECT: true, INSERT: true, UPDATE: false, DELETE: false, TRUNCATE: false }
   const SENZA_DELETE = { SELECT: true, INSERT: true, UPDATE: true, DELETE: false, TRUNCATE: false }
@@ -282,7 +283,7 @@ describe('Ruoli database (Postgres reale)', () => {
     }
   })
 
-  it('accessi_pesa, collegamenti_accesso, automezzi, strumenti_pesa, agenti_pesa: niente DELETE né TRUNCATE', async () => {
+  it('accessi_pesa, collegamenti_accesso, automezzi, strumenti_pesa, agenti_pesa, lotti_import: niente DELETE né TRUNCATE', async () => {
     for (const [ruolo, pwd] of [
       ['wasteflow_app', PWD_APP_1],
       ['wasteflow_sistema', PWD_SIS_1],

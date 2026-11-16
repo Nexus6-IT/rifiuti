@@ -1,5 +1,6 @@
 import { RENTRISyncJobProcessor } from './rentri-sync.job'
 import { Job, UnrecoverableError } from 'bullmq'
+import { FirBloccatoAllInvioError } from '../../../domain/fir/guardia-invio-rentri'
 
 /**
  * Integration tests for RENTRI Sync Job Processor
@@ -55,6 +56,27 @@ describe('RENTRISyncJobProcessor', () => {
       mockRentriSyncQueue,
       mockModuli as any
     )
+  })
+
+  describe('FIR importato bloccato (Fase 3, D4)', () => {
+    const jobDi = (data: Record<string, unknown>) =>
+      ({
+        id: 'job-b',
+        name: 'rentri-sync',
+        data,
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+        moveToFailed: jest.fn(),
+      }) as unknown as Job
+
+    it("(d, FIR) coda sporca: il job di un importato e' rifiutato (UnrecoverableError, nessun nuovo tentativo) e nessuna POST parte", async () => {
+      mockSyncUseCase.execute.mockRejectedValue(new FirBloccatoAllInvioError('f1', 'importato'))
+      const errore = await (processor as any)
+        .processJob(jobDi({ type: 'single', firId: 'f1', tenantId: 't1' }))
+        .catch((e: unknown) => e)
+      expect(errore).toBeInstanceOf(UnrecoverableError)
+      expect(mockSyncUseCase.execute).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('modulo rentri ricontrollato (D4b)', () => {

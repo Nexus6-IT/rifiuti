@@ -94,6 +94,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'CollegamentoAccesso',
   // Pese (Fase 4 pezzo 8b): agenti di pesa e letture firmate, dato dell'azienda.
   'AgentePesa',
+  // Fase 3 (3.1): lotti di import, dato dell'azienda.
+  'LottoImport',
   'LetturaPesa',
   // Stato di trasmissione del registro a RENTRI (Fase 2 pezzo 9): dato dell'azienda.
   'MovimentoTrasmissioneRentri',

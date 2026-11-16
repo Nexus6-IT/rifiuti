@@ -273,6 +273,19 @@ export class FIRResponseDto {
   })
   canSyncToRENTRI: boolean
 
+  @ApiProperty({
+    description:
+      "Fase 3: FIR importato da un altro programma, bloccato all'invio a RENTRI fino alla riconciliazione",
+  })
+  bloccatoInvio: boolean
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "Motivo del blocco all'invio (null se non bloccato)",
+  })
+  motivoBloccoInvio: string | null
+
   static fromDomain(fir: FIR): FIRResponseDto {
     const lastError = fir.rentriSyncStatus.getLastError()
     // Nessun fallimento da tradurre: niente messaggio, niente azione.
@@ -341,6 +354,8 @@ export class FIRResponseDto {
       rentriAzioneErrore: erroreTradotto?.azione ?? null,
       rentriSyncAttempts: fir.rentriSyncStatus.getAttempts(),
       canSyncToRENTRI: fir.canSyncToRENTRI(),
+      bloccatoInvio: fir.bloccatoInvio,
+      motivoBloccoInvio: fir.motivoBloccoInvio,
     }
   }
 }

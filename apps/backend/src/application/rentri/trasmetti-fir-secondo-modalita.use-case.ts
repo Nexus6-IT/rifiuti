@@ -113,6 +113,19 @@ export class TrasmettiFIRSecondoModalitaUseCase {
       return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato }
     }
 
+    // Fase 3 (D4): un FIR importato non si accoda mai, ne' in AUTOMATICA ne' in IBRIDA.
+    const fir = await this.firRepository.findById(firId)
+    if (fir?.bloccatoInvio) {
+      this.logger.info(
+        "FIR bloccato all'invio a RENTRI (importato): nessuna trasmissione accodata",
+        {
+          firId,
+          tenantId,
+        }
+      )
+      return { avviata: false, motivo: 'BLOCCATO_ALL_INVIO' }
+    }
+
     const richiedeConferma = modalitaLegame === 'IBRIDA'
 
     const jobId = await this.rentriSyncQueue.addSyncJob({
@@ -181,7 +194,7 @@ export interface EsitoOrchestrazioneRENTRI {
   /** Se una trasmissione è stata effettivamente accodata. */
   avviata: boolean
   /** Perché NON è partita nulla, quando avviata è false. */
-  motivo?: 'MANUALE' | 'CERTIFICATO_MANCANTE' | 'MODULO_NON_ATTIVO'
+  motivo?: 'MANUALE' | 'CERTIFICATO_MANCANTE' | 'MODULO_NON_ATTIVO' | 'BLOCCATO_ALL_INVIO'
   /** true se, a trasmissione riuscita, il legame richiederà conferma esplicita (modalità IBRIDA). */
   richiedeConferma?: boolean
   /** Identificativo del job accodato, quando avviata è true. */
