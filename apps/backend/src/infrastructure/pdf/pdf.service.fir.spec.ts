@@ -323,6 +323,26 @@ describe('PDFService.generateFIRSeriePDF - filigrana BOZZA per pagina (render re
     expect([...passate[0].values()].some(Boolean)).toBe(false)
   })
 
+  it('serie mista: un FIR di bozza su piu pagine ha la filigrana su tutte le sue pagine', async () => {
+    const lunga = Array.from({ length: 120 }, (_, i) => `Riga di descrizione ${i}`).join('\n')
+    const { passate } = await rendiERegistra(
+      [
+        { fir: fir('A', 'EMESSO') },
+        { fir: { ...fir('B', 'DRAFT'), wasteDescription: lunga } },
+        { fir: fir('C', 'EMESSO') },
+      ],
+      1
+    )
+    const pagine = [...passate[1].entries()].sort(([a], [b]) => a - b)
+    // A: p1; B (bozza): da p2 per piu di una pagina; C: ultima pagina
+    expect(pagine.length).toBeGreaterThanOrEqual(4)
+    expect(pagine[0][1]).toBe(false)
+    expect(pagine[pagine.length - 1][1]).toBe(false)
+    const dentro = pagine.slice(1, -1).map(([, marcata]) => marcata)
+    expect(dentro.length).toBeGreaterThanOrEqual(2)
+    expect(dentro.every(Boolean)).toBe(true)
+  })
+
   it("serie mista con logo corrotto: la misura non produce PDF e l'avviso esce una volta sola", async () => {
     const rotto = Buffer.concat([
       Buffer.from('89504e470d0a1a0a', 'hex'),

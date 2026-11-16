@@ -6,7 +6,12 @@
  * modello di un'altra azienda non puo' mai trovare la voce di questa, nemmeno con lo stesso id.
  * Invalidazione: `versione` sale a ogni modifica, quindi una voce vecchia non viene piu' trovata
  * neanche dalle altre istanze del backend; in piu' `invalida` la toglie subito su questa istanza e
- * il TTL ripulisce quel che resta. Tetti: numero di voci e byte totali (si espelle la meno usata).
+ * il TTL ripulisce quel che resta.
+ *
+ * INVARIANTE: ogni scrittura di `logo_base64` deve far salire `versione`, altrimenti la cache serve
+ * il logo vecchio fino al TTL. L'applicazione lo fa (`modifica`) e, dalla migration
+ * `20261114100000_modelli_stampa_logo_versione`, lo impone il trigger `company_templates_logo_versione`
+ * anche per scritture via SQL (seed, script, migration). Tetti: numero di voci e byte totali (si espelle la meno usata).
  */
 export interface OpzioniCacheLogo {
   maxVoci: number

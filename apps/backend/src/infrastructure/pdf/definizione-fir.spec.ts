@@ -1,5 +1,6 @@
 import { PDFService } from './pdf.service'
 import {
+  escapeXml,
   definizioneFir,
   definizioneFirInSerie,
   eSerieMista,
@@ -268,5 +269,16 @@ describe('PDFService - PDF reale', () => {
       const d = definizioneFirInSerie([{ fir: fir('A') }, { fir: fir('B') }])
       expect(testo(d)).not.toContain('BOZZA')
     })
+  })
+})
+
+describe('escapeXml (testo dentro l SVG della filigrana)', () => {
+  it('neutralizza i caratteri speciali XML', () => {
+    expect(escapeXml(`<a href="x">&'</a>`)).toBe(
+      '&lt;a href=&quot;x&quot;&gt;&amp;&apos;&lt;/a&gt;'
+    )
+  })
+  it('lascia invariata la dicitura di bozza', () => {
+    expect(escapeXml('BOZZA – NON VALIDO')).toBe('BOZZA – NON VALIDO')
   })
 })

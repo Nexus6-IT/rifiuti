@@ -329,11 +329,16 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
       perRadice.set(c.movimentoOriginaleId, lista)
     }
     // Stesso ordine dell'input: due annotazioni della stessa catena possono avere CER diversi.
-    return movimenti.map(m => ({
-      ...classificaConsorzi(m, regole, perRadice.get(m.radiceId) ?? []),
-      // Senza correzioni restano solo le marcature da regola: sono i consorzi che una regola prende.
-      regolaPrende: classificaConsorzi(m, regole, []).marcature.map(x => x.consorzio),
-    }))
+    return movimenti.map(m => {
+      const override = perRadice.get(m.radiceId) ?? []
+      const esito = classificaConsorzi(m, regole, override)
+      // Senza correzioni le marcature sono tutte da regola: niente seconda classificazione.
+      // Con correzioni si ricalcola senza, per sapere cosa una regola prenderebbe comunque.
+      const regolaPrende = (
+        override.length === 0 ? esito : classificaConsorzi(m, regole, [])
+      ).marcature.map(x => x.consorzio)
+      return { ...esito, regolaPrende }
+    })
   }
 
   async consorziDeiMovimenti(

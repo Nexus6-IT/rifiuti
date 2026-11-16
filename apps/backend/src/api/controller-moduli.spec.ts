@@ -45,7 +45,14 @@ interface VoceModulo {
   metodi?: Record<string, readonly FeatureKey[] | 'senza-modulo'>
 }
 
-const LETTURA_ANAGRAFICHE = ['anagrafiche', 'fir', 'registro', 'contratti', 'pese'] as const
+const LETTURA_ANAGRAFICHE = [
+  'anagrafiche',
+  'fir',
+  'registro',
+  'contratti',
+  'pese',
+  'ritiri',
+] as const
 
 /** Letture delle anagrafiche condivise con FIR, registro e contratti (P2: basta una delle chiavi). */
 const LETTURE_REGISTRY: Record<string, readonly FeatureKey[]> = {

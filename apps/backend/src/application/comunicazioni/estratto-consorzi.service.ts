@@ -72,8 +72,8 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
       throw new MarcaturaNonValidaError('Sede non trovata.')
     }
 
-    // Un sotto-intervallo per ogni anno solare di Roma toccato dal periodo, con i pesi specifici
-    // del MUD di QUELL'anno: una lettura del MUD per anno, non per movimento.
+    // Anni solari di Roma toccati dal periodo: i report MUD di tutti gli anni si leggono con una
+    // sola query e ogni movimento usa i pesi specifici del MUD del proprio anno.
     const annoDa = Number(da.slice(0, 4))
     const annoA = Number(a.slice(0, 4))
     const anni = Array.from({ length: annoA - annoDa + 1 }, (_, i) => annoDa + i)
@@ -85,7 +85,7 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
         orderBy: { id: 'asc' },
       }),
     ])
-    // Come il vecchio findFirst per anno: se un anno avesse piu' report vale il primo.
+    // `MUDReport` e' unico per (azienda, anno): al piu' un report per anno.
     const pesiSpecificiPerAnno: Record<
       number,
       ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']

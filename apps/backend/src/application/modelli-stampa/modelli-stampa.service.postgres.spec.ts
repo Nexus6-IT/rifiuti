@@ -308,4 +308,53 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
     const altra = new ModelliStampaService(app)
     expect((await nel(a.tenantId, () => altra.getById(a.tenantId, ma.id))).logoBase64).toBeNull()
   })
+
+  it('cache dei loghi: la seconda lettura non rilegge il logo dal database', async () => {
+    const a = await azienda()
+    await nel(a.tenantId, () =>
+      service.crea(a.tenantId, a.utenteId, dati('Cache', { logoBase64: PNG }))
+    )
+    // istanza nuova = cache vuota: la prima lettura carica il logo, la seconda no
+    const fresco = new ModelliStampaService(app)
+    const lettureComplete = jest.spyOn(app.companyTemplate, 'findMany')
+    try {
+      const primo = await nel(a.tenantId, () => fresco.list(a.tenantId))
+      const dopoPrima = lettureComplete.mock.calls.filter(([args]) => !args?.select).length
+      const secondo = await nel(a.tenantId, () => fresco.list(a.tenantId))
+      const dopoSeconda = lettureComplete.mock.calls.filter(([args]) => !args?.select).length
+      expect(primo.map(m => m.logoBase64)).toEqual([PNG])
+      expect(secondo.map(m => m.logoBase64)).toEqual([PNG])
+      expect(dopoPrima).toBe(1)
+      expect(dopoSeconda).toBe(1)
+    } finally {
+      lettureComplete.mockRestore()
+    }
+  })
+
+  it('trigger: un UPDATE del logo via SQL senza toccare la versione la fa salire di uno', async () => {
+    const a = await azienda()
+    const m = await nel(a.tenantId, () =>
+      service.crea(a.tenantId, a.utenteId, dati('Trigger', { logoBase64: PNG }))
+    )
+    const prima = await owner.companyTemplate.findUniqueOrThrow({ where: { id: m.id } })
+    // via SQL, come farebbe uno script: nessun accenno a `versione`
+    await owner.$executeRaw`UPDATE company_templates SET logo_base64 = ${PNG_ROSSO} WHERE id = ${m.id}::uuid`
+    const dopo = await owner.companyTemplate.findUniqueOrThrow({ where: { id: m.id } })
+    expect(dopo.versione).toBe(prima.versione + 1)
+    // un UPDATE che non tocca il logo non cambia la versione
+    await owner.$executeRaw`UPDATE company_templates SET name = 'Rinominato' WHERE id = ${m.id}::uuid`
+    expect((await owner.companyTemplate.findUniqueOrThrow({ where: { id: m.id } })).versione).toBe(
+      dopo.versione
+    )
+    // la modifica applicativa (versione + logo insieme) sale comunque di uno solo
+    await nel(a.tenantId, () =>
+      service.modifica(a.tenantId, a.utenteId, m.id, {
+        ...dati('Trigger', { logoBase64: PNG }),
+        versione: dopo.versione,
+      })
+    )
+    expect((await owner.companyTemplate.findUniqueOrThrow({ where: { id: m.id } })).versione).toBe(
+      dopo.versione + 1
+    )
+  })
 })

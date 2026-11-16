@@ -15,6 +15,7 @@ import {
   RitiriRepository,
 } from '../../infrastructure/persistence/ritiri.repository'
 import { ModelliStampaService } from '../modelli-stampa/modelli-stampa.service'
+import { sceglieModelloFir } from '../modelli-stampa/scelta-modello-fir'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { FIR_SERIE_MAX } from '../../infrastructure/pdf/definizione-fir'
 import {
@@ -31,7 +32,6 @@ import {
   type DatiDistinta,
   type ModelloStampaDistinta,
 } from './stampa/distinta-pdf'
-import { sceglieModelloFir } from '../modelli-stampa/scelta-modello-fir'
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/
 
