@@ -25,7 +25,8 @@
     "seed:rbac": "npm run seed:permissions && npm run seed:roles",
     "test:oracolo": "jest -c jest.oracolo.config.js --forceExit --ci --runInBand",
     "test:postgres": "NODE_OPTIONS=--max-old-space-size=3584 jest -c jest.postgres.config.js --forceExit --maxWorkers=1 --workerIdleMemoryLimit=2048MB",
-    "test:redis": "jest -c jest.redis.config.js --forceExit --runInBand"
+    "test:redis": "jest -c jest.redis.config.js --forceExit --runInBand",
+    "migrazione:analizza": "ts-node -r tsconfig-paths/register src/cli/migrazione-analizza.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
