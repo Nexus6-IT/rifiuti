@@ -311,7 +311,8 @@ const LIMITE_ELENCO = 200
 const giorno = (d: Date) => d.toISOString().slice(0, 10)
 
 function nota(modalita: ModalitaOrso): string {
-  return registroTracciati.get('ORSO', `${TRACCIATO}-${versioneDi(modalita)}`).notaAffidabilita
+  return registroTracciati.get(CONSORZIO_ORSO, `${TRACCIATO}-${versioneDi(modalita)}`)
+    .notaAffidabilita
 }
 
 function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneVista {

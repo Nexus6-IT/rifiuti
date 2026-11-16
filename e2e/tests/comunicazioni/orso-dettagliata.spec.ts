@@ -84,7 +84,7 @@ test.describe('Comunicazioni O.R.SO. dettagliata', () => {
       registroId: registro!.id,
     })
     expect(scarico.stato, JSON.stringify(scarico.corpo)).toBe(201)
-    const config = await chiama('PUT', `/comunicazioni/sedi/${sedeId}/ORSO`, tk, {
+    const config = await chiama('PUT', `/comunicazioni/dati/sedi/${sedeId}/ORSO`, tk, {
       modalita: 'DETTAGLIATA',
     })
     expect(config.stato, JSON.stringify(config.corpo)).toBe(200)
