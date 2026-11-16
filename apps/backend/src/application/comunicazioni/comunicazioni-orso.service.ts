@@ -68,6 +68,17 @@ const modalitaDiVersione = (versione: string): ModalitaOrso =>
   versione === VERSIONE_DETTAGLIATA ? 'DETTAGLIATA' : 'NORMALE'
 const AUTORE = 'WasteFlow'
 
+/**
+ * Con quali pesi specifici si convertono in kg le quantità non di massa nel calcolo delle giacenze.
+ * Si salva con la comunicazione e il confronto «modificata dopo l'invio» la ricalcola con lo stesso
+ * metodo con cui è stata generata: cambiare il metodo non tocca quindi le comunicazioni già fatte.
+ * - `ANNO_COMUNICAZIONE`: tutti i movimenti coi pesi dell'anno della comunicazione (metodo storico,
+ *   default delle righe esistenti al momento della migration);
+ * - `PESI_PER_ANNO`: ogni movimento coi pesi del proprio anno solare (comunicazioni nuove).
+ */
+export type MetodoPesi = 'ANNO_COMUNICAZIONE' | 'PESI_PER_ANNO'
+export const METODO_PESI_CORRENTE: MetodoPesi = 'PESI_PER_ANNO'
+
 export type CodiceAvvisoComunicazione =
   | CodiceAvvisoOrso
   | 'PROVINCIA_IMPIANTO_MANCANTE'
@@ -254,6 +265,7 @@ interface Calcolo {
   avvisi: AvvisoComunicazione[]
   bloccanti: boolean
   hashDati: string
+  metodoPesi: MetodoPesi
 }
 
 type RigaComunicazione = Prisma.ComunicazioneConsorzioGetPayload<{
@@ -267,6 +279,7 @@ type RigaComunicazione = Prisma.ComunicazioneConsorzioGetPayload<{
     versione: true
     stato: true
     hashDati: true
+    metodoPesi: true
     nomeFile: true
     generataIl: true
     generataDa: true
@@ -285,6 +298,7 @@ const SELEZIONE_VISTA = {
   versione: true,
   stato: true,
   hashDati: true,
+  metodoPesi: true,
   nomeFile: true,
   generataIl: true,
   generataDa: true,
@@ -351,7 +365,8 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
     tenantId: string,
     unitaLocaleId: string,
     anno: number,
-    modalitaForzata?: ModalitaOrso
+    modalitaForzata?: ModalitaOrso,
+    metodoPesi: MetodoPesi = METODO_PESI_CORRENTE
   ): Promise<Calcolo> {
     const unita = await this.prisma.rentriUnitaLocale.findFirst({
       where: { id: unitaLocaleId, tenantId },
@@ -363,20 +378,30 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
     const modalita = modalitaForzata ?? (await this.modalitaDellaSede(tenantId, unitaLocaleId))
 
     const { inizio, fine } = limitiAnnoMud(anno)
-    const [catalogo, record] = await Promise.all([
+    const [catalogo, report] = await Promise.all([
       caricaCatalogoCausali(this.prisma, tenantId),
-      this.prisma.mUDReport.findUnique({
-        where: { tenantId_year: { tenantId, year: anno } },
-        select: { reportData: true },
+      // `MUDReport` è unico per (azienda, anno). Col metodo storico basta quello dell'anno; col
+      // metodo per anno servono anche i precedenti, da cui vengono le giacenze di apertura.
+      this.prisma.mUDReport.findMany({
+        where: { tenantId, year: metodoPesi === 'PESI_PER_ANNO' ? { lte: anno } : anno },
+        select: { year: true, reportData: true },
       }),
     ])
+    const pesiDi = (y: number) =>
+      leggiIntegrazioni(report.find(r => r.year === y)?.reportData).pesiSpecifici
+    // Un anno senza report non compare: per quei movimenti vale il ripiego sui pesi dell'anno.
+    const pesiSpecificiPerAnno =
+      metodoPesi === 'PESI_PER_ANNO'
+        ? Object.fromEntries(report.map(r => [r.year, pesiDi(r.year)]))
+        : undefined
     const lettura = await leggiMovimentiOrso(this.prisma, {
       tenantId,
       unitaLocaleId,
       da: inizio,
       a: fine,
       catalogo,
-      pesiSpecifici: leggiIntegrazioni(record?.reportData).pesiSpecifici,
+      pesiSpecifici: pesiDi(anno),
+      ...(pesiSpecificiPerAnno ? { pesiSpecificiPerAnno } : {}),
       anno,
     })
 
@@ -517,7 +542,31 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       avvisi,
       bloccanti: avvisi.some(a => eBloccante(a.codice as CodiceAvvisoComunicazione)),
       hashDati: hashDatiOrso(dati),
+      metodoPesi,
     }
+  }
+
+  /**
+   * Hash attuale dei dati con la modalità (dalla versione salvata) e il metodo pesi (dalla colonna)
+   * con cui la comunicazione è stata generata (null se il calcolo non riesce). Riusa il calcolo già
+   * fatto se coincidono entrambi.
+   */
+  private async hashPerMetodo(
+    tenantId: string,
+    unitaLocaleId: string,
+    anno: number,
+    metodoPesi: string,
+    versione: string,
+    gia?: Calcolo
+  ): Promise<string | null> {
+    const metodo: MetodoPesi =
+      metodoPesi === 'PESI_PER_ANNO' ? 'PESI_PER_ANNO' : 'ANNO_COMUNICAZIONE'
+    const modalita = modalitaDiVersione(versione)
+    if (gia && gia.metodoPesi === metodo && gia.modalita === modalita) return gia.hashDati
+    return this.calcola(tenantId, unitaLocaleId, anno, modalita, metodo).then(
+      x => x.hashDati,
+      () => null
+    )
   }
 
   private tracciato(modalita: ModalitaOrso = 'NORMALE') {
@@ -558,7 +607,23 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       avvisi: c.avvisi,
       bloccanti: c.bloccanti,
       hashDati: c.hashDati,
-      ...(ultima ? { ultima: vista(ultima, c.hashDati) } : {}),
+      ...(ultima
+        ? {
+            ultima: vista(
+              ultima,
+              ultima.stato === 'INVIATA'
+                ? await this.hashPerMetodo(
+                    tenantId,
+                    ultima.unitaLocaleId,
+                    p.anno,
+                    ultima.metodoPesi,
+                    ultima.versione,
+                    c
+                  )
+                : c.hashDati
+            ),
+          }
+        : {}),
     }
   }
 
@@ -585,6 +650,7 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       versione: versioneDi(c.modalita),
       hashDati: c.hashDati,
     }
+    // Il metodo non fa parte della chiave: stessi dati, stessa comunicazione, qualunque metodo.
     const cerca = () =>
       this.prisma.comunicazioneConsorzio.findFirst({ where: chiave, select: SELEZIONE_VISTA })
     const esistente = await cerca()
@@ -607,6 +673,7 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
             nomeFile: `${CONSORZIO_ORSO}_${TRACCIATO}_${p.anno}_${sede}${c.modalita === 'DETTAGLIATA' ? '_dettagliata' : ''}.${this.tracciato(c.modalita).estensione}`,
             contenuto,
             stato: 'GENERATA',
+            metodoPesi: c.metodoPesi,
             generataDa: utenteId,
           },
           select: SELEZIONE_VISTA,
@@ -652,15 +719,11 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       let hash: string | null = null
       if (r.stato === 'INVIATA' && calcolaHash) {
         const anno = r.periodoDa.getUTCFullYear()
-        const modalita = modalitaDiVersione(r.versione)
-        const k = `${r.unitaLocaleId}|${anno}|${modalita}`
+        const k = `${r.unitaLocaleId}|${anno}|${r.versione}|${r.metodoPesi}`
         if (!attuali.has(k)) {
           attuali.set(
             k,
-            await this.calcola(tenantId, r.unitaLocaleId, anno, modalita).then(
-              x => x.hashDati,
-              () => null
-            )
+            await this.hashPerMetodo(tenantId, r.unitaLocaleId, anno, r.metodoPesi, r.versione)
           )
         }
         hash = attuali.get(k) ?? null
@@ -700,14 +763,12 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       select: SELEZIONE_VISTA,
     })
     if (!corrente) throw new ComunicazioneNonTrovataError()
-    const hash = await this.calcola(
+    const hash = await this.hashPerMetodo(
       tenantId,
       r.unitaLocaleId,
       r.periodoDa.getUTCFullYear(),
-      modalitaDiVersione(r.versione)
-    ).then(
-      x => x.hashDati,
-      () => null
+      r.metodoPesi,
+      r.versione
     )
     return vista(corrente, hash)
   }
