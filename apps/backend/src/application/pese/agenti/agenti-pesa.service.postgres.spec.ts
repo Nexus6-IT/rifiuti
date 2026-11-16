@@ -47,6 +47,7 @@ describe('AgentiPesaService e LetturePesaService (Postgres reale)', () => {
   )
   let app: PrismaService
   let agenti: AgentiPesaService
+  let battito: BattitoAgenteService
   let letture: LetturePesaService
   let risoluzione: RisoluzioneAgenteService
   let abbinamento: AbbinamentoAgenteService
@@ -55,7 +56,8 @@ describe('AgentiPesaService e LetturePesaService (Postgres reale)', () => {
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
-    agenti = new AgentiPesaService(app, new BattitoAgenteService(app))
+    battito = new BattitoAgenteService(app)
+    agenti = new AgentiPesaService(app, battito)
     letture = new LetturePesaService(app)
     risoluzione = new RisoluzioneAgenteService(sistema as unknown as PrismaSistemaService)
     abbinamento = new AbbinamentoAgenteService(app, risoluzione)
@@ -135,8 +137,25 @@ describe('AgentiPesaService e LetturePesaService (Postgres reale)', () => {
     const a = await azienda()
     const ag = await creaAgenteAttivoDiProva(owner, a)
     const strumento = await creaStrumentoDiProva(owner, a)
+    // Un battito prima della revoca riempie la mappa in memoria degli strumenti vivi.
+    await battito.registra(
+      { id: ag.id, tenantId: a.tenantId },
+      {
+        versione: '1.0.0',
+        oraAgente: new Date().toISOString(),
+        codaInAttesa: 0,
+        lettureScartate: 0,
+        ultimaSequenza: 1,
+        strumenti: [{ strumentoId: strumento, stato: 'OK' }],
+      },
+      null,
+      new Date()
+    )
+    expect(battito.statoStrumenti(ag.id).size).toBe(1)
 
     const v = await agenti.revoca(a.tenantId, a.utenteId, ag.id, 'PC sostituito')
+    // La revoca svuota lo stato in memoria: nessun «OK» fantasma per un agente revocato.
+    expect(battito.statoStrumenti(ag.id).size).toBe(0)
     expect(v).toMatchObject({ stato: 'REVOCATO', motivoRevoca: 'PC sostituito' })
     await expect(risoluzione.daToken(hashSegreto(ag.token))).resolves.toMatchObject({
       id: ag.id,
