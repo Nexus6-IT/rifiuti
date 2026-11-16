@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { verificaFirNonBloccato } from '../../domain/fir/guardia-invio-rentri'
 import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
@@ -232,6 +233,9 @@ export class CompletaOperazioneConFirmaUseCase {
     if (fir.tenantId !== tenantId) {
       throw new DomainException('Unauthorized access to FIR', 'UNAUTHORIZED')
     }
+    // Fase 3 (D4): FIR importato = nessuna scrittura verso RENTRI prima della riconciliazione.
+    verificaFirNonBloccato(fir)
+
     if (!fir.rentriNumeroFir) {
       throw DomainException.businessRuleViolation(
         'FIR_NON_LEGATO_RENTRI',

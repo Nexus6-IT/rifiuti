@@ -362,6 +362,7 @@ describe('RentriRigaAzioniComponent', () => {
       NON_TRASMISSIBILE: 'Non trasmissibile',
       INCERTA: 'Esito incerto',
       GIA_SU_RENTRI: 'Già su RENTRI',
+      DA_RICONCILIARE: 'Importata, da riconciliare',
     }
     for (const s of STATI_RENTRI) {
       riga(s)
@@ -405,6 +406,16 @@ describe('RentriRigaAzioniComponent', () => {
     riga('TRASMESSA')
     expect(q('rentri-verifica-m1')).toBeNull()
     expect(q('rentri-togli-m1')).toBeNull()
+  })
+
+  it('DA_RICONCILIARE: nessuna azione offerta (né Trasmetti, né Escludi, né Togli dalla coda, né Verifica)', () => {
+    riga('DA_RICONCILIARE')
+    for (const azione of ['togli', 'verifica', 'riprova', 'escludi']) {
+      expect(q(`rentri-${azione}-m1`))
+        .withContext(azione)
+        .toBeNull()
+    }
+    expect(q('rentri-stato-m1')!.textContent).toContain('Importata, da riconciliare')
   })
 
   it('senza puoTrasmettere nessuna azione', () => {

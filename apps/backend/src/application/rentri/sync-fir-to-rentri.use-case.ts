@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import {
+  FirBloccatoAllInvioError,
+  verificaFirNonBloccato,
+} from '../../domain/fir/guardia-invio-rentri'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { DomainException } from '../../domain/shared/domain-exception'
@@ -126,6 +130,10 @@ export class SyncFIRToRENTRIUseCase {
       if (fir.tenantId !== tenantId) {
         throw new DomainException('Unauthorized access to FIR', 'UNAUTHORIZED')
       }
+
+      // Fase 3 (D4): un FIR importato e' bloccato all'invio fino alla riconciliazione, PRIMA di
+      // ogni altra decisione (anche del ramo `eraSyncing` e della ripresa di una transazione).
+      verificaFirNonBloccato(fir)
 
       // Un SYNCING non passa canSyncToRENTRI ma può essere uno stallo da
       // riprendere: lo decide la prenotazione, sulla soglia. Resta quello della
@@ -571,6 +579,16 @@ export class SyncFIRToRENTRIUseCase {
           willRetry: false,
           attempts: fir.rentriSyncStatus.getAttempts(),
         }
+      }
+
+      // FIR importato e bloccato all'invio (D4): rifiuto previsto prima di ogni POST (il filtro HTTP
+      // risponde 409), non un guasto e non un FAILED ritentabile: nulla si segna sul FIR.
+      if (error instanceof FirBloccatoAllInvioError) {
+        this.logger.info(`FIR bloccato all'invio a RENTRI: sincronizzazione rifiutata`, {
+          firId,
+          tenantId,
+        })
+        throw error
       }
 
       // FIR annullato nel frattempo: corsa prevista (il filtro HTTP risponde 409), non un

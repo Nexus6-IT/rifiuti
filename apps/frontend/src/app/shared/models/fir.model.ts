@@ -171,6 +171,10 @@ export interface FIR {
   rentriSyncAttempts?: number
   /** Se true, il FIR è trasmissibile ora a RENTRI (stato + non già legato + nessun fallimento permanente). */
   canSyncToRENTRI?: boolean
+  /** Fase 3: FIR importato da un altro programma, bloccato all'invio a RENTRI fino alla riconciliazione. */
+  bloccatoInvio?: boolean
+  /** Motivo del blocco (tooltip). */
+  motivoBloccoInvio?: string | null
 }
 
 /** Stati reali di sincronizzazione RENTRI (v. backend RENTRISyncStatus). */
