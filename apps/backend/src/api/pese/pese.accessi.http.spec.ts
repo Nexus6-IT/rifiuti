@@ -172,6 +172,14 @@ describe('PeseController (accessi, rettifiche, allegati) - catena HTTP', () => {
       expect(accessi.apri).not.toHaveBeenCalled()
     })
 
+    it("pesata con letturaId null → 400 «Lettura non valida» (la chiave basta a scegliere il DTO lettura; non e' una pesata manuale)", async () => {
+      const r = await post()
+        .field('dati', JSON.stringify({ ...apertura, pesata: { letturaId: null, pesoKg: 1000 } }))
+        .expect(400)
+      expect(JSON.stringify(r.body.message)).toContain('Lettura non valida')
+      expect(accessi.apri).not.toHaveBeenCalled()
+    })
+
     it('dati non JSON → 400', async () => {
       const r = await post().field('dati', '{non json').expect(400)
       expect(r.body.message).toContain('JSON')

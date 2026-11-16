@@ -235,4 +235,21 @@ describe('MarcaturaMovimentoComponent', () => {
     setup(false)
     expect(fixture.nativeElement.querySelectorAll('app-dati-movimento').length).toBe(0)
   })
+
+  it('distruggere il componente non annulla la scrittura in corso: la risposta tardiva non emette ne scrive nulla', () => {
+    setup(true)
+    const tardiva = new Subject<MarcaturaMovimento>()
+    svc.impostaOverride.and.returnValue(tardiva)
+    let emessi = 0
+    fixture.componentInstance.cambiato.subscribe(() => emessi++)
+    ;(q('marcatura-marca-CONOU')?.querySelector('button') as HTMLButtonElement).click()
+    fixture.destroy()
+    // La richiesta di scrittura resta viva (non va annullata: il server l'ha forse gia' ricevuta)...
+    expect(tardiva.observed).toBeTrue()
+    tardiva.next({ marcature: [{ consorzio: 'CONOU', origine: 'MANUALE' }], esclusi: [] })
+    tardiva.complete()
+    // ...ma la vista non viene aggiornata e non si emette su un componente distrutto.
+    expect(emessi).toBe(0)
+    expect(tardiva.observed).toBeFalse()
+  })
 })

@@ -174,6 +174,18 @@ export function siglaDaIndirizzo(indirizzo: string | null): string | null {
 }
 
 /**
+ * Pesi specifici validi per un giorno italiano (`YYYY-MM-DD`): quelli dell'anno del giorno se
+ * `pesiSpecificiPerAnno` li ha, altrimenti `pesiSpecifici`. Unico punto di scelta, usato sia dai
+ * movimenti sia dalle giacenze (che leggono anche anni precedenti a `anno`).
+ */
+function pesiDelGiorno(
+  p: ParametriLetturaOrso,
+  giorno: string
+): IntegrazioniMud['pesiSpecifici'] | undefined {
+  return p.pesiSpecificiPerAnno?.[Number(giorno.slice(0, 4))] ?? p.pesiSpecifici
+}
+
+/**
  * Giacenza a fine mese per CER (guida O.R.SO. v2.5, pag. 17: `QuantitaTrattataInternamente` è la
  * giacenza a fine mese): aperture del registro fino a quel mese + carichi - scarichi vigenti, dal
  * principio e non solo dall'anno. I movimenti precedenti all'apertura dello stesso registro e CER
@@ -210,7 +222,7 @@ async function calcolaGiacenze(
     const q = Number(m.quantity)
     let kg = convertiInKg(q, m.unit)
     if (kg === null) {
-      const peso = p.pesiSpecifici?.[chiavePesoSpecifico(cer, m.unit ?? '')]
+      const peso = pesiDelGiorno(p, giorno)?.[chiavePesoSpecifico(cer, m.unit ?? '')]
       kg = peso ? q * peso.kgPerUnita : null
     }
     if (kg === null) continue
@@ -354,10 +366,9 @@ export async function leggiMovimentiOrso(
     const cer = cerSoloCifre(m.cerCode)
     let kg = convertiInKg(quantita, m.unit)
     if (kg === null) {
-      const pesi =
-        p.pesiSpecificiPerAnno?.[Number(giornoItaliano(m.movementDate).slice(0, 4))] ??
-        p.pesiSpecifici
-      const peso = pesi?.[chiavePesoSpecifico(cer, m.unit ?? '')]
+      const peso = pesiDelGiorno(p, giornoItaliano(m.movementDate))?.[
+        chiavePesoSpecifico(cer, m.unit ?? '')
+      ]
       kg = peso ? arrotonda3(quantita * peso.kgPerUnita) : null
     }
     const op = operazioneDelMovimento(p.catalogo, m, f)
