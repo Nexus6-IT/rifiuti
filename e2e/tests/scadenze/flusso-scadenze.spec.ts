@@ -126,9 +126,13 @@ function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) 
   }
 }
 
-/** Ieri (scadenza già passata) in formato ISO (solo giorno). */
-function ieriIso(): string {
-  return giornoItaliano(-1)
+/**
+ * Scadenza inequivocabilmente passata (3 giorni fa, giorno di Roma, solo giorno ISO). Non «ieri»: il
+ * backend legge `AAAA-MM-GG` come mezzanotte UTC e dichiara «scaduta» solo dopo un giorno intero,
+ * quindi fra le 00:00 di Roma e la mezzanotte UTC «ieri» risultava ancora valida.
+ */
+function passataIso(): string {
+  return giornoItaliano(-3)
 }
 
 /** Fra due anni: ben oltre la soglia di 30 giorni del cruscotto (Passo 5). */
@@ -239,7 +243,7 @@ test.describe('Scadenzario — flusso dal dato al cruscotto', () => {
     const body = payloadTrasportatore({
       ragioneSociale,
       numeroIscrizione,
-      scadenzaIscrizione: ieriIso(),
+      scadenzaIscrizione: passataIso(),
     })
     const trasportatore = await apiPost<TrasportatoreResponse>(
       '/registry/trasportatori',
