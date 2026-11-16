@@ -84,9 +84,13 @@ function payloadDestinatario(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-/** Ieri (scadenza passata) in formato ISO (solo giorno), nel fuso di Roma. */
-function ieriIso(): string {
-  return giornoItaliano(-1)
+/**
+ * Scadenza inequivocabilmente passata (3 giorni fa, giorno di Roma, solo giorno ISO). Non «ieri»: il
+ * backend legge `AAAA-MM-GG` come mezzanotte UTC e dichiara «scaduta» solo dopo un giorno intero,
+ * quindi fra le 00:00 di Roma e la mezzanotte UTC «ieri» risultava ancora valida.
+ */
+function passataIso(): string {
+  return giornoItaliano(-3)
 }
 
 /** Fra un anno (scadenza futura) in formato ISO (solo giorno), nel fuso di Roma. */
@@ -329,7 +333,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     context,
   }) => {
     const token = await apiLogin('operator')
-    const body = payloadTrasportatore({ scadenzaIscrizione: ieriIso() })
+    const body = payloadTrasportatore({ scadenzaIscrizione: passataIso() })
     const trasportatore = await apiPost<TrasportatoreResponse>(
       '/registry/trasportatori',
       body,
@@ -358,7 +362,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     context,
   }) => {
     const token = await apiLogin('operator')
-    const body = payloadDestinatario({ scadenzaAutorizzazione: ieriIso() })
+    const body = payloadDestinatario({ scadenzaAutorizzazione: passataIso() })
     const destinatario = await apiPost<DestinatarioResponse>('/registry/destinatari', body, token)
     registra('destinatario', destinatario.id)
 
