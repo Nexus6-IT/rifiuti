@@ -36,8 +36,7 @@ const COMUNE = { code: '063049', name: 'Napoli', sigla: 'NA' }
 
 function numeroSito(): string {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'
-  const r = (n: number, s = A) =>
-    Array.from({ length: n }, () => s[randomInt(s.length)]).join('')
+  const r = (n: number, s = A) => Array.from({ length: n }, () => s[randomInt(s.length)]).join('')
   return `OP${r(4, '0123456789')}${r(3)}${r(6, '0123456789')}-NA${r(4, '0123456789')}`
 }
 
@@ -72,7 +71,14 @@ test.describe('Comunicazione O.R.R. Campania', () => {
     }
     const tenant = await owner.tenant.update({
       where: { id: tenantId },
-      data: { address: 'Corso Umberto', civico: '5', postalCode: '80133', city: 'Napoli', province: 'NA', atecoCode: '381100' },
+      data: {
+        address: 'Corso Umberto',
+        civico: '5',
+        postalCode: '80133',
+        city: 'Napoli',
+        province: 'NA',
+        atecoCode: '381100',
+      },
     })
 
     const sede = await chiama<{ id: string }>('POST', '/rentri/unita-locali', tk, {
@@ -104,7 +110,11 @@ test.describe('Comunicazione O.R.R. Campania', () => {
     // Ditte di terzi: produttore e trasportatore, a Napoli.
     const ditta = async (nome: string, ateco: string | null) => {
       const d = await owner.ditta.create({
-        data: { tenantId, ragioneSociale: conPrefissoUnico(nome), partitaIva: partitaIvaCasualeValida() },
+        data: {
+          tenantId,
+          ragioneSociale: conPrefissoUnico(nome),
+          partitaIva: partitaIvaCasualeValida(),
+        },
       })
       const s = await owner.sedeDitta.create({
         data: {
@@ -243,15 +253,21 @@ test.describe('Comunicazione O.R.R. Campania', () => {
     expect((await anteprima).status()).toBe(200)
   }
 
-  test('bloccante con link, poi due file T e S da 718 byte, manifest, segna inviata con conferma', async ({ page }) => {
+  test('bloccante con link, poi due file T e S da 718 byte, manifest, segna inviata con conferma', async ({
+    page,
+  }) => {
     // ATECO del produttore mancante: bloccante.
     await owner.anagraficaComunicazioniSede.update({
-      where: { tenantId_sedeDittaId: { tenantId: conModulo.tenantId, sedeDittaId: produttoreSedeId } },
+      where: {
+        tenantId_sedeDittaId: { tenantId: conModulo.tenantId, sedeDittaId: produttoreSedeId },
+      },
       data: { codiceAteco: null },
     })
     await accediUiComeAzienda(page, conModulo, 'admin')
     await page.goto('/comunicazioni/orr')
-    await expect(page.getByTestId('orr-banner-ricavato')).toContainText('da confermare con un file reale')
+    await expect(page.getByTestId('orr-banner-ricavato')).toContainText(
+      'da confermare con un file reale'
+    )
     await scegliPeriodo(page)
     await expect(page.getByTestId('orr-file-STO')).toBeVisible({ timeout: ATTESA_SERVER })
     await expect(page.getByTestId('orr-bloccanti')).toBeVisible()
@@ -261,12 +277,16 @@ test.describe('Comunicazione O.R.R. Campania', () => {
 
     // Si corregge l'anagrafica e si ricarica: due file, trasportatore e stoccaggio.
     await owner.anagraficaComunicazioniSede.update({
-      where: { tenantId_sedeDittaId: { tenantId: conModulo.tenantId, sedeDittaId: produttoreSedeId } },
+      where: {
+        tenantId_sedeDittaId: { tenantId: conModulo.tenantId, sedeDittaId: produttoreSedeId },
+      },
       data: { codiceAteco: '38.21.09' },
     })
     await page.reload()
     await scegliPeriodo(page)
-    await expect(page.getByTestId('orr-file-TRA')).toContainText('1 record da 1 movimenti', { timeout: ATTESA_SERVER })
+    await expect(page.getByTestId('orr-file-TRA')).toContainText('1 record da 1 movimenti', {
+      timeout: ATTESA_SERVER,
+    })
     await expect(page.getByTestId('orr-file-STO')).toContainText('1 record da 1 movimenti')
     await expect(page.getByTestId('orr-bloccanti')).toHaveCount(0)
 
@@ -276,7 +296,9 @@ test.describe('Comunicazione O.R.R. Campania', () => {
       metodo: 'POST',
       percorso: '/comunicazioni/orr',
     })
-    const corpo = (await risposta.json()) as { file: Array<{ id: string; nomeFile: string; attivita: string }> }
+    const corpo = (await risposta.json()) as {
+      file: Array<{ id: string; nomeFile: string; attivita: string }>
+    }
     for (const f of corpo.file) comunicazioniIds.push(f.id)
     expect(corpo.file.map(f => f.attivita).sort()).toEqual(['STO', 'TRA'])
     const progressivo = String(
@@ -314,13 +336,17 @@ test.describe('Comunicazione O.R.R. Campania', () => {
 
     // Segna inviata: serve la conferma esplicita.
     await rigaT.getByTestId('orr-segna-inviata').click()
-    await expect(page.getByText('Ho verificato che il consorzio accetta questo file').first()).toBeVisible()
+    await expect(
+      page.getByText('Ho verificato che il consorzio accetta questo file').first()
+    ).toBeVisible()
     await attendiRisposta(
       page,
       () => page.getByRole('button', { name: 'Ho verificato, segna inviata', exact: true }).click(),
       { metodo: 'POST', percorso: '/inviata' }
     )
-    await expect(storico.filter({ hasText: 'T.txt' })).toContainText('Inviata', { timeout: ATTESA_SERVER })
+    await expect(storico.filter({ hasText: 'T.txt' })).toContainText('Inviata', {
+      timeout: ATTESA_SERVER,
+    })
   })
 
   test('senza il modulo: la pagina non si apre e nessuna chiamata riceve 403', async ({ page }) => {
