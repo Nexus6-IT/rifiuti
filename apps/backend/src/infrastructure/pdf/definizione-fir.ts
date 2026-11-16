@@ -382,6 +382,15 @@ export const eSerieMista = (elementi: readonly FirConQr[]): boolean => {
 
 const PREFISSO_BLOCCO = 'fir-blocco-'
 
+/** Escape dei caratteri speciali XML: il testo finisce dentro un SVG, non deve poterne uscire. */
+export const escapeXml = (testo: string): string =>
+  testo
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+
 /** Filigrana diagonale come contenuto di `background` (pdfmake ha `watermark` solo a livello documento). */
 function filigranaDiPagina(larghezza: number, altezza: number): Content {
   const cx = larghezza / 2
@@ -391,7 +400,7 @@ function filigranaDiPagina(larghezza: number, altezza: number): Content {
       `<svg xmlns="http://www.w3.org/2000/svg" width="${larghezza}" height="${altezza}">` +
       `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="Roboto" font-size="52" ` +
       `font-weight="bold" fill="#e74c3c" fill-opacity="0.15" ` +
-      `transform="rotate(-45 ${cx} ${cy})">${DICITURA_BOZZA}</text></svg>`,
+      `transform="rotate(-45 ${cx} ${cy})">${escapeXml(DICITURA_BOZZA)}</text></svg>`,
     absolutePosition: { x: 0, y: 0 },
   } as Content
 }

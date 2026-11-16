@@ -4,8 +4,17 @@
  * subito dopo gli insert: il planner stima tabelle vuote e sceglie nested loop. Qui le
  * statistiche si rendono volutamente vecchie (autovacuum spento sulle tabelle del volume,
  * `pg_statistic` svuotata e `reltuples` a zero), poi l'export gira 6 volte di fila col piano
- * custom e una volta col piano generico forzato. Soglie di TEMPO larghe, mai il testo
- * dell'EXPLAIN (modello `piani-query.postgres.spec.ts`). Pulizia per id esatti.
+ * custom e una volta col piano generico forzato. Mai il testo dell'EXPLAIN (modello
+ * `piani-query.postgres.spec.ts`). Pulizia per id esatti.
+ *
+ * SOGLIE RELATIVE (seguito 4.8b, test instabile in CI). Una soglia assoluta in millisecondi
+ * misurava la velocita' del runner, non il piano: in CI (runner lento) superava 30 s due volte
+ * su tre anche col piano buono, e in locale NON rilevava il difetto (nested loop con
+ * `enable_nestloop` non spento: 18 s, sotto la soglia). Ora ogni misura con statistiche vecchie
+ * e' confrontata con la stessa operazione, nello stesso processo e sullo stesso database, con
+ * statistiche fresche (ANALYZE): se il runner e' lento lo sono entrambe, se il planner sceglie un
+ * piano patologico solo la prima esplode (in locale 55x). Limite: RAPPORTO_MAX volte la misura
+ * fresca piu' MARGINE_MS di rumore.
  */
 import { randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
@@ -44,8 +53,17 @@ const TABELLE = [
   'rate_documento_fattura',
 ]
 const ESECUZIONI = 6
-/** Totale delle 6 esecuzioni; in locale col piano buono ~3-4 s, i nested loop superano 60 s. */
-const SOGLIA_MS = 30_000
+/** Quante volte una misura con statistiche vecchie puo' costare quella con statistiche fresche. */
+const RAPPORTO_MAX = 10
+/** Rumore ammesso (GC, I/O del runner) oltre il rapporto. */
+const MARGINE_MS = 1_500
+/**
+ * dettagliInTx con statistiche del tutto assenti costa per natura ~13x quello con statistiche
+ * fresche (misurato: 3,2 s contro 0,25 s, anche col piano buono: ~0,5 s per blocco da 100):
+ * limite piu' largo, che un vero nested loop sulla lista da 5000 supera di molto (>100x).
+ */
+const RAPPORTO_MAX_DETTAGLI = 40
+const limiteMs = (frescoMs: number, rapporto = RAPPORTO_MAX) => rapporto * frescoMs + MARGINE_MS
 
 describe('ExportService — piani con statistiche vecchie', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -179,49 +197,68 @@ describe('ExportService — piani con statistiche vecchie', () => {
     await app?.$disconnect()
   }, 120_000)
 
-  async function seiVolte(
-    s: ExportService,
-    selezione: Parameters<ExportService['esporta']>[2]['selezione']
-  ) {
-    const tempi: number[] = []
-    for (let i = 0; i < ESECUZIONI; i++) {
-      await rendiVecchieLeStatistiche()
-      const t0 = Date.now()
-      const r = await esporta(s, selezione)
-      tempi.push(Date.now() - t0)
-      expect(r.contenuto.length).toBeGreaterThan(1000)
-    }
-    // eslint-disable-next-line no-console
-    console.log(`[T24c] ${JSON.stringify(Object.keys(selezione))} tempi ms: ${tempi.join(', ')}`)
-    return tempi.reduce((a, t) => a + t, 0)
+  /** Statistiche fresche per davvero: ANALYZE ripristina `pg_statistic` e `reltuples`. */
+  async function rendiFresche() {
+    for (const t of TABELLE) await owner.$executeRawUnsafe(`ANALYZE ${t}`)
   }
 
-  it(`piano custom, statistiche vecchie, filtro per anno, ${ESECUZIONI} volte: totale sotto ${SOGLIA_MS} ms`, async () => {
-    expect(await seiVolte(servizio, { anno: 2026 })).toBeLessThan(SOGLIA_MS)
+  /**
+   * Esegue `fn` ESECUZIONI volte con statistiche fresche (riferimento) e poi altrettante con
+   * statistiche vecchie, e verifica che la peggiore delle seconde stia nel limite relativo.
+   * Il peggiore, non il totale: il piano generico scatta alla sesta esecuzione e un solo giro
+   * patologico verrebbe diluito dagli altri cinque.
+   */
+  async function confrontaConFresche(
+    nome: string,
+    fn: () => Promise<void>,
+    ripetizioni = ESECUZIONI,
+    rapporto = RAPPORTO_MAX
+  ) {
+    const misura = async (prima: () => Promise<void>) => {
+      const tempi: number[] = []
+      for (let i = 0; i < ripetizioni; i++) {
+        await prima()
+        const t0 = Date.now()
+        await fn()
+        tempi.push(Date.now() - t0)
+      }
+      return tempi
+    }
+    const fresche = await misura(rendiFresche)
+    const vecchie = await misura(rendiVecchieLeStatistiche)
+    const frescoMs = Math.max(...fresche)
+    const peggioreMs = Math.max(...vecchie)
+    // eslint-disable-next-line no-console
+    console.log(
+      `[T24c] ${nome} fresche ms: ${fresche.join(', ')} | vecchie ms: ${vecchie.join(', ')} | limite ${limiteMs(frescoMs, rapporto)}`
+    )
+    expect(peggioreMs).toBeLessThan(limiteMs(frescoMs, rapporto))
+  }
+
+  const esportaOk =
+    (s: ExportService, selezione: Parameters<ExportService['esporta']>[2]['selezione']) =>
+    async () => {
+      const r = await esporta(s, selezione)
+      expect(r.contenuto.length).toBeGreaterThan(1000)
+    }
+
+  it(`piano custom, statistiche vecchie, filtro per anno, ${ESECUZIONI} volte: mai oltre ${RAPPORTO_MAX}x le statistiche fresche`, async () => {
+    await confrontaConFresche('custom anno', esportaOk(servizio, { anno: 2026 }))
   }, 400_000)
 
-  it(`piano custom, statistiche vecchie, 5000 documentoIds, ${ESECUZIONI} volte: totale sotto ${SOGLIA_MS} ms`, async () => {
-    expect(await seiVolte(servizio, { documentoIds })).toBeLessThan(SOGLIA_MS)
+  it(`piano custom, statistiche vecchie, 5000 documentoIds, ${ESECUZIONI} volte: mai oltre ${RAPPORTO_MAX}x le statistiche fresche`, async () => {
+    await confrontaConFresche('custom documentoIds', esportaOk(servizio, { documentoIds }))
   }, 400_000)
 
-  it(`force_generic_plan, statistiche vecchie: filtro per anno e 5000 documentoIds sotto ${SOGLIA_MS} ms`, async () => {
+  it(`force_generic_plan, statistiche vecchie: filtro per anno e 5000 documentoIds mai oltre ${RAPPORTO_MAX}x le statistiche fresche`, async () => {
     await owner.$executeRawUnsafe(
       `ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
     )
     const generico = creaPrismaServiceApplicativo()
     try {
       const s = crea(generico)
-      let tot = 0
-      for (const selezione of [{ anno: 2026 }, { documentoIds }]) {
-        await rendiVecchieLeStatistiche()
-        const t0 = Date.now()
-        await esporta(s, selezione)
-        const ms = Date.now() - t0
-        // eslint-disable-next-line no-console
-        console.log(`[T24c] generico ${JSON.stringify(Object.keys(selezione))}: ${ms} ms`)
-        tot += ms
-      }
-      expect(tot).toBeLessThan(SOGLIA_MS)
+      await confrontaConFresche('generico anno', esportaOk(s, { anno: 2026 }), 2)
+      await confrontaConFresche('generico documentoIds', esportaOk(s, { documentoIds }), 2)
     } finally {
       await owner.$executeRawUnsafe(`ALTER ROLE wasteflow_app RESET plan_cache_mode`)
       await generico.$disconnect()
@@ -260,27 +297,27 @@ describe('ExportService — piani con statistiche vecchie', () => {
     return letti
   }
 
-  it(`dettagliInTx, statistiche vecchie, piano custom: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 sotto ${SOGLIA_MS} ms`, async () => {
-    await rendiVecchieLeStatistiche()
-    const t0 = Date.now()
-    expect(await dettagliA(app, documentoIds.slice(0, 500), 100)).toBe(500)
-    await rendiVecchieLeStatistiche()
-    expect(await dettagliA(app, documentoIds, documentoIds.length)).toBe(documentoIds.length)
-    expect(Date.now() - t0).toBeLessThan(SOGLIA_MS)
+  const zipPiuLista = (db: PrismaService) => async () => {
+    expect(await dettagliA(db, documentoIds.slice(0, 500), 100)).toBe(500)
+    expect(await dettagliA(db, documentoIds, documentoIds.length)).toBe(documentoIds.length)
+  }
+
+  it(`dettagliInTx, statistiche vecchie, piano custom: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 mai oltre ${RAPPORTO_MAX_DETTAGLI}x le statistiche fresche`, async () => {
+    await confrontaConFresche('dettagli custom', zipPiuLista(app), 3, RAPPORTO_MAX_DETTAGLI)
   }, 400_000)
 
-  it(`dettagliInTx, statistiche vecchie, force_generic_plan: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 sotto ${SOGLIA_MS} ms`, async () => {
+  it(`dettagliInTx, statistiche vecchie, force_generic_plan: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 mai oltre ${RAPPORTO_MAX_DETTAGLI}x le statistiche fresche`, async () => {
     await owner.$executeRawUnsafe(
       `ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
     )
     const generico = creaPrismaServiceApplicativo()
     try {
-      await rendiVecchieLeStatistiche()
-      const t0 = Date.now()
-      expect(await dettagliA(generico, documentoIds.slice(0, 500), 100)).toBe(500)
-      await rendiVecchieLeStatistiche()
-      expect(await dettagliA(generico, documentoIds, documentoIds.length)).toBe(documentoIds.length)
-      expect(Date.now() - t0).toBeLessThan(SOGLIA_MS)
+      await confrontaConFresche(
+        'dettagli generico',
+        zipPiuLista(generico),
+        3,
+        RAPPORTO_MAX_DETTAGLI
+      )
     } finally {
       await owner.$executeRawUnsafe(`ALTER ROLE wasteflow_app RESET plan_cache_mode`)
       await generico.$disconnect()

@@ -385,6 +385,146 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     expect(f.xml).toContain('QuantitaTrattataInternamente="3"')
   })
 
+  describe('pesi specifici per anno solo sulle comunicazioni nuove', () => {
+    const pesi = (kg: number) => ({
+      integrazioni: {
+        pesiSpecifici: { '130205|L': { cerCode: '13 02 05', unita: 'L', kgPerUnita: kg } },
+      },
+    })
+
+    /** Olio in litri: 100 L prodotti nel 2025 (0,5 kg/L), 10 L usciti a febbraio 2026 (2 kg/L). */
+    async function aziendaACavalloDAnno(sigla: string) {
+      const az = await nuovaAzienda(sigla)
+      await owner.mUDReport.create({
+        data: { tenantId: az.tenantId, year: 2025, reportData: pesi(0.5) },
+      })
+      await owner.mUDReport.create({
+        data: { tenantId: az.tenantId, year: 2026, reportData: pesi(2) },
+      })
+      const base = { cerCode: '13 02 05', unita: 'L', descrizione: 'Oli esausti' }
+      await creaMovimento(owner, az, {
+        ...base,
+        type: 'CARICO',
+        causale: 'PRODUZIONE_INTERNA',
+        quantita: 100,
+        giorno: '2025-11-10',
+      })
+      await creaMovimento(owner, az, {
+        ...base,
+        type: 'SCARICO',
+        causale: 'AVVIO_RECUPERO',
+        quantita: 10,
+        giorno: '2026-02-12',
+        operationCode: 'R13',
+      })
+      return az
+    }
+
+    /** Hash e riga di una comunicazione come le generava il deploy precedente (metodo storico). */
+    async function inviataConMetodoStorico(az: AziendaMud) {
+      const calcola = (
+        servizio as unknown as {
+          calcola(t: string, u: string, a: number, m: string): Promise<{ hashDati: string }>
+        }
+      ).calcola.bind(servizio)
+      const storico = await nelTenant(az, () =>
+        calcola(az.tenantId, az.unitaLocaleId, 2026, 'ANNO_COMUNICAZIONE')
+      )
+      // Senza `metodoPesi`: la riga prende il default della migration, come le righe esistenti.
+      return owner.comunicazioneConsorzio.create({
+        data: {
+          tenantId: az.tenantId,
+          consorzio: 'ORSO',
+          unitaLocaleId: az.unitaLocaleId,
+          periodoDa: new Date(Date.UTC(2026, 0, 1)),
+          periodoA: new Date(Date.UTC(2026, 11, 31)),
+          tracciato: 'ImpiantoMesi',
+          versione: '1',
+          hashDati: storico.hashDati,
+          nomeFile: 'ORSO_ImpiantoMesi_2026_storica.xml',
+          contenuto: '<ImpiantoMesi/>',
+          stato: 'INVIATA',
+          inviataIl: new Date(),
+          inviataDa: az.utenteId,
+        },
+      })
+    }
+
+    it('la comunicazione nuova converte la giacenza di apertura coi pesi dell’anno del movimento', async () => {
+      const az = await aziendaACavalloDAnno('OP1')
+      const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2026))
+      // gennaio: 100 L * 0,5 kg/L (peso 2025) = 50 kg; febbraio: meno 10 L * 2 kg/L = 30 kg
+      expect(a.mesi[0].prodotti).toEqual([
+        expect.objectContaining({ cer: '130205', giacenzaFineMeseT: '0.05' }),
+      ])
+      expect(a.mesi[1].prodotti).toEqual([
+        expect.objectContaining({ cer: '130205', totT: '0.02', giacenzaFineMeseT: '0.03' }),
+      ])
+      const g = await nelTenant(az, () =>
+        servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2026)
+      )
+      const riga = await owner.comunicazioneConsorzio.findUniqueOrThrow({ where: { id: g.id } })
+      expect(riga.metodoPesi).toBe('PESI_PER_ANNO')
+      // Appena generata e inviata, non risulta modificata.
+      const inviata = await nelTenant(az, () =>
+        servizio.segnaInviata(az.tenantId, az.utenteId, g.id)
+      )
+      expect(inviata.modificataDopoInvio).toBe(false)
+    })
+
+    it('una comunicazione già inviata col metodo storico non risulta modificata dopo il deploy', async () => {
+      const az = await aziendaACavalloDAnno('OP2')
+      const vecchia = await inviataConMetodoStorico(az)
+      expect(vecchia.metodoPesi).toBe('ANNO_COMUNICAZIONE')
+
+      // Il calcolo nuovo dà un hash diverso: senza il metodo salvato risulterebbe modificata.
+      const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2026))
+      expect(a.hashDati).not.toBe(vecchia.hashDati)
+      expect(a.ultima).toMatchObject({ id: vecchia.id, modificataDopoInvio: false })
+      // I valori salvati non cambiano.
+      expect(a.ultima?.hashDati).toBe(vecchia.hashDati)
+
+      const elenco = await nelTenant(az, () =>
+        servizio.elenca(az.tenantId, { unitaLocaleId: az.unitaLocaleId, anno: 2026 })
+      )
+      expect(elenco).toEqual([
+        expect.objectContaining({ id: vecchia.id, modificataDopoInvio: false }),
+      ])
+      const ancora = await nelTenant(az, () =>
+        servizio.segnaInviata(az.tenantId, az.utenteId, vecchia.id)
+      )
+      expect(ancora.modificataDopoInvio).toBe(false)
+      const dopo = await owner.comunicazioneConsorzio.findUniqueOrThrow({
+        where: { id: vecchia.id },
+      })
+      expect(dopo.hashDati).toBe(vecchia.hashDati)
+      expect(dopo.metodoPesi).toBe('ANNO_COMUNICAZIONE')
+    })
+
+    it('una comunicazione storica inviata e poi davvero modificata nei movimenti risulta modificata', async () => {
+      const az = await aziendaACavalloDAnno('OP3')
+      const vecchia = await inviataConMetodoStorico(az)
+      await creaMovimento(owner, az, {
+        cerCode: '13 02 05',
+        unita: 'L',
+        descrizione: 'Oli esausti',
+        type: 'SCARICO',
+        causale: 'AVVIO_RECUPERO',
+        quantita: 5,
+        giorno: '2026-03-03',
+        operationCode: 'R13',
+      })
+      const elenco = await nelTenant(az, () =>
+        servizio.elenca(az.tenantId, { unitaLocaleId: az.unitaLocaleId, anno: 2026 })
+      )
+      expect(elenco).toEqual([
+        expect.objectContaining({ id: vecchia.id, modificataDopoInvio: true }),
+      ])
+      const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2026))
+      expect(a.ultima?.modificataDopoInvio).toBe(true)
+    })
+  })
+
   it('segna inviata: due richieste insieme lasciano chi e quando della prima', async () => {
     const az = await nuovaAzienda('O7')
     const g = await nelTenant(az, () =>

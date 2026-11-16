@@ -142,10 +142,13 @@ export class MarcaturaMovimentoComponent implements OnChanges {
       this.corrente.set(this.marcatura)
       return
     }
-    this.servizio.consorziDeiMovimenti([this.movimentoId]).subscribe({
-      next: m => this.corrente.set(m[this.movimentoId] ?? { marcature: [], esclusi: [] }),
-      error: () => this.errore.set('Impossibile leggere i consorzi del movimento.'),
-    })
+    this.servizio
+      .consorziDeiMovimenti([this.movimentoId])
+      .pipe(takeUntilDestroyed(this.distrutto))
+      .subscribe({
+        next: m => this.corrente.set(m[this.movimentoId] ?? { marcature: [], esclusi: [] }),
+        error: () => this.errore.set('Impossibile leggere i consorzi del movimento.'),
+      })
   }
 
   /** Legge il permesso di modifica; no-op se gia' letto o in corso. Dopo un errore si puo' ripetere. */
@@ -225,14 +228,20 @@ export class MarcaturaMovimentoComponent implements OnChanges {
 
   private applica(chiamata: ReturnType<ConsorziService['impostaOverride']>): void {
     this.inCorso.set(true)
+    // Scrittura: NON si annulla alla distruzione del componente (il server può averla già
+    // ricevuta e l'esito non si vedrebbe più). Si lascia finire e si ignora solo l'aggiornamento
+    // della vista, che non esiste più.
+    let vivo = true
+    this.distrutto.onDestroy(() => (vivo = false))
     chiamata.subscribe({
       next: m => {
+        if (!vivo) return
         this.inCorso.set(false)
         this.corrente.set(m)
         this.cambiato.emit(m)
       },
       error: () => {
-        this.inCorso.set(false)
+        if (vivo) this.inCorso.set(false)
         this.toast.error('Operazione non riuscita.')
       },
     })

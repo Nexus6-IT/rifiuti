@@ -296,7 +296,18 @@ func TestSequenzaGiaUsataRiallineaERinumera(t *testing.T) {
 	srv.seqOccupate.Store(40)
 	o := preparata(t, srv, true, `{"pesi":[24880,12540],"intervalloMs":10}`)
 	a := avvia(t, o)
-	attendi(t, "due letture accettate", func() bool { return srv.numAccettate() >= 2 })
+	// Il simulatore cicla i pesi all'infinito: contare "almeno due accettate" non basta, perche' la
+	// seconda accettata puo' essere il primo peso ripetuto mentre il secondo e' ancora in
+	// ri-numerazione. Si attende la condizione vera: entrambi i pesi accettati.
+	attendi(t, "entrambi i pesi accettati", func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		visti := map[string]bool{}
+		for _, p := range srv.accettate {
+			visti[p.PesoKg] = true
+		}
+		return visti["24880.00"] && visti["12540.00"]
+	})
 	a.stop()
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
