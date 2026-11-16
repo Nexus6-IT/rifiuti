@@ -129,6 +129,6 @@ test.describe('Comunicazioni O.R.SO. dettagliata', () => {
       'SOGGETTO_NON_IDENTIFICATO'
     )
     await expect(page.getByTestId('comunicazioni-bloccanti')).toBeVisible()
-    await expect(page.getByTestId('comunicazioni-genera')).toBeDisabled()
+    await expect(page.getByTestId('comunicazioni-genera').locator('button')).toBeDisabled()
   })
 })
