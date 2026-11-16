@@ -271,7 +271,7 @@ test.describe('Comunicazione O.R.R. Campania', () => {
     await scegliPeriodo(page)
     await expect(page.getByTestId('orr-file-STO')).toBeVisible({ timeout: ATTESA_SERVER })
     await expect(page.getByTestId('orr-bloccanti')).toBeVisible()
-    await expect(page.getByTestId('orr-genera')).toBeDisabled()
+    await expect(page.getByTestId('orr-genera').locator('button')).toBeDisabled()
     await expect(page.getByTestId('orr-file-avviso').first()).toContainText('codice ATECO')
     await expect(page.getByTestId('orr-correzione').first()).toContainText('anagrafica della sede')
 
@@ -291,7 +291,7 @@ test.describe('Comunicazione O.R.R. Campania', () => {
     await expect(page.getByTestId('orr-bloccanti')).toHaveCount(0)
 
     const genera = page.getByTestId('orr-genera')
-    await expect(genera).toBeEnabled()
+    await expect(genera.locator('button')).toBeEnabled()
     const risposta = await attendiRisposta(page, () => genera.click(), {
       metodo: 'POST',
       percorso: '/comunicazioni/orr',
