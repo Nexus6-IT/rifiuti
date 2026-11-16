@@ -424,6 +424,49 @@ describe('leggiMovimentiOrso — Postgres reale, ruolo wasteflow_app', () => {
     expect(lettura.giacenze.find(g => g.cer === '150106')?.descrizione).toBe('Imballaggi misti')
   })
 
+  it('capodanno di Roma: movimenti e giacenze usano i pesi specifici del proprio anno', async () => {
+    const sede = await owner.rentriUnitaLocale.create({
+      data: {
+        tenantId: az.tenantId,
+        numIscrSito: 'OP0001MS999999-MI0004',
+        denominazione: 'Sede capodanno',
+      },
+    })
+    const reg = await owner.registroRifiuti.create({
+      data: { tenantId: az.tenantId, descrizione: 'Capodanno', unitaLocaleId: sede.id },
+    })
+    const azC = { ...az, unitaLocaleId: sede.id, registroId: reg.id } as AziendaMud
+    const base = {
+      type: 'CARICO' as const,
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '13 02 05',
+      quantita: 100,
+      unita: 'L',
+      giorno: '2025-12-31',
+    }
+    // 23:30 del 31/12 a Roma (22:30Z) e 00:30 del 01/01 a Roma (23:30Z)
+    const prima = await creaMovimento(owner, azC, { ...base, istante: '2025-12-31T22:30:00Z' })
+    const dopo = await creaMovimento(owner, azC, { ...base, istante: '2025-12-31T23:30:00Z' })
+    const peso = (kg: number) => ({
+      '130205|L': { cerCode: '13 02 05', unita: 'L', kgPerUnita: kg },
+    })
+    const lettura = await TenantContext.run({ tenantId: az.tenantId }, async () =>
+      leggiMovimentiOrso(app, {
+        tenantId: az.tenantId,
+        unitaLocaleId: sede.id,
+        da: new Date('2025-12-31T00:00:00Z'),
+        a: new Date('2026-01-02T00:00:00Z'),
+        catalogo: await caricaCatalogoCausali(app, az.tenantId),
+        anno: 2026,
+        pesiSpecificiPerAnno: { 2025: peso(0.5), 2026: peso(2) },
+      })
+    )
+    expect(lettura.movimenti.find(x => x.id === prima.id)?.kg).toBe(50)
+    expect(lettura.movimenti.find(x => x.id === dopo.id)?.kg).toBe(200)
+    // gennaio 2026: 50 kg (peso 2025) + 200 kg (peso 2026)
+    expect(lettura.giacenze.find(g => g.cer === '130205' && g.mese === 1)?.kg).toBe(250)
+  })
+
   it('vede solo i movimenti della propria azienda', async () => {
     const lettura = await leggi(altraAzienda)
     expect(lettura.movimenti.map(m => m.quantita)).toEqual([4])
