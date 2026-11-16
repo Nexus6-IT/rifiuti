@@ -1,0 +1,13 @@
+{
+  "id": "P006",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Col gestionale che usiamo oggi i registri e i FIR li mandiamo e le scadenze le seguiamo, anche se a fatica: cambiare per 1.200 euro l'anno, con la migrazione dei dati e un gruppo da riportare su un sistema nuovo, non mi sembra giustificato finche il vecchio non mi da problemi seri. La scadenza passata e ce la siamo cavata cosi, quindi non vedo l'urgenza.",
+  "objection": "Il costo della migrazione: importare anni di registri e FIR dai fogli e dal software attuale, e far firmare ogni società in modo corretto, mi preoccupa più del canone. E non so se WasteFlow copre tutto quello che facciamo oggi.",
+  "would_change_my_mind": "Un guasto serio del gestionale attuale nelle trasmissioni RENTRI, o una scadenza mancata per colpa sua, con una prova concreta che WasteFlow la evita e che l'import dei dati è assistito.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1100,
+  "price_too_expensive": 1600
+}

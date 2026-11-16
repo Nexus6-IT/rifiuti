@@ -1,0 +1,13 @@
+{
+  "id": "P016",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Siete nuovi, senza clienti di riferimento e senza una conservazione dei registri a norma dimostrata. Per un gruppo con più società il rischio di sbagliare un FIR o un registro pesa più del risparmio, quindi non compro un software da un fornitore che non ho modo di verificare.",
+  "objection": "Chi mi garantisce che i registri e i FIR inviati a RENTRI restino validi e conservati correttamente per i controlli, e cosa succede ai dati se la società chiude o cambia prodotto?",
+  "would_change_my_mind": "Due o tre referenze verificabili di gruppi o consulenti ambientali che lo usano da almeno un anno, con il consulente che lo raccomanda per iscritto.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1800,
+  "price_too_expensive": 2500
+}

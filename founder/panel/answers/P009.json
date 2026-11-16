@@ -1,0 +1,13 @@
+{
+  "id": "P009",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "need",
+  "reason": "Il mio ERP ha già il modulo rifiuti, e io non voglio un secondo sistema da far alimentare a mano dalle sedi ogni mese. Il primo mese gratis mi incuriosisce, ma non vedo perché spostare registri e FIR su un altro programma se quello che ho già copre il lavoro.",
+  "objection": "Se il mio ERP ha già il modulo, non so cosa aggiunge davvero WasteFlow oltre a un'altra schermata da tenere aggiornata. 'Importiamo noi i dati' non vuol dire che il lavoro sparisca: ho paura di ritrovarmi a rifare le stesse cose due volte.",
+  "would_change_my_mind": "Che mi dimostrino, con i dati del mio ERP, che il loro software copre registri e FIR di tutte le società del gruppo meglio del modulo che ho già, e che il costo per 6-20 società resta sotto il mio budget di 4.000 €.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1200,
+  "price_too_expensive": 2000
+}

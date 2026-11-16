@@ -1,0 +1,13 @@
+{
+  "id": "P003",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "1.200 euro l'anno sono sopra il mio budget di circa 1.000 euro per il software ambientale, e il primo mese gratuito non cambia il costo annuo. Il consulente mi segue già per i FIR: non vedo perché pagare un software in più per una vista consolidata che devo ancora verificare.",
+  "objection": "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista? Se la capogruppo vede i registri ma non può intervenire sui documenti delle singole società, il problema dei dati sbagliati resta.",
+  "would_change_my_mind": "Una prova concreta, con i nostri dati importati, che mostri la capogruppo che individua un FIR errato prima della trasmissione, e un prezzo che stia sotto i 1.000 euro l'anno per il gruppo.",
+  "price_too_cheap": 250,
+  "price_cheap": 600,
+  "price_expensive": 950,
+  "price_too_expensive": 1100
+}

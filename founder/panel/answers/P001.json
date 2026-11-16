@@ -1,0 +1,13 @@
+{
+  "id": "P001",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il problema c'e' davvero: il riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità me lo chiede il direttore ogni anno. Ma non compro un software che mi fa reinserire i dati che ho già nel gestionale: il doppio inserimento è proprio quello che voglio eliminare, e qui mi dite solo che importate i dati dai fogli o dal software che uso oggi.",
+  "objection": "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista? Se la capogruppo vede soltanto un riepilogo, non firma nulla e non può rispondere di niente, mi serve a poco.",
+  "would_change_my_mind": "Se il modulo si collegasse direttamente al TeamSystem, Zucchetti o Mexal che usiamo già, senza reinserire nulla, e se la capogruppo avesse permessi che limitano davvero chi può fare cosa in ciascuna società.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1800
+}

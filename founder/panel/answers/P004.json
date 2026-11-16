@@ -1,0 +1,13 @@
+{
+  "id": "P004",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Uso gia' un gestionale rifiuti e lo cambio solo se quello vecchio crea problemi seri. Un primo mese gratuito non mi basta: devo importare i dati di tutte le societa' del gruppo e rifare registri e scadenze, e questo lavoro lo pago in tempo, non in euro.",
+  "objection": "Per 1.200 euro l'anno all'anno cosa mi date in piu' rispetto a un gestionale da 69-125 euro per azienda? Con tre societa' sto gia' sopra i 200-375 euro e non vedo ancora la differenza.",
+  "would_change_my_mind": "Se il mio gestionale attuale sbaglia FIR o scadenze in modo concreto e WasteFlow, con i miei dati importati, mi dimostra di risolvere quel problema senza rifare tutto il lavoro.",
+  "price_too_cheap": 250,
+  "price_cheap": 500,
+  "price_expensive": 800,
+  "price_too_expensive": 1000
+}

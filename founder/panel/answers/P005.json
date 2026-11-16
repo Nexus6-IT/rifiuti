@@ -1,0 +1,13 @@
+{
+  "id": "P005",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il problema lo sento: raccolgo i registri di più sedi via email ogni mese e le sanzioni le pago io se qualcosa non torna. Ma sulla pagina non vedo nulla che mi faccia fidare di un software nuovo per i FIR e per RENTRI: nessun cliente di riferimento, nessuna certificazione, nessuna prova che l'import dai miei fogli funzioni. Con 1.200 € l'anno sono circa il 30% del mio budget per strumenti ambientali, e non lo spendo sul 'perché voi' senza una dimostrazione.",
+  "objection": "Il 'perché voi' non è risposto: chi mi garantisce che i FIR trasmessi a RENTRI siano giusti e che, in caso di controllo, le firme delle singole società restino valide? Non c'è scritto niente su chi sta dietro al software.",
+  "would_change_my_mind": "Un mese gratuito in cui importo davvero i registri di due o tre delle mie sedi e vedo il consolidato tornare con i numeri che ho già, più un riferimento verificabile di un gruppo o di uno studio che lo usa da almeno un anno.",
+  "price_too_cheap": 300,
+  "price_cheap": 800,
+  "price_expensive": 1800,
+  "price_too_expensive": 2600
+}

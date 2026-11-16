@@ -1,0 +1,13 @@
+{
+  "id": "P014",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il gestionale che uso gia' (TeamSystem o simili) ha gia' il modulo rifiuti, e io voglio tutto dentro l'ERP per non reinserire i dati due volte. Una piattaforma nuova per i gruppi, di un fornitore che non conosco, mi sembra un altro posto dove tenere i dati da riallineare.",
+  "objection": "Perche' dovrei spostare registri e FIR fuori dal gestionale che gia' uso, con un fornitore nuovo, quando il modulo rifiuti dell'ERP dovrebbe farmi la stessa cosa? E se il dato non torna tra il vostro software e il gestionale, chi risponde?",
+  "would_change_my_mind": "Una integrazione diretta con il mio gestionale (TeamSystem, Zucchetti o Mexal) che non mi costringa a doppi inserimenti, e un referente con cui parlare dopo la prima fattura.",
+  "price_too_cheap": 400,
+  "price_cheap": 800,
+  "price_expensive": 1400,
+  "price_too_expensive": 1800
+}

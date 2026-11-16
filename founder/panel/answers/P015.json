@@ -1,0 +1,13 @@
+{
+  "id": "P015",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Non vedo nessun motivo per cambiare adesso: la scadenza è passata e ce la caviamo come facciamo adesso, con il consulente che tiene i registri e manda le fatture. Un software online per ogni società del gruppo mi sembra un lavoro in più, non un risparmio, e non voglio occuparmene io.",
+  "objection": "Chi inserisce i dati e chi firma i FIR dentro il software? Se resto io a fare l'importazione e a tenere i permessi per ogni sede, ho solo spostato il lavoro che oggi fa il consulente.",
+  "would_change_my_mind": "Se il consulente stesso mi dicesse che usa questo software e che lo gestisce lui per tutto il gruppo, senza che io debba fare nulla, con i FIR già collegati a RENTRI.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1800,
+  "price_too_expensive": 2500
+}

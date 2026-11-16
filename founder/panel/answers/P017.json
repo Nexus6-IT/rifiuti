@@ -1,0 +1,13 @@
+{
+  "id": "P017",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Con il gestionale che uso oggi i registri e i FIR vanno a RENTRI senza blocchi seri. Passare a WasteFlow vuol dire reimportare i dati di tutte le società del gruppo e rifare le abilitazioni per ogni sede: non lo faccio per una promessa scritta in una pagina web, serve prima una prova concreta.",
+  "objection": "Chi risponde delle sanzioni se RENTRI si blocca o il dato non passa? La pagina non dice nulla su responsabilità, garanzie e su cosa succede ai miei registri se il fornitore sparisce.",
+  "would_change_my_mind": "Una prova gratuita con i miei dati reali: importo i registri di una società, trasmetto un FIR a RENTRI che va a buon fine, e ho una clausola scritta sulla responsabilità in caso di disservizio.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1500,
+  "price_too_expensive": 2500
+}

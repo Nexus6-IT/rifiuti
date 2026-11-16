@@ -1,0 +1,13 @@
+{
+  "id": "P002",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il primo pensiero resta che la scadenza e' passata e che ce la caviamo come facciamo adesso. Un software che importa i dati dai miei fogli e mi porta dentro RENTRI mi sembra una migrazione da seguire, non un acquisto da fare in una settimana normale; con il consulente che gia' tiene i registri, cambiare strumento significa rifare il lavoro.",
+  "objection": "Chi gestisce davvero i registri e i FIR dopo che il software e' attivo? Se il consulente non lo usa o io non ho tempo di occuparmene, pago 1.200 euro per un'altra cosa da controllare.",
+  "would_change_my_mind": "Una prova gratuita con il mio consulente che importa i dati del mio gruppo e mi mostra che il FIR respinto non si ripete, senza che io debba occuparmi della migrazione.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1500,
+  "price_too_expensive": 3000
+}

@@ -1,0 +1,13 @@
+{
+  "id": "P019",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il problema che vedo è reale: raccolgo i registri di ogni sede a mano ogni mese e una vista unica mi servirebbe. Ma la pagina dice che ogni società firma i propri documenti e non spiega cosa succede alla capogruppo quando le deleghe coprono solo la trasmissione: senza capire chi risponde davanti a un controllo, non firmo nulla.",
+  "objection": "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista? Se in un controllo la responsabilità resta in ogni sede, a me non serve un cruscotto, serve sapere chi ha fatto cosa.",
+  "would_change_my_mind": "Vedere un esempio concreto di un gruppo reale: chi firma i FIR, come sono organizzate le deleghe, e un registro di chi ha modificato cosa, esportabile come prova in caso di controllo.",
+  "price_too_cheap": 250,
+  "price_cheap": 600,
+  "price_expensive": 900,
+  "price_too_expensive": 1500
+}

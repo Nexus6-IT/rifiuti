@@ -1,0 +1,13 @@
+{
+  "id": "P013",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "Il mio budget annuo per software ambientali è di circa 1.000 €, e questo prezzo per il gruppo supera già quella cifra. Il portale RENTRI gratuito mi copre la trasmissione di registri e FIR, quindi pagare vuol dire pagare per la vista consolidata e per gli avvisi, non per un adempimento che non riesco a fare.",
+  "objection": "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista? Se la capogruppo vede tutto ma non può agire sui documenti di una società, il consolidato mi serve a poco.",
+  "would_change_my_mind": "Una prova concreta che la capogruppo può controllare e gestire registri e scadenze di ogni società senza bypassare le deleghe dei legali rappresentanti, più un prezzo sotto i 1.000 € l'anno per il gruppo.",
+  "price_too_cheap": 150,
+  "price_cheap": 500,
+  "price_expensive": 900,
+  "price_too_expensive": 1000
+}

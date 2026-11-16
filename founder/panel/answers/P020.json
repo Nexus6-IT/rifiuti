@@ -1,0 +1,13 @@
+{
+  "id": "P020",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il modulo rifiuti ce l'ho già nel gestionale aziendale e ci lavoriamo da anni. Un secondo sistema per i registri e i FIR significa inserire le stesse cose due volte, ed è proprio quello che voglio evitare. Il gruppo è grande, quindi la vista consolidata mi interessa, ma non al prezzo di un altro programma da tenere aggiornato.",
+  "objection": "Chi mi garantisce che i dati finiscano nel software e non restino a metà tra due sistemi? Con l'importazione una tantum da file, al primo cambiamento nel gestionale mi ritrovo con due versioni diverse dei registri.",
+  "would_change_my_mind": "Un collegamento diretto e verificato con il modulo rifiuti del mio gestionale (TeamSystem, Zucchetti o Mexal), così che i registri e i FIR si inseriscano una sola volta e il WasteFlow faccia solo la vista consolidata e le scadenze.",
+  "price_too_cheap": 250,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1800
+}

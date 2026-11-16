@@ -1,0 +1,13 @@
+{
+  "id": "P010",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "Col budget che ho per i software ambientali, 1.200 € l'anno più IVA sono già sopra la cifra che il direttore mi ha dato, e per un riepilogo rifiuti di 5 società cerco il meno caro che fa il minimo indispensabile. Il primo mese gratuito non mi convince: devo comunque imparare un software nuovo e importare i dati prima di sapere se serve.",
+  "objection": "Non mi è chiaro cosa costa davvero a un anno il gruppo se le società sono più di 5, e se per il bilancio mi basta un foglio di calcolo fatto bene come faccio adesso.",
+  "would_change_my_mind": "Un prezzo sotto i 1.000 € l'anno per il gruppo con la stessa importazione dei dati e il riepilogo esportabile per il bilancio di sostenibilità.",
+  "price_too_cheap": 250,
+  "price_cheap": 600,
+  "price_expensive": 900,
+  "price_too_expensive": 1000
+}

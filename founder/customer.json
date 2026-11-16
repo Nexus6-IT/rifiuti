@@ -1,0 +1,37 @@
+{
+  "business": "WasteFlow: gestione rifiuti (RENTRI, FIR digitale, registri, scadenze) per gruppi societari con più società e unità locali, con vista unica della capogruppo",
+  "target": "Responsabile ambiente/HSE o amministrativo di un gruppo italiano con 2-20 società o unità locali che producono rifiuti speciali, oppure il consulente ambientale che segue quel gruppo",
+  "where": "Italia, imprese obbligate a RENTRI e FIR digitale",
+  "age": [30, 62],
+  "segments": [
+    {"name": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)", "share": 0.40, "income": [300, 2500]},
+    {"name": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)", "share": 0.25, "income": [1500, 10000]},
+    {"name": "Consulente ambientale che segue uno o più gruppi societari (budget annuo per strumenti in euro)", "share": 0.25, "income": [500, 5000]},
+    {"name": "Gruppo di servizi/multiutility locale con impianti e mezzi propri (budget annuo per software ambientali in euro)", "share": 0.10, "income": [5000, 30000]}
+  ],
+  "behaviours": [
+    {"name": "Usa già un gestionale rifiuti", "share": 0.25, "how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili e cambia solo se il vecchio crea problemi seri."},
+    {"name": "Si appoggia al portale gratuito", "share": 0.20, "how": "Fa registri e FIR direttamente sul portale RENTRI, con fatica ma a costo zero."},
+    {"name": "Delega al consulente", "share": 0.20, "how": "Paga il consulente ambientale e non vuole occuparsene di persona."},
+    {"name": "Vuole tutto nell'ERP", "share": 0.15, "how": "Preferisce il modulo rifiuti del gestionale aziendale (TeamSystem, Zucchetti, Mexal) per evitare doppi inserimenti."},
+    {"name": "Teme le sanzioni", "share": 0.12, "how": "Ha avuto un controllo o una contestazione e cerca controllo e prove."},
+    {"name": "Compra sul prezzo", "share": 0.08, "how": "Confronta i listini e sceglie il meno caro che fa il minimo indispensabile."}
+  ],
+  "objections": [
+    "Il portale RENTRI è gratuito e il consulente può già operare come incaricato: perché pagare?",
+    "Ci sono offerte da 69-125 euro l'anno per azienda: cosa mi date in più?",
+    "Il mio ERP ha già il modulo rifiuti, non voglio un secondo sistema",
+    "Se RENTRI si blocca o il software non è interoperabile, chi risponde delle sanzioni?",
+    "Rifiutoo e altri dicono già di gestire più società: perché voi?",
+    "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista?",
+    "Siete nuovi, senza clienti né referenze né conservazione a norma",
+    "La scadenza è passata e ce la caviamo come facciamo adesso"
+  ],
+  "habits": [
+    "segui l'ambiente insieme a sicurezza e qualità",
+    "ogni mese raccogli i registri delle diverse sedi via email",
+    "hai avuto un FIR respinto dal destinatario per un dato sbagliato",
+    "il consulente ti manda una fattura per ogni società del gruppo",
+    "il direttore ti chiede un riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità"
+  ]
+}

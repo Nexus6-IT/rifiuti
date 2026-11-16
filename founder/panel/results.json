@@ -1,0 +1,156 @@
+{
+ "business": "WasteFlow: gestione rifiuti (RENTRI, FIR digitale, registri, scadenze) per gruppi societari con più società e unità locali, con vista unica della capogruppo",
+ "seed": 899717,
+ "dealt": 20,
+ "answered": 20,
+ "skipped": [],
+ "buys": 0,
+ "passes": 20,
+ "buy_rate": 0.0,
+ "by_segment": [
+  [
+   "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+   8,
+   0.0
+  ],
+  [
+   "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+   5,
+   0.0
+  ],
+  [
+   "Consulente ambientale che segue uno o più gruppi societari (budget annuo per strumenti in euro)",
+   5,
+   0.0
+  ],
+  [
+   "Gruppo di servizi/multiutility locale con impianti e mezzi propri (budget annuo per software ambientali in euro)",
+   2,
+   0.0
+  ]
+ ],
+ "by_behaviour": [
+  [
+   "Vuole tutto nell'ERP",
+   3,
+   0.0
+  ],
+  [
+   "Delega al consulente",
+   4,
+   0.0
+  ],
+  [
+   "Usa già un gestionale rifiuti",
+   5,
+   0.0
+  ],
+  [
+   "Teme le sanzioni",
+   2,
+   0.0
+  ],
+  [
+   "Si appoggia al portale gratuito",
+   4,
+   0.0
+  ],
+  [
+   "Compra sul prezzo",
+   2,
+   0.0
+  ]
+ ],
+ "by_income": [
+  [
+   "$2,000 to $5,000",
+   8,
+   0.0
+  ],
+  [
+   "$5,000 and up",
+   7,
+   0.0
+  ],
+  [
+   "under $2,000",
+   5,
+   0.0
+  ]
+ ],
+ "why_not": [
+  [
+   "trust",
+   7,
+   [
+    "Il problema c'e' davvero: il riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità me lo chiede il direttore ogni anno. Ma non compro un software che mi fa reinserire i dati che ho già nel gestionale: il doppio inserimento è proprio quello che voglio eliminare, e qui mi dite solo che importate i dati dai fogli o dal software che uso oggi.",
+    "Il problema lo sento: raccolgo i registri di più sedi via email ogni mese e le sanzioni le pago io se qualcosa non torna. Ma sulla pagina non vedo nulla che mi faccia fidare di un software nuovo per i FIR e per RENTRI: nessun cliente di riferimento, nessuna certificazione, nessuna prova che l'import dai miei fogli funzioni. Con 1.200 € l'anno sono circa il 30% del mio budget per strumenti ambientali, e non lo spendo sul 'perché voi' senza una dimostrazione."
+   ],
+   [
+    "P001",
+    "P005"
+   ]
+  ],
+  [
+   "habit",
+   7,
+   [
+    "Il primo pensiero resta che la scadenza e' passata e che ce la caviamo come facciamo adesso. Un software che importa i dati dai miei fogli e mi porta dentro RENTRI mi sembra una migrazione da seguire, non un acquisto da fare in una settimana normale; con il consulente che gia' tiene i registri, cambiare strumento significa rifare il lavoro.",
+    "Uso gia' un gestionale rifiuti e lo cambio solo se quello vecchio crea problemi seri. Un primo mese gratuito non mi basta: devo importare i dati di tutte le societa' del gruppo e rifare registri e scadenze, e questo lavoro lo pago in tempo, non in euro."
+   ],
+   [
+    "P002",
+    "P004"
+   ]
+  ],
+  [
+   "price",
+   4,
+   [
+    "1.200 euro l'anno sono sopra il mio budget di circa 1.000 euro per il software ambientale, e il primo mese gratuito non cambia il costo annuo. Il consulente mi segue già per i FIR: non vedo perché pagare un software in più per una vista consolidata che devo ancora verificare.",
+    "Col budget che ho per i software ambientali, 1.200 € l'anno più IVA sono già sopra la cifra che il direttore mi ha dato, e per un riepilogo rifiuti di 5 società cerco il meno caro che fa il minimo indispensabile. Il primo mese gratuito non mi convince: devo comunque imparare un software nuovo e importare i dati prima di sapere se serve."
+   ],
+   [
+    "P003",
+    "P010"
+   ]
+  ],
+  [
+   "need",
+   2,
+   [
+    "Il mio ERP ha già il modulo rifiuti, e io non voglio un secondo sistema da far alimentare a mano dalle sedi ogni mese. Il primo mese gratis mi incuriosisce, ma non vedo perché spostare registri e FIR su un altro programma se quello che ho già copre il lavoro.",
+    "Il portale RENTRI è gratuito e registri e FIR li faccio già io, con fatica ma senza spendere. La vista di gruppo e il consolidato per il bilancio mi interessano, ma non sento ancora un problema abbastanza grosso da pagare 1.200 € l'anno per risolverlo."
+   ],
+   [
+    "P009",
+    "P011"
+   ]
+  ]
+ ],
+ "why_yes": [],
+ "flip": [
+  "Se il modulo si collegasse direttamente al TeamSystem, Zucchetti o Mexal che usiamo già, senza reinserire nulla, e se la capogruppo avesse permessi che limitano davvero chi può fare cosa in ciascuna società.",
+  "Una prova gratuita con il mio consulente che importa i dati del mio gruppo e mi mostra che il FIR respinto non si ripete, senza che io debba occuparmi della migrazione.",
+  "Una prova concreta, con i nostri dati importati, che mostri la capogruppo che individua un FIR errato prima della trasmissione, e un prezzo che stia sotto i 1.000 euro l'anno per il gruppo.",
+  "Se il mio gestionale attuale sbaglia FIR o scadenze in modo concreto e WasteFlow, con i miei dati importati, mi dimostra di risolvere quel problema senza rifare tutto il lavoro.",
+  "Un mese gratuito in cui importo davvero i registri di due o tre delle mie sedi e vedo il consolidato tornare con i numeri che ho già, più un riferimento verificabile di un gruppo o di uno studio che lo usa da almeno un anno.",
+  "Un guasto serio del gestionale attuale nelle trasmissioni RENTRI, o una scadenza mancata per colpa sua, con una prova concreta che WasteFlow la evita e che l'import dei dati è assistito.",
+  "Vedere il primo mese gratuito girare sui dati reali di due o tre sedi e risparmiare ore di raccolta email e controllo registri, senza dover rifare nulla a mano.",
+  "Una dimostrazione con i miei dati reali (importazione da Rifiutoo o dai fogli di un gruppo vero) in cui la capogruppo blocca o segnala un FIR incoerente prima della trasmissione, con permessi per sede e firma per società che funzionino davvero.",
+  "Che mi dimostrino, con i dati del mio ERP, che il loro software copre registri e FIR di tutte le società del gruppo meglio del modulo che ho già, e che il costo per 6-20 società resta sotto il mio budget di 4.000 €.",
+  "Un prezzo sotto i 1.000 € l'anno per il gruppo con la stessa importazione dei dati e il riepilogo esportabile per il bilancio di sostenibilità.",
+  "Se il consulente mi dice che il portale non regge più il gruppo (più società, più sedi) e che il riepilogo consolidato mi serve per il bilancio di sostenibilità con i dati già pronti, ne parlo col direttore.",
+  "Se mi mostrano che importano i miei fogli attuali senza rifare tutto a mano e che il riepilogo consolidato per il bilancio di sostenibilità mi evita un lavoro che oggi faccio male o non faccio.",
+  "Una prova concreta che la capogruppo può controllare e gestire registri e scadenze di ogni società senza bypassare le deleghe dei legali rappresentanti, più un prezzo sotto i 1.000 € l'anno per il gruppo.",
+  "Una integrazione diretta con il mio gestionale (TeamSystem, Zucchetti o Mexal) che non mi costringa a doppi inserimenti, e un referente con cui parlare dopo la prima fattura.",
+  "Se il consulente stesso mi dicesse che usa questo software e che lo gestisce lui per tutto il gruppo, senza che io debba fare nulla, con i FIR già collegati a RENTRI.",
+  "Due o tre referenze verificabili di gruppi o consulenti ambientali che lo usano da almeno un anno, con il consulente che lo raccomanda per iscritto.",
+  "Una prova gratuita con i miei dati reali: importo i registri di una società, trasmetto un FIR a RENTRI che va a buon fine, e ho una clausola scritta sulla responsabilità in caso di disservizio.",
+  "Un documento scritto che dica chi risponde delle sanzioni se la trasmissione a RENTRI fallisce, con la garanzia di poter esportare tutti i dati.",
+  "Vedere un esempio concreto di un gruppo reale: chi firma i FIR, come sono organizzate le deleghe, e un registro di chi ha modificato cosa, esportabile come prova in caso di controllo.",
+  "Un collegamento diretto e verificato con il modulo rifiuti del mio gestionale (TeamSystem, Zucchetti o Mexal), così che i registri e i FIR si inseriscano una sola volta e il WasteFlow faccia solo la vista consolidata e le scadenze."
+ ],
+ "purchases_first_month_per_buyer": null,
+ "price_answers": 20
+}

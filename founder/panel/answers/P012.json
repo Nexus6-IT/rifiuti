@@ -1,0 +1,13 @@
+{
+  "id": "P012",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il portale RENTRI è gratuito e registri e FIR li faccio già lì, con fatica ma senza spendere. Con un responsabile ambiente part-time non vedo cosa mi cambi davvero 1.200 euro l'anno: se la scadenza è passata ce la caviamo come facciamo adesso.",
+  "objection": "Se il portale gratuito fa già registri e FIR, il software deve dimostrarmi quanto tempo mi fa risparmiare in modo concreto, altrimenti è solo un costo in più da giustificare in riunione.",
+  "would_change_my_mind": "Se mi mostrano che importano i miei fogli attuali senza rifare tutto a mano e che il riepilogo consolidato per il bilancio di sostenibilità mi evita un lavoro che oggi faccio male o non faccio.",
+  "price_too_cheap": 150,
+  "price_cheap": 400,
+  "price_expensive": 700,
+  "price_too_expensive": 1000
+}

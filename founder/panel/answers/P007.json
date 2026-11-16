@@ -1,0 +1,13 @@
+{
+  "id": "P007",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il portale RENTRI lo uso gia' e costa zero: registri e FIR li carico io, con fatica ma senza spendere. Con 1.200 euro l'anno devo prima vedere che mi tolgono davvero il lavoro delle email mensili, non solo che lo promettono.",
+  "objection": "Se il software fa le stesse cose del portale gratuito, perche' pagare? E l'import dai nostri fogli funzionera' davvero con le sedi che hanno formati diversi?",
+  "would_change_my_mind": "Vedere il primo mese gratuito girare sui dati reali di due o tre sedi e risparmiare ore di raccolta email e controllo registri, senza dover rifare nulla a mano.",
+  "price_too_cheap": 250,
+  "price_cheap": 500,
+  "price_expensive": 1000,
+  "price_too_expensive": 2000
+}

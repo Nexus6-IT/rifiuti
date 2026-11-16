@@ -1,0 +1,13 @@
+{
+  "id": "P011",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "need",
+  "reason": "Il portale RENTRI è gratuito e registri e FIR li faccio già io, con fatica ma senza spendere. La vista di gruppo e il consolidato per il bilancio mi interessano, ma non sento ancora un problema abbastanza grosso da pagare 1.200 € l'anno per risolverlo.",
+  "objection": "Se pago devo ancora caricare tutti i dati dai fogli e continuo comunque a fare FIR e registri sul portale: chi mi garantisce che non sia un doppione da mantenere in più?",
+  "would_change_my_mind": "Se il consulente mi dice che il portale non regge più il gruppo (più società, più sedi) e che il riepilogo consolidato mi serve per il bilancio di sostenibilità con i dati già pronti, ne parlo col direttore.",
+  "price_too_cheap": 150,
+  "price_cheap": 400,
+  "price_expensive": 800,
+  "price_too_expensive": 1000
+}

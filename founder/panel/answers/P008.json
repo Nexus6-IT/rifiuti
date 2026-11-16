@@ -1,0 +1,13 @@
+{
+  "id": "P008",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il problema del FIR respinto mi tocca davvero, ma una vista unica della capogruppo non mi risolve il rischio: se il dato sbagliato nasce in una società, la capogruppo lo vedrebbe solo a valle. Con il mio gestionale attuale non cambio per una promessa di consolidamento; cambio se il vecchio mi lascia a terra.",
+  "objection": "Ogni società ha il suo legale rappresentante e la delega copre solo la trasmissione: il controllo della capogruppo è reale o solo una vista? Se è solo una vista, il gruppo paga 1.200 euro l'anno per guardare dati che restano responsabilità di ciascuna società.",
+  "would_change_my_mind": "Una dimostrazione con i miei dati reali (importazione da Rifiutoo o dai fogli di un gruppo vero) in cui la capogruppo blocca o segnala un FIR incoerente prima della trasmissione, con permessi per sede e firma per società che funzionino davvero.",
+  "price_too_cheap": 150,
+  "price_cheap": 500,
+  "price_expensive": 900,
+  "price_too_expensive": 1000
+}

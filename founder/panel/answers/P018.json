@@ -1,0 +1,13 @@
+{
+  "id": "P018",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "Il gruppo ha un budget di circa 1.000 € l'anno per il software ambientale e 1.200 € più IVA superano già quella cifra per un gruppo fino a 5 società. Uso già un gestionale che funziona, e cambio solo se quello attuale crea problemi seri: qui non ne vedo il motivo, e il primo mese gratuito non cambia il costo annuo.",
+  "objection": "Se RENTRI si blocca o il software non è interoperabile, chi risponde delle sanzioni? La pagina dice che registri e FIR vengono trasmessi a RENTRI, ma non dice chi se ne assume la responsabilità né cosa succede ai dati già importati dal mio gestionale attuale.",
+  "would_change_my_mind": "Un documento scritto che dica chi risponde delle sanzioni se la trasmissione a RENTRI fallisce, con la garanzia di poter esportare tutti i dati.",
+  "price_too_cheap": 300,
+  "price_cheap": 800,
+  "price_expensive": 1200,
+  "price_too_expensive": 1500
+}
