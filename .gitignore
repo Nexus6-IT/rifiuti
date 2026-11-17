@@ -103,3 +103,5 @@ ruvector.db
 # apps/backend/test/fixtures/winwaste (non coperte da questi pattern).
 **/staging-winwaste/**
 *.bak
+.env.prod
+.env.infra-prod
