@@ -1,0 +1,59 @@
+# ============================================================================
+# WasteFlow — Deploy sul server di produzione NUOVO (infra-prod)
+# ----------------------------------------------------------------------------
+# Solo avvio manuale: NON parte a ogni push e NON tocca deploy.yml (VPS Contabo).
+# Non builda: usa le immagini gia' pubblicate da deploy.yml (tag sha-<7 hex> del commit)
+# sul registry Gitea; il server le scarica con le credenziali che il ruolo `docker` di
+# infra-prod ha messo all'utente di deploy.
+# Il runner raggiunge il server via Tailscale (vars.INFRA_PROD_HOST = IP tailnet).
+# Richiede in Gitea: vars INFRA_PROD_HOST, INFRA_PROD_USER (rifiuti), INFRA_PROD_URL;
+# secret INFRA_PROD_DEPLOY_SSH_KEY (chiave del runner, in deploy_ssh_keys della voce `rifiuti`).
+# Utente di deploy dedicato e non root; i passi vivono in scripts/infra-prod/deploy.sh.
+# ============================================================================
+name: Deploy infra-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag immagine gia' pubblicato (sha-<7 esadecimali>); vuoto = sha-<7> del commit selezionato"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-infra-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy produzione (infra-prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Tag da rilasciare
+        id: meta
+        run: |
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="sha-$(echo '${{ github.sha }}' | cut -c1-7)"
+          case "$TAG" in sha-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) echo "::error::tag non valido: $TAG"; exit 1 ;; esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH (utente dedicato, non root)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.INFRA_PROD_HOST }}
+          username: ${{ vars.INFRA_PROD_USER }}
+          key: ${{ secrets.INFRA_PROD_DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 25m
+          script: |
+            set -e
+            [ "$(id -u)" -ne 0 ] || { echo "il deploy non gira come root"; exit 1; }
+            cd /opt/rifiuti/site
+            git fetch --prune origin
+            git checkout --detach "${{ github.sha }}"
+            bash scripts/infra-prod/deploy.sh "${{ steps.meta.outputs.tag }}"
+
+      - name: Smoke test pubblico
+        if: vars.INFRA_PROD_URL != ''
+        run: curl -fsS "${{ vars.INFRA_PROD_URL }}" >/dev/null && echo "URL pubblico OK"
