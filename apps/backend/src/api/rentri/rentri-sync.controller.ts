@@ -32,6 +32,8 @@ import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
+import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
+import { verificaFirNonBloccato } from '../../domain/fir/guardia-invio-rentri'
 import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
 import {
   SyncFIRRequestDto,
@@ -87,7 +89,8 @@ export class RENTRISyncController {
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
     private readonly logger: LoggerService,
     private readonly ruoloEffettivo: RuoloEffettivoService,
-    private readonly riapriTrasmissione: RiapriTrasmissioneRentriUseCase
+    private readonly riapriTrasmissione: RiapriTrasmissioneRentriUseCase,
+    private readonly firRepository: FIRPrismaRepository
   ) {
     this.logger.setContext('RENTRISyncController')
   }
@@ -178,6 +181,13 @@ export class RENTRISyncController {
     // l'ente: la decide un amministratore NELL'AZIENDA SELEZIONATA (ruolo effettivo,
     // non quello del token, che `@Roles` vede soltanto).
     const ruolo = await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+
+    // Fase 3 (D4): un FIR importato non si accoda e non si riapre: 409 PRIMA di ogni scrittura
+    // (anche della riapertura di sotto), cosi' nessun job parte per un FIR bloccato. Un FIR
+    // inesistente o di un'altra azienda non cambia comportamento (lo decide il job).
+    const firDaInviare = await this.firRepository.findById(firId)
+    if (firDaInviare && firDaInviare.tenantId === tenantId) verificaFirNonBloccato(firDaInviare)
+
     if (dto.confermaNuovaTrasmissione === true) {
       if (!RUOLI_NUOVA_TRASMISSIONE.includes(ruolo)) {
         throw new ForbiddenException({

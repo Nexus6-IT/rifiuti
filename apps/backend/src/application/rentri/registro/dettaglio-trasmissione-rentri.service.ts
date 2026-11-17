@@ -13,6 +13,8 @@ export type FaseTrasmissioneRentri =
   | 'INVIO_IN_CORSO'
   | 'INVIATA_IN_ATTESA_DI_CONFERMA'
   | 'ESITO_INCERTO'
+  /** Fase 3: movimento importato da un altro programma, bloccato all'invio fino alla riconciliazione. */
+  | 'DA_RICONCILIARE'
   | 'CONFERMATA'
   | 'RIFIUTATA'
   | 'NON_TRASMISSIBILE'
@@ -22,6 +24,7 @@ const FASE: Record<StatoTrasmissioneRentri, FaseTrasmissioneRentri> = {
   IN_INVIO: 'INVIO_IN_CORSO',
   ATTESA_ESITO: 'INVIATA_IN_ATTESA_DI_CONFERMA',
   INCERTA: 'ESITO_INCERTO',
+  DA_RICONCILIARE: 'DA_RICONCILIARE',
   TRASMESSA: 'CONFERMATA',
   GIA_SU_RENTRI: 'CONFERMATA',
   RIFIUTATA: 'RIFIUTATA',

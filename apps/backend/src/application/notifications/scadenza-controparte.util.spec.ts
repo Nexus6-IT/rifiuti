@@ -57,4 +57,48 @@ describe('calcolaScadenza', () => {
     expect(esito.giorniAllaScadenza === 0).toBe(true)
     expect(esito.scaduta).toBe(false)
   })
+
+  describe('giorno di calendario italiano (scadenza @db.Date = mezzanotte UTC)', () => {
+    const scadenza = new Date('2026-11-15T00:00:00.000Z')
+
+    it('dopo la mezzanotte di Roma la scadenza del giorno prima è già scaduta (00:30 Roma = 23:30Z)', () => {
+      const oggi = new Date('2026-11-15T23:30:00.000Z') // 16/11 00:30 a Roma (UTC+1)
+      expect(calcolaScadenza(scadenza, oggi)).toEqual({ giorniAllaScadenza: -1, scaduta: true })
+    })
+
+    it('prima della mezzanotte di Roma la scadenza è oggi, non scaduta (23:30 Roma = 22:30Z)', () => {
+      const oggi = new Date('2026-11-15T22:30:00.000Z') // 15/11 23:30 a Roma (UTC+1)
+      expect(calcolaScadenza(scadenza, oggi)).toEqual({ giorniAllaScadenza: 0, scaduta: false })
+    })
+
+    it('in ora legale (UTC+2) il giorno cambia alle 22:00Z', () => {
+      const luglio = new Date('2026-07-15T00:00:00.000Z')
+      expect(calcolaScadenza(luglio, new Date('2026-07-15T21:30:00.000Z'))).toEqual({
+        giorniAllaScadenza: 0,
+        scaduta: false,
+      }) // 23:30 a Roma
+      expect(calcolaScadenza(luglio, new Date('2026-07-15T22:30:00.000Z'))).toEqual({
+        giorniAllaScadenza: -1,
+        scaduta: true,
+      }) // 00:30 del 16 a Roma
+    })
+
+    it('al cambio ora di ottobre (25/10/2026, 31 -> 30 ore) conta giorni di calendario', () => {
+      const oggi = new Date('2026-10-24T10:00:00.000Z')
+      expect(calcolaScadenza(new Date('2026-10-26T00:00:00.000Z'), oggi).giorniAllaScadenza).toBe(2)
+      // 26/10 00:30 a Roma = 25/10 23:30Z (ora solare): la scadenza del 25 è passata
+      expect(
+        calcolaScadenza(new Date('2026-10-25T00:00:00.000Z'), new Date('2026-10-25T23:30:00.000Z'))
+      ).toEqual({ giorniAllaScadenza: -1, scaduta: true })
+    })
+
+    it('al cambio ora di marzo (29/03/2026, giorno di 23 ore) conta giorni di calendario', () => {
+      const oggi = new Date('2026-03-28T12:00:00.000Z')
+      expect(calcolaScadenza(new Date('2026-03-30T00:00:00.000Z'), oggi).giorniAllaScadenza).toBe(2)
+      // 30/03 00:30 a Roma (ora legale) = 29/03 22:30Z: la scadenza del 29 è passata
+      expect(
+        calcolaScadenza(new Date('2026-03-29T00:00:00.000Z'), new Date('2026-03-29T22:30:00.000Z'))
+      ).toEqual({ giorniAllaScadenza: -1, scaduta: true })
+    })
+  })
 })
