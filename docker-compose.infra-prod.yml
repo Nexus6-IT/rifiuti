@@ -1,0 +1,280 @@
+# ============================================================================
+# WasteFlow (rifiuti) — stack di PRODUZIONE sul server condiviso `infra-prod`
+# ----------------------------------------------------------------------------
+# NON sostituisce docker-compose.prod.yml: quello e' lo stack in esercizio sul
+# VPS Contabo (/opt/rifiuti/, rete esterna `monitoring`, frontend su :3017,
+# container rifiuti-*-1, Keycloak del realm `ignicraft`) e resta com'e'.
+# Questo file e' il contratto del repo `infra-prod` (ruolo app_layout, voce
+# `rifiuti` di apps.yml): hardening, porte nel blocco 3040-3049, subnet fissa,
+# nomi dei container adatti agli exporter, nessuna rete `external`.
+#
+# Le variabili del backend sono le STESSE di docker-compose.prod.yml: la spec
+# infra-prod.guard.spec.ts (apps/backend/src/core/config) fallisce se una
+# variabile compare in un file e non nell'altro. Differenze volute (nessun
+# default sul dominio: il server nuovo ha i suoi, vanno dichiarati nel .env):
+#   - KEYCLOAK_URL, FRONTEND_URL, PUBLIC_URL, ALLOWED_ORIGINS, SPID_* obbligatorie;
+#   - KEYCLOAK_REALM `rifiuti` (realm dedicato, non piu' `ignicraft`);
+#   - nessun Keycloak qui dentro: e' del server (stack `keycloak` di infra-prod).
+#
+# Porte host (127.0.0.1, blocco riservato a rifiuti):
+#   3040 -> backend:3000     (vhost `api`, e `/api/` del vhost `app`)
+#   3041 -> frontend:80      (vhost `app`, SPA)
+# postgres e redis: NESSUNA porta host.
+#
+# Il file .env di produzione e' <root>/.env.prod (generato da infra-prod dal
+# vault; esempio completo in .env.infra-prod.example). TAG e' OBBLIGATORIO
+# (sha-<7+ esadecimali>, mai latest) e lo riscrive scripts/infra-prod/deploy.sh.
+#
+# Uso (sempre con -p: la cartella `site/` collide con altri progetti):
+#   docker compose -p rifiuti --env-file /opt/rifiuti/.env.prod \
+#     -f docker-compose.infra-prod.yml <cmd>
+# ============================================================================
+
+# Rotazione dei log json-file, comune a tutti i servizi (il controllo di
+# app_layout richiede max-size e max-file su ogni servizio a lunga vita).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+networks:
+  rifiuti-prod:
+    name: rifiuti-prod
+    driver: bridge
+    # Subnet FISSA: nginx del server ammette l'Admin REST del realm `rifiuti`
+    # solo da questa rete (infra-prod, apps[].compose.subnet). Non cambiarla
+    # senza aggiornare quell'inventario.
+    ipam:
+      config:
+        - subnet: 10.250.30.0/24
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+services:
+  # ─────────────────────────────────────────────────────────
+  # PostgreSQL. Nessuna porta host.
+  # no-new-privileges ma NON cap_drop ALL: l'entrypoint parte da root, fa
+  # chown dei dati e cambia utente (eccezione dichiarata in cap_drop_exempt).
+  # ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: rifiuti-postgres-prod
+    restart: always
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+          # Tetto ai processi: qui e non in pids_limit, perche' Compose rifiuta i due insieme a deploy.resources.limits.
+          pids: 256
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    environment:
+      POSTGRES_DB: ${DB_NAME:-wasteflow_prod}
+      POSTGRES_USER: ${DB_USER:-wasteflow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD richiesta}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rifiuti-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wasteflow} -d ${DB_NAME:-wasteflow_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────
+  # Redis (BullMQ, cache permessi, rate limit). Nessuna porta host.
+  # noeviction: con una policy LRU sotto pressione Redis scarterebbe in
+  # silenzio job e cache firmate; meglio un errore di scrittura visibile.
+  # maxmemory sotto il limite del container (256M) per non farlo uccidere
+  # dall'OOM killer. Come Postgres: entrypoint da root, niente cap_drop ALL.
+  # ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rifiuti-redis-prod
+    restart: always
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+          pids: 128
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    command: redis-server --maxmemory 200mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
+    volumes:
+      - redis_data:/data
+    networks:
+      - rifiuti-prod
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
+
+  # ─────────────────────────────────────────────────────────
+  # Backend NestJS. L'immagine gira gia' come utente non root (nodejs, 1001).
+  # ─────────────────────────────────────────────────────────
+  backend:
+    image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-backend:${TAG:?TAG richiesto - un tag reale sha-xxxxxxx, mai latest}
+    container_name: rifiuti-backend-prod
+    pull_policy: missing
+    restart: always
+    logging: *logging
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1536M
+          pids: 512
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    labels:
+      # Guardia, non informazione: vedi la regola "password sistema senza user app".
+      guardia-ruoli: "${DB_SISTEMA_PASSWORD:+${DB_APP_USER:?DB_SISTEMA_PASSWORD senza DB_APP_USER - ruoli DB incompleti}}"
+    # Ogni variabile letta dal codice deve stare qui o in NON_PASSATE di
+    # infrastruttura-prod.guard.spec.ts (apps/backend/src/core/config), e qui
+    # come in docker-compose.prod.yml (infra-prod.guard.spec.ts).
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Ruoli DB (RLS pezzo 1): vedi docker-compose.prod.yml. DB_APP_USER
+      # (wasteflow_app), DB_APP_PASSWORD e DB_SISTEMA_PASSWORD vanno impostate
+      # tutte e tre o per niente: una configurazione a meta' e' un errore di compose.
+      DATABASE_URL: postgresql://${DB_APP_USER:-${DB_APP_PASSWORD:+${DB_APP_USER:?DB_APP_PASSWORD senza DB_APP_USER (wasteflow_app) - ruoli DB incompleti}}${DB_USER:-wasteflow}}:${DB_APP_PASSWORD:-${DB_APP_USER:+${DB_APP_PASSWORD:?DB_APP_USER senza DB_APP_PASSWORD - ruoli DB incompleti}}${DB_PASSWORD}}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      DATABASE_URL_SISTEMA: ${DB_APP_USER:+postgresql://${DB_SISTEMA_USER:-wasteflow_sistema}:${DB_SISTEMA_PASSWORD:?DB_APP_USER senza DB_SISTEMA_PASSWORD - ruoli DB incompleti}@postgres:5432/${DB_NAME:-wasteflow_prod}}
+      # Migration: SEMPRE owner (serve DDL). La usa `prisma migrate deploy` di deploy.sh.
+      DATABASE_URL_MIGRAZIONI: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-wasteflow_prod}
+      DB_USER: ${DB_USER:-wasteflow}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # I cache service (RoleCache/PermissionCache) leggono REDIS_CLUSTER_NODES, non REDIS_HOST.
+      REDIS_CLUSTER_NODES: ${REDIS_CLUSTER_NODES:-redis:6379}
+      # CORS: il callback SAML e' un POST cross-origin da Keycloak. Nessun default sul dominio.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS richiesta (origine dell'app e di Keycloak, separate da virgola)}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL richiesta (https://<dominio dell'app>)}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET richiesta}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
+      RENTRI_REGISTRO_INVII_ATTIVI: ${RENTRI_REGISTRO_INVII_ATTIVI:-true}
+      MODULI_BACKEND_MODALITA: ${MODULI_BACKEND_MODALITA:-registra}
+      RENTRI_CREDENTIAL_ENC_KEY: ${RENTRI_CREDENTIAL_ENC_KEY:?RENTRI_CREDENTIAL_ENC_KEY richiesta}
+      SIGNATURE_PROVIDER: ${SIGNATURE_PROVIDER:?SIGNATURE_PROVIDER richiesta (sandbox|qes)}
+      TSA_PROVIDER: ${TSA_PROVIDER:?TSA_PROVIDER richiesta (mock|rfc3161)}
+      # Invio email: porta 465 (SMTPS diretto), il codice attiva TLS solo se vale esattamente '465'.
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      ACCESS_REQUEST_NOTIFY_EMAIL: ${ACCESS_REQUEST_NOTIFY_EMAIL}
+      # Keycloak DEL SERVER (realm dedicato). KEYCLOAK_URL e' l'URL pubblico di auth.<dominio>:
+      # nessuna rete condivisa, il backend lo raggiunge dal nginx dell'host.
+      KEYCLOAK_URL: ${KEYCLOAK_URL:?KEYCLOAK_URL richiesta (https://auth.<dominio del server>)}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-rifiuti}
+      # Service account 'rifiuti-admin' (client_credentials) per il provisioning utenti su Keycloak.
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rifiuti-admin}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      SPID_IDP_ENTRY_POINT: ${SPID_IDP_ENTRY_POINT:?SPID_IDP_ENTRY_POINT richiesta (https://auth.<dominio>/realms/rifiuti/protocol/saml)}
+      SPID_ENTITY_ID: ${SPID_ENTITY_ID:-rifiuti}
+      SPID_CALLBACK_URL: ${SPID_CALLBACK_URL:?SPID_CALLBACK_URL richiesta (https://<dominio dell'app>/api/v1/auth/spid/callback)}
+      SPID_IDP_CERT: ${SPID_IDP_CERT}
+      DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID}
+      # Error tracking. Vuota = SDK spento.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # Release su Bugsink e nella pagina "Stato del sistema": il tag dell'immagine.
+      APP_VERSION: ${TAG:-latest}
+      # Base dei link nelle mail di notifica.
+      PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL richiesta (https://<dominio dell'app>)}
+      # Firma HMAC della cache permessi.
+      PERMISSION_CACHE_HMAC_SECRET: ${PERMISSION_CACHE_HMAC_SECRET:?PERMISSION_CACHE_HMAC_SECRET richiesta}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      # Solo loopback: nginx del server fa reverse proxy + TLS
+      - "127.0.0.1:3040:3000"
+    healthcheck:
+      # Stesso controllo dell'immagine, esplicito qui per renderlo parte del contratto.
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/v1/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - rifiuti-prod
+
+  # ─────────────────────────────────────────────────────────
+  # Frontend: nginx:alpine che serve la SPA e inoltra /api/ al backend.
+  # nginx parte da root e poi passa a un utente non privilegiato: con
+  # `cap_drop: ALL` servono CHOWN, SETUID e SETGID (stessa eccezione dichiarata
+  # da Neat per le sue SPA, apps[].compose.cap_add_allowed.frontend).
+  # ─────────────────────────────────────────────────────────
+  frontend:
+    image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-frontend:${TAG:?TAG richiesto - un tag reale sha-xxxxxxx, mai latest}
+    container_name: rifiuti-frontend-prod
+    pull_policy: missing
+    restart: always
+    logging: *logging
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+          pids: 64
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Solo loopback: nginx del server fa reverse proxy + TLS
+      - "127.0.0.1:3041:80"
+    healthcheck:
+      # 127.0.0.1 e non localhost: nel container localhost puo' risolvere in ::1 e nginx ascolta solo in IPv4.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - rifiuti-prod
