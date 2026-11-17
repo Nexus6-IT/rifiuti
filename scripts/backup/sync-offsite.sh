@@ -321,7 +321,7 @@ sync_series() {
   keep=$(mktemp)
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
-    case "$f" in *.partial|*.tmp) continue ;; esac
+    case "$f" in *.partial|*.tmp|*.parziale|*.scartato|*.non-verificato) continue ;; esac
     base="$stage/$(basename "$f")"
     out=$(stage_file "$f" "$base") || { error "[$name] cifratura/verifica di '$f' fallita"; rm -f "$keep"; return 1; }
     echo "$out" >> "$keep"; produced=$((produced + 1))

@@ -2,7 +2,9 @@
 # ==============================================================================
 # scripts/backup/backup-database.sh — backup PostgreSQL di rifiuti sul server infra-prod
 # ------------------------------------------------------------------------------
-# Sottile adattatore di ops/backup-offsite.sh (dump verificato col marcatore finale e,
+# Sottile adattatore di scripts/backup/backup-offsite.sh, copia IDENTICA di ops/backup-offsite.sh
+# (infra-prod copia per i job di root solo scripts/; la libreria sta in scripts/backup/lib/;
+# scripts/infra-prod/test/backup-copie.test.sh controlla che le copie non divergano) (dump verificato col marcatore finale e,
 # di notte, ripristino di prova in un database temporaneo). Lo lancia il cron di
 # infra-prod tramite infra-backup-run (<app>/database, <app>/database-weekly), che
 # imposta STACK_DIR, CODE_DIR, ENV_FILE, COMPOSE_FILE e COMPOSE_PROJECT.
@@ -31,4 +33,4 @@ export PG_EXEC="${PG_EXEC:-docker exec -i $POSTGRES_CONTAINER}"
 export OFFSITE_MODE=disabled
 export ENCRYPT_BACKUP=false
 
-exec bash "$CODE_DIR/ops/backup-offsite.sh"
+exec bash "$CODE_DIR/scripts/backup/backup-offsite.sh"
