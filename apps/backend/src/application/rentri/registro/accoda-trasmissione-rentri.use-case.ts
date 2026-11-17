@@ -22,6 +22,7 @@ import {
   TrasmissioneNonModificabileError,
   richiediAmministratore,
 } from './errori-azioni-rentri-registro'
+import { NESSUNA_CATENA_DA_RICONCILIARE } from './catena-importata'
 
 type Tx = Prisma.TransactionClient
 
@@ -45,6 +46,11 @@ export interface EsitoAccodamento {
   saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>>
   /** Annotazioni escluse dall'invio automatico: saltate (comprese in `saltate`, non in `saltatePerStato`). */
   saltateEscluse: number
+  /**
+   * Fase 3: motivi di salto che non sono uno stato di riga. Presente solo se non vuoto.
+   * `PREDECESSORE_DA_RICONCILIARE`: correzione di un movimento importato non ancora riconciliato.
+   */
+  motiviSaltate?: { PREDECESSORE_DA_RICONCILIARE?: number }
 }
 
 export interface EsitoDichiarazione {
@@ -112,6 +118,7 @@ export class AccodaTrasmissioneRentriUseCase {
         saltate,
         saltatePerStato,
         saltateEscluse,
+        saltatePredecessoreDaRiconciliare,
         nuove,
         daRiportare,
       } = await this.applicaAccodamento(
@@ -130,6 +137,13 @@ export class AccodaTrasmissioneRentriUseCase {
         saltate,
         saltatePerStato,
         saltateEscluse,
+        ...(saltatePredecessoreDaRiconciliare > 0
+          ? {
+              motiviSaltate: {
+                PREDECESSORE_DA_RICONCILIARE: saltatePredecessoreDaRiconciliare,
+              },
+            }
+          : {}),
       }
       await tx.activityLog.create({
         data: {
@@ -190,16 +204,35 @@ export class AccodaTrasmissioneRentriUseCase {
     const statoDi = new Map(righe.map(r => [r.movimentoId, r.stato]))
     const escluse = new Set(righe.filter(r => r.esclusoIl !== null).map(r => r.movimentoId))
 
+    // Fase 3: una correzione la cui catena passa da un importato `DA_RICONCILIARE` non si accoda
+    // (ne' lei ne' i suoi predecessori: il predecessore importato ha gia' la sua riga bloccata).
+    const daRiconciliare = (id: string): boolean => {
+      const visti = new Set<string>()
+      let corrente = tutti.get(id)?.movimentoRettificatoId ?? null
+      while (corrente !== null && !visti.has(corrente)) {
+        visti.add(corrente)
+        if (statoDi.get(corrente) === 'DA_RICONCILIARE') return true
+        corrente = tutti.get(corrente)?.movimentoRettificatoId ?? null
+      }
+      return false
+    }
+
     const nuove: string[] = []
     const daRiportare: string[] = []
     const saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
     let saltate = 0
     let saltateEscluse = 0
+    let saltatePredecessoreDaRiconciliare = 0
     let predecessoriAccodati = 0
     for (const id of tutti.keys()) {
       const stato = statoDi.get(id)
       const eScelto = scelti.has(id)
-      if (escluse.has(id)) {
+      if (stato !== 'DA_RICONCILIARE' && daRiconciliare(id)) {
+        if (eScelto) {
+          saltate++
+          saltatePredecessoreDaRiconciliare++
+        }
+      } else if (escluse.has(id)) {
         // Esclusa dall'invio automatico: si riabilita solo con la reinclusione (ADMIN).
         if (eScelto) {
           saltate++
@@ -257,6 +290,7 @@ export class AccodaTrasmissioneRentriUseCase {
       saltate,
       saltatePerStato,
       saltateEscluse,
+      saltatePredecessoreDaRiconciliare,
       nuove,
       daRiportare,
     }
@@ -294,6 +328,8 @@ export class AccodaTrasmissioneRentriUseCase {
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND m."registro_id" = ${registroId}::uuid
           AND m."progressive_year" = ${anno}
+          AND m."import_source" IS NULL
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
           AND NOT EXISTS (
             SELECT 1 FROM "movimenti_trasmissione_rentri" t
             WHERE t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id")
@@ -423,15 +459,25 @@ export class AccodaTrasmissioneRentriUseCase {
       // Stessa chiave di `prenota` (bloccante qui): una prenotazione in corso si completa prima, e
       // non vede una riga cambiare sotto i piedi ("Prenotazione incompleta").
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + movimento.registroId}))`
+      // NOT EXISTS e non solo ON CONFLICT: il trigger dei movimenti importati (Fase 3) scatta PRIMA del
+      // controllo del conflitto e rifiuterebbe questa origine su un importato che ha gia' la sua
+      // riga DA_RICONCILIARE; cosi' l'UPDATE sotto la tratta come un 409.
       // Nessuna riga: la si crea gia' esclusa. Una riga comparsa nel frattempo (adozione del job)
       // non e' un errore: l'UPDATE qui sotto decide in base al suo stato.
+      // Una correzione la cui catena parte da un importato non riconciliato NON riceve una riga
+      // (Q4): lo stesso filtro dell'adozione, cosi' l'esclusione non sporca la coda.
       await tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "accodato_da", "updated_at")
-        VALUES (${tenantId}::uuid, ${movimento.id}::uuid, ${movimento.registroId}::uuid,
-          ${movimento.type}::"waste_movement_type",
-          ${movimento.movimentoRettificatoId ? 'CORREZIONE' : 'AUTOMATICA'}::"origine_trasmissione_rentri",
-          ${utenteId}::uuid, now())
+        SELECT m."tenant_id", m."id", m."registro_id", m."type",
+          (CASE WHEN m."movimento_rettificato_id" IS NOT NULL THEN 'CORREZIONE' ELSE 'AUTOMATICA' END)::"origine_trasmissione_rentri",
+          ${utenteId}::uuid, now()
+        FROM "waste_movements" m
+        WHERE m."id" = ${movimento.id}::uuid AND m."tenant_id" = ${tenantId}::uuid
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
+          AND NOT EXISTS (
+            SELECT 1 FROM "movimenti_trasmissione_rentri" t
+            WHERE t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id")
         ON CONFLICT ("movimento_id") DO NOTHING`
       const r = await tx.movimentoTrasmissioneRentri.updateMany({
         where: {
@@ -449,7 +495,19 @@ export class AccodaTrasmissioneRentriUseCase {
           where: { tenantId, movimentoId },
           select: { stato: true, origine: true, esclusoIl: true },
         })
-        if (!riga) throw new MovimentoNonTrovatoError()
+        if (!riga) {
+          if (movimento.movimentoRettificatoId) {
+            throw new TrasmissioneNonModificabileError(
+              "Correzione di un movimento importato: non si accoda finché l'importato non è riconciliato."
+            )
+          }
+          throw new MovimentoNonTrovatoError()
+        }
+        if (riga.stato === 'DA_RICONCILIARE') {
+          throw new TrasmissioneNonModificabileError(
+            "Movimento importato da un altro programma: non si esclude, resta fuori dall'invio finché non è riconciliato."
+          )
+        }
         if (riga.esclusoIl) {
           throw new TrasmissioneNonModificabileError(
             "L'annotazione è già esclusa dall'invio automatico."

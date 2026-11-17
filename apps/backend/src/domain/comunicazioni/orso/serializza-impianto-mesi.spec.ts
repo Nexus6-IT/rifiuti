@@ -195,7 +195,11 @@ describe('validaImpiantoMesi', () => {
 describe('registro dei tracciati', () => {
   it('espone O.R.SO. ImpiantoMesi-1', () => {
     expect(registroTracciati.get('ORSO', 'ImpiantoMesi-1')).toBe(TracciatoOrsoImpiantoMesi)
-    expect(registroTracciati.versioni('ORSO')).toEqual(['ImpiantoMesi-1'])
+    // 4.9e: la modalità dettagliata aggiunge la sua versione; la normale resta la prima.
+    expect(registroTracciati.versioni('ORSO')).toEqual([
+      'ImpiantoMesi-1',
+      'ImpiantoMesi-1-dettagliata',
+    ])
   })
 
   it('lancia su tracciato sconosciuto o doppio', () => {

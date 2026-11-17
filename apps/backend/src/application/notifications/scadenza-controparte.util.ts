@@ -1,3 +1,5 @@
+import { giornoItaliano } from '../../core/time/anno-italiano'
+
 /**
  * Calcolo condiviso dei giorni alla scadenza di una data facoltativa
  * (autorizzazione impianto, iscrizione Albo Gestori del trasportatore,
@@ -19,23 +21,18 @@
  * un'informazione che non abbiamo è rumore che insegna a ignorare gli
  * avvisi veri).
  *
- * ARROTONDAMENTO — `Math.ceil`, DIVERSO da `Math.floor` usato in
- * `calcolaGiorniAllaScadenzaCertificato` (rilievo di revisione, minore):
- * NON è una svista da uniformare, sono due dati di natura diversa.
- * `scadenza` qui è sempre una data di calendario (mezzanotte, senza
- * significato nell'ora — vedi il test "una scadenza già passata nelle ore
- * ma nello stesso giorno solare non è ancora scaduta"): `Math.ceil` conta
- * "quanti giorni di calendario mancano", coerente con `checkMudDeadlines`
- * che usa la stessa formula per la stessa ragione. Il certificato RENTRI
- * invece ha un istante di scadenza preciso (`notAfter` del certificato
- * X.509): lì `Math.floor` è la scelta prudente, per non promettere più
- * tempo di quanto ne resti davvero arrotondando per eccesso un timestamp
- * esatto. Uniformare romperebbe il comportamento intenzionale e testato di
- * entrambe le funzioni (vedi `scadenza-controparte.util.spec.ts` per
- * questa, `rentri-certificato-scadenza.job.spec.ts` per l'altra) per un
- * caso limite (poche ore da mezzanotte) che in pratica riguarda solo
- * l'ultimo giorno prima della scadenza.
+ * GIORNI DI CALENDARIO — `scadenza` arriva da colonne Prisma `@db.Date`, cioè
+ * la mezzanotte UTC di una data di calendario (parte AAAA-MM-GG in UTC).
+ * `giorniAllaScadenza` è la differenza in giorni di calendario fra quella data
+ * e il giorno di Roma di `oggi` (`giornoItaliano`, Europe/Rome): il giorno
+ * cambia a mezzanotte italiana, non UTC, quindi fra 00:00 e 01:00/02:00 di
+ * Roma non si resta più sul giorno precedente. Niente `Math.ceil` sui
+ * millisecondi. `scaduta` = giorni < 0. Il certificato RENTRI, invece, ha un
+ * istante preciso (`notAfter`) e usa `Math.floor` in
+ * `calcolaGiorniAllaScadenzaCertificato`: differenza intenzionale.
  */
+const MS_GIORNO = 24 * 60 * 60 * 1000
+
 export interface EsitoScadenza {
   giorniAllaScadenza: number | null
   scaduta: boolean
@@ -49,8 +46,10 @@ export function calcolaScadenza(
     return { giorniAllaScadenza: null, scaduta: false }
   }
 
-  const giorniAllaScadenza = Math.ceil(
-    (scadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24)
+  const giorniAllaScadenza = Math.round(
+    (Date.parse(`${scadenza.toISOString().slice(0, 10)}T00:00:00.000Z`) -
+      Date.parse(`${giornoItaliano(oggi)}T00:00:00.000Z`)) /
+      MS_GIORNO
   )
 
   return { giorniAllaScadenza, scaduta: giorniAllaScadenza < 0 }

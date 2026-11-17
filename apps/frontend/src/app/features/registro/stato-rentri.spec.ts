@@ -5,6 +5,7 @@ import {
   descrizioneEsitoVerifica,
   etichettaStatoRentri,
   eConfermata,
+  eVerificabile,
   eSelezionabile,
   severitaStatoRentri,
   tooltipStatoRentri,
@@ -22,7 +23,8 @@ describe('stato-rentri', () => {
     expect(etichettaStatoRentri('NON_TRASMISSIBILE')).toBe('Non trasmissibile')
     expect(etichettaStatoRentri('INCERTA')).toBe('Esito incerto')
     expect(etichettaStatoRentri('GIA_SU_RENTRI')).toBe('Già su RENTRI')
-    expect(STATI_RENTRI.length).toBe(8)
+    expect(etichettaStatoRentri('DA_RICONCILIARE')).toBe('Importata, da riconciliare')
+    expect(STATI_RENTRI.length).toBe(9)
   })
 
   it('solo TRASMESSA e GIA_SU_RENTRI sono confermate: mai le altre', () => {
@@ -42,9 +44,17 @@ describe('stato-rentri', () => {
       'INCERTA',
       'TRASMESSA',
       'GIA_SU_RENTRI',
+      'DA_RICONCILIARE',
     ] as StatoRentri[]) {
       expect(eSelezionabile(s)).withContext(s).toBeFalse()
     }
+  })
+
+  it('DA_RICONCILIARE: gravità informativa, non confermata, non verificabile, tooltip che spiega il blocco', () => {
+    expect(severitaStatoRentri('DA_RICONCILIARE')).toBe('info')
+    expect(eConfermata('DA_RICONCILIARE')).toBeFalse()
+    expect(eVerificabile('DA_RICONCILIARE')).toBeFalse()
+    expect(tooltipStatoRentri('DA_RICONCILIARE', null)).toContain('bloccato')
   })
 
   it('severità: successo solo se confermata, avviso se incerta', () => {

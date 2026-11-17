@@ -62,8 +62,42 @@ export interface AnnoDati {
   mesi: MeseDati[]
 }
 
+/** Indirizzo di un nuovo impianto (`tIndirizzo`). Provincia e comune sono i codici ISTAT a 3 cifre. */
+export interface IndirizzoDati {
+  /** Tipo di via (es. «Via»), 1-10 caratteri. */
+  tipo?: string
+  /** Nome della via, 1-100 caratteri. */
+  nome?: string
+  /** Numero civico: l'XSD ammette 10 caratteri, qui 5 come WinWaste (`Civico` troncato a 5). */
+  civico?: string
+  /** Cinque cifre. */
+  cap?: string
+  /** ISTAT provincia, 3 cifre (`000` per l'estero). */
+  provincia: string
+  /** ISTAT comune, 3 cifre (per l'estero il codice ISO numerico). */
+  comune: string
+}
+
+/**
+ * Soggetto non presente nell'elenco ARPA, descritto per esteso nel file (`NuovoImpianto`).
+ * L'`id` coincide con l'identificativo `s` degli `In`/`Out` con `ts="Inew"`.
+ */
+export interface NuovoImpiantoDati {
+  id: number
+  /** 1-255 caratteri. */
+  ragioneSociale: string
+  /** Forma societaria, 1-10 caratteri (facoltativa). */
+  formaSocietaria?: string
+  /** Codice fiscale o partita IVA, 11-16 caratteri alfanumerici. */
+  codfisPiva: string
+  indirizzoSL?: IndirizzoDati
+  indirizzoUL: IndirizzoDati
+}
+
 export interface ImpiantoMesiDati {
   /** Nome del software (attributo `autore`, facoltativo). */
   autore?: string
   anni: AnnoDati[]
+  /** Nuovi impianti (modalità dettagliata, 4.9e); assenti in modalità normale. */
+  nuoviImpianti?: NuovoImpiantoDati[]
 }

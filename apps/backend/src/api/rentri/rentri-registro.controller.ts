@@ -80,7 +80,11 @@ const MOTIVO_SALTATA: Partial<Record<StatoTrasmissioneRentri, string>> = {
   INCERTA: 'Esito incerto: da verificare prima di ritrasmettere',
   TRASMESSA: 'Già trasmessa a RENTRI',
   GIA_SU_RENTRI: 'Già su RENTRI',
+  DA_RICONCILIARE: 'Importata, da riconciliare: non si trasmette prima della riconciliazione',
 }
+
+const MOTIVO_SALTATA_PREDECESSORE_DA_RICONCILIARE =
+  'Correzione di un movimento importato, da riconciliare: non si trasmette prima della riconciliazione'
 
 const MOTIVO_SALTATA_ESCLUSA = "Esclusa dall'invio automatico: reincludila prima di trasmetterla"
 
@@ -247,6 +251,10 @@ export class RentriRegistroController {
     }))
     if ((esito.saltateEscluse ?? 0) > 0) {
       saltate.push({ motivo: MOTIVO_SALTATA_ESCLUSA, numero: esito.saltateEscluse })
+    }
+    const predecessore = esito.motiviSaltate?.PREDECESSORE_DA_RICONCILIARE ?? 0
+    if (predecessore > 0) {
+      saltate.push({ motivo: MOTIVO_SALTATA_PREDECESSORE_DA_RICONCILIARE, numero: predecessore })
     }
     return { accodate: esito.accodate + esito.riaccodate, saltate }
   }

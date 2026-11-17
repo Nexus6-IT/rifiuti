@@ -101,6 +101,7 @@ const firDi = (id: string, o: Partial<FirDettaglio> = {}): FirDettaglio => ({
   transportDate: new Date('2025-01-15T08:00:00Z'),
   actualArrivalDate: null,
   producerSedeId: 'prod',
+  producerId: null,
   receiverSedeId: null,
   producerCodiceFiscale: null,
   carrierCodiceFiscale: null,
@@ -167,6 +168,8 @@ function esegui(s: Scenario) {
       Object.entries(s.destinatari ?? {}).map(([id, v]) => [id, { id, dittaId: null, ...v }])
     ),
     datiTracciato: new Map(Object.entries(s.dati ?? {}) as Array<[string, never]>),
+    produttori: new Map(),
+    sediPerControparte: new Map(),
   }
   const cfg: ConfigurazioneOrr = {
     ...configurazionePredefinita('ORR'),
