@@ -38,6 +38,8 @@ COMPOSE=(docker compose -p rifiuti --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 
 # TAG: sostituzione atomica che conserva proprietario e permessi (600).
 TAG_PRECEDENTE="$(grep -E '^TAG=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+# Il segnaposto dell'esempio (sha-0000000) non e' un tag mai rilasciato: nessun ripristino possibile.
+[[ "$TAG_PRECEDENTE" =~ ^sha-0+$ ]] && TAG_PRECEDENTE=""
 tmp=""
 TAG_SCRITTO=0
 
@@ -46,10 +48,17 @@ registra() { # messaggio su stderr e nel log persistente (se scrivibile)
   echo "$riga" >&2
   { echo "$riga" >> "$DEPLOY_LOG"; } 2>/dev/null || true
 }
-scrivi_tag() { # sostituzione atomica che conserva proprietario e permessi (600)
-  tmp="$(mktemp "$ENV_FILE.XXXXXX")"
-  { grep -vE '^TAG=' "$ENV_FILE" || true; echo "TAG=$1"; } > "$tmp"
-  chmod 600 "$tmp"; mv -f "$tmp" "$ENV_FILE"; tmp=""
+scrivi_tag() { # sostituzione atomica: temporaneo nella stessa cartella, verificato, poi mv (600)
+  tmp="$(mktemp "$ENV_FILE.XXXXXX")" || { tmp=""; return 1; }
+  # I passi sono legati con && perche' nel ripristino set -e e' spento: a disco pieno un
+  # temporaneo troncato NON deve mai sostituire .env.prod.
+  if { grep -vE '^TAG=' "$ENV_FILE" || true; echo "TAG=$1"; } > "$tmp" \
+     && [ -s "$tmp" ] && grep -qxF "TAG=$1" "$tmp" \
+     && chmod 600 "$tmp" && mv -f "$tmp" "$ENV_FILE"; then
+    tmp=""
+  else
+    rm -f "$tmp"; tmp=""; return 1
+  fi
 }
 # Ad ogni uscita con errore dopo la scrittura del TAG: diagnostica e ripristino. Va in trap EXIT
 # (e non in un `if !`) perche' dentro un `if` set -e e' sospeso e un passo fallito non fermerebbe nulla.
@@ -62,8 +71,9 @@ alla_fine() {
     { "${COMPOSE[@]}" ps; "${COMPOSE[@]}" logs --since 10m --tail 100 backend frontend; } 2>&1 | tee -a "$DEPLOY_LOG" >&2
     if [ -n "$TAG_PRECEDENTE" ] && [ "$TAG_PRECEDENTE" != "$TAG" ]; then
       registra "ripristino del tag precedente $TAG_PRECEDENTE (le migration gia' applicate restano)"
-      scrivi_tag "$TAG_PRECEDENTE"
-      if "${COMPOSE[@]}" up -d --remove-orphans >> "$DEPLOY_LOG" 2>&1; then
+      if ! scrivi_tag "$TAG_PRECEDENTE"; then
+        registra "RIPRISTINO FALLITO: TAG non riscritto in $ENV_FILE (disco pieno?), file originale intatto; intervento manuale"
+      elif "${COMPOSE[@]}" up -d --remove-orphans >> "$DEPLOY_LOG" 2>&1; then
         registra "ripristino riuscito: in esecuzione $TAG_PRECEDENTE"
       else
         registra "RIPRISTINO FALLITO: intervento manuale (produzione potenzialmente ferma)"
@@ -102,8 +112,8 @@ RUOLI_ENV_FILE="$ENV_FILE" PG_EXEC="docker exec -i rifiuti-postgres-prod" bash "
 "${COMPOSE[@]}" up -d --remove-orphans
 
 for i in $(seq 1 "$SMOKE_TENTATIVI"); do
-  if curl -fsS "http://127.0.0.1:$API_PORT/api/v1/health/db" >/dev/null \
-     && curl -fsS "http://127.0.0.1:$APP_PORT/" >/dev/null; then
+  if curl -fsS --max-time 10 "http://127.0.0.1:$API_PORT/api/v1/health/db" >/dev/null \
+     && curl -fsS --max-time 10 "http://127.0.0.1:$APP_PORT/" >/dev/null; then
     registra "Deploy OK (precedente: ${TAG_PRECEDENTE:-nessuno})"
     echo "Deploy OK (tag $TAG)"
     TAG_SCRITTO=0

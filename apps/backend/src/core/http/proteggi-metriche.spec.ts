@@ -37,7 +37,10 @@ describe('proteggiMetriche', () => {
   })
 
   it('con token: Bearer corretto passa', () => {
-    const { next } = esegui({ METRICS_TOKEN: 's3greto', METRICS_REQUIRE_TOKEN: 'true' }, 'Bearer s3greto')
+    const { next } = esegui(
+      { METRICS_TOKEN: 's3greto', METRICS_REQUIRE_TOKEN: 'true' },
+      'Bearer s3greto'
+    )
     expect(next).toHaveBeenCalled()
   })
 })

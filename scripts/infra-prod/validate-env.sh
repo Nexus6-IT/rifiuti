@@ -36,9 +36,12 @@ OBBLIGATORIE=(DB_PASSWORD REDIS_PASSWORD JWT_SECRET JWT_REFRESH_SECRET RENTRI_CR
   KEYCLOAK_URL KEYCLOAK_REALM SPID_IDP_ENTRY_POINT SPID_CALLBACK_URL METRICS_TOKEN)
 # Obbligatorie per il funzionamento (nel compose senza `:?`): vuote = login SAML o mail rotti.
 FUNZIONALI=(KEYCLOAK_CLIENT_SECRET SPID_IDP_CERT DEFAULT_TENANT_ID SMTP_USER SMTP_PASSWORD EMAIL_FROM ACCESS_REQUEST_NOTIFY_EMAIL)
-for n in "${OBBLIGATORIE[@]}" "${FUNZIONALI[@]}"; do
+for n in "${OBBLIGATORIE[@]}" "${FUNZIONALI[@]}" DB_APP_PASSWORD DB_SISTEMA_PASSWORD MONITORING_PG_PASSWORD; do
   v=$(valore "$n")
-  [ -n "$v" ] || { err "$n mancante o vuota"; continue; }
+  if [ -z "$v" ]; then
+    case "$n" in DB_APP_PASSWORD|DB_SISTEMA_PASSWORD|MONITORING_PG_PASSWORD) ;; *) err "$n mancante o vuota" ;; esac
+    continue
+  fi
   case "$v" in *CAMBIA*|*changeme*|*CHANGE_ME*|*"<dominio"*|*"<DOMINIO"*|*xxxxxxxx*) err "$n e' ancora un segnaposto" ;; esac
 done
 
@@ -89,7 +92,7 @@ v=$(valore KEYCLOAK_REALM); [ -z "$v" ] || [ "$v" != "ignicraft" ] || err "KEYCL
 # produzione: con un SPID_IDP_CERT vecchio si accetterebbero asserzioni SAML di un altro IdP.
 for n in KEYCLOAK_URL SPID_IDP_ENTRY_POINT ALLOWED_ORIGINS FRONTEND_URL PUBLIC_URL SPID_CALLBACK_URL; do
   v=$(valore "$n")
-  case "$v" in *auth.ignicraft.com*|*/realms/ignicraft*) err "$n punta al Keycloak di sviluppo (auth.ignicraft.com / realm ignicraft)" ;; esac
+  case "${v,,}" in *auth.ignicraft.com*|*/realms/ignicraft*) err "$n punta al Keycloak di sviluppo (auth.ignicraft.com / realm ignicraft)" ;; esac
 done
 kc=$(valore KEYCLOAK_URL); kc="${kc%/}"; realm=$(valore KEYCLOAK_REALM)
 v=$(valore SPID_IDP_ENTRY_POINT)

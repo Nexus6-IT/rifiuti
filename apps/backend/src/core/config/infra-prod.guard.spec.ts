@@ -53,11 +53,13 @@ describe('docker-compose.infra-prod.yml', () => {
     const vecchie = chiaviAmbiente(vecchio, 'backend')
     // Uniche aggiunte: la protezione di /metrics, che sul VPS in esercizio isola nginx.
     const consentite = ['METRICS_TOKEN', 'METRICS_REQUIRE_TOKEN']
-    const inPiu = [...chiaviAmbiente(nuovo, 'backend')].filter(k => !vecchie.has(k) && !consentite.includes(k))
+    const inPiu = [...chiaviAmbiente(nuovo, 'backend')].filter(
+      k => !vecchie.has(k) && !consentite.includes(k)
+    )
     expect(inPiu).toEqual([])
   })
 
-  it('redis: noeviction, maxmemory a non oltre meta\' del limite del container', () => {
+  it("redis: noeviction, maxmemory a non oltre meta' del limite del container", () => {
     const t = blocco(nuovo, 'redis').join('\n')
     expect(t).toContain('--maxmemory-policy noeviction')
     const mm = Number(/--maxmemory (\d+)mb/.exec(t)?.[1])
@@ -96,7 +98,8 @@ describe('docker-compose.infra-prod.yml', () => {
   it('porte solo su 127.0.0.1 nel blocco 3040-3049, nessuna su postgres e redis', () => {
     const porte = [...nuovo.matchAll(/^\s+- "([^"]*:\d+:\d+)"$/gm)].map(m => m[1])
     expect(porte.sort()).toEqual(['127.0.0.1:3040:3000', '127.0.0.1:3041:80'])
-    for (const s of ['postgres', 'redis']) expect(blocco(nuovo, s).join('\n')).not.toContain('ports:')
+    for (const s of ['postgres', 'redis'])
+      expect(blocco(nuovo, s).join('\n')).not.toContain('ports:')
   })
 
   it('nessuna rete external, nessun bind mount, nessun socket Docker', () => {
@@ -106,7 +109,9 @@ describe('docker-compose.infra-prod.yml', () => {
   })
 
   it('la rete rifiuti-prod ha la subnet fissa 10.250.30.0/24', () => {
-    expect(nuovo).toMatch(/rifiuti-prod:\n\s+name: rifiuti-prod\n\s+driver: bridge\n(?:\s+#.*\n)*\s+ipam:\n\s+config:\n\s+- subnet: 10\.250\.30\.0\/24/)
+    expect(nuovo).toMatch(
+      /rifiuti-prod:\n\s+name: rifiuti-prod\n\s+driver: bridge\n(?:\s+#.*\n)*\s+ipam:\n\s+config:\n\s+- subnet: 10\.250\.30\.0\/24/
+    )
   })
 
   it('nomi dei container adatti agli exporter di infra-prod', () => {

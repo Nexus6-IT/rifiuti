@@ -72,4 +72,21 @@ FALLISCI_TAG=sha-eeeeeee lancia sha-eeeeeee; rc=$?
 nuovo_stack 5 sha-aaaaaaa
 lancia latest; rc=$?
 [ $rc -eq 2 ] && [ "$(tagenv)" = "sha-aaaaaaa" ] && ok "tag latest rifiutato" || ko "tag latest (rc=$rc)"
+
+# 6) disco pieno durante il ripristino: .env.prod resta integro (mai vuoto), up non lanciato
+cat > "$T/bin/mktemp-pieno" <<'D'
+#!/bin/bash
+# primo giro (scrittura del nuovo tag) mktemp vero; dal secondo il temporaneo e' /dev/full (ENOSPC)
+n="$(cat "$STACK_DIR/mktemp.n" 2>/dev/null || echo 0)"; echo $((n+1)) > "$STACK_DIR/mktemp.n"
+if [ "$n" -ge 1 ]; then f="${1%.XXXXXX}.pieno"; ln -sf /dev/full "$f"; echo "$f"; else /usr/bin/mktemp "$@"; fi
+D
+chmod +x "$T/bin/mktemp-pieno"; mkdir -p "$T/bin-pieno"; cp "$T/bin/mktemp-pieno" "$T/bin-pieno/mktemp"
+cp "$T/bin/docker" "$T/bin/curl" "$T/bin-pieno/"
+nuovo_stack 6 sha-aaaaaaa
+PATH="$T/bin-pieno:$PATH" FALLISCI_TAG=sha-fffffff STACK_DIR="$S" SMOKE_TENTATIVI=2 SMOKE_PAUSA=0 \
+  bash "$C/scripts/infra-prod/deploy.sh" sha-fffffff >"$S/out" 2>&1; rc=$?
+[ $rc -ne 0 ] && [ -s "$E" ] && [ "$(grep -c . "$E")" -ge 2 ] && grep -q '^X=1' "$E" && ok "disco pieno: .env.prod non svuotato" || ko "disco pieno: .env.prod danneggiato (rc=$rc)"
+grep -q 'RIPRISTINO FALLITO: TAG non riscritto' "$S/deploy.log" && ok "disco pieno: fallimento del ripristino registrato" || ko "disco pieno: nessun log"
+! grep -q 'docker\[sha-aaaaaaa\] .* up -d' "$S/chiamate" && ok "disco pieno: up non lanciato col file inconsistente" || ko "disco pieno: up lanciato"
+ls "$S"/.env.prod.* >/dev/null 2>&1 && ko "temporanei rimasti" || ok "nessun temporaneo rimasto"
 exit $fail

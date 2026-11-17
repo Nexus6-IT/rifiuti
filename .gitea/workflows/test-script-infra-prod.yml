@@ -1,0 +1,54 @@
+# ============================================================================
+# WasteFlow - Test degli script di infra-prod (bash, senza host ne' database)
+# ----------------------------------------------------------------------------
+# Piccolo workflow separato: NON fa parte di deploy.yml (VPS Contabo in esercizio)
+# e non lo rallenta ne' lo puo' rompere. Parte solo se un push su master/develop
+# tocca gli script, le copie di backup o gli originali in ops/ che quelle copie
+# devono seguire (backup-copie.test.sh segnala la divergenza), oppure a mano.
+# Non builda e non deploya nulla: docker/curl/ssh sono finti dentro i test.
+# ============================================================================
+name: Test script infra-prod
+
+on:
+  push:
+    branches: [master, develop]
+    paths:
+      - 'scripts/**'
+      - 'ops/backup-offsite.sh'
+      - 'ops/lib/**'
+      - 'ops/db-ruoli.sh'
+      - '.gitea/workflows/test-script-infra-prod.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: test-script-infra-prod-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-script:
+    name: Test script (bash)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sintassi degli script
+        run: |
+          for f in scripts/infra-prod/*.sh scripts/infra-prod/test/*.sh scripts/backup/*.sh scripts/backup/lib/*.sh; do
+            bash -n "$f"
+          done
+
+      - name: Test (deploy, validatore, copie di backup)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          rc=0
+          for t in scripts/infra-prod/test/*.test.sh; do
+            echo "== $t"
+            bash "$t" || rc=1
+          done
+          exit $rc

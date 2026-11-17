@@ -2,7 +2,7 @@
 # Test di validate-env.sh: un .env valido passa, ogni difetto noto lo fa fallire.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+T="$(mktemp -d "${TMPDIR:-$HOME/.cache/claude-tmp}/validate-env-test.XXXXXX")"; trap 'rm -rf "$T"' EXIT
 F="$T/env"; fail=0
 h() { openssl rand -hex 16 2>/dev/null || echo 0123456789abcdef0123456789abcdef; }
 base() { cat <<E
@@ -66,6 +66,8 @@ prova "METRICS_TOKEN mancante" 1 '/^METRICS_TOKEN=/d'
 prova "DB_USER diverso da DATABASE_USER" 1 's/^DB_USER=.*/DB_USER=altro/'
 prova "TAG sha-0000000" 1 's/^TAG=.*/TAG=sha-0000000/'
 prova "EMAIL_FROM con nome e angolari e' valido" 0 's/^EMAIL_FROM=.*/EMAIL_FROM=WasteFlow <noreply@example.org>/'
+prova "Keycloak di sviluppo in maiuscolo" 1 's#^KEYCLOAK_URL=.*#KEYCLOAK_URL=https://AUTH.IGNICRAFT.COM#'
+prova "segnaposto in DB_APP_PASSWORD" 1 's/^DB_APP_PASSWORD=.*/DB_APP_PASSWORD=CAMBIA_openssl_rand_hex_32/'
 prova "segnaposto <dominio" 1 's#^PUBLIC_URL=.*#PUBLIC_URL=https://<dominio-app>#'
 base > "$F"; chmod 644 "$F"; bash "$DIR/validate-env.sh" "$F" >/dev/null 2>&1 && { echo "FALLITO: permessi 644"; fail=1; } || echo "ok: permessi 644"
 exit $fail
