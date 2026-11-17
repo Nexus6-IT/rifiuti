@@ -4,7 +4,8 @@
 # fallimento al primo deploy (nessun tag da ripristinare); smoke test fallito.
 set -u
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-T="$(mktemp -d "${TMPDIR:-$HOME/.cache/claude-tmp}/deploy-test.XXXXXX")"; trap 'rm -rf "$T"' EXIT
+B="${TMPDIR:-$HOME/.cache/claude-tmp}"; [ -d "$B" ] || B=/tmp
+T="$(mktemp -d "$B/deploy-test.XXXXXX")" || exit 1; trap 'rm -rf "$T"' EXIT
 fail=0
 ok()  { echo "ok: $1"; }
 ko()  { echo "FALLITO: $1"; fail=1; }
@@ -21,7 +22,8 @@ cat > "$T/bin/docker" <<'D'
 #!/bin/bash
 envf=""; prev=""
 for a in "$@"; do [ "$prev" = "--env-file" ] && envf="$a"; prev="$a"; done
-tag="$(grep -E '^TAG=' "$envf" | tail -n1 | cut -d= -f2-)"
+# Legge il TAG solo da un file regolare: un .env.prod trasformato in link a /dev/full non deve far restare appeso il test.
+tag=""; [ -f "$envf" ] && [ ! -L "$envf" ] && tag="$(timeout 5 grep -E '^TAG=' "$envf" | tail -n1 | cut -d= -f2-)"
 echo "docker[$tag] $*" >> "$STACK_DIR/chiamate"
 case " $* " in
   *" up -d --remove-orphans "*) [ "$tag" = "${FALLISCI_TAG:-}" ] && { echo "backend unhealthy" >&2; exit 1; } ;;
@@ -34,12 +36,14 @@ cat > "$T/bin/curl" <<'D'
 [ "${SMOKE_KO:-0}" = "1" ] && exit 22
 exit 0
 D
-chmod +x "$T/bin/docker" "$T/bin/curl"
+# `id` finto: i job di CI girano come root e deploy.sh (giustamente) rifiuta root. Il finto vale solo qui, nel PATH del test.
+printf '#!/bin/sh\n[ "$1" = "-u" ] && echo "${ID_FINTO:-1000}" || /usr/bin/id "$@"\n' > "$T/bin/id"
+chmod +x "$T/bin/docker" "$T/bin/curl" "$T/bin/id"
 
 nuovo_stack() { S="$T/stack-$1"; mkdir -p "$S"; : > "$S/chiamate"; E="$S/.env.prod"
   [ -n "${2:-}" ] && echo "TAG=$2" > "$E" || : > "$E"; echo "X=1" >> "$E"; chmod 600 "$E"; }
 lancia() { PATH="$T/bin:$PATH" STACK_DIR="$S" SMOKE_TENTATIVI=2 SMOKE_PAUSA=0 \
-  bash "$C/scripts/infra-prod/deploy.sh" "$1" >"$S/out" 2>&1; }
+  timeout 60 bash "$C/scripts/infra-prod/deploy.sh" "$1" >"$S/out" 2>&1; }
 tagenv() { grep -E '^TAG=' "$E" | cut -d= -f2-; }
 
 # 1) riuscito
@@ -81,12 +85,18 @@ n="$(cat "$STACK_DIR/mktemp.n" 2>/dev/null || echo 0)"; echo $((n+1)) > "$STACK_
 if [ "$n" -ge 1 ]; then f="${1%.XXXXXX}.pieno"; ln -sf /dev/full "$f"; echo "$f"; else /usr/bin/mktemp "$@"; fi
 D
 chmod +x "$T/bin/mktemp-pieno"; mkdir -p "$T/bin-pieno"; cp "$T/bin/mktemp-pieno" "$T/bin-pieno/mktemp"
-cp "$T/bin/docker" "$T/bin/curl" "$T/bin-pieno/"
+cp "$T/bin/docker" "$T/bin/curl" "$T/bin/id" "$T/bin-pieno/"
 nuovo_stack 6 sha-aaaaaaa
 PATH="$T/bin-pieno:$PATH" FALLISCI_TAG=sha-fffffff STACK_DIR="$S" SMOKE_TENTATIVI=2 SMOKE_PAUSA=0 \
-  bash "$C/scripts/infra-prod/deploy.sh" sha-fffffff >"$S/out" 2>&1; rc=$?
+  timeout 60 bash "$C/scripts/infra-prod/deploy.sh" sha-fffffff >"$S/out" 2>&1; rc=$?
 [ $rc -ne 0 ] && [ -s "$E" ] && [ "$(grep -c . "$E")" -ge 2 ] && grep -q '^X=1' "$E" && ok "disco pieno: .env.prod non svuotato" || ko "disco pieno: .env.prod danneggiato (rc=$rc)"
 grep -q 'RIPRISTINO FALLITO: TAG non riscritto' "$S/deploy.log" && ok "disco pieno: fallimento del ripristino registrato" || ko "disco pieno: nessun log"
 ! grep -q 'docker\[sha-aaaaaaa\] .* up -d' "$S/chiamate" && ok "disco pieno: up non lanciato col file inconsistente" || ko "disco pieno: up lanciato"
 ls "$S"/.env.prod.* >/dev/null 2>&1 && ko "temporanei rimasti" || ok "nessun temporaneo rimasto"
+
+# 7) root rifiutato: con uid 0 (id finto) lo script esce 1 senza toccare nulla
+nuovo_stack 7 sha-aaaaaaa
+ID_FINTO=0 lancia sha-bbbbbbb; rc=$?
+[ $rc -eq 1 ] && grep -q 'non si lancia come root' "$S/out" && [ "$(tagenv)" = "sha-aaaaaaa" ] && [ ! -s "$S/chiamate" ] \
+  && ok "root rifiutato, nessuna modifica" || ko "root non rifiutato (rc=$rc)"
 exit $fail

@@ -52,8 +52,10 @@ scrivi_tag() { # sostituzione atomica: temporaneo nella stessa cartella, verific
   tmp="$(mktemp "$ENV_FILE.XXXXXX")" || { tmp=""; return 1; }
   # I passi sono legati con && perche' nel ripristino set -e e' spento: a disco pieno un
   # temporaneo troncato NON deve mai sostituire .env.prod.
-  if { grep -vE '^TAG=' "$ENV_FILE" || true; echo "TAG=$1"; } > "$tmp" \
-     && [ -s "$tmp" ] && grep -qxF "TAG=$1" "$tmp" \
+  # grep esce 1 se non resta nessuna riga (legittimo), 2 se errore (anche di scrittura): solo 1 e' ammesso.
+  if { grep -vE '^TAG=' "$ENV_FILE" || [ $? -eq 1 ]; echo "TAG=$1"; } > "$tmp" \
+     && [ -s "$tmp" ] \
+     && [ "$(grep -cvE '^TAG=' "$tmp")" -eq "$(grep -cvE '^TAG=' "$ENV_FILE" || true)" ] && grep -qxF "TAG=$1" "$tmp" \
      && chmod 600 "$tmp" && mv -f "$tmp" "$ENV_FILE"; then
     tmp=""
   else

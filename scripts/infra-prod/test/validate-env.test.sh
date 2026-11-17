@@ -2,7 +2,8 @@
 # Test di validate-env.sh: un .env valido passa, ogni difetto noto lo fa fallire.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-T="$(mktemp -d "${TMPDIR:-$HOME/.cache/claude-tmp}/validate-env-test.XXXXXX")"; trap 'rm -rf "$T"' EXIT
+B="${TMPDIR:-$HOME/.cache/claude-tmp}"; [ -d "$B" ] || B=/tmp
+T="$(mktemp -d "$B/validate-env-test.XXXXXX")" || exit 1; trap 'rm -rf "$T"' EXIT
 F="$T/env"; fail=0
 h() { openssl rand -hex 16 2>/dev/null || echo 0123456789abcdef0123456789abcdef; }
 base() { cat <<E

@@ -71,4 +71,6 @@ jobs:
 
       - name: Smoke test pubblico
         if: vars.INFRA_PROD_URL != ''
-        run: curl -fsS "${{ vars.INFRA_PROD_URL }}" >/dev/null && echo "URL pubblico OK"
+        env:
+          INFRA_PROD_URL: ${{ vars.INFRA_PROD_URL }}
+        run: curl -fsS "$INFRA_PROD_URL" >/dev/null && echo "URL pubblico OK"
