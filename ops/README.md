@@ -1241,3 +1241,23 @@ docker logs rifiuti-backend-1 2>&1 | grep -iE "SMTP|Missing credentials"
 
 Ma «pronto» non è «consegnato»: per una prova vera, inviare un messaggio e
 controllare che arrivi davvero in casella.
+
+---
+
+## Server di produzione condiviso (infra-prod)
+
+Lo stack per il server nuovo (repo `infra-prod`, voce `rifiuti` di `apps.yml`) vive in file DEDICATI e
+non modifica quello in esercizio sul VPS Contabo (`docker-compose.prod.yml`, `deploy.yml`, `ops/backup-offsite.sh`):
+
+| File | Cosa |
+|------|------|
+| `docker-compose.infra-prod.yml` | compose con limiti, hardening, porte 3040/3041, subnet `10.250.30.0/24` |
+| `.env.infra-prod.example` | tutte le chiavi del `.env.prod` (nessun segreto) |
+| `scripts/infra-prod/validate-env.sh` (+ `test/`) | controllo del `.env.prod` (gira nel ruolo `app_layout`) |
+| `scripts/infra-prod/deploy.sh` | deploy come utente `rifiuti`: pull, backup predeploy, migration, ruoli DB, smoke test |
+| `.gitea/workflows/deploy-infra-prod.yml` | solo `workflow_dispatch`, SSH come utente dedicato |
+| `scripts/backup/backup-database.sh` | adattatore di `ops/backup-offsite.sh` per `<root>/backups/<serie>` |
+| `scripts/backup/backup-secrets.sh` | `.env.prod` cifrato con age (chiavi del server) |
+| `scripts/backup/sync-offsite.sh` | copia di quello di Neat (default rifiuti): copia offsite cifrata |
+
+`infra-prod.guard.spec.ts` fallisce se le variabili del backend dei due compose divergono.
