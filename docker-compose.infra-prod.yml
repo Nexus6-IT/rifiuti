@@ -97,8 +97,14 @@ services:
   # Redis (BullMQ, cache permessi, rate limit). Nessuna porta host.
   # noeviction: con una policy LRU sotto pressione Redis scarterebbe in
   # silenzio job e cache firmate; meglio un errore di scrittura visibile.
-  # maxmemory sotto il limite del container (256M) per non farlo uccidere
-  # dall'OOM killer. Come Postgres: entrypoint da root, niente cap_drop ALL.
+  # maxmemory a meta' del limite del container (512M): il resto e' margine per il fork
+  # del salvataggio RDB (copy-on-write), buffer dei client e frammentazione, cosi' l'OOM
+  # killer non lo uccide. noeviction e' obbligatoria per le code BullMQ (una policy che
+  # scarta chiavi perderebbe job) e per session_epoch (sessione unica).
+  # ATTENZIONE: a maxmemory pieno OGNI scrittura fallisce (login, refresh, revoche, code).
+  # 256mb e' una stima prudente, MAI MISURATA: prima del go-live leggere used_memory
+  # sul Redis in esercizio (redis-cli INFO memory) e allarmare il redis-exporter all'80%.
+  # Come Postgres: entrypoint da root, niente cap_drop ALL.
   # ─────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
@@ -111,12 +117,12 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256M
+          memory: 512M
           pids: 128
         reservations:
           cpus: "0.1"
           memory: 64M
-    command: redis-server --maxmemory 200mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
     volumes:
       - redis_data:/data
     networks:
@@ -214,6 +220,9 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL richiesta (https://<dominio dell'app>)}
       # Firma HMAC della cache permessi.
       PERMISSION_CACHE_HMAC_SECRET: ${PERMISSION_CACHE_HMAC_SECRET:?PERMISSION_CACHE_HMAC_SECRET richiesta}
+      # /metrics (fuori da api/v1): bearer obbligatorio; senza token il backend risponde 404.
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN richiesto}
+      METRICS_REQUIRE_TOKEN: "true"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
     depends_on:

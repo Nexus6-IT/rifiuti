@@ -51,8 +51,25 @@ describe('docker-compose.infra-prod.yml', () => {
 
   it('non aggiunge al backend variabili assenti dal compose in esercizio', () => {
     const vecchie = chiaviAmbiente(vecchio, 'backend')
-    const inPiu = [...chiaviAmbiente(nuovo, 'backend')].filter(k => !vecchie.has(k))
+    // Uniche aggiunte: la protezione di /metrics, che sul VPS in esercizio isola nginx.
+    const consentite = ['METRICS_TOKEN', 'METRICS_REQUIRE_TOKEN']
+    const inPiu = [...chiaviAmbiente(nuovo, 'backend')].filter(k => !vecchie.has(k) && !consentite.includes(k))
     expect(inPiu).toEqual([])
+  })
+
+  it('redis: noeviction, maxmemory a non oltre meta\' del limite del container', () => {
+    const t = blocco(nuovo, 'redis').join('\n')
+    expect(t).toContain('--maxmemory-policy noeviction')
+    const mm = Number(/--maxmemory (\d+)mb/.exec(t)?.[1])
+    const lim = Number(/memory: (\d+)M\n\s+pids/.exec(t)?.[1])
+    expect(mm).toBeGreaterThan(0)
+    expect(mm * 2).toBeLessThanOrEqual(lim)
+  })
+
+  it('il backend esige METRICS_TOKEN e METRICS_REQUIRE_TOKEN=true', () => {
+    const t = blocco(nuovo, 'backend').join('\n')
+    expect(t).toMatch(/METRICS_TOKEN: \$\{METRICS_TOKEN:\?/)
+    expect(t).toContain('METRICS_REQUIRE_TOKEN: "true"')
   })
 
   it.each(SERVIZI)('%s: limiti di memoria, CPU e pid, no-new-privileges, rotazione dei log', s => {
