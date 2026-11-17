@@ -130,6 +130,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     motivo:
       'Comunicazioni ai consorzi: dati per movimento, anagrafica sedi e configurazione (4.9c-f)',
   },
+  'api/comunicazioni/orr.controller.ts': {
+    chiavi: ['comunicazioni'],
+    motivo: 'Comunicazioni ai consorzi: O.R.R. Campania (4.9f)',
+  },
   'api/comunicazioni/marcatura-consorzi.controller.ts': {
     chiavi: ['comunicazioni'],
     motivo: 'Marcatura dei movimenti per consorzio: regole, correzioni, estratto',

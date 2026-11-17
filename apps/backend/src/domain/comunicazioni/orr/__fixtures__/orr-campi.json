@@ -1,0 +1,252 @@
+[
+ {
+  "campo": "a1",
+  "offset": 1,
+  "lunghezza": 4
+ },
+ {
+  "campo": "a2",
+  "offset": 5,
+  "lunghezza": 2
+ },
+ {
+  "campo": "a3",
+  "offset": 7,
+  "lunghezza": 15
+ },
+ {
+  "campo": "a4",
+  "offset": 22,
+  "lunghezza": 8
+ },
+ {
+  "campo": "a5",
+  "offset": 30,
+  "lunghezza": 3
+ },
+ {
+  "campo": "b1",
+  "offset": 33,
+  "lunghezza": 6
+ },
+ {
+  "campo": "b2",
+  "offset": 39,
+  "lunghezza": 11
+ },
+ {
+  "campo": "b3",
+  "offset": 50,
+  "lunghezza": 3
+ },
+ {
+  "campo": "b4",
+  "offset": 53,
+  "lunghezza": 3
+ },
+ {
+  "campo": "c1",
+  "offset": 56,
+  "lunghezza": 1
+ },
+ {
+  "campo": "c2",
+  "offset": 57,
+  "lunghezza": 45
+ },
+ {
+  "campo": "c3",
+  "offset": 102,
+  "lunghezza": 16
+ },
+ {
+  "campo": "c4",
+  "offset": 118,
+  "lunghezza": 8
+ },
+ {
+  "campo": "c5",
+  "offset": 126,
+  "lunghezza": 45
+ },
+ {
+  "campo": "c6",
+  "offset": 171,
+  "lunghezza": 5
+ },
+ {
+  "campo": "c7",
+  "offset": 176,
+  "lunghezza": 6
+ },
+ {
+  "campo": "c8",
+  "offset": 182,
+  "lunghezza": 8
+ },
+ {
+  "campo": "c9",
+  "offset": 190,
+  "lunghezza": 45
+ },
+ {
+  "campo": "c10",
+  "offset": 235,
+  "lunghezza": 5
+ },
+ {
+  "campo": "c11",
+  "offset": 240,
+  "lunghezza": 6
+ },
+ {
+  "campo": "c12",
+  "offset": 246,
+  "lunghezza": 8
+ },
+ {
+  "campo": "c13",
+  "offset": 254,
+  "lunghezza": 3
+ },
+ {
+  "campo": "d1",
+  "offset": 257,
+  "lunghezza": 1
+ },
+ {
+  "campo": "d2",
+  "offset": 258,
+  "lunghezza": 45
+ },
+ {
+  "campo": "d3",
+  "offset": 303,
+  "lunghezza": 16
+ },
+ {
+  "campo": "d4",
+  "offset": 319,
+  "lunghezza": 8
+ },
+ {
+  "campo": "d5",
+  "offset": 327,
+  "lunghezza": 45
+ },
+ {
+  "campo": "d6",
+  "offset": 372,
+  "lunghezza": 5
+ },
+ {
+  "campo": "d7",
+  "offset": 377,
+  "lunghezza": 6
+ },
+ {
+  "campo": "d8",
+  "offset": 383,
+  "lunghezza": 8
+ },
+ {
+  "campo": "d9",
+  "offset": 391,
+  "lunghezza": 45
+ },
+ {
+  "campo": "d10",
+  "offset": 436,
+  "lunghezza": 5
+ },
+ {
+  "campo": "d11",
+  "offset": 441,
+  "lunghezza": 6
+ },
+ {
+  "campo": "d12",
+  "offset": 447,
+  "lunghezza": 8
+ },
+ {
+  "campo": "d13",
+  "offset": 455,
+  "lunghezza": 16
+ },
+ {
+  "campo": "d14",
+  "offset": 471,
+  "lunghezza": 30
+ },
+ {
+  "campo": "e1",
+  "offset": 501,
+  "lunghezza": 45
+ },
+ {
+  "campo": "e2",
+  "offset": 546,
+  "lunghezza": 16
+ },
+ {
+  "campo": "e3",
+  "offset": 562,
+  "lunghezza": 8
+ },
+ {
+  "campo": "e4",
+  "offset": 570,
+  "lunghezza": 45
+ },
+ {
+  "campo": "e5",
+  "offset": 615,
+  "lunghezza": 5
+ },
+ {
+  "campo": "e6",
+  "offset": 620,
+  "lunghezza": 6
+ },
+ {
+  "campo": "e7",
+  "offset": 626,
+  "lunghezza": 8
+ },
+ {
+  "campo": "e8",
+  "offset": 634,
+  "lunghezza": 45
+ },
+ {
+  "campo": "e9",
+  "offset": 679,
+  "lunghezza": 5
+ },
+ {
+  "campo": "e10",
+  "offset": 684,
+  "lunghezza": 6
+ },
+ {
+  "campo": "e11",
+  "offset": 690,
+  "lunghezza": 8
+ },
+ {
+  "campo": "e12",
+  "offset": 698,
+  "lunghezza": 16
+ },
+ {
+  "campo": "e13",
+  "offset": 714,
+  "lunghezza": 3
+ },
+ {
+  "campo": "F1",
+  "offset": 717,
+  "lunghezza": 2
+ }
+]

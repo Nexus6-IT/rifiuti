@@ -2,4 +2,4 @@
 apps/backend/src/infrastructure/fatturapa/xsd/*.xsd -text
 apps/backend/src/application/fatturazione/adattatori/riferimenti/teamsystem-*.txt -text
 # Golden dei tracciati a larghezza fissa: i CRLF e i byte Windows-1252 non vanno toccati da git.
-apps/backend/src/domain/comunicazioni/**/__fixtures__/*-sintetico.txt -text
+apps/backend/src/domain/comunicazioni/**/__fixtures__/*.txt -text

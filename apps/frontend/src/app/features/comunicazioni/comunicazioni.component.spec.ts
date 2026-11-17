@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { Router, provideRouter } from '@angular/router'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { signal } from '@angular/core'
-import { Router } from '@angular/router'
 import { Subject, of, throwError } from 'rxjs'
 import { ComunicazioniComponent } from './comunicazioni.component'
 import { ComunicazioniService } from './comunicazioni.service'
@@ -91,6 +91,7 @@ describe('ComunicazioniComponent', () => {
     TestBed.configureTestingModule({
       imports: [ComunicazioniComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: ComunicazioniService, useValue: svc },
         { provide: RentriUnitaLocaleService, useValue: sediSvc },
         {
@@ -127,6 +128,12 @@ describe('ComunicazioniComponent', () => {
   }
   const q = (id: string): HTMLElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="${id}"]`)
+
+  it('ha il link alla comunicazione O.R.R. Campania', () => {
+    setup()
+    const a = q('comunicazioni-vai-orr') as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('/comunicazioni/orr')
+  })
 
   it('in modalità dettagliata mostra la nota sui soggetti, la colonna soggetto e le quote', () => {
     setup('OPERATOR', [sede('ul-1', 'Sede 1')])

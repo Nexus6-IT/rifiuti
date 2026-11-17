@@ -150,6 +150,14 @@ export const routes: Routes = [
           ),
       },
       {
+        // O.R.R. Campania (4.9f): un file per sede e attività; stesso modulo `comunicazioni`
+        path: 'comunicazioni/orr',
+        canActivate: [moduloGuard],
+        data: { modulo: 'comunicazioni' },
+        loadComponent: () =>
+          import('./features/comunicazioni/orr.component').then(m => m.OrrComponent),
+      },
+      {
         path: 'mud',
         canActivate: [moduloGuard],
         data: { modulo: 'mud' },

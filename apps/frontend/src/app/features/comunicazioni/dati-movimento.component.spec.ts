@@ -13,7 +13,7 @@ describe('DatiMovimentoComponent', () => {
     fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as T | null
 
   function setup(
-    tracciato: 'CONOU' | 'COBAT',
+    tracciato: 'CONOU' | 'COBAT' | 'ORR',
     r: DatiMovimentoRisposta = { dati: null, puoModificare: true }
   ): void {
     svc = jasmine.createSpyObj<DatiComunicazioniService>('DatiComunicazioniService', [
@@ -81,6 +81,42 @@ describe('DatiMovimentoComponent', () => {
     expect(c.dati()).toEqual({ tipoMovimento: 3, causa: 5, pgf: 'C' })
     expect(fixture.nativeElement.querySelector('#dm-tipo')).not.toBeNull()
     expect(fixture.nativeElement.querySelector('#dm-prodotto')).toBeNull()
+  })
+
+  it('ORR: legge flag e formulario, salva e avvisa il chiamante', () => {
+    setup('ORR', {
+      dati: {
+        tracciato: 'ORR',
+        dati: { attivita: 'ROT', formulario: { numero: 'AB123', data: '2026-05-10' } },
+        versioneSchema: 1,
+        aggiornatoIl: 'x',
+      },
+      puoModificare: true,
+    })
+    const c = fixture.componentInstance
+    expect(c.attivitaOrr).toBe('ROT')
+    expect(c.formularioNumero).toBe('AB123')
+    expect(c.formularioData).toBe('2026-05-10')
+    expect(fixture.nativeElement.querySelector('#dm-attivita')).not.toBeNull()
+    let emesso = 0
+    c.salvato.subscribe(() => emesso++)
+    c.attivitaOrr = 'FRA'
+    c.formularioNumero = ' XY99 '
+    c.formularioData = '2026-05-11'
+    c.salva()
+    expect(svc.impostaDatiMovimento).toHaveBeenCalledWith('m1', 'ORR', {
+      attivita: 'FRA',
+      formulario: { numero: 'XY99', data: '2026-05-11' },
+    })
+    expect(emesso).toBe(1)
+  })
+
+  it('ORR: senza valori non invia nulla; numero senza data parte a meta per far parlare il backend', () => {
+    setup('ORR')
+    const c = fixture.componentInstance
+    expect(c.dati()).toEqual({})
+    c.formularioNumero = 'AB1'
+    expect(c.dati()).toEqual({ formulario: { numero: 'AB1' } })
   })
 
   it('«Togli i dati» cancella e rilegge', () => {

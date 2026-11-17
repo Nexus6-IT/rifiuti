@@ -24,6 +24,7 @@ const MAPPA_MODULI: Record<string, string | string[]> = {
   mud: 'mud',
   comunicazioni: 'comunicazioni',
   'comunicazioni/consorzi': 'comunicazioni',
+  'comunicazioni/orr': 'comunicazioni',
   esg: 'esg',
   pese: 'pese',
   giacenze: 'giacenze',
