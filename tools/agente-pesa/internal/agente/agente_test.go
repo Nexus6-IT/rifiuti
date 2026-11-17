@@ -79,6 +79,13 @@ func TestAbbinaEEseguiConDueLetture(t *testing.T) {
 	o := preparata(t, srv, true, `{"pesi":[24880,12540],"intervalloMs":10}`)
 	a := avvia(t, o)
 	attendi(t, "due letture accettate", func() bool { return srv.numAccettate() >= 2 })
+	// Il server conta una lettura accettata prima che l'agente la segni come inviata: fermare
+	// l'agente subito dopo annullerebbe la risposta in volo (context canceled) e lascerebbe la
+	// coda con meno di due inviate. Si attende che l'agente le abbia registrate davvero.
+	attendi(t, "due letture segnate come inviate", func() bool {
+		_, k, err := LeggiStato(o.Dati)
+		return err == nil && k.Inviate >= 2
+	})
 	attendi(t, "tre battiti", func() bool { srv.mu.Lock(); defer srv.mu.Unlock(); return len(srv.battiti) >= 3 })
 	if err := a.stop(); err != nil {
 		t.Fatal(err)

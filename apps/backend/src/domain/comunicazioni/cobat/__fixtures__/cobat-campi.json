@@ -1,0 +1,477 @@
+[
+  {
+    "campo": "dtreg",
+    "offset": 1,
+    "lunghezza": 8
+  },
+  {
+    "campo": "progdta",
+    "offset": 9,
+    "lunghezza": 6
+  },
+  {
+    "campo": "codazi",
+    "offset": 15,
+    "lunghezza": 16
+  },
+  {
+    "campo": "tipmov",
+    "offset": 31,
+    "lunghezza": 1
+  },
+  {
+    "campo": "targa",
+    "offset": 32,
+    "lunghezza": 9
+  },
+  {
+    "campo": "targa1",
+    "offset": 41,
+    "lunghezza": 9
+  },
+  {
+    "campo": "bolla",
+    "offset": 50,
+    "lunghezza": 20
+  },
+  {
+    "campo": "dtfor",
+    "offset": 70,
+    "lunghezza": 8
+  },
+  {
+    "campo": "note",
+    "offset": 78,
+    "lunghezza": 30
+  },
+  {
+    "campo": "causa",
+    "offset": 108,
+    "lunghezza": 1
+  },
+  {
+    "campo": "autist",
+    "offset": 109,
+    "lunghezza": 20
+  },
+  {
+    "campo": "dtcon",
+    "offset": 129,
+    "lunghezza": 8
+  },
+  {
+    "campo": "codcer",
+    "offset": 137,
+    "lunghezza": 6
+  },
+  {
+    "campo": "pgfcer",
+    "offset": 143,
+    "lunghezza": 1
+  },
+  {
+    "campo": "parrif",
+    "offset": 144,
+    "lunghezza": 6
+  },
+  {
+    "campo": "pgf",
+    "offset": 150,
+    "lunghezza": 1
+  },
+  {
+    "campo": "quam3",
+    "offset": 151,
+    "lunghezza": 14
+  },
+  {
+    "campo": "quaton",
+    "offset": 165,
+    "lunghezza": 14
+  },
+  {
+    "campo": "pdescr",
+    "offset": 179,
+    "lunghezza": 60
+  },
+  {
+    "campo": "pcodreg",
+    "offset": 239,
+    "lunghezza": 1
+  },
+  {
+    "campo": "pvia",
+    "offset": 240,
+    "lunghezza": 30
+  },
+  {
+    "campo": "pcap",
+    "offset": 270,
+    "lunghezza": 5
+  },
+  {
+    "campo": "pcodcom",
+    "offset": 275,
+    "lunghezza": 6
+  },
+  {
+    "campo": "plocal",
+    "offset": 281,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ptelef",
+    "offset": 306,
+    "lunghezza": 12
+  },
+  {
+    "campo": "pfax",
+    "offset": 318,
+    "lunghezza": 12
+  },
+  {
+    "campo": "pcodfis",
+    "offset": 330,
+    "lunghezza": 16
+  },
+  {
+    "campo": "pnumciv",
+    "offset": 346,
+    "lunghezza": 7
+  },
+  {
+    "campo": "plegrap",
+    "offset": 353,
+    "lunghezza": 25
+  },
+  {
+    "campo": "pnolegrap",
+    "offset": 378,
+    "lunghezza": 25
+  },
+  {
+    "campo": "pcomune",
+    "offset": 403,
+    "lunghezza": 1
+  },
+  {
+    "campo": "ppartita",
+    "offset": 404,
+    "lunghezza": 11
+  },
+  {
+    "campo": "xcodreg",
+    "offset": 415,
+    "lunghezza": 1
+  },
+  {
+    "campo": "xvia",
+    "offset": 416,
+    "lunghezza": 30
+  },
+  {
+    "campo": "xcap",
+    "offset": 446,
+    "lunghezza": 5
+  },
+  {
+    "campo": "xcodcom",
+    "offset": 451,
+    "lunghezza": 6
+  },
+  {
+    "campo": "xlocal",
+    "offset": 457,
+    "lunghezza": 25
+  },
+  {
+    "campo": "xtelef",
+    "offset": 482,
+    "lunghezza": 12
+  },
+  {
+    "campo": "xfax",
+    "offset": 494,
+    "lunghezza": 12
+  },
+  {
+    "campo": "xcodatt",
+    "offset": 506,
+    "lunghezza": 6
+  },
+  {
+    "campo": "xtitolar",
+    "offset": 512,
+    "lunghezza": 25
+  },
+  {
+    "campo": "xnotitol",
+    "offset": 537,
+    "lunghezza": 25
+  },
+  {
+    "campo": "xnumciv",
+    "offset": 562,
+    "lunghezza": 7
+  },
+  {
+    "campo": "xcodest",
+    "offset": 569,
+    "lunghezza": 15
+  },
+  {
+    "campo": "tdescr",
+    "offset": 584,
+    "lunghezza": 60
+  },
+  {
+    "campo": "tcodreg",
+    "offset": 644,
+    "lunghezza": 1
+  },
+  {
+    "campo": "tvia",
+    "offset": 645,
+    "lunghezza": 30
+  },
+  {
+    "campo": "tcap",
+    "offset": 675,
+    "lunghezza": 5
+  },
+  {
+    "campo": "tcodcom",
+    "offset": 680,
+    "lunghezza": 6
+  },
+  {
+    "campo": "tlocal",
+    "offset": 686,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ttelef",
+    "offset": 711,
+    "lunghezza": 12
+  },
+  {
+    "campo": "tfax",
+    "offset": 723,
+    "lunghezza": 12
+  },
+  {
+    "campo": "tcodfis",
+    "offset": 735,
+    "lunghezza": 16
+  },
+  {
+    "campo": "tnumciv",
+    "offset": 751,
+    "lunghezza": 7
+  },
+  {
+    "campo": "tlegrap",
+    "offset": 758,
+    "lunghezza": 25
+  },
+  {
+    "campo": "tnolegrap",
+    "offset": 783,
+    "lunghezza": 25
+  },
+  {
+    "campo": "tcomune",
+    "offset": 808,
+    "lunghezza": 1
+  },
+  {
+    "campo": "tpartita",
+    "offset": 809,
+    "lunghezza": 11
+  },
+  {
+    "campo": "sdescr",
+    "offset": 820,
+    "lunghezza": 60
+  },
+  {
+    "campo": "scodreg",
+    "offset": 880,
+    "lunghezza": 1
+  },
+  {
+    "campo": "svia",
+    "offset": 881,
+    "lunghezza": 30
+  },
+  {
+    "campo": "scap",
+    "offset": 911,
+    "lunghezza": 5
+  },
+  {
+    "campo": "scodcom",
+    "offset": 916,
+    "lunghezza": 6
+  },
+  {
+    "campo": "slocal",
+    "offset": 922,
+    "lunghezza": 25
+  },
+  {
+    "campo": "stelef",
+    "offset": 947,
+    "lunghezza": 12
+  },
+  {
+    "campo": "sfax",
+    "offset": 959,
+    "lunghezza": 12
+  },
+  {
+    "campo": "scodfis",
+    "offset": 971,
+    "lunghezza": 16
+  },
+  {
+    "campo": "snumciv",
+    "offset": 987,
+    "lunghezza": 7
+  },
+  {
+    "campo": "slegrap",
+    "offset": 994,
+    "lunghezza": 25
+  },
+  {
+    "campo": "snolegrap",
+    "offset": 1019,
+    "lunghezza": 25
+  },
+  {
+    "campo": "scomune",
+    "offset": 1044,
+    "lunghezza": 1
+  },
+  {
+    "campo": "spartita",
+    "offset": 1045,
+    "lunghezza": 11
+  },
+  {
+    "campo": "ycodreg",
+    "offset": 1056,
+    "lunghezza": 1
+  },
+  {
+    "campo": "yvia",
+    "offset": 1057,
+    "lunghezza": 30
+  },
+  {
+    "campo": "ycap",
+    "offset": 1087,
+    "lunghezza": 5
+  },
+  {
+    "campo": "ycodcom",
+    "offset": 1092,
+    "lunghezza": 6
+  },
+  {
+    "campo": "ylocal",
+    "offset": 1098,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ytelef",
+    "offset": 1123,
+    "lunghezza": 12
+  },
+  {
+    "campo": "yfax",
+    "offset": 1135,
+    "lunghezza": 12
+  },
+  {
+    "campo": "ycodatt",
+    "offset": 1147,
+    "lunghezza": 6
+  },
+  {
+    "campo": "ytitolar",
+    "offset": 1153,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ynotitol",
+    "offset": 1178,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ynumciv",
+    "offset": 1203,
+    "lunghezza": 7
+  },
+  {
+    "campo": "ycodest",
+    "offset": 1210,
+    "lunghezza": 15
+  },
+  {
+    "campo": "cdescr",
+    "offset": 1225,
+    "lunghezza": 60
+  },
+  {
+    "campo": "ccodreg",
+    "offset": 1285,
+    "lunghezza": 1
+  },
+  {
+    "campo": "cvia",
+    "offset": 1286,
+    "lunghezza": 30
+  },
+  {
+    "campo": "ccap",
+    "offset": 1316,
+    "lunghezza": 5
+  },
+  {
+    "campo": "ccodcom",
+    "offset": 1321,
+    "lunghezza": 6
+  },
+  {
+    "campo": "clocal",
+    "offset": 1327,
+    "lunghezza": 25
+  },
+  {
+    "campo": "ctelef",
+    "offset": 1352,
+    "lunghezza": 12
+  },
+  {
+    "campo": "cfax",
+    "offset": 1364,
+    "lunghezza": 12
+  },
+  {
+    "campo": "ccodfis",
+    "offset": 1376,
+    "lunghezza": 16
+  },
+  {
+    "campo": "cnumciv",
+    "offset": 1392,
+    "lunghezza": 7
+  },
+  {
+    "campo": "cpartita",
+    "offset": 1399,
+    "lunghezza": 11
+  }
+]

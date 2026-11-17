@@ -8,6 +8,21 @@ import { ConsorzioConfigurabile, erroriDaRisposta } from './dati-comunicazioni.m
 import { DatiComunicazioniService } from './dati-comunicazioni.service'
 
 const TIPI_IMPIANTO_ORR = ['STO', 'SMA', 'REC', 'R/S', 'AUT', 'ROT', 'FRA']
+const PRODOTTI_CONOU = ['A', 'B', 'C', 'E', 'G']
+const PGF_COBAT = ['A', 'B', 'C', 'D', 'E']
+
+interface RigaPredefinito {
+  cer: string
+  prodotto: string
+  percentuale: string
+}
+interface RigaPgf {
+  cer: string
+  pgf: string
+}
+
+/** Solo le cifre del CER (`13 02 05*` -> `130205`). */
+const soloCifre = (cer: string): string => cer.replace(/\D/g, '')
 
 /**
  * Configurazione delle comunicazioni per sede propria e consorzio (4.9c-f, D4). Campi semplici per
@@ -47,17 +62,71 @@ const TIPI_IMPIANTO_ORR = ['STO', 'SMA', 'REC', 'R/S', 'AUT', 'ROT', 'FRA']
       </p>
       <form *ngIf="caricata()" (ngSubmit)="salva()" novalidate>
         <ng-container [ngSwitch]="consorzio()">
-          <div *ngSwitchCase="'CONOU'" class="campo">
-            <label for="config-deposito">Codice deposito (3-10 caratteri)</label>
-            <input
-              pInputText
-              id="config-deposito"
-              name="deposito"
-              [(ngModel)]="deposito"
-              [disabled]="!puoModificare()"
-              maxlength="10"
-            />
-          </div>
+          <ng-container *ngSwitchCase="'CONOU'">
+            <div class="campo">
+              <label for="config-deposito">Codice deposito (3-10 caratteri)</label>
+              <input
+                pInputText
+                id="config-deposito"
+                name="deposito"
+                [(ngModel)]="deposito"
+                [disabled]="!puoModificare()"
+                maxlength="10"
+              />
+            </div>
+            <fieldset class="campo" data-testid="config-predefiniti-conou">
+              <legend>Prodotto e percentuale di olio predefiniti per CER</legend>
+              <div
+                *ngFor="let r of predefiniti; let i = index"
+                class="flex flex-wrap gap-2 mb-2"
+                data-testid="config-predefinito-riga"
+              >
+                <input
+                  pInputText
+                  [name]="'pc-cer-' + i"
+                  [(ngModel)]="r.cer"
+                  [disabled]="!puoModificare()"
+                  maxlength="8"
+                  placeholder="CER (130205)"
+                  [attr.aria-label]="'CER della riga ' + (i + 1)"
+                />
+                <select
+                  [name]="'pc-prod-' + i"
+                  [(ngModel)]="r.prodotto"
+                  [disabled]="!puoModificare()"
+                  [attr.aria-label]="'Prodotto della riga ' + (i + 1)"
+                >
+                  <option *ngFor="let p of prodotti" [value]="p">{{ p }}</option>
+                </select>
+                <input
+                  pInputText
+                  [name]="'pc-perc-' + i"
+                  [(ngModel)]="r.percentuale"
+                  [disabled]="!puoModificare()"
+                  maxlength="5"
+                  placeholder="% olio"
+                  [attr.aria-label]="'Percentuale di olio della riga ' + (i + 1)"
+                />
+                <p-button
+                  *ngIf="puoModificare()"
+                  icon="pi pi-trash"
+                  [text]="true"
+                  severity="danger"
+                  ariaLabel="Togli la riga"
+                  (onClick)="togliPredefinito(i)"
+                  data-testid="config-predefinito-togli"
+                ></p-button>
+              </div>
+              <p-button
+                *ngIf="puoModificare()"
+                label="Aggiungi un CER"
+                icon="pi pi-plus"
+                [text]="true"
+                (onClick)="aggiungiPredefinito()"
+                data-testid="config-predefinito-aggiungi"
+              ></p-button>
+            </fieldset>
+          </ng-container>
           <ng-container *ngSwitchCase="'COBAT'">
             <div class="campo">
               <label for="config-camp-codice">Campagna predefinita, codice (2 caratteri)</label>
@@ -81,6 +150,49 @@ const TIPI_IMPIANTO_ORR = ['STO', 'SMA', 'REC', 'R/S', 'AUT', 'ROT', 'FRA']
                 maxlength="30"
               />
             </div>
+            <fieldset class="campo" data-testid="config-pgf-cobat">
+              <legend>PGF / tipologia per CER</legend>
+              <div
+                *ngFor="let r of pgfRighe; let i = index"
+                class="flex flex-wrap gap-2 mb-2"
+                data-testid="config-pgf-riga"
+              >
+                <input
+                  pInputText
+                  [name]="'pgf-cer-' + i"
+                  [(ngModel)]="r.cer"
+                  [disabled]="!puoModificare()"
+                  maxlength="8"
+                  placeholder="CER (160601)"
+                  [attr.aria-label]="'CER della riga ' + (i + 1)"
+                />
+                <select
+                  [name]="'pgf-val-' + i"
+                  [(ngModel)]="r.pgf"
+                  [disabled]="!puoModificare()"
+                  [attr.aria-label]="'PGF della riga ' + (i + 1)"
+                >
+                  <option *ngFor="let p of pgfValori" [value]="p">{{ p }}</option>
+                </select>
+                <p-button
+                  *ngIf="puoModificare()"
+                  icon="pi pi-trash"
+                  [text]="true"
+                  severity="danger"
+                  ariaLabel="Togli la riga"
+                  (onClick)="togliPgf(i)"
+                  data-testid="config-pgf-togli"
+                ></p-button>
+              </div>
+              <p-button
+                *ngIf="puoModificare()"
+                label="Aggiungi un CER"
+                icon="pi pi-plus"
+                [text]="true"
+                (onClick)="aggiungiPgf()"
+                data-testid="config-pgf-aggiungi"
+              ></p-button>
+            </fieldset>
           </ng-container>
           <div *ngSwitchCase="'ORSO'" class="campo">
             <label for="config-modalita">Modalità</label>
@@ -155,6 +267,8 @@ export class ConfigurazioneSedeComponent implements OnChanges {
     { value: 'ORR', label: 'O.R.R. Campania' },
   ]
   readonly tipiImpianto = TIPI_IMPIANTO_ORR
+  readonly prodotti = PRODOTTI_CONOU
+  readonly pgfValori = PGF_COBAT
 
   readonly consorzio = signal<ConsorzioConfigurabile>('CONOU')
   readonly caricata = signal(false)
@@ -171,11 +285,30 @@ export class ConfigurazioneSedeComponent implements OnChanges {
   tipoImpianto = ''
   atecoZero = false
   autorizzazioniPredefinite = false
+  /** Mappe per CER in righe modificabili (CONOU: prodotto e percentuale; COBAT: PGF). */
+  predefiniti: RigaPredefinito[] = []
+  pgfRighe: RigaPgf[] = []
   /** Dati letti: i campi non mostrati (mappe per CER, autorizzazione) si conservano salvando. */
   private dati: Record<string, unknown> = {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['unitaLocaleId'] && this.unitaLocaleId) this.carica()
+  }
+
+  aggiungiPredefinito(): void {
+    this.predefiniti = [...this.predefiniti, { cer: '', prodotto: 'A', percentuale: '' }]
+  }
+
+  togliPredefinito(i: number): void {
+    this.predefiniti = this.predefiniti.filter((_, k) => k !== i)
+  }
+
+  aggiungiPgf(): void {
+    this.pgfRighe = [...this.pgfRighe, { cer: '', pgf: 'A' }]
+  }
+
+  togliPgf(i: number): void {
+    this.pgfRighe = this.pgfRighe.filter((_, k) => k !== i)
   }
 
   scegli(c: ConsorzioConfigurabile): void {
@@ -205,6 +338,19 @@ export class ConfigurazioneSedeComponent implements OnChanges {
         this.tipoImpianto = String(r.dati['tipoImpianto'] ?? '')
         this.atecoZero = r.dati['atecoProduttoreMancanteComeZero'] === true
         this.autorizzazioniPredefinite = r.dati['usaAutorizzazioniPredefinite'] === true
+        this.predefiniti = Object.entries(
+          (r.dati['predefinitiPerCer'] ?? {}) as Record<
+            string,
+            { prodotto?: string; percentualeOlio?: number }
+          >
+        ).map(([cer, v]) => ({
+          cer,
+          prodotto: v?.prodotto ?? 'A',
+          percentuale: v?.percentualeOlio === undefined ? '' : String(v.percentualeOlio),
+        }))
+        this.pgfRighe = Object.entries((r.dati['pgfPerCer'] ?? {}) as Record<string, string>).map(
+          ([cer, pgf]) => ({ cer, pgf })
+        )
         this.caricata.set(true)
       },
       error: () => this.errore.set('Impossibile leggere la configurazione.'),
@@ -219,15 +365,35 @@ export class ConfigurazioneSedeComponent implements OnChanges {
       else d[k] = v.trim()
     }
     switch (this.consorzio()) {
-      case 'CONOU':
+      case 'CONOU': {
         imposta('codiceDeposito', this.deposito)
+        const mappa: Record<string, { prodotto: string; percentualeOlio?: number }> = {}
+        for (const r of this.predefiniti) {
+          const cer = soloCifre(r.cer)
+          if (cer === '') continue
+          const perc = Number(r.percentuale.replace(',', '.'))
+          mappa[cer] =
+            r.percentuale.trim() === '' || !Number.isFinite(perc)
+              ? { prodotto: r.prodotto }
+              : { prodotto: r.prodotto, percentualeOlio: perc }
+        }
+        if (Object.keys(mappa).length > 0 || 'predefinitiPerCer' in d)
+          d['predefinitiPerCer'] = mappa
         break
-      case 'COBAT':
+      }
+      case 'COBAT': {
         d['campagnaPredefinita'] = {
           codice: this.campagnaCodice.trim(),
           descrizione: this.campagnaDescrizione.trim(),
         }
+        const mappa: Record<string, string> = {}
+        for (const r of this.pgfRighe) {
+          const cer = soloCifre(r.cer)
+          if (cer !== '') mappa[cer] = r.pgf
+        }
+        if (Object.keys(mappa).length > 0 || 'pgfPerCer' in d) d['pgfPerCer'] = mappa
         break
+      }
       case 'ORSO':
         d['modalita'] = this.modalita
         break

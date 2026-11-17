@@ -1580,6 +1580,47 @@ describe('FirDetailComponent', () => {
     })
   })
 
+  describe("FIR importato bloccato all'invio a RENTRI (Fase 3)", () => {
+    const MOTIVO = 'Importato: invio a RENTRI bloccato fino alla riconciliazione'
+    const firEmessoImportato = {
+      ...baseFIR,
+      stato: FIRStato.EMESSO,
+      rentriSyncStatus: 'PENDING',
+      canSyncToRENTRI: false,
+      bloccatoInvio: true,
+      motivoBloccoInvio: MOTIVO,
+    } as FIR
+
+    it('mostra il tag «Importato: invio a RENTRI bloccato» e il pulsante «Trasmetti a RENTRI» disabilitato', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firEmessoImportato))
+      fixture.detectChanges()
+      const el = fixture.nativeElement as HTMLElement
+
+      const tag = el.querySelector('[data-testid="fir-detail-rentri-bloccato"]')
+      expect(tag?.textContent).toContain('Importato: invio a RENTRI bloccato')
+      const bottone = el.querySelector(
+        '[data-testid="fir-detail-rentri-trasmetti-bloccato"] button'
+      ) as HTMLButtonElement
+      expect(bottone).withContext('pulsante disabilitato presente').not.toBeNull()
+      expect(bottone.disabled).toBeTrue()
+      // nessun pulsante abilitato per trasmettere
+      expect(el.querySelector('[data-testid="fir-detail-rentri-trasmetti"]')).toBeNull()
+      expect(component.canTrasmettereRentri(firEmessoImportato)).toBeFalse()
+    })
+
+    it('un FIR normale non mostra il tag di blocco', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(
+        of({ ...firEmessoImportato, bloccatoInvio: false, motivoBloccoInvio: null } as FIR)
+      )
+      fixture.detectChanges()
+      const el = fixture.nativeElement as HTMLElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-bloccato"]')).toBeNull()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-trasmetti-bloccato"]')).toBeNull()
+    })
+  })
+
   describe('azienda senza il modulo rentri (TRIAL/PROFESSIONAL)', () => {
     it('apre il dettaglio senza cronologia RENTRI e senza nessuna chiamata a /rentri/', () => {
       setup({ rentri: false })

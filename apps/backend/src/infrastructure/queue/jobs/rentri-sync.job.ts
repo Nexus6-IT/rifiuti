@@ -8,6 +8,7 @@ import { RENTRISyncQueue } from '../rentri-sync.queue'
 import { ModuliAttiviService } from '../../../application/admin/moduli-attivi.service'
 import { MODULO_NON_ATTIVO } from '../../../core/context/modulo-non-attivo-errore'
 import { TenantContext } from '../../../core/context/tenant-context'
+import { FirBloccatoAllInvioError } from '../../../domain/fir/guardia-invio-rentri'
 
 /**
  * RENTRI Sync Job Processor
@@ -146,6 +147,12 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       //   tenant_id: tenantId,
       //   job_type: type,
       // });
+
+      // Fase 3 (D4): un job per un FIR importato (coda sporca) e' un rifiuto definitivo, senza POST
+      // e senza nuovi tentativi: BullMQ non lo ritenta.
+      if (error instanceof FirBloccatoAllInvioError) {
+        throw new UnrecoverableError(error.message)
+      }
 
       // Check if this is a validation error (should not retry)
       if (this.isValidationError(error)) {

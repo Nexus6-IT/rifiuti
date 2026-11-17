@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
+import { FirBloccatoAllInvioError } from '../../domain/fir/guardia-invio-rentri'
 import * as Sentry from '@sentry/node'
 import {
   PrismaClientKnownRequestError,
@@ -177,6 +178,21 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
         message: FirNonModificabileError.MESSAGGI.FIRMATO,
       })
     )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it("un FIR importato bloccato all'invio e' un conflitto (409) senza id e senza motivo interno", () => {
+    filter.catch(new FirBloccatoAllInvioError('fir-1', 'motivo interno'), host)
+
+    expect(response.status).toHaveBeenCalledWith(409)
+    const corpo = response.json.mock.calls[0][0]
+    expect(corpo).toEqual(
+      expect.objectContaining({ statusCode: 409, error: 'FIR_BLOCCATO_ALL_INVIO' })
+    )
+    expect(corpo.message).toBe(
+      "FIR importato: l'invio a RENTRI è bloccato fino alla riconciliazione"
+    )
+    expect(JSON.stringify(corpo.message)).not.toContain('fir-1')
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 

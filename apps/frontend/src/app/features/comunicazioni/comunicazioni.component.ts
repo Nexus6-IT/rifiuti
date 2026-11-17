@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule, DatePipe } from '@angular/common'
 import { FormsModule } from '@angular/forms'
+import { Router } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
 import { TableModule } from 'primeng/table'
@@ -52,6 +53,14 @@ interface SedeScelta {
             mese e CER
           </p>
         </div>
+        <p-button
+          label="CONOU e COBAT"
+          icon="pi pi-arrow-right"
+          iconPos="right"
+          [text]="true"
+          (onClick)="vaiAiConsorzi()"
+          data-testid="comunicazioni-vai-consorzi"
+        ></p-button>
       </header>
 
       <section class="surface-card mb-4" data-testid="comunicazioni-filtri">
@@ -280,6 +289,7 @@ export class ComunicazioniComponent implements OnInit {
   private readonly sediServizio = inject(RentriUnitaLocaleService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+  private readonly router = inject(Router)
 
   private contatoreRichieste = 0
 
@@ -311,6 +321,11 @@ export class ComunicazioniComponent implements OnInit {
       },
       error: () => this.errore.set('Impossibile caricare le sedi.'),
     })
+  }
+
+  /** CONOU e COBAT stanno in una pagina propria (4.9c-d). */
+  vaiAiConsorzi(): void {
+    void this.router.navigate(['/comunicazioni/consorzi'])
   }
 
   scegliSede(id: string): void {

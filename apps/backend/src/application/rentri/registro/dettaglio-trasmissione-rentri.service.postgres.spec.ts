@@ -124,6 +124,63 @@ describe('DettaglioTrasmissioneRentriService — Postgres reale', () => {
     expect(d.identificativo).toBe(stato === 'TRASMESSA' ? 'M0000000000000000001' : null)
   })
 
+  it('movimento importato: stato DA_RICONCILIARE -> fase DA_RICONCILIARE, mai confermata, con il motivo del blocco', async () => {
+    const s = await scenario(null)
+    const m = await owner.wasteMovement.findUniqueOrThrow({ where: { id: s.movimentoId } })
+    const lotto = await owner.lottoImport.create({
+      data: {
+        tenantId: s.tenantId,
+        importSource: 'WINWASTE',
+        archivio: 'WW00012026',
+        ambito: 'REGISTRO',
+        formatoStaging: 'winwaste-staging/1',
+        hashStaging: 'd'.repeat(64),
+      },
+    })
+    // Un movimento diventa «importato» solo alla nascita: ne creo uno e la sua riga di blocco insieme.
+    const importato = await owner.$transaction(async tx => {
+      const nuovo = await tx.wasteMovement.create({
+        data: {
+          tenantId: s.tenantId,
+          registroId: m.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++prog,
+          cerCode: '15 01 01',
+          unit: 'KG',
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          registrationDate: new Date('2026-03-01T10:00:00Z'),
+          causale: 'PRODUZIONE_INTERNA',
+          quantity: 10,
+          importSource: 'WINWASTE',
+          legacyKey: '0001|2026|MOVIMENTI|1',
+          lottoImportId: lotto.id,
+        },
+      })
+      await tx.movimentoTrasmissioneRentri.create({
+        data: {
+          tenantId: s.tenantId,
+          movimentoId: nuovo.id,
+          registroId: m.registroId,
+          tipo: 'CARICO',
+          origine: 'IMPORTAZIONE',
+          stato: 'DA_RICONCILIARE',
+          bloccatoInvio: true,
+          motivoBlocco: 'Importato: in attesa di riconciliazione',
+        },
+      })
+      return nuovo
+    })
+    const d = await service.dettaglio(s.tenantId, importato.id)
+    expect(d).toMatchObject({
+      stato: 'DA_RICONCILIARE',
+      fase: 'DA_RICONCILIARE',
+      confermata: false,
+      origine: 'IMPORTAZIONE',
+      motivoBlocco: 'Importato: in attesa di riconciliazione',
+    })
+  })
+
   it("senza riga o di un'altra azienda: MovimentoNonTrovatoError", async () => {
     const senza = await scenario(null)
     await expect(service.dettaglio(senza.tenantId, senza.movimentoId)).rejects.toBeInstanceOf(

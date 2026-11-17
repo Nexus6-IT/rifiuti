@@ -312,6 +312,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       SELECT id::text AS fir_id, tenant_id::text AS tenant_id, rentri_sync_status::text AS stato
       FROM firs
       WHERE tenant_id::text = ANY(${[...tenantAmmessi]}::text[])
+        AND NOT bloccato_invio
         AND ((
           rentri_sync_status = 'SYNCING'::rentri_sync_status
           AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
@@ -1015,6 +1016,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       _firmePresenti: (record.signatures?.length ?? 0) > 0,
       _inAttesaFirmaProduttore: record.status === 'AWAITING_PRODUCER',
       _ritiroId: record.ritiroId ?? null,
+      // Fase 3: blocco all'invio a RENTRI (sola lettura, lo scrive solo l'import).
+      _bloccatoInvio: record.bloccatoInvio ?? false,
+      _motivoBloccoInvio: record.motivoBloccoInvio ?? null,
     })
 
     return fir

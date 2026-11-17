@@ -19,6 +19,8 @@ import {
 import { ComunicazioniTracciatoService } from '../../application/comunicazioni/comunicazioni-tracciato.service'
 import { CONFIGURAZIONE_COMUNICAZIONI_SERVICE } from '../../application/comunicazioni/configurazione-comunicazioni.port'
 import { ConfigurazioneComunicazioniService } from '../../application/comunicazioni/configurazione-comunicazioni.service'
+import { PreparatoreCobat } from '../../application/comunicazioni/preparatore-cobat'
+import { PreparatoreConou } from '../../application/comunicazioni/preparatore-conou'
 import { DATI_TRACCIATO_SERVICE } from '../../application/comunicazioni/dati-tracciato.port'
 import { DatiTracciatoService } from '../../application/comunicazioni/dati-tracciato.service'
 import { registroTracciati } from '../../domain/comunicazioni/registro-tracciati'
@@ -50,7 +52,13 @@ import { MarcaturaConsorziController } from './marcatura-consorzi.controller'
       useExisting: ConfigurazioneComunicazioniService,
     },
     // Un tracciato nuovo = un preparatore qui (PR B, C, D) e una riga in `registro-tracciati.ts`.
-    { provide: PREPARATORI_TRACCIATO, useValue: [] },
+    PreparatoreConou,
+    PreparatoreCobat,
+    {
+      provide: PREPARATORI_TRACCIATO,
+      useFactory: (conou: PreparatoreConou, cobat: PreparatoreCobat) => [conou, cobat],
+      inject: [PreparatoreConou, PreparatoreCobat],
+    },
     { provide: REGISTRO_TRACCIATI, useValue: registroTracciati },
     ComunicazioniTracciatoService,
     { provide: COMUNICAZIONI_TRACCIATO_SERVICE, useExisting: ComunicazioniTracciatoService },

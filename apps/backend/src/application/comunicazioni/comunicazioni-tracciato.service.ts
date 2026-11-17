@@ -462,6 +462,10 @@ export class ComunicazioniTracciatoService implements ComunicazioniTracciatoPort
     tenantId: string,
     f: { consorzio?: string; unitaLocaleId?: string; da?: string; a?: string } = {}
   ): Promise<ComunicazioneTracciatoVista[]> {
+    // Una data impossibile (2026-02-31) passerebbe il formato e darebbe Invalid Date a Prisma.
+    if ((f.da && !eGiornoDiCalendario(f.da)) || (f.a && !eGiornoDiCalendario(f.a))) {
+      throw new RichiestaComunicazioneNonValidaError(['periodo non valido'])
+    }
     const righe = await this.prisma.comunicazioneConsorzio.findMany({
       where: {
         tenantId,
