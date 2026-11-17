@@ -78,6 +78,7 @@ const fir = (o: Partial<FirDettaglio> = {}): FirDettaglio => ({
   transportDate: new Date('2026-04-01T08:00:00Z'),
   actualArrivalDate: new Date('2026-04-02T08:00:00Z'),
   producerSedeId: 's1',
+  producerId: null,
   receiverSedeId: null,
   producerCodiceFiscale: '05555555555',
   carrierCodiceFiscale: '09876543210',
@@ -146,6 +147,8 @@ function ctx(
     ]),
     destinatari: new Map(),
     datiTracciato: new Map(Object.entries(o.dati ?? {}) as [string, never][]),
+    produttori: new Map(),
+    sediPerControparte: new Map(),
   }
   return {
     tenantId: 't',

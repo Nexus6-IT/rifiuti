@@ -22,7 +22,7 @@ export interface ParametriOrso {
 }
 
 /** kg arrotondati al grammo → grammi interi (niente somme in virgola mobile). */
-function grammi(m: MovimentoOrso): number | null {
+export function grammi(m: MovimentoOrso): number | null {
   const base = convertiInKg(m.quantita, m.unita)
   const kg = base !== null ? base : m.kgPerUnita !== null ? m.quantita * m.kgPerUnita : null
   if (kg === null || !Number.isFinite(kg)) return null
@@ -38,7 +38,7 @@ export function grammiInTonnellate(g: number): string {
   return resto === '' ? String(intero) : `${intero}.${resto}`
 }
 
-function descrizionePulita(d: string | null): string {
+export function descrizionePulita(d: string | null): string {
   return (d ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIZIONE)
 }
 

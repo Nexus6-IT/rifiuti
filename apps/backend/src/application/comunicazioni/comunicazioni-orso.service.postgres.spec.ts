@@ -424,11 +424,17 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     async function inviataConMetodoStorico(az: AziendaMud) {
       const calcola = (
         servizio as unknown as {
-          calcola(t: string, u: string, a: number, m: string): Promise<{ hashDati: string }>
+          calcola(
+            t: string,
+            u: string,
+            a: number,
+            modalita: undefined,
+            m: string
+          ): Promise<{ hashDati: string }>
         }
       ).calcola.bind(servizio)
       const storico = await nelTenant(az, () =>
-        calcola(az.tenantId, az.unitaLocaleId, 2026, 'ANNO_COMUNICAZIONE')
+        calcola(az.tenantId, az.unitaLocaleId, 2026, undefined, 'ANNO_COMUNICAZIONE')
       )
       // Senza `metodoPesi`: la riga prende il default della migration, come le righe esistenti.
       return owner.comunicazioneConsorzio.create({

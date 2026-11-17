@@ -128,6 +128,48 @@ describe('ComunicazioniComponent', () => {
   const q = (id: string): HTMLElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="${id}"]`)
 
+  it('in modalità dettagliata mostra la nota sui soggetti, la colonna soggetto e le quote', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1')])
+    svc.anteprimaOrso.and.returnValue(
+      of(
+        anteprima({
+          modalita: 'DETTAGLIATA',
+          nuoviImpianti: 1,
+          affidabilita: 'UFFICIALE',
+          notaAffidabilita:
+            'Modalità dettagliata: identificazione dei soggetti ricavata da WinWaste.',
+          mesi: [
+            {
+              mese: 1,
+              ricevuti: [
+                {
+                  cer: '15 01 01',
+                  descrizione: 'Imballaggi',
+                  operazioni: ['R13'],
+                  totT: '3',
+                  extraT: '0',
+                  conFir: true,
+                  soggetti: [{ ts: 'Inew', s: '1', etichetta: 'Rossi Srl', qT: '3', conFir: true }],
+                },
+              ],
+              prodotti: [],
+            },
+          ],
+        })
+      )
+    )
+    component.carica()
+    fixture.detectChanges()
+    expect(q('comunicazioni-nota-dettagliata')?.textContent).toContain('ricavata da WinWaste')
+    expect(q('comunicazioni-soggetto')?.textContent).toContain('Nuovo impianto n. 1 · Rossi Srl')
+  })
+
+  it('in modalità normale non mostra né la nota né la colonna soggetto', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1')])
+    expect(q('comunicazioni-nota-dettagliata')).toBeNull()
+    expect(q('comunicazioni-soggetto')).toBeNull()
+  })
+
   it('il pulsante CONOU e COBAT porta alla pagina dei tracciati a record', () => {
     setup()
     const nav = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)

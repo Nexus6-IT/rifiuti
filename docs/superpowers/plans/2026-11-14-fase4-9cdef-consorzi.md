@@ -824,6 +824,13 @@ file `N…T.txt` e `N…S.txt` da 718 byte per riga).
 - **R8. RAM e tre worktree:** un solo processo pesante alla volta; tre container Postgres accesi insieme
   occupano ~300 MB, accettabile; Karma ed e2e mai insieme.
 
+## Seguiti
+
+- [ ] Colonna `counterpart_sede_id` valorizzata dal form del registro (nullable, FK composta
+  `(sede, tenant)`, fuori dall'hash di vidimazione; da `onProduttoreSelect` e
+  `applicaControparteDaFir`): il resolver O.R.SO. dettagliata la usa per prima e tiene il nome solo
+  come ripiego per i movimenti storici (elimina le omonimie, review N1-N4).
+
 ## Fuori ambito
 
 - Vecchi tracciati: `COMUCOU2008`, coda COBAT degli anni ≤ 2009, `OLDelabcampania` e dichiarazioni O.R.R.

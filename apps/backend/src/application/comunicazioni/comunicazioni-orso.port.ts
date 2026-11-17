@@ -23,6 +23,18 @@ export interface AvvisoOrso {
   movimenti?: MovimentoAvviso[]
 }
 
+/** Soggetto di una riga in modalità dettagliata (4.9e): conferitore o destinatario. */
+export interface SoggettoAnteprimaOrso {
+  /** `C` comune, `I` impianto dell'elenco ARPA, `Inew` nuovo impianto. */
+  ts: 'C' | 'I' | 'Inew'
+  /** Codice ARPA, ISTAT del comune o progressivo del `NuovoImpianto`. */
+  s: string
+  etichetta: string
+  qT: string
+  /** Solo per i conferitori. */
+  conFir?: boolean
+}
+
 export interface RigaRicevutoOrso {
   cer: string
   descrizione: string
@@ -30,6 +42,8 @@ export interface RigaRicevutoOrso {
   totT: string
   extraT: string
   conFir: boolean
+  /** Solo in modalità dettagliata: l'ingresso per conferitore. */
+  soggetti?: SoggettoAnteprimaOrso[]
 }
 
 export interface RigaProdottoOrso {
@@ -39,6 +53,8 @@ export interface RigaProdottoOrso {
   totT: string
   /** Giacenza a fine mese, tonnellate (`QuantitaTrattataInternamente` di O.R.SO.). */
   giacenzaFineMeseT: string
+  /** Solo in modalità dettagliata: l'uscita per destinatario. */
+  soggetti?: SoggettoAnteprimaOrso[]
 }
 
 export interface MeseOrso {
@@ -74,7 +90,16 @@ export interface ComunicazioneVista {
   notaAffidabilita?: string
 }
 
+export type ModalitaOrso = 'NORMALE' | 'DETTAGLIATA'
+
 export interface AnteprimaOrso {
+  /** Modalità della sede (configurazione D4); assente = normale. */
+  modalita?: ModalitaOrso
+  /** Numero di nuovi impianti descritti nel file (modalità dettagliata). */
+  nuoviImpianti?: number
+  /** Affidabilità e nota del tracciato della modalità scelta (4.9c-f, D7). */
+  affidabilita?: 'UFFICIALE' | 'RICAVATO_WINWASTE'
+  notaAffidabilita?: string
   unitaLocale: { id: string; nome: string; provincia: string | null }
   anno: number
   mesi: MeseOrso[]

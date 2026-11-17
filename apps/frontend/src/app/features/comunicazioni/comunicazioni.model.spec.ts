@@ -2,6 +2,7 @@ import {
   formattaTonnellate,
   puoGenerareComunicazioni,
   righeDaAnteprima,
+  testoSoggetto,
 } from './comunicazioni.model'
 
 describe('comunicazioni.model', () => {
@@ -53,5 +54,45 @@ describe('comunicazioni.model', () => {
     expect(puoGenerareComunicazioni('ADMIN')).toBeTrue()
     expect(puoGenerareComunicazioni('VIEWER')).toBeFalse()
     expect(puoGenerareComunicazioni(undefined)).toBeFalse()
+  })
+
+  it('in modalità dettagliata appiattisce una riga per soggetto, con tipo e nome', () => {
+    const righe = righeDaAnteprima([
+      {
+        mese: 3,
+        ricevuti: [
+          {
+            cer: '17 04 05',
+            descrizione: 'Ferro',
+            operazioni: ['R13'],
+            totT: '2.5',
+            extraT: '0',
+            conFir: true,
+            soggetti: [
+              { ts: 'I', s: '123', etichetta: 'Impianto ARPA 123', qT: '2', conFir: true },
+              { ts: 'Inew', s: '1', etichetta: 'Rossi Srl', qT: '0.5', conFir: false },
+            ],
+          },
+        ],
+        prodotti: [
+          {
+            cer: '17 04 05',
+            descrizione: 'Ferro',
+            operazioni: [],
+            totT: '1',
+            giacenzaFineMeseT: '0.2',
+            soggetti: [{ ts: 'Inew', s: '2', etichetta: 'Verdi', qT: '1' }],
+          },
+        ],
+      },
+    ])
+    expect(righe.map(r => [r.direzione, r.soggetto, r.quantita, r.dettaglio])).toEqual([
+      ['Ricevuto', 'Impianto ARPA 123 · Impianto ARPA 123', '2,000 t', 'con FIR'],
+      ['Ricevuto', 'Nuovo impianto n. 1 · Rossi Srl', '0,500 t', 'senza FIR'],
+      ['Prodotto', 'Nuovo impianto n. 2 · Verdi', '1,000 t', 'giacenza a fine mese 0,200 t'],
+    ])
+    expect(testoSoggetto({ ts: 'C', s: '015146', etichetta: 'Comune di Milano', qT: '1' })).toBe(
+      'Comune 015146 · Comune di Milano'
+    )
   })
 })
