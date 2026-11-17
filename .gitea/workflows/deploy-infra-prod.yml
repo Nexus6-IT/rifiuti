@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag immagine gia' pubblicato (sha-<7 esadecimali>); vuoto = sha-<7> del commit selezionato"
+        description: "Tag immagine gia' pubblicato (sha-<7+ esadecimali>) di un commit di master; vuoto = sha-<7> del commit selezionato"
         required: false
         default: ""
 
@@ -27,32 +27,47 @@ concurrency:
 jobs:
   deploy:
     name: Deploy produzione (infra-prod)
+    # Solo la linea di rilascio: da qualunque altro branch il job non parte.
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Tag da rilasciare
         id: meta
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+          SHA: ${{ github.sha }}
         run: |
-          TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || TAG="sha-$(echo '${{ github.sha }}' | cut -c1-7)"
-          case "$TAG" in sha-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) echo "::error::tag non valido: $TAG"; exit 1 ;; esac
+          TAG="$TAG_INPUT"
+          [ -n "$TAG" ] || TAG="sha-$(echo "$SHA" | cut -c1-7)"
+          [[ "$TAG" =~ ^sha-[0-9a-f]{7,}$ ]] || { echo "::error::tag non valido: $TAG"; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH (utente dedicato, non root)
         uses: appleboy/ssh-action@v1
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
         with:
           host: ${{ vars.INFRA_PROD_HOST }}
           username: ${{ vars.INFRA_PROD_USER }}
           key: ${{ secrets.INFRA_PROD_DEPLOY_SSH_KEY }}
           script_stop: true
           command_timeout: 25m
+          envs: TAG
           script: |
             set -e
             [ "$(id -u)" -ne 0 ] || { echo "il deploy non gira come root"; exit 1; }
+            [[ "$TAG" =~ ^sha-[0-9a-f]{7,}$ ]] || { echo "tag non valido"; exit 1; }
             cd /opt/rifiuti/site
-            git fetch --prune origin
-            git checkout --detach "${{ github.sha }}"
-            bash scripts/infra-prod/deploy.sh "${{ steps.meta.outputs.tag }}"
+            # La deploy key la installa il ruolo app_layout di infra-prod (stesso percorso e stesse
+            # opzioni del modulo git di Ansible): fuori da Ansible git non la userebbe da solo.
+            export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/rifiuti_repo_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            git fetch --prune origin master
+            # Il tag e' legato al commit: si rilascia il commit di quello sha, che deve stare nella storia di master.
+            COMMIT="$(git rev-parse --verify "${TAG#sha-}^{commit}")"
+            git merge-base --is-ancestor "$COMMIT" origin/master || { echo "il commit $COMMIT non e' in origin/master"; exit 1; }
+            git checkout --detach "$COMMIT"
+            bash scripts/infra-prod/deploy.sh "$TAG"
 
       - name: Smoke test pubblico
         if: vars.INFRA_PROD_URL != ''

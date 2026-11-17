@@ -1254,10 +1254,16 @@ non modifica quello in esercizio sul VPS Contabo (`docker-compose.prod.yml`, `de
 | `docker-compose.infra-prod.yml` | compose con limiti, hardening, porte 3040/3041, subnet `10.250.30.0/24` |
 | `.env.infra-prod.example` | tutte le chiavi del `.env.prod` (nessun segreto) |
 | `scripts/infra-prod/validate-env.sh` (+ `test/`) | controllo del `.env.prod` (gira nel ruolo `app_layout`) |
-| `scripts/infra-prod/deploy.sh` | deploy come utente `rifiuti`: pull, backup predeploy, migration, ruoli DB, smoke test |
-| `.gitea/workflows/deploy-infra-prod.yml` | solo `workflow_dispatch`, SSH come utente dedicato |
-| `scripts/backup/backup-database.sh` | adattatore di `ops/backup-offsite.sh` per `<root>/backups/<serie>` |
+| `scripts/infra-prod/deploy.sh` | deploy come utente `rifiuti`: pull, backup predeploy, migration, ruoli DB, smoke test; se fallisce rimette il TAG precedente e scrive `<root>/deploy.log` |
+| `.gitea/workflows/deploy-infra-prod.yml` | solo `workflow_dispatch` da `master`, tag legato al commit, SSH come utente dedicato con la deploy key di `app_layout` |
+| `scripts/backup/backup-database.sh` | adattatore di `scripts/backup/backup-offsite.sh` per `<root>/backups/<serie>` |
+| `scripts/backup/backup-offsite.sh`, `scripts/backup/lib/` | copie IDENTICHE di `ops/backup-offsite.sh` e `ops/lib/` (infra-prod porta ai job di root solo `scripts/`); `test/backup-copie.test.sh` controlla che non divergano |
 | `scripts/backup/backup-secrets.sh` | `.env.prod` cifrato con age (chiavi del server) |
 | `scripts/backup/sync-offsite.sh` | copia di quello di Neat (default rifiuti): copia offsite cifrata |
 
-`infra-prod.guard.spec.ts` fallisce se le variabili del backend dei due compose divergono.
+`infra-prod.guard.spec.ts` fallisce se le variabili del backend dei due compose divergono (salvo `METRICS_TOKEN`
+e `METRICS_REQUIRE_TOKEN`). `/metrics` (fuori da `api/v1`) esige il bearer `METRICS_TOKEN` (`proteggi-metriche.ts`);
+senza token e con `METRICS_REQUIRE_TOKEN=true` risponde 404. Sul VPS attuale le due variabili non ci sono e il
+comportamento non cambia. Redis: `maxmemory 256mb` + `noeviction` (richiesta da BullMQ) in un container da 512M,
+valore stimato e MAI MISURATO: leggere `used_memory` sul Redis in esercizio prima del go-live. Test degli script:
+`bash scripts/infra-prod/test/{validate-env,deploy,backup-copie}.test.sh`.
