@@ -11,6 +11,7 @@ import helmet from 'helmet'
 import { AppModule } from './app.module'
 import { jsonConLimite } from './core/http/json-con-limite'
 import { valoreTrustProxy } from './core/http/trust-proxy'
+import { proteggiMetriche } from './core/http/proteggi-metriche'
 import { opzioniSentry } from './core/monitoring/opzioni-sentry'
 
 // Error tracking Bugsink/Sentry — attivo solo se SENTRY_DSN è impostato.
@@ -29,6 +30,10 @@ async function bootstrap() {
   // cosi' `req.ip` (throttler per IP, battito,
   // abbinamento, tetto dei token rifiutati) e' l'IP del client e non quello del proxy.
   app.getHttpAdapter().getInstance().set('trust proxy', valoreTrustProxy(process.env.TRUST_PROXY))
+
+  // /metrics e' fuori dal prefisso e da ogni guard: token bearer se METRICS_TOKEN e' impostato,
+  // 404 se manca e METRICS_REQUIRE_TOKEN=true (server infra-prod). Montato prima di ogni rotta.
+  app.use('/metrics', proteggiMetriche())
 
   // Il logo di un modello di stampa (4.7) pesa fino a 256 KiB: in base64 sono ~350 KB, oltre il
   // limite di 100 KB del parser JSON di default (413). Il limite piu' alto vale solo su questa

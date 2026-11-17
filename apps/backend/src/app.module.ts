@@ -77,7 +77,8 @@ import { AccessRequestModule } from './application/access-request/access-request
 
     // Metriche Prometheus esposte su GET /metrics (escluso dal global prefix api/v1).
     // Il percorso standard /metrics è usato dallo scraper Prometheus in /opt/observability/.
-    // Protezione: solo loopback/rete interna (nginx non espone /metrics pubblicamente).
+    // Protezione: nginx non lo espone sul VPS in esercizio; sul server infra-prod il middleware
+    // proteggiMetriche (main.ts) esige il bearer METRICS_TOKEN.
     PrometheusModule.register({
       path: '/metrics',
       defaultMetrics: { enabled: true },
