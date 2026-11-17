@@ -140,6 +140,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // CONOU e COBAT (4.9c-d): stesso modulo commerciale di O.R.SO.
+        path: 'comunicazioni/consorzi',
+        canActivate: [moduloGuard],
+        data: { modulo: 'comunicazioni' },
+        loadComponent: () =>
+          import('./features/comunicazioni/comunicazioni-tracciati.component').then(
+            m => m.ComunicazioniTracciatiComponent
+          ),
+      },
+      {
         path: 'mud',
         canActivate: [moduloGuard],
         data: { modulo: 'mud' },

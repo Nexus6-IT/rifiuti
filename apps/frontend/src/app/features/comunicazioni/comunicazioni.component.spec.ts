@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { signal } from '@angular/core'
+import { Router } from '@angular/router'
 import { Subject, of, throwError } from 'rxjs'
 import { ComunicazioniComponent } from './comunicazioni.component'
 import { ComunicazioniService } from './comunicazioni.service'
@@ -126,6 +127,13 @@ describe('ComunicazioniComponent', () => {
   }
   const q = (id: string): HTMLElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="${id}"]`)
+
+  it('il pulsante CONOU e COBAT porta alla pagina dei tracciati a record', () => {
+    setup()
+    const nav = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)
+    ;(q('comunicazioni-vai-consorzi')?.querySelector('button') as HTMLButtonElement).click()
+    expect(nav).toHaveBeenCalledWith(['/comunicazioni/consorzi'])
+  })
 
   it('con una sola sede la seleziona da sola e carica anteprima e storico', () => {
     setup('OPERATOR', [sede('ul-1', 'Sede 1')])

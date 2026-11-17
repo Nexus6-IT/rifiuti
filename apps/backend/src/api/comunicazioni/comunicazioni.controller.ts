@@ -39,6 +39,7 @@ import {
 import { contentDisposition } from '../common/content-disposition'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { SegnaInviataDto } from './dto/dati-comunicazioni.dto'
+import { ElencoTracciatiQueryDto, PeriodoTracciatoDto } from './dto/tracciato.dto'
 import { AnteprimaOrsoQueryDto, ElencoComunicazioniQueryDto, GeneraOrsoDto } from './dto/orso.dto'
 import { RUOLI_OPERATORE_COMUNICAZIONI } from './ruoli'
 
@@ -79,6 +80,47 @@ export class ComunicazioniController {
     const tenantId = requireRequestTenantId(req)
     await this.richiediOperatore(req, tenantId)
     return this.comeHttp(() => this.orso.genera(tenantId, req.user.id, dto.unitaLocaleId, dto.anno))
+  }
+
+  // ---- Tracciati a record: CONOU e COBAT (4.9c-d) ----
+
+  @Get('conou/anteprima')
+  @ApiOperation({
+    summary: 'Anteprima CONOU di una sede e di un periodo, con avvisi per movimento',
+  })
+  anteprimaConou(@Req() req: any, @Query() q: PeriodoTracciatoDto) {
+    return this.anteprimaTracciato(req, 'CONOU', q)
+  }
+
+  @Post('conou')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Genera il file CONOU (idempotente per hashDati)' })
+  @ApiResponse({ status: 400, description: 'COMUNICAZIONE_CON_BLOCCANTI' })
+  generaConou(@Req() req: any, @Body() dto: PeriodoTracciatoDto) {
+    return this.generaTracciato(req, 'CONOU', dto)
+  }
+
+  @Get('cobat/anteprima')
+  @ApiOperation({
+    summary: 'Anteprima COBAT di una sede e di un periodo, con avvisi per movimento',
+  })
+  anteprimaCobat(@Req() req: any, @Query() q: PeriodoTracciatoDto) {
+    return this.anteprimaTracciato(req, 'COBAT', q)
+  }
+
+  @Post('cobat')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Genera il file COBAT (idempotente per hashDati)' })
+  @ApiResponse({ status: 400, description: 'COMUNICAZIONE_CON_BLOCCANTI' })
+  generaCobat(@Req() req: any, @Body() dto: PeriodoTracciatoDto) {
+    return this.generaTracciato(req, 'COBAT', dto)
+  }
+
+  @Get('tracciati')
+  @ApiOperation({ summary: 'Storico dei file CONOU o COBAT, con affidabilita del tracciato' })
+  async elencaTracciati(@Req() req: any, @Query() q: ElencoTracciatiQueryDto) {
+    const tenantId = requireRequestTenantId(req)
+    return this.comeHttp(() => this.tracciato.elenca(tenantId, q))
   }
 
   @Get()
@@ -134,6 +176,33 @@ export class ComunicazioniController {
       }
       return this.tracciato.segnaInviata(tenantId, req.user.id, id, dto?.confermaVerifica)
     })
+  }
+
+  private async anteprimaTracciato(req: any, consorzio: 'CONOU' | 'COBAT', q: PeriodoTracciatoDto) {
+    const tenantId = requireRequestTenantId(req)
+    const anteprima = await this.comeHttp(() =>
+      this.tracciato.anteprima(tenantId, {
+        consorzio,
+        unitaLocaleId: q.unitaLocaleId,
+        da: q.da,
+        a: q.a,
+      })
+    )
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    return { ...anteprima, puoGenerare: RUOLI_OPERATORE_COMUNICAZIONI.includes(ruolo) }
+  }
+
+  private async generaTracciato(req: any, consorzio: 'CONOU' | 'COBAT', dto: PeriodoTracciatoDto) {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediOperatore(req, tenantId)
+    return this.comeHttp(() =>
+      this.tracciato.genera(tenantId, req.user.id, {
+        consorzio,
+        unitaLocaleId: dto.unitaLocaleId,
+        da: dto.da,
+        a: dto.a,
+      })
+    )
   }
 
   private async richiediOperatore(req: any, tenantId: string): Promise<RuoloApplicativo> {
