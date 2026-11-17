@@ -53,7 +53,26 @@ export class ComunicazioniService {
       )
   }
 
-  segnaInviata(id: string): Observable<ComunicazioneVista> {
-    return this.http.post<ComunicazioneVista>(`${this.url}/${id}/inviata`, {})
+  /**
+   * Per un tracciato ricavato da WinWaste serve `confermaVerifica = true` («Ho verificato che il
+   * consorzio accetta questo file»), altrimenti il backend risponde 400 CONFERMA_VERIFICA_RICHIESTA.
+   */
+  segnaInviata(id: string, confermaVerifica?: boolean): Observable<ComunicazioneVista> {
+    return this.http.post<ComunicazioneVista>(
+      `${this.url}/${id}/inviata`,
+      confermaVerifica === undefined ? {} : { confermaVerifica }
+    )
+  }
+
+  /** Manifest di una comunicazione (testo UTF-8): affidabilita', hash, avvisi, inferenze. */
+  scaricaManifest(id: string): Observable<FileScaricato> {
+    return this.http
+      .get(`${this.url}/${id}/manifest`, { responseType: 'blob', observe: 'response' })
+      .pipe(
+        map((r: HttpResponse<Blob>) => ({
+          blob: r.body ?? new Blob(),
+          nomeFile: nomeFileDa(r.headers.get('Content-Disposition')),
+        }))
+      )
   }
 }

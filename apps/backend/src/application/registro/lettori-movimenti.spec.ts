@@ -38,6 +38,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       "ambito dell'abbinamento: teste vigenti con la loro radice; le righe di catene non vigenti risultano INCOERENTI",
   },
+  'application/comunicazioni/dati-tracciato.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge UNA riga per id (il movimento e la radice della sua catena) per agganciare i dati del tracciato alla radice; nessun conteggio',
+  },
   'application/comunicazioni/lettore-movimenti-orso.ts': {
     scelta: 'vigenti',
     motivo:

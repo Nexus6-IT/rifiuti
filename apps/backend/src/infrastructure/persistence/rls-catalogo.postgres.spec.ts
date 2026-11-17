@@ -77,7 +77,10 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // `pese-agenti-schema.postgres.spec.ts`.
     // 85 dalla 3.1 (Task 2): `lotti_import`, provata in
     // `application/migrazione/lotti-import.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(85)
+    // 88 dalla 4.9c-f (PR A): `dati_tracciato_movimento`, `anagrafica_comunicazioni_sede` e
+    // `configurazione_comunicazione_sede`, provate in
+    // `application/comunicazioni/tracciati.schema.postgres.spec.ts`.
+    expect(righe.length).toBe(88)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,

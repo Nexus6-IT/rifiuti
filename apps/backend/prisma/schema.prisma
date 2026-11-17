@@ -191,6 +191,9 @@ model Tenant {
   comunicazioniConsorziMovimenti ComunicazioneConsorzioMovimento[]
   regoleConsorzio               RegolaConsorzio[]
   datiConsorzioMovimento        DatiConsorzioMovimento[]
+  datiTracciatoMovimento        DatiTracciatoMovimento[]
+  anagraficheComunicazioniSede  AnagraficaComunicazioniSede[]
+  configurazioniComunicazioneSede ConfigurazioneComunicazioneSede[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -2079,6 +2082,7 @@ model WasteMovement {
   abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
   comunicazioniConsorzi  ComunicazioneConsorzioMovimento[]
   datiConsorzio          DatiConsorzioMovimento[]
+  datiTracciato          DatiTracciatoMovimento[]
   /// Solo relazioni inverse (fase 4.3): il legame commerciale non aggiunge colonne al movimento.
   legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
   legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
@@ -2268,6 +2272,7 @@ model RentriUnitaLocale {
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registri RegistroRifiuti[]
   comunicazioniConsorzi ComunicazioneConsorzio[]
+  configurazioniComunicazione ConfigurazioneComunicazioneSede[]
 
   @@unique([id, tenantId], map: "rentri_unita_locali_id_tenant_id_key")
   @@unique([tenantId, numIscrSito])
@@ -2644,6 +2649,7 @@ model SedeDitta {
   contrattiCliente ContrattoCliente[]
   ritiriProduttore   Ritiro[] @relation("RitiroProduttoreSede")
   ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
+  anagraficheComunicazioni AnagraficaComunicazioniSede[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
@@ -4673,6 +4679,8 @@ model DatiConsorzioMovimento {
   movimentoOriginaleId String            @map("movimento_originale_id") @db.Uuid
   consorzio            String            @db.VarChar(20)
   escluso              Boolean           @default(false)
+  /// Superato da `DatiTracciatoMovimento` (4.9c): resta NULL. Una riga di questa tabella e' una
+  /// correzione manuale della marcatura, quindi non puo' portare i dati del tracciato.
   dati                 Json?
   versioneSchema       Int?              @map("versione_schema") @db.SmallInt
   creatoDa             String?           @map("creato_da") @db.Uuid
@@ -4685,6 +4693,81 @@ model DatiConsorzioMovimento {
   @@unique([tenantId, movimentoOriginaleId, consorzio], map: "dati_consorzio_movimento_unico_key")
   @@index([tenantId, consorzio], map: "dati_consorzio_movimento_consorzio_idx")
   @@map("dati_consorzio_movimento")
+}
+
+/// Dati del tracciato di comunicazione per movimento (4.9c-f, D2): agganciati alla RADICE della
+/// catena, come `DatiConsorzioMovimento`, ma in tabella propria perche' una riga di quella e' una
+/// correzione manuale della marcatura. Non entra nell'`entryHash`. `dati` e' validato dal
+/// validatore del tracciato (`domain/comunicazioni/dati-tracciato.ts`). CHECK solo in migration:
+/// `dati_tracciato_movimento_tracciato_ammesso` (CONOU, COBAT, ORR), `_dati_oggetto`, `_versione_positiva`.
+model DatiTracciatoMovimento {
+  id                   String            @id(map: "dati_tracciato_movimento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String            @map("tenant_id") @db.Uuid
+  /// Copia di `registro_id` e `type` della radice: servono alla chiave composta.
+  registroId           String            @map("registro_id") @db.Uuid
+  verso                WasteMovementType
+  movimentoOriginaleId String            @map("movimento_originale_id") @db.Uuid
+  tracciato            String            @db.VarChar(20)
+  dati                 Json
+  versioneSchema       Int               @map("versione_schema") @db.SmallInt
+  modificatoDa         String?           @map("modificato_da") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "dati_tracciato_movimento_tenant_id_fkey")
+  movimentoOriginale WasteMovement @relation(fields: [movimentoOriginaleId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "dati_tracciato_movimento_originale_fkey")
+
+  @@unique([tenantId, movimentoOriginaleId, tracciato], map: "dati_tracciato_movimento_unico_key")
+  @@index([tenantId, tracciato], map: "dati_tracciato_movimento_tracciato_idx")
+  @@map("dati_tracciato_movimento")
+}
+
+/// Dati di una sede di ditta (controparte) per le comunicazioni ai consorzi (4.9c-f, D3): ATECO,
+/// ISTAT, codice ARPA, estremi Albo, legale rappresentante. Una riga per sede. CHECK solo in
+/// migration: `anagrafica_comunicazioni_sede_istat_formato`, `_ateco_formato`, `_orso_formato`.
+model AnagraficaComunicazioniSede {
+  id                          String   @id(map: "anagrafica_comunicazioni_sede_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String   @map("tenant_id") @db.Uuid
+  sedeDittaId                 String   @map("sede_ditta_id") @db.Uuid
+  eComune                     Boolean  @default(false) @map("e_comune")
+  codiceIstatComune           String?  @map("codice_istat_comune") @db.VarChar(6)
+  codiceAteco                 String?  @map("codice_ateco") @db.VarChar(8)
+  codiceOrso                  String?  @map("codice_orso") @db.VarChar(9)
+  alboDataIscrizione          DateTime? @map("albo_data_iscrizione") @db.Date
+  alboClassi                  String?  @map("albo_classi") @db.VarChar(30)
+  autorizzazioneData          DateTime? @map("autorizzazione_data") @db.Date
+  legaleRappresentanteCognome String?  @map("legale_rappresentante_cognome") @db.VarChar(25)
+  legaleRappresentanteNome    String?  @map("legale_rappresentante_nome") @db.VarChar(25)
+  esclusaOrr                  Boolean  @default(false) @map("esclusa_orr")
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "anagrafica_comunicazioni_sede_tenant_id_fkey")
+  sedeDitta SedeDitta @relation(fields: [sedeDittaId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "anagrafica_comunicazioni_sede_sede_fkey")
+
+  @@unique([tenantId, sedeDittaId], map: "anagrafica_comunicazioni_sede_unica_key")
+  @@map("anagrafica_comunicazioni_sede")
+}
+
+/// Configurazione delle comunicazioni per sede propria e consorzio (4.9c-f, D4). `dati` e' validato
+/// dal validatore del consorzio (`domain/comunicazioni/configurazione-sede.ts`). CHECK solo in
+/// migration: `configurazione_comunicazione_sede_consorzio_ammesso` (CONOU, COBAT, ORSO, ORR),
+/// `_dati_oggetto`, `_versione_positiva`.
+model ConfigurazioneComunicazioneSede {
+  id             String   @id(map: "configurazione_comunicazione_sede_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  unitaLocaleId  String   @map("unita_locale_id") @db.Uuid
+  consorzio      String   @db.VarChar(20)
+  dati           Json
+  versioneSchema Int      @map("versione_schema") @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "configurazione_comunicazione_sede_tenant_id_fkey")
+  unitaLocale RentriUnitaLocale @relation(fields: [unitaLocaleId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "configurazione_comunicazione_sede_unita_locale_fkey")
+
+  @@unique([tenantId, unitaLocaleId, consorzio], map: "configurazione_comunicazione_sede_unica_key")
+  @@map("configurazione_comunicazione_sede")
 }
 
 /// Fase 3 (3.1): che cosa carica un lotto di import.

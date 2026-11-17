@@ -149,6 +149,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   // Marcatura dei movimenti per consorzio (4.9b, T8).
   'RegolaConsorzio',
   'DatiConsorzioMovimento',
+  // Tracciati dei consorzi (4.9c-f, PR A): dati per movimento, anagrafica sedi, configurazione.
+  'DatiTracciatoMovimento',
+  'AnagraficaComunicazioniSede',
+  'ConfigurazioneComunicazioneSede',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

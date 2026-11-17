@@ -240,6 +240,8 @@ function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneV
     ...(r.inviataIl ? { inviataIl: r.inviataIl.toISOString() } : {}),
     ...(r.inviataDa ? { inviataDa: r.inviataDa } : {}),
     modificataDopoInvio: stato === 'INVIATA' && hashAttuale !== null && hashAttuale !== r.hashDati,
+    affidabilita: 'UFFICIALE',
+    notaAffidabilita: 'Tracciato ufficiale O.R.SO. (XSD ImpiantoMesi).',
   }
 }
 

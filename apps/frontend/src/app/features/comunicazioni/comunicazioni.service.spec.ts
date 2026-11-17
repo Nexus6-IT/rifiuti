@@ -56,4 +56,29 @@ describe('ComunicazioniService', () => {
     expect(req.request.method).toBe('POST')
     req.flush({})
   })
+
+  it('segna inviata con la conferma di verifica nel corpo, se data', () => {
+    service.segnaInviata('c1', true).subscribe()
+    const req = http.expectOne(r => r.url.endsWith('/comunicazioni/c1/inviata'))
+    expect(req.request.body).toEqual({ confermaVerifica: true })
+    req.flush({})
+  })
+
+  it('senza conferma il corpo resta vuoto (O.R.SO. invariata)', () => {
+    service.segnaInviata('c1').subscribe()
+    const req = http.expectOne(r => r.url.endsWith('/comunicazioni/c1/inviata'))
+    expect(req.request.body).toEqual({})
+    req.flush({})
+  })
+
+  it('scarica il manifest come blob', () => {
+    let nome: string | null = null
+    service.scaricaManifest('c1').subscribe(f => (nome = f.nomeFile))
+    const req = http.expectOne(r => r.url.endsWith('/comunicazioni/c1/manifest'))
+    expect(req.request.responseType).toBe('blob')
+    req.flush(new Blob(['m']), {
+      headers: { 'Content-Disposition': 'attachment; filename="Movi.txt.manifest.txt"' },
+    })
+    expect(nome as string | null).toBe('Movi.txt.manifest.txt')
+  })
 })

@@ -4,6 +4,7 @@ import { signal } from '@angular/core'
 import { Subject, of, throwError } from 'rxjs'
 import { ComunicazioniComponent } from './comunicazioni.component'
 import { ComunicazioniService } from './comunicazioni.service'
+import { DatiComunicazioniService } from './dati-comunicazioni.service'
 import { ConsorziService } from './consorzi.service'
 import { CausaliRegistroService } from '../registro/causali-registro.service'
 import { AnteprimaOrso, ComunicazioneVista } from './comunicazioni.model'
@@ -104,6 +105,19 @@ describe('ComunicazioniComponent', () => {
           useValue: { currentUser: signal({ id: 'u1', email: 'a@b.it', role }) },
         },
         { provide: ToastService, useValue: toast },
+        {
+          provide: DatiComunicazioniService,
+          useValue: {
+            configurazione: () =>
+              of({
+                unitaLocaleId: 'ul-1',
+                consorzio: 'CONOU',
+                salvata: false,
+                dati: {},
+                puoModificare: false,
+              }),
+          },
+        },
       ],
     })
     fixture = TestBed.createComponent(ComunicazioniComponent)
@@ -288,5 +302,13 @@ describe('ComunicazioniComponent', () => {
     component.scarica(vista())
     expect(svc.scaricaFile).toHaveBeenCalledWith('c1')
     expect(URL.createObjectURL).toHaveBeenCalled()
+  })
+
+  it('con una sede scelta mostra la configurazione della sede per i consorzi; senza sede no', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1'), sede('ul-2', 'Sede 2')])
+    expect(fixture.nativeElement.querySelector('app-configurazione-sede')).toBeNull()
+    component.scegliSede('ul-2')
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('app-configurazione-sede')).not.toBeNull()
   })
 })

@@ -14,7 +14,9 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
+  Injector,
   ViewChild,
+  inject,
 } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
@@ -22,6 +24,8 @@ import { MessageService } from 'primeng/api'
 import { DialogModule } from 'primeng/dialog'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { AnagraficaSedeComponent } from '../comunicazioni/anagrafica-sede.component'
 import { RegistryService } from './registry.service'
 import { DatiSedeDitta, Ditta, SedeDitta } from '../../shared/models/registry.model'
 
@@ -66,7 +70,14 @@ const ETICHETTE: Record<CampoObbligatorio, string> = {
 @Component({
   selector: 'app-sedi-ditta-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, DialogModule, ButtonModule, InputTextModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    DialogModule,
+    ButtonModule,
+    InputTextModule,
+    AnagraficaSedeComponent,
+  ],
   template: `
     <p-dialog
       [visible]="visible"
@@ -314,6 +325,11 @@ const ETICHETTE: Record<CampoObbligatorio, string> = {
               <input pInputText id="sede-pec" name="pec" [(ngModel)]="modulo.pec" class="w-full" />
             </div>
           </div>
+          <!-- Dati per le comunicazioni ai consorzi (4.9c-f): solo con il modulo e per una sede esistente. -->
+          <app-anagrafica-sede
+            *ngIf="conComunicazioni && inModifica"
+            [sedeDittaId]="inModifica.id"
+          ></app-anagrafica-sede>
           <div class="sedi__bottoni">
             <p-button
               label="Annulla"
@@ -451,6 +467,25 @@ export class SediDittaDialogComponent implements OnChanges {
   modulo: ModuloSede | null = null
   inModifica: SedeDitta | null = null
   errori: Partial<Record<CampoObbligatorio, string>> = {}
+
+  private readonly injector = inject(Injector)
+  private moduli: FeatureFlagsService | null | undefined
+
+  /**
+   * Il pannello dei consorzi (4.9c-f) e' un'aggiunta opzionale: si mostra solo con il modulo
+   * `comunicazioni`. Se il servizio dei moduli non e' disponibile (il dialog vive anche in contesti
+   * senza l'app completa) il pannello non si mostra e il dialog funziona come prima.
+   */
+  protected get conComunicazioni(): boolean {
+    if (this.moduli === undefined) {
+      try {
+        this.moduli = this.injector.get(FeatureFlagsService)
+      } catch {
+        this.moduli = null
+      }
+    }
+    return this.moduli?.has('comunicazioni') ?? false
+  }
 
   constructor(
     private registry: RegistryService,
