@@ -54,6 +54,7 @@ const sede = (o: Partial<SedeDettaglio> = {}): SedeDettaglio => ({
   provincia: 'BG',
   telefono: null,
   principale: true,
+  attiva: true,
   ditta: {
     id: 'd1',
     ragioneSociale: 'OFFICINA ROSSI SRL',
@@ -115,6 +116,7 @@ const movimento = (o: Partial<MovimentoOrso> = {}): MovimentoOrso => ({
   causale: 'INGRESSO_ESTERNO',
   controparte: null,
   indirizzoControparte: null,
+  sedeControparteId: null,
   firNumero: 'ABC123/26',
   ...o,
 })

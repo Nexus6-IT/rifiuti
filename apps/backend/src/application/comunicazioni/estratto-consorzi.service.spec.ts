@@ -22,6 +22,7 @@ const mov = (id: string, registroId: string) => ({
   numero: '1/2026',
   controparte: null,
   indirizzoControparte: null,
+  sedeControparteId: null,
   firNumero: null,
 })
 

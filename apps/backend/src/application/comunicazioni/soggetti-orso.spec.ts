@@ -19,6 +19,7 @@ function sede(
     provincia: 'MI',
     telefono: null,
     principale: false,
+    attiva: true,
     ditta: {
       id: `d-${id}`,
       ragioneSociale: `Ditta ${id}`,

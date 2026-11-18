@@ -60,6 +60,7 @@ const sede = (
   provincia: 'MI',
   telefono: '02111222',
   principale: true,
+  attiva: true,
   ditta: { id: dittaId, ragioneSociale: nome, partitaIva: cf, codiceFiscale: cf },
   anagrafica: anagrafica(),
   ...o,
@@ -123,6 +124,7 @@ const movimento = (o: Partial<MovimentoOrso> = {}): MovimentoOrso => ({
   causale: 'INGRESSO_ESTERNO',
   controparte: null,
   indirizzoControparte: null,
+  sedeControparteId: null,
   firNumero: 'ABC123/26',
   ...o,
 })
