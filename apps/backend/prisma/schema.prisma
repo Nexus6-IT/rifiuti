@@ -2059,6 +2059,10 @@ model WasteMovement {
   /// storiche). Non entra nell'hash. Il CHECK `waste_movements_causale_azienda_coerente` lega
   /// `causale LIKE 'AZ_%'` alla presenza del riferimento; la FK composta fa coincidere codice e verso.
   causaleAziendaId       String?                  @map("causale_azienda_id") @db.Uuid
+  /// Sede della ditta controparte, scelta nel form del registro (dall'anagrafica o dal FIR). NULL per i
+  /// movimenti storici e per quelli scritti a mano: il resolver di O.R.SO. ripiega sul FIR e sul nome.
+  /// FUORI dall'hash di vidimazione (`hashAnnotazioneV2` non la contiene). Nessun indice (v. migration).
+  counterpartSedeId      String?                  @map("counterpart_sede_id") @db.Uuid
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   recordedByUser User?           @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
@@ -2076,6 +2080,9 @@ model WasteMovement {
   /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
   /// toglie movimenti e causali nello stesso statement.
   causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
+  /// Sede della controparte. NoAction, come le altre FK del movimento (la cascata da `tenants` toglie
+  /// movimenti e sedi nello stesso statement); le sedi non si cancellano, si disattivano.
+  counterpartSede SedeDitta? @relation("MovimentiControparteSede", fields: [counterpartSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_counterpart_sede_fkey")
 
   collegamentiAccesso CollegamentoAccesso[]
   abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
@@ -2650,6 +2657,7 @@ model SedeDitta {
   ritiriProduttore   Ritiro[] @relation("RitiroProduttoreSede")
   ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
   anagraficheComunicazioni AnagraficaComunicazioniSede[]
+  movimentiControparte WasteMovement[] @relation("MovimentiControparteSede")
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
