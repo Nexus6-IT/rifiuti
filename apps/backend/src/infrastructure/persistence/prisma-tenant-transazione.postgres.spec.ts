@@ -337,7 +337,8 @@ describe('Composizione: base già estesa con rlsExtension', () => {
     expect(sql[1]).toContain('set_config')
     expect(sql[2]).toContain('"public"."users"')
     expect(sql[2]).toContain('tenant_id')
-    expect(sql[3]).toBe('COMMIT')
+    expect(sql[3]).toBe('SET CONSTRAINTS ALL IMMEDIATE')
+    expect(sql[4]).toBe('COMMIT')
   })
 
   it('batch: operazioni create sul client composto, filtrate e nella stessa transazione', async () => {

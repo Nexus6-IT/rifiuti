@@ -68,6 +68,34 @@ export async function impostaTenant(tx: Prisma.TransactionClient, tenantId: stri
 }
 
 /**
+ * Chiude i vincoli `DEFERRABLE INITIALLY DEFERRED` DENTRO la transazione, cosi' un loro errore
+ * diventa un errore dello statement e arriva al chiamante.
+ *
+ * Perche': con Prisma 5.22 l'errore sollevato al COMMIT di una transazione interattiva
+ * (`$transaction(async tx => ...)`) NON arriva all'applicazione: `$transaction` ritorna il valore
+ * di `fn` come se fosse andata bene, ma Postgres ha annullato la transazione (provato dallo spec
+ * `prisma-commit-differito.postgres.spec.ts`, caso A). Il batch `$transaction([...])` non ha il
+ * problema. Il client esteso di questo modulo la chiama da solo come ULTIMO statement; chi usa un
+ * `PrismaClient` nudo (per esempio `PrismaSistemaService`) la chiama a mano.
+ */
+export async function confermaVincoliDifferiti(
+  tx: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>
+): Promise<void> {
+  await tx.$executeRawUnsafe('SET CONSTRAINTS ALL IMMEDIATE')
+}
+
+/** Esegue `fn` e poi chiude i vincoli differiti, nella stessa transazione. */
+function conVincoliChiusi(
+  fn: (tx: Prisma.TransactionClient) => Promise<unknown>
+): (tx: Prisma.TransactionClient) => Promise<unknown> {
+  return async tx => {
+    const risultato = await fn(tx)
+    await confermaVincoliDifferiti(tx)
+    return risultato
+  }
+}
+
+/**
  * Argomenti per `base.$extends(...)`. Il client esteso:
  *  - avvolge ogni operazione top-level (modelli e raw) in
  *    `$transaction([set_config, operazione])` quando c'e' un tenant e non si e'
@@ -140,11 +168,11 @@ export function estensioneTenantTransazione(base: ClienteBase) {
         }
         const fn = arg as (tx: Prisma.TransactionClient) => Promise<unknown>
         if (!tenantId) {
-          return base.$transaction(fn, options)
+          return base.$transaction(conVincoliChiusi(fn), options)
         }
         return base.$transaction(async (tx: Prisma.TransactionClient) => {
           await impostaTenant(tx, tenantId)
-          return fn(tx)
+          return conVincoliChiusi(fn)(tx)
         }, options)
       }) as unknown as PrismaClient['$transaction'],
     },

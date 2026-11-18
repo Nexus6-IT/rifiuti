@@ -1,6 +1,32 @@
 # Ticket: l'errore del COMMIT di un vincolo differito non arriva all'applicazione (Prisma 5.22?)
 
-Stato: aperto, NON risolto (review PR A Fase 3, punto I2). Non blocca il merge.
+Stato: CHIUSO il 2026-11-18 (causa: Prisma 5.22, non la nostra estensione; contromisura nel codice
+e spec di regressione). Storia originale sotto, invariata.
+
+## Esito (2026-11-18)
+
+Prova: `apps/backend/src/infrastructure/persistence/prisma-commit-differito.postgres.spec.ts`
+(Postgres reale, Prisma 5.22.0, tabella + constraint trigger differito che fallisce sempre).
+
+- **Caso A, `PrismaClient` nudo:** l'affermazione del Task 9 e' CONFERMATA. Con
+  `$transaction(async tx => ...)` (anche con `isolationLevel: 'Serializable'`) l'errore del COMMIT
+  NON arriva: `$transaction` ritorna il valore di `fn`, ma la tabella resta vuota (Postgres ha
+  annullato la transazione). Scritture perse in silenzio. Il batch `$transaction([...])` invece
+  solleva l'errore. Se il vincolo e' IMMEDIATE o si fa `SET CONSTRAINTS ALL IMMEDIATE` dentro `fn`,
+  l'errore arriva (come errore dello statement).
+- **Caso B, client applicativo / `.db` dentro `TenantContext.run`:** stesso comportamento di A prima
+  della correzione. Quindi la causa e' di **Prisma**, non della nostra estensione.
+- **Contromisura (nostra):** `estensioneTenantTransazione` ora esegue `SET CONSTRAINTS ALL IMMEDIATE`
+  come ULTIMO statement di ogni `$transaction` interattiva (con e senza tenant): l'errore del vincolo
+  differito arriva al chiamante. Per i client nudi (`PrismaSistemaService`) c'e' l'helper
+  `confermaVincoliDifferiti(tx)` esportato da `prisma-tenant-transazione.ts`, da chiamare come ultimo
+  statement. Lo spec e' la guardia di regressione per A (documenta il difetto di Prisma), B (errore
+  che arriva) e per l'helper.
+- **Non verificato:** se il difetto persiste su Prisma 6.x (qui il repo e' su 5.22; non e' stato
+  aggiornato). Da riprovare con la stessa spec in caso di upgrade, e valutare la segnalazione upstream.
+- Il `SET CONSTRAINTS ... IMMEDIATE` esplicito di `inserisci-a-blocchi.ts` resta (vincolo specifico,
+  idempotente rispetto a `ALL IMMEDIATE`).
+
 
 ## Problema
 

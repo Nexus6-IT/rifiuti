@@ -32,6 +32,11 @@ Dentro `fn` usare solo `tx`: il client esterno aprirebbe una transazione propria
 connessione, fuori dall'atomicita'. Il `set_config` e' gia' il primo statement. Per il client
 filtrato usare `this.prisma.db.$transaction`. Il batch `$transaction([a, b])` e' supportato.
 
+Vincoli differiti: con Prisma 5.22 l'errore del COMMIT di una transazione interattiva non arriva
+all'applicazione (la transazione e' annullata ma `$transaction` risulta riuscita). Il client esteso
+chiude da solo i vincoli (`SET CONSTRAINTS ALL IMMEDIATE` come ultimo statement); con un
+`PrismaClient` nudo chiamare `confermaVincoliDifferiti(tx)`. Prova: `prisma-commit-differito.postgres.spec.ts`.
+
 Avvertenze (dettagli nei commenti del codice):
 - `await` dentro `TenantContext.run`: il tenant e' letto quando la PrismaPromise viene eseguita,
   non quando e' creata (attenzione alle promise memoizzate fra richieste);
