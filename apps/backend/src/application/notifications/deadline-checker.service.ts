@@ -11,9 +11,17 @@ import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentr
 import { calcolaScadenza } from './scadenza-controparte.util'
 import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
-import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
+import {
+  formattaDataItaliana,
+  giornoItaliano,
+  inizioGiornoItaliano,
+} from '../../core/time/anno-italiano'
 import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../billing/contratto-gruppo.service'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
+import {
+  annotazioniPiuVecchieDaTrasmettere,
+  scadenzaTrasmissione,
+} from '../rentri/registro/scadenza-trasmissione-rentri'
 
 /**
  * Deadline Checker Service
@@ -35,6 +43,9 @@ export class DeadlineCheckerService {
   // ogni giorno finché non viene risolto — un avviso quotidiano identico
   // smetterebbe di essere letto, ottenendo l'effetto opposto a quello voluto.
   private readonly NOTIFICATION_DEDUP_GIORNI = 7
+
+  // Termine mensile di trasmissione del registro RENTRI: l'avviso parte da qui in poi (giorni).
+  private readonly TERMINE_TRASMISSIONE_PREAVVISO_GIORNI = 5
 
   constructor(
     private readonly prisma: PrismaService,
@@ -866,6 +877,176 @@ export class DeadlineCheckerService {
       this.logger.error('Controllo scadenza certificato RENTRI fallito', error)
       segnalaErroreJob('checkRentriCertificateExpiration', error)
     }
+  }
+
+  /**
+   * Avviso giornaliero (07:00) del termine di trasmissione mensile del registro a RENTRI
+   * (eREGI E0): per ogni registro collegato a RENTRI con annotazioni non ancora confermate, da 5
+   * giorni prima del termine (fine del mese successivo) e finche' e' superato. Una notifica in
+   * applicazione ed una email per utente ADMIN/OPERATOR, al massimo una per registro e per giorno
+   * di Roma (la dedup settimanale del resto dello scadenzario qui non vale: il promemoria e'
+   * quotidiano per scelta). Il termine e' indicativo, la fonte normativa e' secondaria: vedi
+   * `scadenza-trasmissione-rentri.ts`.
+   *
+   * Non e' filtrato per modulo: un registro ha l'identificativo RENTRI solo se l'azienda ha il
+   * modulo rentri quando lo ha impostato.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_7AM)
+  async checkTermineTrasmissioneRegistro(): Promise<void> {
+    this.logger.info('Avvio controllo del termine di trasmissione del registro RENTRI')
+    try {
+      const adesso = new Date()
+      // Sistema: scansione di tutte le aziende con almeno un registro collegato a RENTRI
+      const tenants = await this.sistema.tenant.findMany({
+        where: escludiPiattaforma({
+          AND: [
+            { OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO },
+            { registriRifiuti: { some: { identificativoRentri: { not: null } } } },
+          ],
+        }),
+        select: { id: true, ragioneSociale: true },
+      })
+      let notificheCreate = 0
+      for (const tenant of tenants) {
+        try {
+          notificheCreate += await this.avvisaTermineTrasmissioneAzienda(
+            tenant.id,
+            tenant.ragioneSociale,
+            adesso
+          )
+        } catch (error) {
+          this.logger.error(
+            `Avviso del termine di trasmissione RENTRI fallito per l'azienda ${tenant.id}, si prosegue`,
+            error
+          )
+          segnalaErroreJob('checkTermineTrasmissioneRegistro', error, { tenantId: tenant.id })
+        }
+      }
+      this.logger.info(
+        `Controllo del termine di trasmissione RENTRI completato: ${notificheCreate} notifiche create`
+      )
+    } catch (error) {
+      this.logger.error('Controllo del termine di trasmissione RENTRI fallito', error)
+      segnalaErroreJob('checkTermineTrasmissioneRegistro', error)
+    }
+  }
+
+  /** @returns le notifiche in applicazione create per l'azienda */
+  private async avvisaTermineTrasmissioneAzienda(
+    tenantId: string,
+    ragioneSociale: string,
+    adesso: Date
+  ): Promise<number> {
+    const { registri, piuVecchie } = await this.nelContestoAzienda(tenantId, async () => ({
+      registri: await this.prisma.registroRifiuti.findMany({
+        where: { tenantId, identificativoRentri: { not: null } },
+        select: { id: true, descrizione: true },
+      }),
+      piuVecchie: await this.prisma.$transaction(
+        async tx => await annotazioniPiuVecchieDaTrasmettere(tx, tenantId)
+      ),
+    }))
+
+    const inizioOggi = inizioGiornoItaliano(giornoItaliano(adesso))
+    let utenti: Array<{ id: string; firstName: string; lastName: string; email: string }> | null =
+      null
+    let create = 0
+
+    for (const registro of registri) {
+      const piuVecchia = piuVecchie.get(registro.id)
+      if (!piuVecchia) continue
+      const scadenza = scadenzaTrasmissione([piuVecchia], adesso)
+      if (!scadenza || scadenza.giorniRimanenti > this.TERMINE_TRASMISSIONE_PREAVVISO_GIORNI) {
+        continue
+      }
+
+      // Una per registro e per giorno: il filtro include SEMPRE il tenant (isolamento).
+      const gia = await this.nelContestoAzienda(tenantId, () =>
+        this.prisma.notification.findFirst({
+          where: {
+            tenantId,
+            type: 'TRASMISSIONE_REGISTRO_IN_SCADENZA',
+            relatedEntityId: registro.id,
+            relatedEntityType: 'RegistroRifiuti',
+            createdAt: { gte: inizioOggi },
+          },
+          select: { id: true },
+        })
+      )
+      if (gia) continue
+
+      utenti ??= await this.nelContestoAzienda(tenantId, () =>
+        this.prisma.user.findMany({
+          where: { tenantId, role: { in: ['ADMIN', 'OPERATOR'] } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      )
+
+      const [anno, mese, giorno] = scadenza.entro.split('-')
+      const termine = `${giorno}/${mese}/${anno}`
+      const meseAnnotazioni = `${scadenza.mese.slice(5)}/${scadenza.mese.slice(0, 4)}`
+      const ritardo = -scadenza.giorniRimanenti
+      const titolo = scadenza.scaduta
+        ? 'Termine di trasmissione del registro RENTRI superato'
+        : 'Promemoria termine di trasmissione del registro RENTRI'
+      const messaggio = scadenza.scaduta
+        ? `Il termine indicativo del ${termine} per trasmettere a RENTRI le annotazioni di ${meseAnnotazioni} del registro «${registro.descrizione}» è superato: aprire il registro e trasmettere.`
+        : `Il termine indicativo per trasmettere a RENTRI le annotazioni di ${meseAnnotazioni} del registro «${registro.descrizione}» è il ${termine} (${scadenza.giorniRimanenti === 0 ? 'scade oggi' : scadenza.giorniRimanenti === 1 ? 'manca 1 giorno' : `mancano ${scadenza.giorniRimanenti} giorni`}).`
+
+      for (const utente of utenti) {
+        // In applicazione PRIMA e a parte dall'email: un guasto SMTP non la sopprime.
+        try {
+          await this.nelContestoAzienda(tenantId, () =>
+            this.prisma.notification.create({
+              data: {
+                tenantId,
+                userId: utente.id,
+                type: 'TRASMISSIONE_REGISTRO_IN_SCADENZA',
+                title: titolo,
+                message: messaggio,
+                severity: scadenza.scaduta ? 'ERROR' : 'WARNING',
+                relatedEntityId: registro.id,
+                relatedEntityType: 'RegistroRifiuti',
+                actionUrl: '/registro',
+                isRead: false,
+              },
+            })
+          )
+          create++
+        } catch (error) {
+          this.logger.error(
+            `Creazione avviso del termine di trasmissione RENTRI fallita per ${utente.email}`,
+            error
+          )
+          continue
+        }
+        try {
+          const html = await this.templateService.renderTermineTrasmissioneRegistro({
+            recipientName: `${utente.firstName} ${utente.lastName}`,
+            companyName: ragioneSociale,
+            registroDescrizione: registro.descrizione,
+            meseAnnotazioni,
+            termine,
+            isExpired: scadenza.scaduta,
+            ...(scadenza.scaduta
+              ? { daysOverdue: ritardo }
+              : { daysRemaining: scadenza.giorniRimanenti }),
+            pannelloUrl: this.buildEmailUrl('/registro'),
+          })
+          await this.emailService.sendEmail({
+            to: utente.email,
+            subject: `[WasteFlow] ${titolo}`,
+            html,
+          })
+        } catch (error) {
+          this.logger.error(
+            `Invio email del termine di trasmissione RENTRI fallito per ${utente.email} (notifica in app comunque creata)`,
+            error
+          )
+        }
+      }
+    }
+    return create
   }
 
   /**

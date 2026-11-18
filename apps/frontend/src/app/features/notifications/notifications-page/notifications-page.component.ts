@@ -231,6 +231,7 @@ export class NotificationsPageComponent implements OnInit {
       CERTIFICATO_RENTRI_IN_SCADENZA: 'pi pi-clock',
       TRASPORTATORE_ISCRIZIONE_IN_SCADENZA: 'pi pi-clock',
       DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA: 'pi pi-clock',
+      TRASMISSIONE_REGISTRO_IN_SCADENZA: 'pi pi-clock',
       SYSTEM_ERROR: 'pi pi-exclamation-triangle',
       FIR_SIGNATURE_REQUIRED: 'pi pi-file-edit',
       FIR_COMPLETED: 'pi pi-check-circle',

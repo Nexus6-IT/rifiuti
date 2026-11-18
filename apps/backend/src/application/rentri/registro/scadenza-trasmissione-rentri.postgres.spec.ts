@@ -166,9 +166,13 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
   it('i movimenti importati da riconciliare non contano', async () => {
     const az = await azienda()
     const lottoId = await lottoDiProva(owner, az.tenantId)
-    await creaMovimentoImportato(owner, { ...az, lottoId }, {
-      registrationDate: new Date('2025-01-10T10:00:00Z'),
-    })
+    await creaMovimentoImportato(
+      owner,
+      { ...az, lottoId },
+      {
+        registrationDate: new Date('2025-01-10T10:00:00Z'),
+      }
+    )
     expect(await termine(az)).toBeNull()
   })
 

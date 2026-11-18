@@ -448,12 +448,7 @@ type TipoConferma = 'selezionati' | 'storico'
           </ng-template>
         </p>
 
-        <p
-          *ngIf="termine() as t"
-          class="rentri-termine"
-          role="status"
-          data-testid="rentri-termine"
-        >
+        <p *ngIf="termine() as t" class="rentri-termine" role="status" data-testid="rentri-termine">
           <p-tag [value]="t.etichetta" [severity]="t.severita"></p-tag>
           <small>
             Annotazioni di {{ t.mese }} ancora da trasmettere; termine indicativo (fine del mese
@@ -683,7 +678,9 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
     const data = `${giorno}/${mese}/${anno}`
     const [annoMese, meseMese] = s.mese.split('-')
     return {
-      etichetta: s.scaduta ? `Termine superato (era il ${data})` : `Da trasmettere entro il ${data}`,
+      etichetta: s.scaduta
+        ? `Termine superato (era il ${data})`
+        : `Da trasmettere entro il ${data}`,
       severita: (s.scaduta ? 'danger' : 'warning') as 'danger' | 'warning',
       mese: `${meseMese}/${annoMese}`,
     }

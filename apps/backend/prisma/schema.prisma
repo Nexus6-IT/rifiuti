@@ -905,6 +905,8 @@ enum NotificationType {
   CERTIFICATO_RENTRI_IN_SCADENZA
   TRASPORTATORE_ISCRIZIONE_IN_SCADENZA
   DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA
+  /// eREGI E0: termine mensile di trasmissione del registro a RENTRI vicino o superato.
+  TRASMISSIONE_REGISTRO_IN_SCADENZA
 
   @@map("notification_type")
 }
