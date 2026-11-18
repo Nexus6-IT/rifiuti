@@ -216,12 +216,15 @@ test.describe('App campo P1: autisti e giro', () => {
       ['GET', '/autisti'],
       ['GET', '/registro'],
       ['GET', '/pese/automezzi'],
-      ['GET', '/admin/users'],
     ] as const) {
       const r = await chiama<{ error?: string }>(metodo, percorso, accessToken)
       expect(r.stato, `${metodo} ${percorso}`).toBe(403)
       expect(JSON.stringify(r.corpo)).toContain('ROTTA_NON_CONSENTITA_ALL_AUTISTA')
     }
+    // /admin/users ha un RolesGuard di classe che risponde 403 prima dell'interceptor:
+    // qui conta solo che l'autista sia respinto, non quale presidio lo respinge.
+    const admin = await chiama('GET', '/admin/users', accessToken)
+    expect(admin.stato).toBe(403)
     const scrittura = await chiama('POST', '/ritiri', accessToken, {})
     expect(scrittura.stato).toBe(403)
 
