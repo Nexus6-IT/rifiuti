@@ -378,6 +378,38 @@ describe('App campo P1 — Postgres reale, ruolo wasteflow_app', () => {
       expect((await nelTenant(a.t, () => ritiri.elenca(a.t))).totale).toBe(0)
     })
 
+    it('un ritiro con autista poi disattivato si modifica; assegnarne uno disattivato resta rifiutato', async () => {
+      const a = await azienda()
+      const x = await nelTenant(a.t, () => autisti.crea(a.t, a.admin, { nome: 'X', cognome: 'X' }))
+      const y = await nelTenant(a.t, () => autisti.crea(a.t, a.admin, { nome: 'Y', cognome: 'Y' }))
+      const r = (
+        await nelTenant(a.t, () => ritiri.crea(a.t, a.admin, nuovoRitiro(a, { autistaId: x.id })))
+      ).ritiri[0]
+      await nelTenant(a.t, () =>
+        autisti.aggiorna(a.t, x.id, { nome: 'X', cognome: 'X', attivo: false })
+      )
+      const { chiaveIdempotenza: _k, ...dati } = nuovoRitiro(a)
+      // Altro campo, stesso autista (ora disattivo): riesce e l'autista resta.
+      const m = await nelTenant(a.t, () =>
+        ritiri.modifica(a.t, r.id, {
+          ...dati,
+          descrizione: 'Nota cambiata',
+          autistaId: x.id,
+          versione: r.versione,
+        })
+      )
+      expect(m.autista?.id).toBe(x.id)
+      // Passare a un autista disattivo diverso da quello salvato: rifiutato.
+      await nelTenant(a.t, () =>
+        autisti.aggiorna(a.t, y.id, { nome: 'Y', cognome: 'Y', attivo: false })
+      )
+      await expect(
+        nelTenant(a.t, () =>
+          ritiri.modifica(a.t, r.id, { ...dati, autistaId: y.id, versione: m.versione })
+        )
+      ).rejects.toMatchObject({ messaggi: ['Autista non trovato.'] })
+    })
+
     it('la modifica puo cambiare e togliere l autista', async () => {
       const a = await azienda()
       const x = await nelTenant(a.t, () => autisti.crea(a.t, a.admin, { nome: 'X', cognome: 'X' }))

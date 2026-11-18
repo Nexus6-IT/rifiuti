@@ -25,6 +25,11 @@ export const ROTTA_NON_CONSENTITA_ALL_AUTISTA = 'ROTTA_NON_CONSENTITA_ALL_AUTIST
  * Fail-closed per costruzione: la lista di ammissione e' il marcatore, non una lista di divieti.
  * Il ruolo e' quello del token (`user.role`): un autista ha un'azienda sola.
  * Le rotte pubbliche non hanno utente e passano (non sono d'ufficio).
+ *
+ * Nota (piano §4.6, RolesGuard): `RuoloEffettivoService` mappa `AUTISTA` su `VIEWER`, quindi un
+ * guard `@Roles('VIEWER')` puo' lasciarlo passare; i guard non hanno effetti collaterali e la
+ * barriera effettiva e' questo interceptor. I contesti non http (oggi nessuno) non hanno `req.user`
+ * leggibile qui: un gateway o un microservizio futuro va protetto a parte.
  */
 @Injectable()
 export class RuoloAutistaInterceptor implements NestInterceptor {

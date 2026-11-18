@@ -2806,9 +2806,6 @@ model StrumentoPesa {
   @@map("strumenti_pesa")
 }
 
-/// Anagrafica degli automezzi (targa + rimorchio) con la tara dichiarata. Mutabile, mai cancellata.
-/// La tara e' tutta o niente (`automezzi_tara_check`); l'indice unico `automezzi_targhe_uniche`
-/// (tenant, targa, rimorchio) e' solo SQL.
 /// Anagrafica degli autisti (app campo, P1). Facoltativamente legata a un utente `AUTISTA` (`user_id`,
 /// un utente = un autista): e' il legame con cui `/campo/giro` trova i ritiri dell'autista. Mai
 /// cancellato (`ruoli-db.sql`): si disattiva. CHECK solo in migration (`20261119200000_autisti`).
@@ -2842,6 +2839,9 @@ model Autista {
   @@map("autisti")
 }
 
+/// Anagrafica degli automezzi (targa + rimorchio) con la tara dichiarata. Mutabile, mai cancellata.
+/// La tara e' tutta o niente (`automezzi_tara_check`); l'indice unico `automezzi_targhe_uniche`
+/// (tenant, targa, rimorchio) e' solo SQL.
 model Automezzo {
   id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String       @map("tenant_id") @db.Uuid

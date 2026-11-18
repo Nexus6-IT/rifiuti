@@ -93,8 +93,15 @@ function controllerRaggiungibili(radice: unknown): Type<unknown>[] {
   const coda: unknown[] = [radice]
   while (coda.length > 0) {
     let corrente = coda.shift() as { module?: unknown } | undefined
-    if (corrente && typeof corrente === 'object' && 'module' in corrente) {
-      corrente = corrente.module as { module?: unknown }
+    // Modulo dinamico (`{ module, controllers, imports }`): i suoi controller e import contano.
+    const dinamico =
+      corrente && typeof corrente === 'object' && 'module' in corrente
+        ? (corrente as { controllers?: Type<unknown>[]; imports?: unknown[] })
+        : null
+    if (dinamico) {
+      out.push(...(dinamico.controllers ?? []))
+      coda.push(...(dinamico.imports ?? []))
+      corrente = (corrente as { module: unknown }).module as { module?: unknown }
     }
     if (!corrente || visti.has(corrente)) continue
     visti.add(corrente)

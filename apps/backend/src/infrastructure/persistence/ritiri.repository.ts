@@ -384,6 +384,12 @@ export class RitiriRepository {
     return a !== null
   }
 
+  /** Autista oggi salvato sul ritiro (anche disattivato), `null` se nessuno. */
+  async autistaDelRitiro(tx: Tx, tenantId: string, id: string): Promise<string | null> {
+    const r = await tx.ritiro.findFirst({ where: { id, tenantId }, select: { autistaId: true } })
+    return r?.autistaId ?? null
+  }
+
   async autistaAttivo(tx: Tx, tenantId: string, id: string): Promise<boolean> {
     const a = await tx.autista.findFirst({
       where: { id, tenantId, attivo: true },

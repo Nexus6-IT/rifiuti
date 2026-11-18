@@ -159,7 +159,9 @@ export class RitiriService {
         id,
         dati.versione,
         async tx => {
-          await this.verificaAnagrafiche(tx, tenantId, completi)
+          // L'autista gia' assegnato, anche se poi disattivato, non blocca la modifica d'altro.
+          const attuale = await this.repo.autistaDelRitiro(tx, tenantId, id)
+          await this.verificaAnagrafiche(tx, tenantId, completi, attuale)
           await this.repo.aggiornaDati(tx, tenantId, id, completi)
         },
         ['PROGRAMMATO'],
@@ -306,7 +308,12 @@ export class RitiriService {
   }
 
   /** Esistenza nel tenant e coerenza sede-ditta (come la creazione del FIR); mai id nei messaggi. */
-  private async verificaAnagrafiche(tx: Tx, tenantId: string, v: ValoriRitiro): Promise<void> {
+  private async verificaAnagrafiche(
+    tx: Tx,
+    tenantId: string,
+    v: ValoriRitiro,
+    autistaAttuale: string | null = null
+  ): Promise<void> {
     const messaggi: string[] = []
     const dittaP = await this.repo.dittaDelRuolo(tx, tenantId, 'produttore', v.produttoreId)
     const dittaT = await this.repo.dittaDelRuolo(tx, tenantId, 'trasportatore', v.trasportatoreId)
@@ -323,7 +330,12 @@ export class RitiriService {
     if (v.automezzoId && !(await this.repo.automezzoAttivo(tx, tenantId, v.automezzoId))) {
       messaggi.push('Automezzo non trovato.')
     }
-    if (v.autistaId && !(await this.repo.autistaAttivo(tx, tenantId, v.autistaId))) {
+    // Lo stato `attivo` conta solo quando l'autista cambia.
+    if (
+      v.autistaId &&
+      v.autistaId !== autistaAttuale &&
+      !(await this.repo.autistaAttivo(tx, tenantId, v.autistaId))
+    ) {
       messaggi.push('Autista non trovato.')
     }
     if (messaggi.length > 0) throw new RitiroDatiNonValidiError(messaggi)
