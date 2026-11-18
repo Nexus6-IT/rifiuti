@@ -31,6 +31,12 @@ describe('ModelliStampaService', () => {
     expect(http.expectOne(url).request.method).toBe('GET')
   })
 
+  it('dettaglio: GET del singolo modello (porta il logo)', () => {
+    s.dettaglio('a/b').subscribe()
+    const r = http.expectOne(`${url}/a%2Fb`)
+    expect(r.request.method).toBe('GET')
+  })
+
   it('crea: POST con i dati', () => {
     s.crea(dati).subscribe()
     const r = http.expectOne(url)

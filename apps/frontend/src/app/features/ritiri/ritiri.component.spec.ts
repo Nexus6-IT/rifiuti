@@ -15,9 +15,9 @@ import { RitiroVista } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
 import { ritiroDiProva } from './ritiri-test-utils'
 import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
-import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
+import { ModelloStampaElenco } from '../impostazioni/modelli-stampa/modello-stampa.model'
 
-const modello = (p: Partial<ModelloStampaVista>): ModelloStampaVista => ({
+const modello = (p: Partial<ModelloStampaElenco>): ModelloStampaElenco => ({
   id: 'm',
   nome: 'Modello',
   ambito: 'FIR',
@@ -26,12 +26,12 @@ const modello = (p: Partial<ModelloStampaVista>): ModelloStampaVista => ({
   testoPiePagina: null,
   colorePrimario: '#000000',
   coloreSecondario: '#000000',
-  logoBase64: null,
+  haLogo: false,
   predefinito: false,
   versione: 1,
   ...p,
 })
-const MODELLI: ModelloStampaVista[] = [
+const MODELLI: ModelloStampaElenco[] = [
   modello({ id: 'mf1', nome: 'FIR standard', ambito: 'FIR', predefinito: true }),
   modello({ id: 'mf2', nome: 'FIR a colori', ambito: 'FIR' }),
   modello({ id: 'mg', nome: 'Generale', ambito: 'GENERALE' }),

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
 import {
@@ -10,11 +10,11 @@ import {
   scrivi,
   stabilizza,
 } from '../../clienti/tabelle/tabelle-test-utils'
-import { ModelloStampaVista } from './modello-stampa.model'
+import { ModelloStampaElenco, ModelloStampaVista } from './modello-stampa.model'
 import { ModelliStampaComponent } from './modelli-stampa.component'
 import { ModelliStampaService } from './modelli-stampa.service'
 
-const fir: ModelloStampaVista = {
+const fir: ModelloStampaElenco = {
   id: 'm1',
   nome: 'FIR standard',
   ambito: 'FIR',
@@ -23,11 +23,14 @@ const fir: ModelloStampaVista = {
   testoPiePagina: null,
   colorePrimario: '#112233',
   coloreSecondario: '#445566',
-  logoBase64: null,
+  haLogo: false,
   predefinito: true,
   versione: 1,
 }
-const distinta: ModelloStampaVista = {
+/** Com'e' restituito da crea, modifica e dettaglio: con il logo. */
+const { haLogo: _haLogo, ...senzaHaLogo } = fir
+const firCompleto: ModelloStampaVista = { ...senzaHaLogo, logoBase64: null }
+const distinta: ModelloStampaElenco = {
   ...fir,
   id: 'm2',
   nome: 'Distinta',
@@ -50,6 +53,7 @@ describe('ModelliStampaComponent', () => {
   beforeEach(() => {
     servizio = jasmine.createSpyObj('ModelliStampaService', [
       'elenco',
+      'dettaglio',
       'crea',
       'modifica',
       'rendiPredefinito',
@@ -102,7 +106,9 @@ describe('ModelliStampaComponent', () => {
   })
 
   it('Rendi predefinito: chiama il servizio con la versione e ricarica', async () => {
-    servizio.rendiPredefinito.and.returnValue(of({ ...distinta, predefinito: true }))
+    servizio.rendiPredefinito.and.returnValue(
+      of({ ...distinta, predefinito: true, logoBase64: null })
+    )
     await apri()
     fixture.componentInstance.rendiPredefinito(distinta)
     expect(servizio.rendiPredefinito).toHaveBeenCalledWith('m2', 1)
@@ -143,7 +149,7 @@ describe('ModelliStampaComponent', () => {
   })
 
   it('crea dal dialog: manda i dati scritti e ricarica', async () => {
-    servizio.crea.and.returnValue(of(fir))
+    servizio.crea.and.returnValue(of(firCompleto))
     await apri()
     fixture.componentInstance.apri(null)
     await stabilizza(fixture)
@@ -172,7 +178,7 @@ describe('ModelliStampaComponent', () => {
   })
 
   it("modifica: manda la versione letta e l'anteprima mostra l'intestazione", async () => {
-    servizio.modifica.and.returnValue(of(fir))
+    servizio.modifica.and.returnValue(of(firCompleto))
     await apri()
     fixture.componentInstance.apri(fir)
     await stabilizza(fixture)
@@ -180,6 +186,53 @@ describe('ModelliStampaComponent', () => {
     bottone('modello-dlg-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.modifica).toHaveBeenCalledWith('m1', jasmine.any(Object), 1)
+  })
+
+  it('modifica di un modello con logo: il logo si legge dal dettaglio e Salva aspetta che arrivi', async () => {
+    const dettaglio = new Subject<ModelloStampaVista>()
+    servizio.dettaglio.and.returnValue(dettaglio)
+    servizio.modifica.and.returnValue(of(firCompleto))
+    await apri()
+    fixture.componentInstance.apri({ ...fir, haLogo: true })
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).toHaveBeenCalledOnceWith('m1')
+    // logo non ancora arrivato: Salva bloccato (altrimenti lo azzererebbe)
+    expect(bottone('modello-dlg-salva')!.disabled).toBeTrue()
+    dettaglio.next({ ...firCompleto, logoBase64: 'QUJD' })
+    await stabilizza(fixture)
+    expect(bottone('modello-dlg-salva')!.disabled).toBeFalse()
+    bottone('modello-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.modifica).toHaveBeenCalledWith(
+      'm1',
+      jasmine.objectContaining({ logoBase64: 'QUJD' }),
+      1
+    )
+  })
+
+  it('logo non caricato: errore, Salva bloccato, Riprova lo ricarica e sblocca', async () => {
+    servizio.dettaglio.and.returnValues(
+      throwError(() => ({ error: { message: 'Logo non disponibile.' } })),
+      of({ ...firCompleto, logoBase64: 'QUJD' })
+    )
+    await apri()
+    fixture.componentInstance.apri({ ...fir, haLogo: true })
+    await stabilizza(fixture)
+    expect(q('modello-dlg-errore')!.textContent).toContain('Logo non disponibile.')
+    expect(bottone('modello-dlg-salva')!.disabled).toBeTrue()
+    q('modello-dlg-logo-riprova')!.querySelector('button')!.click()
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).toHaveBeenCalledTimes(2)
+    expect(q('modello-dlg-errore')).toBeNull()
+    expect(q('modello-dlg-logo-riprova')).toBeNull()
+    expect(bottone('modello-dlg-salva')!.disabled).toBeFalse()
+  })
+
+  it('modifica di un modello senza logo: nessuna chiamata al dettaglio', async () => {
+    await apri()
+    fixture.componentInstance.apri(fir)
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).not.toHaveBeenCalled()
   })
 
   it('errore di salvataggio: messaggio nel dialog che resta aperto', async () => {

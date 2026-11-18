@@ -32,6 +32,12 @@ export interface ModelloStampaVista {
   versione: number
 }
 
+/**
+ * Voce dell'elenco (`GET /modelli-stampa`): come `ModelloStampaVista` ma senza il logo, che pesa
+ * fino a 256 KiB; `haLogo` dice solo se c'e'. Il logo si legge con `GET /modelli-stampa/:id`.
+ */
+export type ModelloStampaElenco = Omit<ModelloStampaVista, 'logoBase64'> & { haLogo: boolean }
+
 /** Dati di creazione o modifica. In modifica si aggiunge `versione` (lock ottimistico). */
 export interface DatiModelloStampa {
   nome: string

@@ -10,7 +10,7 @@ import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.comp
 import { azioniDiRiga, MemoriaAzioni } from '../../clienti/tabelle/azioni-lista'
 import { caricaElenco, chiediConferma, eseguiERicarica } from '../../clienti/tabelle/tabella-comune'
 import { ModelloStampaDialogComponent } from './modello-stampa-dialog.component'
-import { etichettaAmbito, ModelloStampaVista } from './modello-stampa.model'
+import { etichettaAmbito, ModelloStampaElenco } from './modello-stampa.model'
 import { ModelliStampaService } from './modelli-stampa.service'
 
 /** Ruoli che gestiscono i modelli (il backend risponde 403 agli altri). */
@@ -145,13 +145,13 @@ export class ModelliStampaComponent implements OnInit {
   private readonly auth = inject(AuthService)
 
   readonly puoGestire = computed(() => RUOLI_MODELLI.includes(this.auth.currentUser()?.role ?? ''))
-  readonly righe = signal<ModelloStampaVista[]>([])
+  readonly righe = signal<ModelloStampaElenco[]>([])
   readonly erroreElenco = signal<string | null>(null)
   readonly dialogoAperto = signal(false)
-  readonly selezionato = signal<ModelloStampaVista | null>(null)
-  readonly ambito = (r: ModelloStampaVista) => etichettaAmbito(r.ambito)
+  readonly selezionato = signal<ModelloStampaElenco | null>(null)
+  readonly ambito = (r: ModelloStampaElenco) => etichettaAmbito(r.ambito)
 
-  readonly azioni = new MemoriaAzioni<ModelloStampaVista>(r =>
+  readonly azioni = new MemoriaAzioni<ModelloStampaElenco>(r =>
     azioniDiRiga({
       modifica: () => this.apri(r),
       etichettaModifica: `Modifica ${r.nome}`,
@@ -181,12 +181,12 @@ export class ModelliStampaComponent implements OnInit {
     )
   }
 
-  apri(r: ModelloStampaVista | null): void {
+  apri(r: ModelloStampaElenco | null): void {
     this.selezionato.set(r)
     this.dialogoAperto.set(true)
   }
 
-  rendiPredefinito(r: ModelloStampaVista): void {
+  rendiPredefinito(r: ModelloStampaElenco): void {
     eseguiERicarica(
       this.servizio.rendiPredefinito(r.id, r.versione),
       this.toast,
@@ -195,7 +195,7 @@ export class ModelliStampaComponent implements OnInit {
     )
   }
 
-  elimina(r: ModelloStampaVista): void {
+  elimina(r: ModelloStampaElenco): void {
     const nota = r.predefinito ? ' Era il predefinito del suo ambito.' : ''
     chiediConferma(this.conferma, `Eliminare il modello "${r.nome}"?${nota}`, () =>
       eseguiERicarica(

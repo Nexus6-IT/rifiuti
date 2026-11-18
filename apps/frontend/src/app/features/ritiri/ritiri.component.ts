@@ -28,7 +28,7 @@ import { EsitoGenerazioneDialogComponent } from './esito-generazione-dialog.comp
 import { NonEseguitoDialogComponent } from './non-eseguito-dialog.component'
 import { RitiroDialogComponent } from './ritiro-dialog.component'
 import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
-import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
+import { ModelloStampaElenco } from '../impostazioni/modelli-stampa/modello-stampa.model'
 import { STILI_RITIRI } from './ritiri-stili'
 import { scaricaPdf } from './scarica-pdf'
 import {
@@ -563,7 +563,7 @@ export class RitiriComponent implements OnInit {
   readonly generazione = signal(false)
   readonly stampaInCorso = signal(false)
   /** Modelli per la stampa dei FIR (ambito FIR o GENERALE); la scelta vale per «Stampa FIR». */
-  readonly modelliFir = signal<ModelloStampaVista[]>([])
+  readonly modelliFir = signal<ModelloStampaElenco[]>([])
   readonly modelloFirId = signal('')
   readonly emissioneAperta = signal(false)
   readonly distintaAperta = signal(false)

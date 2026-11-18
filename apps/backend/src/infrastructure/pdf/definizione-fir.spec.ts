@@ -157,6 +157,51 @@ describe('PDFService - PDF reale', () => {
     expect(pagine(pdf)).toBe(2)
   })
 
+  describe('FIR che occupa piu pagine', () => {
+    const lunga = Array.from({ length: 120 }, (_, i) => `Riga di descrizione ${i}`).join('\n')
+    const firLungo = (numero: string, status = 'EMESSO') => ({
+      ...fir(numero),
+      status,
+      wasteDescription: lunga,
+    })
+
+    it('un FIR lungo esce su piu pagine, ogni copia ricomincia su una pagina nuova', async () => {
+      const service = new PDFService(logger)
+      const una = pagine(
+        await service.generateFIRPDF(firLungo('FIR-2026-000010'), undefined, { copie: 1 })
+      )
+      expect(una).toBeGreaterThanOrEqual(2)
+      // 3 copie: ogni copia comincia a pagina nuova, quindi le pagine si moltiplicano esattamente
+      const tre = pagine(
+        await service.generateFIRPDF(firLungo('FIR-2026-000010'), undefined, { copie: 3 })
+      )
+      expect(tre).toBe(una * 3)
+    })
+
+    it('serie di FIR lunghi: le pagine sono la somma di quelle di ciascun FIR', async () => {
+      const service = new PDFService(logger)
+      const una = pagine(await service.generateFIRPDF(firLungo('FIR-2026-000011')))
+      const serie = pagine(
+        await service.generateFIRSeriePDF([
+          { fir: firLungo('FIR-2026-000011') },
+          { fir: firLungo('FIR-2026-000012') },
+        ])
+      )
+      expect(serie).toBe(una * 2)
+    })
+
+    it('serie di sole bozze lunghe: un solo PDF, filigrana di documento, nessuna passata di misura', async () => {
+      const service = new PDFService(logger)
+      const misura = jest.spyOn(service as any, 'misuraConFallbackLogo')
+      const pdf = await service.generateFIRSeriePDF([
+        { fir: firLungo('B1', 'DRAFT') },
+        { fir: firLungo('B2', 'DRAFT') },
+      ])
+      expect(pagine(pdf)).toBeGreaterThanOrEqual(4)
+      expect(misura).not.toHaveBeenCalled()
+    })
+  })
+
   describe('filigrana BOZZA', () => {
     const bozza = (numero: string) => ({ ...fir(numero), status: 'DRAFT' })
 

@@ -331,6 +331,41 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
     }
   })
 
+  it("listSenzaLogo: nessun logo nelle voci, haLogo dice se c'e'; listPredefiniti: solo i predefiniti", async () => {
+    const a = await azienda()
+    const con = await nel(a.tenantId, () =>
+      service.crea(a.tenantId, a.utenteId, dati('Con logo', { ambito: 'FIR', logoBase64: PNG }))
+    )
+    const senza = await nel(a.tenantId, () =>
+      service.crea(a.tenantId, a.utenteId, dati('Senza logo', { ambito: 'GENERALE' }))
+    )
+    await nel(a.tenantId, () =>
+      service.rendiPredefinito(a.tenantId, a.utenteId, con.id, con.versione)
+    )
+    // mai la colonna del logo: nessuna findMany senza `select` e nessuna con `logoBase64` selezionato
+    const letture = jest.spyOn(app.companyTemplate, 'findMany')
+    let elenco: Awaited<ReturnType<typeof service.listSenzaLogo>>
+    try {
+      elenco = await nel(a.tenantId, () => new ModelliStampaService(app).listSenzaLogo(a.tenantId))
+      expect(letture.mock.calls.length).toBeGreaterThan(0)
+      for (const [args] of letture.mock.calls) {
+        expect(args?.select).toBeDefined()
+        expect((args?.select as Record<string, unknown>).logoBase64).toBeUndefined()
+      }
+    } finally {
+      letture.mockRestore()
+    }
+    expect(elenco).toHaveLength(2)
+    for (const voce of elenco) expect(voce).not.toHaveProperty('logoBase64')
+    expect(Object.fromEntries(elenco.map(v => [v.id, v.haLogo]))).toEqual({
+      [con.id]: true,
+      [senza.id]: false,
+    })
+    // solo il predefinito, e con il logo (serve a stampare)
+    const predefiniti = await nel(a.tenantId, () => service.listPredefiniti(a.tenantId))
+    expect(predefiniti.map(m => [m.id, m.logoBase64])).toEqual([[con.id, PNG]])
+  })
+
   it('trigger: un UPDATE del logo via SQL senza toccare la versione la fa salire di uno', async () => {
     const a = await azienda()
     const m = await nel(a.tenantId, () =>

@@ -8,6 +8,7 @@
  */
 import { Injectable } from '@nestjs/common'
 import { generaQrVidimazione } from '../../infrastructure/rentri/qr/qr-vidimazione'
+import { FIR_SERIE_MAX } from '../../infrastructure/pdf/definizione-fir'
 import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
@@ -17,7 +18,6 @@ import {
 import { ModelliStampaService } from '../modelli-stampa/modelli-stampa.service'
 import { sceglieModelloFir } from '../modelli-stampa/scelta-modello-fir'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { FIR_SERIE_MAX } from '../../infrastructure/pdf/definizione-fir'
 import {
   AutomezzoNonTrovatoError,
   ModelloAmbitoNonValidoError,
@@ -175,7 +175,7 @@ export class StampaRitiriService {
       }
       return comeModelloDistinta(m)
     }
-    const predefiniti = (await this.modelli.list(tenantId)).filter(m => m.predefinito)
+    const predefiniti = await this.modelli.listPredefiniti(tenantId)
     const scelto = sceglieModelloDistinta(predefiniti.map(comeModelloDistinta))
     return scelto
   }
@@ -184,7 +184,7 @@ export class StampaRitiriService {
     const esito = sceglieModelloFir(
       modelloId !== undefined
         ? { tipo: 'ESPLICITO', modello: await this.modelli.getById(tenantId, modelloId) }
-        : { tipo: 'PREDEFINITO', elenco: await this.modelli.list(tenantId) }
+        : { tipo: 'PREDEFINITO', elenco: await this.modelli.listPredefiniti(tenantId) }
     )
     if (esito.esito === 'AMBITO_NON_VALIDO') {
       throw new ModelloAmbitoNonValidoError(

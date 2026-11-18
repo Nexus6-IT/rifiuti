@@ -42,7 +42,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
   let app: INestApplication
   let pdf: { generateFIRPDF: jest.Mock; generateFIRSeriePDF: jest.Mock }
   let prisma: { fIR: { findFirst: jest.Mock; findMany: jest.Mock } }
-  let modelli: { list: jest.Mock; getById: jest.Mock }
+  let modelli: { listPredefiniti: jest.Mock; getById: jest.Mock }
 
   beforeEach(async () => {
     pdf = {
@@ -57,7 +57,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
     }
-    modelli = { list: jest.fn().mockResolvedValue([]), getById: jest.fn() }
+    modelli = { listPredefiniti: jest.fn().mockResolvedValue([]), getById: jest.fn() }
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -100,7 +100,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
 
   describe('GET /pdf/fir/:id', () => {
     it('senza modelloId usa il predefinito FIR e lo passa al servizio (campi mappati)', async () => {
-      modelli.list.mockResolvedValue([
+      modelli.listPredefiniti.mockResolvedValue([
         modello({ id: 'g', ambito: 'GENERALE', nome: 'G' }),
         modello(),
       ])
@@ -115,11 +115,11 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
         primaryColor: '#112233',
         secondaryColor: '#445566',
       })
-      expect(modelli.list).toHaveBeenCalledWith(TENANT)
+      expect(modelli.listPredefiniti).toHaveBeenCalledWith(TENANT)
     })
 
     it('senza predefinito FIR ripiega sul predefinito GENERALE', async () => {
-      modelli.list.mockResolvedValue([
+      modelli.listPredefiniti.mockResolvedValue([
         modello({ ambito: 'FIR', predefinito: false }),
         modello({ id: 'g', ambito: 'GENERALE', copie: 3 }),
       ])
@@ -137,7 +137,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
       const r = await http().get(`/pdf/fir/${F1}?modelloId=${M}`)
       expect(r.status).toBe(200)
       expect(modelli.getById).toHaveBeenCalledWith(TENANT, M)
-      expect(modelli.list).not.toHaveBeenCalled()
+      expect(modelli.listPredefiniti).not.toHaveBeenCalled()
     })
 
     it('modelloId non UUID: 400 e niente PDF', async () => {
@@ -154,7 +154,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
     })
 
     it('modello salvato ma non stampabile (logo corrotto): 400, non 500', async () => {
-      modelli.list.mockResolvedValue([modello()])
+      modelli.listPredefiniti.mockResolvedValue([modello()])
       pdf.generateFIRPDF.mockRejectedValue(new ModelloStampaNonValidoError('logo'))
       expect((await http().get(`/pdf/fir/${F1}`)).status).toBe(400)
     })
@@ -199,7 +199,7 @@ describe('PdfController — modelli di stampa e serie di FIR (HTTP)', () => {
 
     it('modello: predefinito se assente, esplicito se presente', async () => {
       prisma.fIR.findMany.mockResolvedValue([firTrovato(F1)])
-      modelli.list.mockResolvedValue([modello()])
+      modelli.listPredefiniti.mockResolvedValue([modello()])
       await http()
         .post('/pdf/fir/serie')
         .send({ firIds: [F1] })

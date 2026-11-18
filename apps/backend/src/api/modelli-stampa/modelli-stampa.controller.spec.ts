@@ -36,8 +36,8 @@ describe('ModelliStampaController', () => {
     const proto = ModelliStampaController.prototype as any
     const ruoli = (nome: string) => reflector.get<string[]>(ROLES_KEY, proto[nome])
 
-    it('list: lettura a tutti i ruoli', () => {
-      expect(ruoli('list')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
+    it.each(['list', 'dettaglio'])('%s: lettura a tutti i ruoli', nome => {
+      expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
     it.each(['crea', 'modifica', 'rendiPredefinito', 'elimina'])(
@@ -51,7 +51,14 @@ describe('ModelliStampaController', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['crea', 'elimina', 'list', 'modifica', 'rendiPredefinito'])
+      expect(metodi.sort()).toEqual([
+        'crea',
+        'dettaglio',
+        'elimina',
+        'list',
+        'modifica',
+        'rendiPredefinito',
+      ])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -64,7 +71,8 @@ describe('ModelliStampaController', () => {
     beforeEach(async () => {
       ruolo = 'ADMIN'
       servizio = {
-        list: jest.fn().mockResolvedValue([]),
+        listSenzaLogo: jest.fn().mockResolvedValue([]),
+        getById: jest.fn().mockResolvedValue({ id: ID, logoBase64: 'AAAA' }),
         crea: jest.fn().mockResolvedValue({ id: ID }),
         modifica: jest.fn().mockResolvedValue({ id: ID }),
         rendiPredefinito: jest.fn().mockResolvedValue({ id: ID }),
@@ -117,7 +125,16 @@ describe('ModelliStampaController', () => {
 
     it('GET: azienda selezionata (non quella del token)', async () => {
       expect((await http().get(`/${R}`)).status).toBe(200)
-      expect(servizio.list).toHaveBeenCalledWith(TENANT)
+      // l'elenco non porta il logo: lo legge solo il dettaglio
+      expect(servizio.listSenzaLogo).toHaveBeenCalledWith(TENANT)
+    })
+
+    it('GET :id: dettaglio con logo, azienda selezionata, UUID obbligatorio', async () => {
+      const r = await http().get(`/${R}/${ID}`)
+      expect(r.status).toBe(200)
+      expect(r.body.logoBase64).toBe('AAAA')
+      expect(servizio.getById).toHaveBeenCalledWith(TENANT, ID)
+      expect((await http().get(`/${R}/non-un-uuid`)).status).toBe(400)
     })
 
     it('POST: solo il nome basta, gli altri campi hanno i predefiniti del servizio', async () => {
@@ -199,7 +216,7 @@ describe('ModelliStampaController', () => {
 
     it('senza azienda determinabile: 403 e nessun servizio', async () => {
       expect((await http().get(`/${R}`).set('x-senza-azienda', '1')).status).toBe(403)
-      expect(servizio.list).not.toHaveBeenCalled()
+      expect(servizio.listSenzaLogo).not.toHaveBeenCalled()
     })
 
     it('id non UUID: 400', async () => {
