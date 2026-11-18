@@ -1,7 +1,10 @@
 import { esitoFiscale, statoDaNotifiche, type NotificaPerStato } from './stato'
 import { STATI_TRASMISSIONE_SDI, TIPI_NOTIFICA_SDI } from './codici'
 
-const n = (tipo: NotificaPerStato['tipo'], esitoCommittente?: 'EC01' | 'EC02'): NotificaPerStato => ({
+const n = (
+  tipo: NotificaPerStato['tipo'],
+  esitoCommittente?: 'EC01' | 'EC02'
+): NotificaPerStato => ({
   tipo,
   esitoCommittente: esitoCommittente ?? null,
 })
@@ -9,7 +12,9 @@ const n = (tipo: NotificaPerStato['tipo'], esitoCommittente?: 'EC01' | 'EC02'): 
 /** Tutte le permutazioni di un insieme piccolo (prova di proprieta' senza dipendenze). */
 function permutazioni<T>(v: T[]): T[][] {
   if (v.length <= 1) return [v]
-  return v.flatMap((x, i) => permutazioni([...v.slice(0, i), ...v.slice(i + 1)]).map(p => [x, ...p]))
+  return v.flatMap((x, i) =>
+    permutazioni([...v.slice(0, i), ...v.slice(i + 1)]).map(p => [x, ...p])
+  )
 }
 
 describe('statoDaNotifiche', () => {

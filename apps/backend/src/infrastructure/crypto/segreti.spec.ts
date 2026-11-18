@@ -33,6 +33,8 @@ describe('segreti (AES-256-GCM, formato iv:tag:ct)', () => {
   })
 
   it('payload malformato rifiutato', () => {
-    expect(() => decifraSegreto('solo-una-parte', chiave, 'K')).toThrow('payload cifrato non valido')
+    expect(() => decifraSegreto('solo-una-parte', chiave, 'K')).toThrow(
+      'payload cifrato non valido'
+    )
   })
 })

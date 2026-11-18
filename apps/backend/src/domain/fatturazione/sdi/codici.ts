@@ -32,7 +32,16 @@ export const STATI_DOPO_INVIO = [
 ] as const satisfies readonly StatoTrasmissioneSdi[]
 
 /** RC ricevuta di consegna, NS notifica di scarto, MC mancata consegna, NE esito committente, DT decorrenza termini, AT attestazione di impossibilita' di recapito, SE scarto dell'esito, ERRORE_PROVIDER errore segnalato dal provider. */
-export const TIPI_NOTIFICA_SDI = ['RC', 'NS', 'MC', 'NE', 'DT', 'AT', 'SE', 'ERRORE_PROVIDER'] as const
+export const TIPI_NOTIFICA_SDI = [
+  'RC',
+  'NS',
+  'MC',
+  'NE',
+  'DT',
+  'AT',
+  'SE',
+  'ERRORE_PROVIDER',
+] as const
 export type TipoNotificaSdi = (typeof TIPI_NOTIFICA_SDI)[number]
 
 export const ESITI_COMMITTENTE = ['EC01', 'EC02'] as const

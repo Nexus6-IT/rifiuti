@@ -31,7 +31,8 @@ export function decifraSegreto(payload: string, secret: string, nomeVariabile: s
   const [iv, tag, dati] = parti
   const decifrario = createDecipheriv(ALGORITMO, chiave, Buffer.from(iv, 'base64'))
   decifrario.setAuthTag(Buffer.from(tag, 'base64'))
-  return Buffer.concat([decifrario.update(Buffer.from(dati, 'base64')), decifrario.final()]).toString(
-    'utf8'
-  )
+  return Buffer.concat([
+    decifrario.update(Buffer.from(dati, 'base64')),
+    decifrario.final(),
+  ]).toString('utf8')
 }
