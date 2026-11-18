@@ -8,7 +8,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
-import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaContrattoConElenco } from '../../test-support/listino-di-test'
 import {
   creaDocumentoMinimoPerLegame,

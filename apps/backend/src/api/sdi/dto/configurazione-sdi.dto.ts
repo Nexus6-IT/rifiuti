@@ -3,16 +3,7 @@
  * cataloghi (provider, ambiente) e' del servizio, che risponde 400 con `details.errori`.
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import {
-  IsBoolean,
-  IsInt,
-  IsObject,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-  ValidateIf,
-} from 'class-validator'
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator'
 
 export class ImpostaConfigurazioneSdiDto {
   @ApiProperty({
