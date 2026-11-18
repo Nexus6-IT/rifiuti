@@ -118,6 +118,10 @@ export interface DettagliTracciato {
 export const chiaveControparte = (nome: string): string =>
   nome.trim().replace(/\s+/g, ' ').toLowerCase()
 
+/** Parola piu' lunga di un nome (per una ricerca `contains` che non dipende dagli spazi). */
+const parolaPiuLunga = (nome: string): string =>
+  nome.split(/\s+/).reduce((a, b) => (b.length > a.length ? b : a), '')
+
 export interface RichiestaDettagli {
   tenantId: string
   movimenti: ReadonlyArray<{
@@ -230,17 +234,26 @@ export async function leggiDettagliTracciato(
     ...trasportatoriRighe.map(t => t.sedeId),
     ...destinatariRighe.map(d => d.sedeId),
   ])
-  const nomiControparti = univoci((r.controparti ?? []).map(n => n.trim().replace(/\s+/g, ' ')))
+  const nomiControparti = univoci(
+    (r.controparti ?? []).map(n => n.trim().replace(/\s+/g, ' ')).filter(n => n !== '')
+  )
+  // N2: la ragione sociale in anagrafica puo' avere spazi doppi o ai bordi, quindi un'uguaglianza
+  // sul nome compattato non la trova. La ricerca per `contains` sulla parola piu' lunga di ogni nome
+  // (insensibile alle maiuscole e agli spazi) restringe i candidati; il confronto esatto, compattato
+  // da entrambi i lati, e' fatto in memoria.
+  const chiaviControparti = new Set(nomiControparti.map(chiaveControparte))
   const ditteControparti = nomiControparti.length
-    ? await db.ditta.findMany({
-        where: {
-          tenantId,
-          OR: nomiControparti.map(n => ({
-            ragioneSociale: { equals: n, mode: 'insensitive' as const },
-          })),
-        },
-        select: { id: true, ragioneSociale: true },
-      })
+    ? (
+        await db.ditta.findMany({
+          where: {
+            tenantId,
+            OR: nomiControparti.map(n => ({
+              ragioneSociale: { contains: parolaPiuLunga(n), mode: 'insensitive' as const },
+            })),
+          },
+          select: { id: true, ragioneSociale: true },
+        })
+      ).filter(d => chiaviControparti.has(chiaveControparte(d.ragioneSociale)))
     : []
   const [sediIds, sediControparti] = await Promise.all([
     sedeIds.length
