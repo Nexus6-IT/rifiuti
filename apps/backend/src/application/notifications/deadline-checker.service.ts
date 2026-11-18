@@ -883,7 +883,7 @@ export class DeadlineCheckerService {
    * Avviso giornaliero (07:00) del termine di trasmissione mensile del registro a RENTRI
    * (eREGI E0): per ogni registro collegato a RENTRI con annotazioni non ancora confermate, da 5
    * giorni prima del termine (fine del mese successivo) e finche' e' superato. Una notifica in
-   * applicazione ed una email per utente ADMIN/OPERATOR, al massimo una per registro e per giorno
+   * applicazione ed una email per utente ADMIN/OPERATOR, al massimo una per utente, registro e giorno
    * di Roma (la dedup settimanale del resto dello scadenzario qui non vale: il promemoria e'
    * quotidiano per scelta). Il termine e' indicativo, la fonte normativa e' secondaria: vedi
    * `scadenza-trasmissione-rentri.ts`.
@@ -960,21 +960,6 @@ export class DeadlineCheckerService {
         continue
       }
 
-      // Una per registro e per giorno: il filtro include SEMPRE il tenant (isolamento).
-      const gia = await this.nelContestoAzienda(tenantId, () =>
-        this.prisma.notification.findFirst({
-          where: {
-            tenantId,
-            type: 'TRASMISSIONE_REGISTRO_IN_SCADENZA',
-            relatedEntityId: registro.id,
-            relatedEntityType: 'RegistroRifiuti',
-            createdAt: { gte: inizioOggi },
-          },
-          select: { id: true },
-        })
-      )
-      if (gia) continue
-
       utenti ??= await this.nelContestoAzienda(tenantId, () =>
         this.prisma.user.findMany({
           where: { tenantId, role: { in: ['ADMIN', 'OPERATOR'] } },
@@ -994,6 +979,23 @@ export class DeadlineCheckerService {
         : `Il termine indicativo per trasmettere a RENTRI le annotazioni di ${meseAnnotazioni} del registro «${registro.descrizione}» è il ${termine} (${scadenza.giorniRimanenti === 0 ? 'scade oggi' : scadenza.giorniRimanenti === 1 ? 'manca 1 giorno' : `mancano ${scadenza.giorniRimanenti} giorni`}).`
 
       for (const utente of utenti) {
+        // Una per utente, registro e giorno: il filtro include SEMPRE il tenant (isolamento) e,
+        // per utente, un giro interrotto a meta' non lascia senza avviso chi non l'ha ricevuto.
+        const gia = await this.nelContestoAzienda(tenantId, () =>
+          this.prisma.notification.findFirst({
+            where: {
+              tenantId,
+              userId: utente.id,
+              type: 'TRASMISSIONE_REGISTRO_IN_SCADENZA',
+              relatedEntityId: registro.id,
+              relatedEntityType: 'RegistroRifiuti',
+              createdAt: { gte: inizioOggi },
+            },
+            select: { id: true },
+          })
+        )
+        if (gia) continue
+
         // In applicazione PRIMA e a parte dall'email: un guasto SMTP non la sopprime.
         try {
           await this.nelContestoAzienda(tenantId, () =>

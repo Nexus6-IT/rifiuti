@@ -12,7 +12,8 @@
  *
  * Il termine e' una lettura: non chiama RENTRI e non scrive nulla.
  */
-import type { Prisma, StatoTrasmissioneRentri } from '@prisma/client'
+import { Prisma, type StatoTrasmissioneRentri } from '@prisma/client'
+import { NESSUNA_CATENA_DA_RICONCILIARE } from './catena-importata'
 import { giornoItaliano } from '../../../core/time/anno-italiano'
 
 export interface ScadenzaTrasmissione {
@@ -69,7 +70,6 @@ export function scadenzaTrasmissione(
     if (Number.isNaN(d.getTime())) throw new Error('Data di annotazione non valida')
     if (d.getTime() < piuVecchia.getTime()) piuVecchia = d
   }
-  if (Number.isNaN(piuVecchia.getTime())) throw new Error('Data di annotazione non valida')
   const mese = giornoItaliano(piuVecchia).slice(0, 7)
   const entro = fineMeseSuccessivo(mese)
   const giorniRimanenti = giorniFra(giornoItaliano(oggi), entro)
@@ -78,27 +78,40 @@ export function scadenzaTrasmissione(
 
 /**
  * Per ogni registro dell'azienda, la data di annotazione piu' vecchia fra le annotazioni non
- * confermate (riga assente o in uno stato di `STATI_DA_TRASMETTERE_PER_TERMINE`). Una sola query,
- * nessun N+1. Va chiamata dentro il contesto dell'azienda (RLS).
+ * confermate. Una sola query, nessun N+1. Va chiamata dentro il contesto dell'azienda (RLS).
+ *
+ * Conta: (a) le righe in uno stato di `STATI_DA_TRASMETTERE_PER_TERMINE`; (b) le annotazioni SENZA
+ * riga che l'adozione automatica adottera' (stesso criterio di `adottaAutomatiche`, D3): registro
+ * con invio automatico, annotazione nata dalla data in poi, una correzione solo se anche il suo
+ * predecessore e' nato dopo la data, mai un movimento importato ne' la correzione di un importato
+ * `DA_RICONCILIARE`. Le altre senza riga non ricevono mai una riga: contarle darebbe un termine
+ * superato per sempre.
  */
 export async function annotazioniPiuVecchieDaTrasmettere(
   tx: Prisma.TransactionClient,
   tenantId: string
 ): Promise<Map<string, Date>> {
-  const gruppi = await tx.wasteMovement.groupBy({
-    by: ['registroId'],
-    where: {
-      tenantId,
-      OR: [
-        { trasmissioneRentri: null },
-        { trasmissioneRentri: { stato: { in: [...STATI_DA_TRASMETTERE_PER_TERMINE] } } },
-      ],
-    },
-    _min: { registrationDate: true },
-  })
-  const mappa = new Map<string, Date>()
-  for (const g of gruppi) {
-    if (g._min.registrationDate) mappa.set(g.registroId, g._min.registrationDate)
-  }
-  return mappa
+  const righe = await tx.$queryRaw<Array<{ registro_id: string; piu_vecchia: Date }>>`
+    SELECT m."registro_id", MIN(m."registration_date") AS "piu_vecchia"
+    FROM "waste_movements" m
+    JOIN "registri_rifiuti" r ON r."id" = m."registro_id" AND r."tenant_id" = m."tenant_id"
+    LEFT JOIN "waste_movements" p
+      ON p."id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
+    LEFT JOIN "movimenti_trasmissione_rentri" t
+      ON t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id"
+    WHERE m."tenant_id" = ${tenantId}::uuid
+      AND (
+        t."id" IS NOT NULL AND t."stato"::text IN (${Prisma.join([...STATI_DA_TRASMETTERE_PER_TERMINE])})
+        OR (
+          t."id" IS NULL
+          AND r."invio_rentri_automatico_dal" IS NOT NULL
+          AND m."import_source" IS NULL
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
+          AND m."created_at" >= r."invio_rentri_automatico_dal"
+          AND (m."movimento_rettificato_id" IS NULL
+               OR p."created_at" >= r."invio_rentri_automatico_dal")
+        )
+      )
+    GROUP BY m."registro_id"`
+  return new Map(righe.map(g => [g.registro_id, g.piu_vecchia]))
 }

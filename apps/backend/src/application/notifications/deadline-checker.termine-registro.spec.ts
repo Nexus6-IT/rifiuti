@@ -142,9 +142,20 @@ describe('checkTermineTrasmissioneRegistro', () => {
       tenantId: 't1',
       type: 'TRASMISSIONE_REGISTRO_IN_SCADENZA',
       relatedEntityId: 'r1',
+      userId: 'u1',
     })
     // mezzanotte di Roma del 24/02/2026 = 23:00 UTC del 23/02
     expect(where.createdAt.gte).toEqual(new Date('2026-02-23T23:00:00Z'))
+  })
+
+  it('la dedup è per utente: chi ha già l’avviso di oggi non lo riceve, gli altri sì', async () => {
+    prisma.notification.findFirst.mockImplementation(async (a: { where: { userId: string } }) =>
+      a.where.userId === 'u1' ? { id: 'gia' } : null
+    )
+    await service.checkTermineTrasmissioneRegistro()
+    expect(prisma.notification.create).toHaveBeenCalledTimes(1)
+    expect(prisma.notification.create.mock.calls[0][0].data.userId).toBe('u2')
+    expect(email.sendEmail).toHaveBeenCalledTimes(1)
   })
 
   it('nessuna annotazione da trasmettere: nessun avviso', async () => {

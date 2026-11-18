@@ -48,7 +48,10 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
     unitaLocaleId: string
   }
 
-  async function azienda(identificativo: string | null = 'RABCDE12345'): Promise<Az> {
+  async function azienda(
+    identificativo: string | null = 'RABCDE12345',
+    invioAutomaticoDal: Date | null = new Date('2020-01-01T00:00:00Z')
+  ): Promise<Az> {
     const t = await owner.tenant.create({
       data: { partitaIva: partitaIvaUnica(), ragioneSociale: 'Termini RENTRI SRL', country: 'IT' },
     })
@@ -67,12 +70,18 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
         unitaLocaleId: sede.id,
         descrizione: 'Registro termini',
         identificativoRentri: identificativo,
+        invioRentriAutomaticoDal: invioAutomaticoDal,
       },
     })
     return { tenantId: t.id, registroId: registro.id, unitaLocaleId: sede.id }
   }
 
-  async function movimento(az: Az, data: string, stato?: StatoTrasmissioneRentri) {
+  async function movimento(
+    az: Az,
+    data: string,
+    stato?: StatoTrasmissioneRentri,
+    extra: Record<string, unknown> = {}
+  ) {
     const m = await owner.wasteMovement.create({
       data: {
         tenantId: az.tenantId,
@@ -87,6 +96,7 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
         registrationDate: new Date(data),
         causale: 'PRODUZIONE_INTERNA',
         quantity: 100,
+        ...extra,
       } as never,
     })
     if (stato) {
@@ -176,6 +186,51 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
     expect(await termine(az)).toBeNull()
   })
 
+  it('I1: le annotazioni senza riga nate prima di invio_rentri_automatico_dal non contano (D3, nessun invio retroattivo)', async () => {
+    const az = await azienda('RABCDE12345', new Date(Date.now() + 3600_000))
+    await movimento(az, '2026-01-10T10:00:00Z')
+    expect(await termine(az)).toBeNull()
+  })
+
+  it('I1: registro senza invio automatico: le annotazioni senza riga non contano, quelle in coda sì', async () => {
+    const az = await azienda('RABCDE12345', null)
+    await movimento(az, '2026-01-10T10:00:00Z')
+    expect(await termine(az)).toBeNull()
+    await movimento(az, '2026-02-10T10:00:00Z', 'DA_TRASMETTERE')
+    expect((await termine(az))?.mese).toBe('2026-02')
+  })
+
+  it('I1: una riga accodata a mano prima della data conta comunque', async () => {
+    const az = await azienda('RABCDE12345', new Date(Date.now() + 3600_000))
+    await movimento(az, '2026-01-10T10:00:00Z', 'DA_TRASMETTERE')
+    expect((await termine(az))?.mese).toBe('2026-01')
+  })
+
+  it('I2: la correzione di un importato da riconciliare (senza riga) non conta', async () => {
+    const az = await azienda()
+    const lottoId = await lottoDiProva(owner, az.tenantId)
+    const imp = await creaMovimentoImportato(owner, { ...az, lottoId })
+    await movimento(az, '2026-01-10T10:00:00Z', undefined, {
+      tipoAnnotazione: 'RETTIFICA',
+      movimentoRettificatoId: imp.movimentoId,
+      movimentoOriginaleId: imp.movimentoId,
+      motivoAnnotazione: 'Rettifica di prova',
+    })
+    expect(await termine(az)).toBeNull()
+  })
+
+  it('I2: la correzione di un movimento ordinario senza riga conta', async () => {
+    const az = await azienda()
+    const base = await movimento(az, '2026-01-05T10:00:00Z', 'TRASMESSA')
+    await movimento(az, '2026-01-10T10:00:00Z', undefined, {
+      tipoAnnotazione: 'RETTIFICA',
+      movimentoRettificatoId: base.id,
+      movimentoOriginaleId: base.id,
+      motivoAnnotazione: 'Rettifica di prova',
+    })
+    expect((await termine(az))?.mese).toBe('2026-01')
+  })
+
   it('registro senza identificativo RENTRI: nessun termine (non e il registro di RENTRI)', async () => {
     const az = await azienda(null)
     await movimento(az, '2026-01-10T10:00:00Z')
@@ -191,6 +246,7 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
         codice: 'ALTRO',
         descrizione: 'Altro registro',
         identificativoRentri: 'RZZZZZ99999',
+        invioRentriAutomaticoDal: new Date('2020-01-01T00:00:00Z'),
       },
     })
     await movimento(az, '2026-01-10T10:00:00Z')
