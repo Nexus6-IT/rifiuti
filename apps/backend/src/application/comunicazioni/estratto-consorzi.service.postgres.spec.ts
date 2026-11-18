@@ -119,10 +119,69 @@ describe('EstrattoConsorziService — capodanno di Roma, Postgres reale', () => 
       // solo la riga delle 23:30 Roma del 31/12/2025: quella delle 00:30 del 01/01/2026 e' fuori periodo
       expect(esito.righe).toBe(1)
       expect(lettureMovimenti).toHaveBeenCalledTimes(1)
-      expect(lettureMud).toHaveBeenCalledTimes(1)
+      // MUD del periodo + ripiego sui precedenti (2021-2024 senza MUD): due query, non una per anno
+      expect(lettureMud).toHaveBeenCalledTimes(2)
     } finally {
       lettureMovimenti.mockRestore()
       lettureMud.mockRestore()
     }
+  })
+
+  const classificaCobat = async (_t: string, ms: ReadonlyArray<unknown>) =>
+    ms.map(() => ({ marcature: [{ consorzio: 'COBAT', origine: 'REGOLA' }] }))
+
+  it('anno senza MUD: ripiega sui pesi del MUD precedente piu vicino e lo dichiara', async () => {
+    // 2027 non ha MUD: ripiega sul 2026 (2 kg/L), non sul 2025 (0,5 kg/L)
+    await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '13 02 05',
+      quantita: 100,
+      unita: 'L',
+      giorno: '2027-01-10',
+      istante: '2027-01-10T10:00:00Z',
+    })
+    const servizio = new EstrattoConsorziService(app, { classifica: classificaCobat } as never)
+    const esito = await TenantContext.run({ tenantId: az.tenantId }, () =>
+      servizio.estratto(az.tenantId, {
+        consorzio: 'COBAT',
+        da: '2027-01-01',
+        a: '2027-01-31',
+        unitaLocaleId: az.unitaLocaleId,
+      })
+    )
+    expect(esito.righe).toBe(1)
+    expect(esito.csv).toMatch(/;"200";"100";"L";/)
+    expect(esito.csv).toContain('Stimati con i pesi del MUD 2026')
+    expect(esito.kgStimati).toEqual([{ anno: 2027, annoMud: 2026, righe: 1 }])
+    expect(esito.avvisi).toHaveLength(1)
+  })
+
+  it('senza nessun MUD precedente i kg restano vuoti come prima, senza avviso', async () => {
+    const senzaMud = await creaAziendaMud(owner, 'CE')
+    tenantCreati.push(senzaMud.tenantId)
+    await creaMovimento(owner, senzaMud, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '13 02 05',
+      quantita: 100,
+      unita: 'L',
+      giorno: '2027-01-10',
+      istante: '2027-01-10T10:00:00Z',
+    })
+    const servizio = new EstrattoConsorziService(app, { classifica: classificaCobat } as never)
+    const esito = await TenantContext.run({ tenantId: senzaMud.tenantId }, () =>
+      servizio.estratto(senzaMud.tenantId, {
+        consorzio: 'COBAT',
+        da: '2027-01-01',
+        a: '2027-01-31',
+        unitaLocaleId: senzaMud.unitaLocaleId,
+      })
+    )
+    expect(esito.righe).toBe(1)
+    expect(esito.csv).toMatch(/;"";"100";"L";/)
+    expect(esito.csv).not.toContain('Stimati')
+    expect(esito.kgStimati).toEqual([])
+    expect(esito.avvisi).toEqual([])
   })
 })

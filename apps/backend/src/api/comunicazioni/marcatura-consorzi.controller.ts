@@ -158,6 +158,8 @@ export class MarcaturaConsorziController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', contentDisposition('attachment', f.nomeFile))
     res.setHeader('X-Righe', String(f.righe))
+    // Solo numeri: JSON ASCII sicuro in un header. Presente solo se ci sono kg stimati.
+    if (f.kgStimati.length > 0) res.setHeader('X-Kg-Stimati', JSON.stringify(f.kgStimati))
     res.send(f.csv)
   }
 

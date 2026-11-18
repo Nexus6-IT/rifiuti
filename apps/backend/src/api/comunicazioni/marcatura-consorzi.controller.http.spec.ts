@@ -48,9 +48,13 @@ describe('MarcaturaConsorziController - catena HTTP', () => {
       consorziDeiMovimenti: jest.fn().mockResolvedValue({}),
     }
     estratto = {
-      estratto: jest
-        .fn()
-        .mockResolvedValue({ nomeFile: 'estratto.csv', csv: '﻿"a"\r\n', righe: 0 }),
+      estratto: jest.fn().mockResolvedValue({
+        nomeFile: 'estratto.csv',
+        csv: '﻿"a"\r\n',
+        righe: 0,
+        kgStimati: [],
+        avvisi: [],
+      }),
     }
     const logger: any = {
       setContext: jest.fn(),
@@ -251,6 +255,7 @@ describe('MarcaturaConsorziController - catena HTTP', () => {
       .expect(200)
     expect(r.headers['content-type']).toMatch(/text\/csv/)
     expect(r.headers['content-disposition']).toContain('estratto.csv')
+    expect(r.headers['x-kg-stimati']).toBeUndefined()
     expect(estratto.estratto).toHaveBeenCalledWith(TENANT_TOKEN, {
       consorzio: 'CONOU',
       da: '2026-01-01',
@@ -264,5 +269,19 @@ describe('MarcaturaConsorziController - catena HTTP', () => {
       .get('/comunicazioni/consorzi/estratto?consorzio=CONOU&da=1/1/2026&a=2026-03-31')
       .expect(400)
     await http().get('/comunicazioni/consorzi/estratto?consorzio=CONOU&da=2026-01-01').expect(400)
+  })
+
+  it('estratto: con kg stimati espone X-Kg-Stimati (JSON con anno, anno MUD e righe)', async () => {
+    estratto.estratto.mockResolvedValueOnce({
+      nomeFile: 'estratto.csv',
+      csv: '﻿"a"\r\n',
+      righe: 3,
+      kgStimati: [{ anno: 2026, annoMud: 2025, righe: 3 }],
+      avvisi: ['x'],
+    })
+    const r = await http()
+      .get('/comunicazioni/consorzi/estratto?consorzio=CONOU&da=2026-01-01&a=2026-03-31')
+      .expect(200)
+    expect(JSON.parse(r.headers['x-kg-stimati'])).toEqual([{ anno: 2026, annoMud: 2025, righe: 3 }])
   })
 })

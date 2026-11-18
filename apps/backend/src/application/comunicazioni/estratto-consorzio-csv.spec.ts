@@ -28,9 +28,17 @@ describe('estrattoConsorzioCsv', () => {
     const linee = csv.split('\r\n')
     expect(linee).toHaveLength(3)
     expect(linee[1]).toBe(
-      '"CONOU";"15/06/2026";"12";"2026";"Carico";"13 02 05*";"Olio motore";"1250,5";"1250,5";"KG";"Officina Rossi";"Via Roma 1, Bergamo (BG)";"FIR-77";"Regola"'
+      '"CONOU";"15/06/2026";"12";"2026";"Carico";"13 02 05*";"Olio motore";"1250,5";"1250,5";"KG";"Officina Rossi";"Via Roma 1, Bergamo (BG)";"FIR-77";"Regola";""'
     )
     expect(linee[2]).toBe('')
+  })
+
+  it('una riga con kg stimati porta la nota con l’anno del MUD usato', () => {
+    const linee = estrattoConsorzioCsv('CONOU', [riga({ unita: 'L', kgStimatiDaMud: 2025 })]).split(
+      '\r\n'
+    )
+    expect(linee[0]).toMatch(/;"Note kg"$/)
+    expect(linee[1]).toMatch(/;"Stimati con i pesi del MUD 2025"$/)
   })
 
   it('senza righe resta la sola intestazione', () => {
@@ -69,7 +77,7 @@ describe('estrattoConsorzioCsv', () => {
     ]).split('\r\n')[1]
     expect(l).toContain('"\'=HYPERLINK(""http://x"")"')
     expect(l).toContain('"Olio ""usato"""')
-    expect(l.endsWith('"Manuale"')).toBe(true)
+    expect(l.endsWith('"Manuale";""')).toBe(true)
   })
 
   it('cerLeggibile', () => {
