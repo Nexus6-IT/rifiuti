@@ -73,3 +73,14 @@ export const eProviderSdi = (v: unknown): v is CodiceProviderSdi =>
 
 export const eAmbienteSdi = (v: unknown): v is AmbienteSdi =>
   typeof v === 'string' && (AMBIENTI_SDI as readonly string[]).includes(v)
+
+/** Passi di onboarding di un'azienda sull'SDI (spuntati a mano dall'amministratore, con data e utente). */
+export const PASSI_ONBOARDING_SDI = [
+  'CONTRATTO_PROVIDER',
+  'PARTITA_IVA_CONFIGURATA',
+  'CREDENZIALI_INSERITE',
+  'WEBHOOK_CONFIGURATO',
+  'PROVA_SANDBOX_SUPERATA',
+  'AUTORIZZAZIONE_DEL_CLIENTE',
+] as const
+export type PassoOnboardingSdi = (typeof PASSI_ONBOARDING_SDI)[number]

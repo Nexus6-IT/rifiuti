@@ -81,7 +81,12 @@ describe('SDI: schema (Postgres reale, ruolo wasteflow_app)', () => {
   function inserisciTrasmissione(
     tx: Tx,
     s: Scenario,
-    over: { stato?: string; idProvider?: string | null; errore?: string | null; documentoId?: string } = {}
+    over: {
+      stato?: string
+      idProvider?: string | null
+      errore?: string | null
+      documentoId?: string
+    } = {}
   ) {
     const stato = over.stato ?? 'DA_INVIARE'
     const dopoInvio = !['DA_INVIARE', 'IN_INVIO', 'INCERTA', 'ERRORE_INVIO'].includes(stato)
@@ -158,9 +163,7 @@ describe('SDI: schema (Postgres reale, ruolo wasteflow_app)', () => {
         QUATTRO_TABELLE
       )
       expect(policy.map(p => `${p.tablename}:${p.policyname}`)).toEqual(
-        [...QUATTRO_TABELLE]
-          .sort()
-          .flatMap(t => [`${t}:isolamento_azienda`, `${t}:sola_lettura`])
+        [...QUATTRO_TABELLE].sort().flatMap(t => [`${t}:isolamento_azienda`, `${t}:sola_lettura`])
       )
     })
 
@@ -333,7 +336,14 @@ describe('SDI: schema (Postgres reale, ruolo wasteflow_app)', () => {
       const s = await scenario()
       const id = await trasmissioneViva(s)
       for (const colonna of ['nome_file', 'xml_sha256', 'provider', 'ambiente']) {
-        const valore = colonna === 'xml_sha256' ? sha('altro') : colonna === 'ambiente' ? 'PRODUZIONE' : colonna === 'provider' ? 'openapi' : 'altro.xml'
+        const valore =
+          colonna === 'xml_sha256'
+            ? sha('altro')
+            : colonna === 'ambiente'
+              ? 'PRODUZIONE'
+              : colonna === 'provider'
+                ? 'openapi'
+                : 'altro.xml'
         await expect(
           comeApp(s.t, tx =>
             tx.$executeRawUnsafe(
@@ -385,7 +395,10 @@ describe('SDI: schema (Postgres reale, ruolo wasteflow_app)', () => {
       await expect(
         owner.$transaction(async tx => {
           await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = DEFAULT`)
-          await tx.$executeRawUnsafe(`DELETE FROM documenti_fattura WHERE id = $1::uuid`, s.documentoId)
+          await tx.$executeRawUnsafe(
+            `DELETE FROM documenti_fattura WHERE id = $1::uuid`,
+            s.documentoId
+          )
         })
       ).rejects.toThrow()
     })
@@ -493,15 +506,50 @@ describe('SDI: schema (Postgres reale, ruolo wasteflow_app)', () => {
       )
       expect(colonne.map(c => c.column_name)).toEqual(
         [
-          'id', 'tenant_id', 'elaborazione_id', 'stato', 'emesso_il', 'tipo_documento',
-          'registro_iva_id', 'anno', 'numero', 'numero_testo', 'data_documento', 'cliente_id',
-          'cliente_fatturazione_id', 'contratto_id', 'elenco_id', 'periodo_dal', 'periodo_al',
-          'formato_trasmissione', 'codice_destinatario', 'pec_destinatario', 'esigibilita_iva',
-          'totale_imponibile', 'totale_iva', 'totale_documento', 'netto_a_pagare', 'bollo_dovuto',
-          'importo_bollo', 'fotografia', 'documento_origine_id', 'errori', 'avvisi',
-          'escluso_da_definitiva', 'xml', 'xml_sha256', 'xml_generato_il', 'progressivo_file',
-          'definito_da', 'definito_il', 'annullato_da', 'annullato_il', 'motivo_annullo',
-          'versione', 'created_at', 'updated_at',
+          'id',
+          'tenant_id',
+          'elaborazione_id',
+          'stato',
+          'emesso_il',
+          'tipo_documento',
+          'registro_iva_id',
+          'anno',
+          'numero',
+          'numero_testo',
+          'data_documento',
+          'cliente_id',
+          'cliente_fatturazione_id',
+          'contratto_id',
+          'elenco_id',
+          'periodo_dal',
+          'periodo_al',
+          'formato_trasmissione',
+          'codice_destinatario',
+          'pec_destinatario',
+          'esigibilita_iva',
+          'totale_imponibile',
+          'totale_iva',
+          'totale_documento',
+          'netto_a_pagare',
+          'bollo_dovuto',
+          'importo_bollo',
+          'fotografia',
+          'documento_origine_id',
+          'errori',
+          'avvisi',
+          'escluso_da_definitiva',
+          'xml',
+          'xml_sha256',
+          'xml_generato_il',
+          'progressivo_file',
+          'definito_da',
+          'definito_il',
+          'annullato_da',
+          'annullato_il',
+          'motivo_annullo',
+          'versione',
+          'created_at',
+          'updated_at',
         ].sort()
       )
     })
