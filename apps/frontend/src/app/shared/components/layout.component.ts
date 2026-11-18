@@ -1309,6 +1309,7 @@ export class LayoutComponent implements OnInit {
       icon: 'pi pi-calendar',
       feature: 'contratti',
     },
+    { label: 'Invio SDI', route: '/sdi/configurazione', icon: 'pi pi-send', feature: 'sdi' },
     { label: 'ESG / CO₂', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
     {
       label: 'Anomalie',

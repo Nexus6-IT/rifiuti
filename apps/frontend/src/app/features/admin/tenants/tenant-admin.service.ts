@@ -22,6 +22,7 @@ export type FeatureFlag =
   | 'pese'
   | 'ritiri'
   | 'comunicazioni'
+  | 'sdi'
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string

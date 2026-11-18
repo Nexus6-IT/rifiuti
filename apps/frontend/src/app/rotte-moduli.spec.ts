@@ -38,6 +38,7 @@ const MAPPA_MODULI: Record<string, string | string[]> = {
   'clienti/addebiti': 'contratti',
   'clienti/fatturazione': 'contratti',
   'legami/da-collegare': 'contratti',
+  'sdi/configurazione': 'sdi',
   'contratti-clienti': 'contratti',
   'contratti-clienti/:id/listino': 'contratti',
   fatturazione: 'contratti',
