@@ -45,6 +45,18 @@ describe('parsaTabellaEstesa (I1: parser minimi delle tabelle nuove)', () => {
     expect(JSON.stringify(r.scarti)).not.toContain('BB222BB')
   })
 
+  it('duplicati come sul server: maiuscole/minuscole ininfluenti, il separatore non crea collisioni', async () => {
+    const r = await parsa(
+      'AUTISTI',
+      { PRECOD: 'a|b', COD: 'c' },
+      { PRECOD: 'a', COD: 'b|c' },
+      { PRECOD: 'X1', COD: 'ab' },
+      { PRECOD: 'x1', COD: 'AB' }
+    )
+    expect(r.record).toHaveLength(3)
+    expect(r.scarti.map(x => x.riga)).toEqual([4])
+  })
+
   it('chiave vuota: scarto CHIAVE_VUOTA con le colonne coinvolte', async () => {
     const r = await parsa('ADDEBCON', { COD: ' ' })
     expect(r.record).toEqual([])

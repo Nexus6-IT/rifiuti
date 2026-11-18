@@ -1,7 +1,18 @@
 import { spawnSync } from 'child_process'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
+import {
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 
 /**
  * Prova degli script per la consegna dei dati del cliente (`tools/import-winwaste/consegna/`).
@@ -70,7 +81,7 @@ describe('ripristina.sh', () => {
   /** `docker` finto: registra gli argomenti, risponde "pronto" a ogni sqlcmd. */
   function preparaPath(): string {
     const bin = join(tmp, 'bin')
-    require('fs').mkdirSync(bin, { recursive: true })
+    mkdirSync(bin, { recursive: true })
     const docker = join(bin, 'docker')
     writeFileSync(
       docker,
@@ -79,7 +90,7 @@ printf '%s\\n' "$*" >> "${log}"
 # con -i registra anche lo standard input (qui passano gli script SQL con la password del login)
 case " $* " in *" -i "*) cat >> "${log}";; esac
 for a in "$@"; do case "$a" in --env-file=*) cp "\${a#--env-file=}" "${tmp}/envfile.copia" 2>/dev/null;; esac; done
-if [ "$1" = "run" ]; then echo "contenitore-finto"; fi
+if [ "$1" = "inspect" ]; then echo "172.30.0.2"; fi
 if [ "$1" = "exec" ]; then
   case "$*" in
     *FILELISTONLY*) printf 'WW00012026|C:\\\\x\\\\WW00012026.mdf|D|x\\nWW00012026_log|C:\\\\x\\\\WW00012026.ldf|L|x\\n';;
@@ -141,24 +152,30 @@ exit 0
     expect(esegui([join(tmp, 'WW00012026_x.bak')]).status).toBe(64)
   })
 
-  it('container su 127.0.0.1, password in env-file 0600 mai in riga di comando, pulizia a fine uso', () => {
+  it('container su rete --internal senza porte pubblicate, telemetria spenta, tag fisso, password in env-file 0600', () => {
     const r = esegui([bak])
     expect(r.status).toBe(0)
     const chiamate = readFileSync(log, 'utf8')
+    expect(chiamate).toMatch(/^network create --internal wasteflow-mssql-consegna-\w+-rete$/m)
     const run = chiamate.split('\n').find(l => l.startsWith('run '))!
-    expect(run).toMatch(/-p 127\.0\.0\.1:\d+:1433/)
-    expect(run).not.toMatch(/-p \d+:1433/)
+    expect(run).toMatch(/--network wasteflow-mssql-consegna-\w+-rete/)
+    expect(run).not.toMatch(/ -p |--publish|-P /)
     expect(run).toMatch(/--env-file=/)
     expect(run).not.toMatch(/MSSQL_SA_PASSWORD=/)
-    expect(run).not.toMatch(/:4200:/)
+    expect(run).not.toMatch(/:latest/)
+    expect(run).toMatch(/mssql\/server:2022-CU\d+-ubuntu-\d+\.\d+$/)
     const env = readFileSync(join(tmp, 'envfile.copia'), 'utf8')
     expect(env).toMatch(/^MSSQL_SA_PASSWORD=.{20,}$/m)
-    // la password non compare in nessuna chiamata a docker ne nell'output dello script
+    expect(env).toMatch(/^MSSQL_TELEMETRY_ENABLED=FALSE$/m)
     const pwd = /MSSQL_SA_PASSWORD=(.+)/.exec(env)![1]
     expect(chiamate).not.toContain(pwd)
     expect(r.stdout + r.stderr).not.toContain(pwd)
-    // a fine uso: container rimosso, nessun file temporaneo dello script rimasto
-    expect(chiamate).toMatch(/rm -f /)
+    // la password di sa non va nemmeno negli argomenti di sqlcmd (-P): si usa SQLCMDPASSWORD
+    expect(chiamate).not.toMatch(/sqlcmd[^\n]* -P /)
+    expect(chiamate).toMatch(/SQLCMDPASSWORD=/)
+    // pulizia: container (con i volumi anonimi) e rete
+    expect(chiamate).toMatch(/rm -f -v /)
+    expect(chiamate).toMatch(/network rm /)
   })
 
   it('ripristina con RESTORE FILELISTONLY, WITH MOVE e CHECKSUM', () => {
@@ -177,11 +194,48 @@ exit 0
   })
 
   it('con SHA256SUMS accanto al file, un hash diverso blocca il ripristino prima di Docker', () => {
-    writeFileSync(join(tmp, 'SHA256SUMS'), `${'0'.repeat(64)}  ${require('path').basename(bak)}\n`)
+    writeFileSync(join(tmp, 'SHA256SUMS'), `${'0'.repeat(64)}  ${basename(bak)}\n`)
     const r = esegui([bak])
     expect(r.status).toBe(2)
     expect(r.stderr).toMatch(/impronta/i)
     expect(readFileSync(log, 'utf8')).toBe('')
+  })
+
+  it('un file .age richiede SHA256SUMS: senza, uscita 2 prima di Docker', () => {
+    const cifrato = `${bak}.age`
+    writeFileSync(cifrato, 'cifrato-finto')
+    const ident = join(tmp, 'chiave.txt')
+    writeFileSync(ident, 'x')
+    const r = esegui(['--identita', ident, cifrato])
+    expect(r.status).toBe(2)
+    expect(r.stderr).toMatch(/obbligatorio/)
+    expect(readFileSync(log, 'utf8')).toBe('')
+  })
+
+  it('un file .age si verifica sul .bak in chiaro: impronta giusta passa, sbagliata blocca', () => {
+    const cifrato = `${bak}.age`
+    writeFileSync(cifrato, 'cifrato-finto')
+    const ident = join(tmp, 'chiave.txt')
+    writeFileSync(ident, 'x')
+    const nome = basename(bak)
+    const hash = createHash('sha256').update(readFileSync(bak)).digest('hex')
+    // l'age finto copia il file cifrato (contenuto 'cifrato-finto'): per avere un .bak in chiaro
+    // uguale a quello dichiarato, il contenuto cifrato finto coincide con quello del .bak
+    writeFileSync(cifrato, readFileSync(bak))
+    writeFileSync(join(tmp, 'SHA256SUMS'), `${hash}  ${nome}\n`)
+    expect(esegui(['--identita', ident, cifrato]).status).toBe(0)
+    writeFileSync(join(tmp, 'SHA256SUMS'), `${'1'.repeat(64)}  ${nome}\n`)
+    writeFileSync(log, '')
+    const r = esegui(['--identita', ident, cifrato])
+    expect(r.status).toBe(2)
+    expect(readFileSync(log, 'utf8')).toBe('')
+  })
+
+  it('un nome di database in minuscolo (ww00002014) e accettato e ripristinato come WW00002014', () => {
+    const minuscolo = join(tmp, 'ww00002014_COPYONLY_202611180900.bak')
+    writeFileSync(minuscolo, 'x')
+    expect(esegui([minuscolo]).status).toBe(0)
+    expect(readFileSync(log, 'utf8')).toMatch(/RESTORE DATABASE \[WW00002014\]/)
   })
 
   it('a fine uso il container e rimosso anche se il ripristino fallisce', () => {
@@ -197,6 +251,8 @@ exit 0
     expect(esegui([cifrato]).status).toBe(64)
     const ident = join(tmp, 'chiave.txt')
     writeFileSync(ident, 'AGE-SECRET-KEY-FINTA')
+    const hash = createHash('sha256').update('cifrato-finto').digest('hex')
+    writeFileSync(join(tmp, 'SHA256SUMS'), `${hash}  ${basename(bak)}\n`)
     const r = esegui(['--identita', ident, cifrato])
     expect(r.status).toBe(0)
     expect(readFileSync(log, 'utf8')).toMatch(/cp .*COPYONLY_202611180900\.bak/)
@@ -208,7 +264,9 @@ exit 0
     const chiamata = readFileSync(log, 'utf8')
       .split('\n')
       .find(l => l.startsWith('npm '))!
-    expect(chiamata).toMatch(/--server 127\.0\.0\.1 --porta \d+ --database WW00012026 --utente lettore/)
+    expect(chiamata).toMatch(
+      /--server 172\.30\.0\.2 --porta 1433 --database WW00012026 --utente lettore/
+    )
     expect(chiamata).toMatch(/pwd-presente=si/)
     expect(chiamata).not.toMatch(/--password/)
   })
@@ -217,12 +275,14 @@ exit 0
     const r = esegui(['--tieni', bak])
     expect(r.status).toBe(0)
     expect(readFileSync(log, 'utf8')).not.toMatch(/rm -f /)
-    expect(r.stdout).toMatch(/docker rm -f/)
+    expect(readFileSync(log, 'utf8')).not.toMatch(/network rm /)
+    expect(r.stdout).toMatch(/docker rm -f -v/)
+    expect(r.stdout).toMatch(/docker network rm/)
   })
 
   it('i file di lavoro stanno in una cartella 0700 che sparisce a fine uso', () => {
     esegui([bak])
-    const residui = require('fs').readdirSync(tmp).filter((n: string) => n.startsWith('consegna-lavoro-'))
+    const residui = readdirSync(tmp).filter((n: string) => n.startsWith('consegna-lavoro-'))
     expect(residui).toEqual([])
     expect(existsSync(join(tmp, 'envfile.copia'))).toBe(true)
     expect(statSync(join(tmp, 'envfile.copia')).isFile()).toBe(true)

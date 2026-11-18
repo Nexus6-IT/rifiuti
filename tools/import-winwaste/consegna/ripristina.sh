@@ -4,10 +4,12 @@
 #   ripristina.sh [--identita CHIAVE_AGE] [--estrai-in DIR] [--tieni] FILE.bak[.age]
 #
 # Cosa fa:
-#   1. controlla il nome del file (WW<ditta><anno> o ww<ditta>MU<aa>, mai adminwwnet) e, se accanto
-#      c'e' SHA256SUMS, l'impronta del file ricevuto;
-#   2. se il file e' cifrato (.age) lo decifra in una cartella di lavoro 0700 (serve --identita);
-#   3. avvia un container SQL Server SOLO su 127.0.0.1 (porta libera, mai la 4200), con la
+#   1. controlla il nome del file (WW<ditta><anno> o ww<ditta>MU<aa>, mai adminwwnet);
+#   2. se il file e' cifrato (.age) lo decifra in una cartella di lavoro 0700 (serve --identita), poi
+#      verifica l'impronta SHA-256 del .bak IN CHIARO contro SHA256SUMS (obbligatoria per i file .age:
+#      se manca o non coincide, uscita 2);
+#   3. avvia un container SQL Server su una rete Docker `--internal` (nessuna uscita verso Internet,
+#      nessuna porta pubblicata: l'host lo raggiunge dall'IP del container), telemetria spenta, con la
 #      password di sa generata a caso e passata da env-file 0600 (mai in riga di comando);
 #   4. ripristina il backup (RESTORE FILELISTONLY + WITH MOVE + CHECKSUM);
 #   5. crea il login `lettore` con il solo ruolo db_datareader;
@@ -19,7 +21,8 @@
 set -Eeuo pipefail
 umask 077
 
-IMMAGINE="${WASTEFLOW_MSSQL_IMMAGINE:-mcr.microsoft.com/mssql/server:2022-latest}"
+# Tag fisso (mai `latest`); per un .bak di SQL Server piu' recente: WASTEFLOW_MSSQL_IMMAGINE=<immagine>.
+IMMAGINE="${WASTEFLOW_MSSQL_IMMAGINE:-mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04}"
 QUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SQLCMD='/opt/mssql-tools18/bin/sqlcmd -C -S localhost'
 
@@ -45,43 +48,30 @@ done
 BASE="$(basename "$FILE")"
 SENZA_AGE="${BASE%.age}"
 case "$SENZA_AGE" in *.bak) ;; *) echo "atteso un file .bak o .bak.age: $BASE" >&2; exit 64 ;; esac
-if [[ ! "$SENZA_AGE" =~ ^(WW[0-9]{8}|[Ww][Ww][0-9]{4}MU[0-9]{2})_[A-Za-z0-9._-]+\.bak$ ]]; then
+if [[ ! "$SENZA_AGE" =~ ^([Ww][Ww][0-9]{8}|[Ww][Ww][0-9]{4}MU[0-9]{2})_[A-Za-z0-9._-]+\.bak$ ]]; then
   echo "database non ammesso dal nome del file ($BASE): attesi WWddddaaaa_*.bak o wwddddMUaa_*.bak" >&2
   exit 64
 fi
 DB="${SENZA_AGE%%_*}"
-
-# --- impronta del file ricevuto (SHA256SUMS nella stessa cartella, formato sha256sum) ---
-SOMME="$(dirname "$FILE")/SHA256SUMS"
-if [ -f "$SOMME" ]; then
-  ATTESA="$(awk -v f="$BASE" '{ n=$2; sub(/^\*/, "", n); if (n == f) { print $1; exit } }' "$SOMME")"
-  if [ -n "$ATTESA" ]; then
-    EFFETTIVA="$(sha256sum "$FILE" | awk '{print $1}')"
-    if [ "${ATTESA,,}" != "$EFFETTIVA" ]; then
-      echo "impronta SHA-256 diversa da quella dichiarata in SHA256SUMS per $BASE: file alterato o incompleto" >&2
-      exit 2
-    fi
-    echo "impronta verificata: $BASE"
-  else
-    echo "attenzione: $BASE non compare in SHA256SUMS, impronta non verificata" >&2
-  fi
-fi
+# L'estrattore vuole WW maiuscolo negli archivi annuali (il modello si chiama ww00002014).
+[[ "$DB" =~ ^[Ww][Ww][0-9]{8}$ ]] && DB="WW${DB:2}"
 
 # --- cartella di lavoro 0700, pulizia a fine uso ---
 BASE_TMP="${WASTEFLOW_CONSEGNA_TMP:-${TMPDIR:-/tmp}}"
 LAVORO="$(mktemp -d "$BASE_TMP/consegna-lavoro-XXXXXXXX")"
 chmod 700 "$LAVORO"
-CONTAINER=""
+CONTAINER=""; RETE=""
 pulisci() {
   local codice=$?
   if [ "$TIENI" = "1" ] && [ "$codice" = "0" ]; then
     echo
     echo "Container e file di lavoro lasciati accesi (--tieni)."
     echo "  cartella di lavoro: $LAVORO (password in sa.env e lettore.pwd, 0600)"
-    echo "  per eliminare tutto: docker rm -f ${CONTAINER:-<container>} && rm -rf '$LAVORO'"
+    echo "  per eliminare tutto: docker rm -f -v ${CONTAINER:-<container>}; docker network rm ${RETE:-<rete>}; rm -rf '$LAVORO'"
     return
   fi
-  [ -n "$CONTAINER" ] && docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  [ -n "$CONTAINER" ] && docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
+  [ -n "$RETE" ] && docker network rm "$RETE" >/dev/null 2>&1 || true
   rm -rf "$LAVORO"
 }
 trap pulisci EXIT
@@ -95,32 +85,45 @@ if [ "$SENZA_AGE" != "$BASE" ]; then
   age -d -i "$IDENTITA" -o "$BAK" "$FILE"
 fi
 
+# --- impronta del .bak in chiaro (SHA256SUMS e' calcolato dall'IT sui .bak prima della cifratura) ---
+SOMME="$(dirname "$FILE")/SHA256SUMS"
+CIFRATO=0; [ "$SENZA_AGE" != "$BASE" ] && CIFRATO=1
+ATTESA=""
+[ -f "$SOMME" ] && ATTESA="$(awk -v f="$SENZA_AGE" '{ n=$2; sub(/^\*/, "", n); if (n == f) { print $1; exit } }' "$SOMME")"
+if [ -n "$ATTESA" ]; then
+  EFFETTIVA="$(sha256sum "$BAK" | awk '{print $1}')"
+  if [ "${ATTESA,,}" != "$EFFETTIVA" ]; then
+    echo "impronta SHA-256 diversa da quella dichiarata in SHA256SUMS per $SENZA_AGE: file alterato o incompleto" >&2
+    exit 2
+  fi
+  echo "impronta verificata: $SENZA_AGE"
+elif [ "$CIFRATO" = "1" ]; then
+  echo "impronta mancante: per i file cifrati SHA256SUMS (con la riga di $SENZA_AGE) e' obbligatorio" >&2
+  exit 2
+else
+  echo "attenzione: impronta di $SENZA_AGE non verificata (SHA256SUMS assente o senza la riga)" >&2
+fi
+
 genera() { head -c 24 /dev/urandom | base64 | tr -d '/+=\n' | head -c 28; }
 SA_PWD="$(genera)aA1!"
 LETTORE_PWD="$(genera)bB2!"
-printf 'MSSQL_SA_PASSWORD=%s\nACCEPT_EULA=Y\nMSSQL_PID=Developer\nMSSQL_MEMORY_LIMIT_MB=1536\n' "$SA_PWD" > "$LAVORO/sa.env"
+printf 'MSSQL_SA_PASSWORD=%s\nACCEPT_EULA=Y\nMSSQL_PID=Developer\nMSSQL_TELEMETRY_ENABLED=FALSE\nMSSQL_MEMORY_LIMIT_MB=1536\n' "$SA_PWD" > "$LAVORO/sa.env"
 printf '%s' "$LETTORE_PWD" > "$LAVORO/lettore.pwd"
 chmod 600 "$LAVORO/sa.env" "$LAVORO/lettore.pwd"
 
-porta_libera() {
-  local p
-  for _ in $(seq 1 50); do
-    p=$(( (RANDOM % 30000) + 20000 ))
-    [ "$p" = "4200" ] && continue
-    if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then echo "$p"; return; fi
-  done
-  echo "nessuna porta libera trovata" >&2; return 1
-}
-PORTA="$(porta_libera)"
 NOME="wasteflow-mssql-consegna-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-
-CONTAINER="$(docker run -d --name "$NOME" --memory=2g \
-  -p "127.0.0.1:${PORTA}:1433" --env-file="$LAVORO/sa.env" "$IMMAGINE")"
-CONTAINER="${CONTAINER:-$NOME}"
+RETE="$NOME-rete"
+CONTAINER="$NOME"
+# Rete --internal: il container non ha nessuna uscita verso Internet (nemmeno per la telemetria) e non
+# pubblica porte; l'host Linux raggiunge l'IP del container sul bridge.
+docker network create --internal "$RETE" >/dev/null
+docker run -d --name "$NOME" --network "$RETE" --memory=2g --env-file="$LAVORO/sa.env" "$IMMAGINE" >/dev/null
+IP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$RETE\").IPAddress}}" "$NOME")"
+[[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "indirizzo del container non trovato" >&2; exit 1; }
 
 # sqlcmd dentro il container: la password di sa viene dall'ambiente del container, non dagli argomenti.
-dentro() { docker exec "$CONTAINER" sh -c "$SQLCMD -U sa -P \"\$MSSQL_SA_PASSWORD\" $1"; }
-dentro_stdin() { docker exec -i "$CONTAINER" sh -c "$SQLCMD -U sa -P \"\$MSSQL_SA_PASSWORD\" -b -i /dev/stdin"; }
+dentro() { docker exec "$CONTAINER" sh -c "SQLCMDPASSWORD=\"\$MSSQL_SA_PASSWORD\" $SQLCMD -U sa $1"; }
+dentro_stdin() { docker exec -i "$CONTAINER" sh -c "SQLCMDPASSWORD=\"\$MSSQL_SA_PASSWORD\" $SQLCMD -U sa -b -i /dev/stdin"; }
 
 echo "attendo l'avvio di SQL Server..."
 pronto=0
@@ -156,14 +159,14 @@ printf '%s\n' \
   "CREATE USER [lettore] FOR LOGIN [lettore];" \
   "ALTER ROLE db_datareader ADD MEMBER [lettore];" | dentro_stdin
 
-echo "ripristinato: $DB su 127.0.0.1:$PORTA (login lettore, sola lettura)"
+echo "ripristinato: $DB su $IP:1433 (rete interna) (login lettore, sola lettura)"
 
 if [ -n "$ESTRAI_IN" ]; then
   ( cd "$QUI/.." && WASTEFLOW_MSSQL_PASSWORD="$(cat "$LAVORO/lettore.pwd")" \
-      npm run estrai -- --server 127.0.0.1 --porta "$PORTA" --database "$DB" \
+      npm run estrai -- --server "$IP" --porta 1433 --database "$DB" \
       --utente lettore --out "$ESTRAI_IN" --fidati-del-certificato )
 fi
 
 if [ "$TIENI" = "1" ]; then
-  echo "per estrarre a mano: cd tools/import-winwaste && WASTEFLOW_MSSQL_PASSWORD=\"\$(cat '$LAVORO/lettore.pwd')\" npm run estrai -- --server 127.0.0.1 --porta $PORTA --database $DB --utente lettore --out <cartella> --fidati-del-certificato"
+  echo "per estrarre a mano: cd tools/import-winwaste && WASTEFLOW_MSSQL_PASSWORD=\"\$(cat '$LAVORO/lettore.pwd')\" npm run estrai -- --server $IP --porta 1433 --database $DB --utente lettore --out <cartella> --fidati-del-certificato"
 fi

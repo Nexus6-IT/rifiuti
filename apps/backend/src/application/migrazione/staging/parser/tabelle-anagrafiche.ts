@@ -71,7 +71,9 @@ export async function parsaTabellaEstesa(
       }
     }
     const chiave = def.chiave.map(t).join('|')
-    const prima = viste.get(chiave)
+    // Confronto come sul server (collation CI) e con separatore che non puo' comparire nei valori.
+    const chiaveUnica = def.chiave.map(c => t(c).toUpperCase()).join('\u0000')
+    const prima = viste.get(chiaveUnica)
     if (prima !== undefined) {
       return {
         cod,
@@ -82,7 +84,7 @@ export async function parsaTabellaEstesa(
         avvisi: [],
       }
     }
-    viste.set(chiave, riga.numeroRiga)
+    viste.set(chiaveUnica, riga.numeroRiga)
     const campi: Record<string, string> = {}
     for (const [k, v] of Object.entries(riga.campi)) campi[k] = (v ?? '').trim()
     return { cod, avvisi: [], record: { tabella, riga: riga.numeroRiga, chiave, campi } }
