@@ -251,7 +251,13 @@ describe('Ruoli database (Postgres reale)', () => {
     }
   })
 
-  const SOLO_INSERIMENTO = ['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa']
+  const SOLO_INSERIMENTO = [
+    'pesate',
+    'rettifiche_peso',
+    'allegati_pesa',
+    'letture_pesa',
+    'notifiche_sdi',
+  ]
   const SENZA_CANCELLAZIONE = [
     'accessi_pesa',
     'collegamenti_accesso',

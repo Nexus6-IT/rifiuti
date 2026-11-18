@@ -9,7 +9,7 @@ Crea (o riallinea, se esistono) i due ruoli applicativi e i loro GRANT minimi:
   solo `SELECT`, con una `REVOKE` esplicita a ogni esecuzione; una nuova tabella globale va
   aggiunta all'elenco, i default privileges restano CRUD).
 - Tabelle delle pese (Fase 4 pezzo 8a): `v_solo_inserimento` (`pesate`, `rettifiche_peso`,
-  `allegati_pesa`) solo `SELECT` e `INSERT`; `v_senza_cancellazione` (`accessi_pesa`,
+  `allegati_pesa`, e dalla 4.5a `notifiche_sdi`) solo `SELECT` e `INSERT`; `v_senza_cancellazione` (`accessi_pesa`,
   `collegamenti_accesso`, `automezzi`, `strumenti_pesa`) `SELECT`, `INSERT`, `UPDATE`, mai
   `DELETE` né `TRUNCATE`. Le `REVOKE` sono ripetute a ogni esecuzione, per entrambi i ruoli, e la
   migration `20261101600000_pese_modello_dati` le fa se i ruoli esistono già. Una nuova tabella
