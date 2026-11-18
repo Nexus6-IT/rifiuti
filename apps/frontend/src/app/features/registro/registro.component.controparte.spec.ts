@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { signal } from '@angular/core'
 import { FormBuilder } from '@angular/forms'
-import { NEVER, of } from 'rxjs'
+import { NEVER, of, Subject } from 'rxjs'
 import { RegistroComponent } from './registro.component'
 import { RegistroService } from './registro.service'
 import { CausaliRegistroService } from './causali-registro.service'
@@ -280,6 +280,64 @@ describe('RegistroComponent — sede della controparte nel payload', () => {
       scegliMulti()
       component.apriForm()
       expect(component.sediControparte()).toEqual([])
+    })
+  })
+
+  describe('corse e sedi disattivate', () => {
+    it('I1: risposta tardiva della ditta A dopo la scelta della ditta B (una sola sede): selettore vuoto', () => {
+      crea()
+      const rispostaA = new Subject<unknown>()
+      getDitta.and.returnValue(rispostaA)
+      scegliMulti()
+      component.onProduttoreSelect({
+        value: { ...produttore, ragioneSociale: 'Ditta B', dittaId: 'dB', numeroSedi: 1 },
+      } as never)
+      rispostaA.next(dittaConSedi)
+      expect(component.sediControparte()).toEqual([])
+      expect(salva()['counterpartSedeId']).toBe('sede-predefinita')
+    })
+
+    it('I1: errore tardivo della ditta A non svuota il selettore della ditta B piu recente', () => {
+      crea()
+      const rispostaA = new Subject<unknown>()
+      const rispostaB = new Subject<unknown>()
+      getDitta.and.returnValues(rispostaA, rispostaB)
+      scegliMulti()
+      component.onProduttoreSelect({
+        value: { ...produttoreMulti, ragioneSociale: 'Ditta B', dittaId: 'dB' },
+      } as never)
+      rispostaB.next(dittaConSedi)
+      rispostaA.error(new Error('rete'))
+      expect(component.sediControparte().length).toBe(2)
+    })
+
+    it('M1: stessa ditta riselezionata dopo una scelta esplicita: anche l indirizzo segue la sede', () => {
+      crea()
+      scegliMulti()
+      component.onSedeControparteChange('sede-b')
+      scegliMulti()
+      expect(component.form.get('counterpartAddress')?.value).toBe('Via Dante 2, 38122 Trento (TN)')
+      expect(salva()['counterpartSedeId']).toBe('sede-b')
+    })
+
+    it('M2: sede disattivata ricordata: voce «(disattivata)» selezionata nel dropdown', () => {
+      crea('02222222222')
+      const firOff = {
+        ...fir,
+        produttore: {
+          partitaIva: '01111111111',
+          ragioneSociale: 'Comune di Calliano',
+          indirizzo: 'Via Dante 2, 38122 Trento (TN)',
+          sedeId: 'sede-off',
+        },
+      } as unknown as FIR
+      component.onFirSelect({ value: { fir: firOff, label: 'FIR-2026-1' } } as never)
+      scegliMulti()
+      const opz = component.sediControparteOptions()
+      expect(component.sedeControparteSelezionata()).toBe('sede-off')
+      expect(opz.find(o => o.value === 'sede-off')?.label).toContain('(disattivata)')
+      expect(opz.filter(o => !o.label.includes('(disattivata)')).length).toBe(2)
+      expect(salva()['counterpartSedeId']).toBe('sede-off')
     })
   })
 

@@ -986,8 +986,8 @@ function fineGiornata(d: Date): Date {
                     ariaLabel="Sede della controparte"
                   ></p-dropdown>
                   <small class="field-hint"
-                    >La ditta ha più sedi: la predefinita è preselezionata, l'indirizzo segue la
-                    sede scelta.</small
+                    >La ditta ha più sedi: è preselezionata la sede indicata (predefinita o del
+                    FIR), l'indirizzo segue la sede scelta.</small
                   >
                 </div>
               </div>
@@ -1757,14 +1757,21 @@ export class RegistroComponent implements OnInit {
   readonly sediControparte = signal<SedeDitta[]>([])
   /** Sede della controparte mostrata nel selettore (segue `sceltaControparte`). */
   readonly sedeControparteSelezionata = signal<string | null>(null)
-  readonly sediControparteOptions = computed(() =>
-    this.sediControparte().map(s => ({
+  /** Tutte le sedi della ditta, anche disattivate: servono a mostrare una sede ricordata e chiusa. */
+  private readonly sediControparteTutte = signal<SedeDitta[]>([])
+  readonly sediControparteOptions = computed(() => {
+    const etichetta = (s: SedeDitta, nota: string) =>
+      [s.denominazione, indirizzoDaSede(s)].filter(Boolean).join(' — ') + nota
+    const opzioni = this.sediControparte().map(s => ({
       value: s.id,
-      label:
-        [s.denominazione, indirizzoDaSede(s)].filter(Boolean).join(' — ') +
-        (s.principale ? ' (principale)' : ''),
+      label: etichetta(s, s.principale ? ' (principale)' : ''),
     }))
-  )
+    // sede ricordata (FIR o movimento) ma disattivata: voce selezionata, non un placeholder
+    const scelta = this.sedeControparteSelezionata()
+    const chiusa = this.sediControparteTutte().find(s => s.id === scelta && !s.attiva)
+    if (chiusa) opzioni.push({ value: chiusa.id, label: etichetta(chiusa, ' (disattivata)') })
+    return opzioni
+  })
   /** Suggerimenti produttori (filtrati client-side sull'anagrafica del tenant). */
   produttoreSuggestions: Produttore[] = []
 
@@ -2289,6 +2296,8 @@ export class RegistroComponent implements OnInit {
       nome,
       indirizzo,
     })
+    // se la sede ricordata (FIR o scelta esplicita) resta, resta anche il suo indirizzo
+    this.form.patchValue({ counterpartAddress: this.sceltaControparte.indirizzo })
     this.sedeControparteSelezionata.set(this.sceltaControparte.sedeId ?? null)
     this.caricaSediControparte(p)
   }
@@ -2310,24 +2319,33 @@ export class RegistroComponent implements OnInit {
 
   private azzeraSediControparte(): void {
     this.sediControparte.set([])
+    this.sediControparteTutte.set([])
     this.sedeControparteSelezionata.set(null)
     this.sceltaControparteDittaId = null
   }
 
   /** Con una sola sede (o senza ditta) resta tutto automatico: nessuna chiamata, nessun selettore. */
   private caricaSediControparte(p: Produttore): void {
+    // l'id della ditta si azzera prima di ogni ritorno: una risposta tardiva di una ditta
+    // precedente non deve popolare il selettore di quella attuale
     this.sediControparte.set([])
+    this.sediControparteTutte.set([])
+    this.sceltaControparteDittaId = null
     if (!p.dittaId || (p.numeroSedi ?? 0) < 2) return
     const dittaId = p.dittaId
     this.sceltaControparteDittaId = dittaId
     this.registryService.getDitta(dittaId).subscribe({
       next: ditta => {
-        // risposta in ritardo: vale solo se la scelta e' ancora quella di questa ditta
         if (this.sceltaControparte === null || this.sceltaControparteDittaId !== dittaId) return
         const attive = ditta.sedi.filter(s => s.attiva)
+        this.sediControparteTutte.set(ditta.sedi)
         this.sediControparte.set(attive.length > 1 ? attive : [])
       },
-      error: () => this.sediControparte.set([]),
+      error: () => {
+        if (this.sceltaControparteDittaId !== dittaId) return
+        this.sediControparte.set([])
+        this.sediControparteTutte.set([])
+      },
     })
   }
 

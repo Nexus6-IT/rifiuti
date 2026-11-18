@@ -70,7 +70,7 @@ describe('registro-controparte', () => {
       expect(sceltaDaAnagrafica(null, nuova)).toEqual({ ...nuova, origine: 'anagrafica' })
     })
 
-    it('sede del FIR della stessa ditta: resta quella del FIR, con nome e indirizzo nuovi', () => {
+    it('sede del FIR della stessa ditta: resta quella del FIR, con il suo indirizzo e il nome compilato', () => {
       const daFir: SceltaControparte = {
         sedeId: 'sede-fir',
         nome: ' comune di  calliano',
@@ -80,7 +80,7 @@ describe('registro-controparte', () => {
       expect(sceltaDaAnagrafica(daFir, nuova)).toEqual({
         sedeId: 'sede-fir',
         nome: nuova.nome,
-        indirizzo: nuova.indirizzo,
+        indirizzo: 'Via FIR 9',
         origine: 'fir',
       })
     })

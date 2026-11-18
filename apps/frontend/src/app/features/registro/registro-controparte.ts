@@ -51,8 +51,8 @@ export function sedeControparteDaInviare(
 /**
  * Scelta dopo la selezione di un produttore dall'anagrafica. Ordine di precedenza: scelta esplicita
  * dell'utente > sede del FIR > predefinita del produttore. Una sede gia' ricordata da FIR o utente
- * per la stessa ditta (stesso nome compattato) non viene scavalcata dalla predefinita; nome e
- * indirizzo restano quelli appena compilati, cosi' la sede continua a valere.
+ * per la stessa ditta (stesso nome compattato) non viene scavalcata dalla predefinita; resta anche
+ * il suo indirizzo (il chiamante lo riscrive nel form), cosi' la sede continua a valere.
  */
 export function sceltaDaAnagrafica(
   corrente: SceltaControparte | null,
@@ -67,7 +67,8 @@ export function sceltaDaAnagrafica(
     return {
       sedeId: corrente.sedeId,
       nome: nuova.nome,
-      indirizzo: nuova.indirizzo,
+      // la sede resta e con lei il suo indirizzo (non quello della sede legale)
+      indirizzo: corrente.indirizzo,
       origine: corrente.origine,
     }
   }
