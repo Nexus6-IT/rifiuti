@@ -527,7 +527,7 @@ export class RegoleConsorziComponent implements OnInit {
           this.avvisiKgStimati.set(
             f.kgStimati.map(
               k =>
-                `I kg del ${k.anno} sono stimati con i pesi specifici del MUD ${k.annoMud} (il MUD ${k.anno} non esiste ancora): ${k.righe} ${k.righe === 1 ? 'riga' : 'righe'} nell’estratto, segnalate nella colonna «Note kg».`
+                `I kg del ${k.anno} sono stimati con i pesi specifici del MUD ${k.annoMud} (il MUD ${k.anno} è assente o senza pesi specifici): ${k.righe} ${k.righe === 1 ? 'riga' : 'righe'} nell’estratto, segnalate nella colonna «Note kg».`
             )
           )
           const url = URL.createObjectURL(f.blob)

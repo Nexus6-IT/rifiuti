@@ -184,4 +184,35 @@ describe('EstrattoConsorziService — capodanno di Roma, Postgres reale', () => 
     expect(esito.kgStimati).toEqual([])
     expect(esito.avvisi).toEqual([])
   })
+
+  it('MUD dell’anno gia creato ma senza pesi (bozza): ripiega sul precedente con pesi e avvisa', async () => {
+    const conBozza = await creaAziendaMud(owner, 'CF')
+    tenantCreati.push(conBozza.tenantId)
+    await owner.mUDReport.create({
+      data: { tenantId: conBozza.tenantId, year: 2026, reportData: pesi(2) },
+    })
+    await owner.mUDReport.create({
+      data: { tenantId: conBozza.tenantId, year: 2027, reportData: {} },
+    })
+    await creaMovimento(owner, conBozza, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '13 02 05',
+      quantita: 100,
+      unita: 'L',
+      giorno: '2027-01-10',
+      istante: '2027-01-10T10:00:00Z',
+    })
+    const servizio = new EstrattoConsorziService(app, { classifica: classificaCobat } as never)
+    const esito = await TenantContext.run({ tenantId: conBozza.tenantId }, () =>
+      servizio.estratto(conBozza.tenantId, {
+        consorzio: 'COBAT',
+        da: '2027-01-01',
+        a: '2027-01-31',
+        unitaLocaleId: conBozza.unitaLocaleId,
+      })
+    )
+    expect(esito.csv).toMatch(/;"200";"100";"L";/)
+    expect(esito.kgStimati).toEqual([{ anno: 2027, annoMud: 2026, righe: 1 }])
+  })
 })

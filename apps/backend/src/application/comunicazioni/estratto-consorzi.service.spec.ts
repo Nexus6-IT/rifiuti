@@ -187,13 +187,28 @@ describe('EstrattoConsorziService.estratto', () => {
       expect(pesiPassati[2026]['160601|L'].kgPerUnita).toBe(0.5)
     })
 
-    it('un anno con MUD non ripiega mai, anche senza pesi: nessun avviso', async () => {
-      const { esito, pesiPassati } = await esegui(
-        { 2024: peso(0.5), 2025: { integrazioni: {} }, 2026: { integrazioni: {} } },
-        [movLitri('b', '2026-01-15', null)]
-      )
-      expect(pesiPassati[2026]).toEqual({})
+    it('un MUD dell’anno senza pesi (bozza) conta come mancante: ripiega sul precedente con pesi', async () => {
+      const { esito, pesiPassati } = await esegui({ 2025: peso(0.9), 2026: { integrazioni: {} } }, [
+        movLitri('b', '2026-01-15', 9),
+      ])
+      expect(pesiPassati[2026]['160601|L'].kgPerUnita).toBe(0.9)
+      expect(esito.kgStimati).toEqual([{ anno: 2026, annoMud: 2025, righe: 1 }])
+      expect(esito.avvisi[0]).toContain('assente o senza pesi')
+    })
+
+    it('un MUD con pesi non ripiega mai: nessun avviso', async () => {
+      const { esito, pesiPassati } = await esegui({ 2025: peso(0.9), 2026: peso(2) }, [
+        movLitri('b', '2026-01-15', 20),
+      ])
+      expect(pesiPassati[2026]['160601|L'].kgPerUnita).toBe(2)
       expect(esito.kgStimati).toEqual([])
+    })
+
+    it('MUD dell’anno senza pesi e nessun precedente con pesi: pesi vuoti, nessun avviso', async () => {
+      const { esito, pesiPassati } = await esegui({ 2026: { integrazioni: {} } }, [
+        movLitri('b', '2026-01-15', null),
+      ])
+      expect(pesiPassati[2026]).toEqual({})
       expect(esito.avvisi).toEqual([])
     })
 

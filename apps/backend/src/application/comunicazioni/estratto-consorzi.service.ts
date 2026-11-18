@@ -94,10 +94,13 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     type PesiSpecifici = ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']
     const pesiSpecificiPerAnno: Record<number, PesiSpecifici> = {}
     const annoMudDiRipiego = new Map<number, number>()
-    const mancanti = anni.filter(anno => !reportMud.some(r => r.year === anno))
+    // Anno «mancante» = nessun MUD oppure MUD senza alcun peso specifico (bozza): stesso criterio
+    // con cui si scelgono i MUD precedenti di ripiego. Il ripiego e' per anno intero, non per CER.
+    const mancanti: number[] = []
     for (const anno of anni) {
       const record = reportMud.find(r => r.year === anno)
       pesiSpecificiPerAnno[anno] = leggiIntegrazioni(record?.reportData).pesiSpecifici
+      if (Object.keys(pesiSpecificiPerAnno[anno]).length === 0) mancanti.push(anno)
     }
     if (mancanti.length > 0) {
       // Ripiego: MUD piu' vicino PRECEDENTE all'anno mancante, fra quelli con almeno un peso.
@@ -187,7 +190,7 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
       kgStimati,
       avvisi: kgStimati.map(
         k =>
-          `I kg dei movimenti del ${k.anno} in unità non di massa sono stimati con i pesi specifici del MUD ${k.annoMud}, perché il MUD ${k.anno} non esiste ancora (${k.righe} ${k.righe === 1 ? 'riga' : 'righe'}).`
+          `I kg dei movimenti del ${k.anno} in unità non di massa sono stimati con i pesi specifici del MUD ${k.annoMud}, perché il MUD ${k.anno} è assente o senza pesi specifici (${k.righe} ${k.righe === 1 ? 'riga' : 'righe'}).`
       ),
       nomeFile: `estratto-${consorzio.toLowerCase()}-${da}_${a}.csv`,
       csv: estrattoConsorzioCsv(consorzio, righe),
