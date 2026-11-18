@@ -449,6 +449,19 @@ type TipoConferma = 'selezionati' | 'storico'
         </p>
 
         <p
+          *ngIf="termine() as t"
+          class="rentri-termine"
+          role="status"
+          data-testid="rentri-termine"
+        >
+          <p-tag [value]="t.etichetta" [severity]="t.severita"></p-tag>
+          <small>
+            Annotazioni di {{ t.mese }} ancora da trasmettere; termine indicativo (fine del mese
+            successivo), da verificare sulla norma.
+          </small>
+        </p>
+
+        <p
           *ngIf="!r.haCertificato"
           class="field-error"
           role="status"
@@ -660,6 +673,21 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
   readonly conferma = signal<TipoConferma | null>(null)
   impostazioniVisibili = false
   annoStorico = this.annoCorrente
+
+  /** Tag del termine mensile: solo per un registro collegato e con annotazioni da trasmettere. */
+  readonly termine = computed(() => {
+    const r = this.registro()
+    const s = r?.identificativoRentri ? r.scadenzaTrasmissione : null
+    if (!s) return null
+    const [anno, mese, giorno] = s.entro.split('-')
+    const data = `${giorno}/${mese}/${anno}`
+    const [annoMese, meseMese] = s.mese.split('-')
+    return {
+      etichetta: s.scaduta ? `Termine superato (era il ${data})` : `Da trasmettere entro il ${data}`,
+      severita: (s.scaduta ? 'danger' : 'warning') as 'danger' | 'warning',
+      mese: `${meseMese}/${annoMese}`,
+    }
+  })
 
   readonly conteggi = computed(() => {
     const per = this.registro()?.perStato ?? {}
