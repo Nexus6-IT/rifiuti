@@ -4,6 +4,18 @@ import { Archivio } from '../stato/archivio'
 import { numeroFirValido } from '../dominio/numero-fir'
 import { operazioniPerStato } from '../dominio/operazione'
 import { inviaProblemDetails } from '../errori/problem-details'
+import {
+  validaAnnotazione,
+  validaDestinatario,
+  validaQuantita,
+  validaSostaTecnica,
+  validaTrasbordoParziale,
+  validaTrasbordoTotale,
+  validaTrasportoTerrestre,
+} from '../dominio/operazioni-viaggio'
+import { Transazione } from '../stato/archivio'
+
+type OperazioneTaggata = NonNullable<Transazione['contestoOperazione']>['operazione']
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/formulari/v1.0'
@@ -193,7 +205,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   const registraOperazioneAsincrona = (
     segmento: string,
     validaCorpo: (corpo: Record<string, unknown>) => string | null,
-    operazione?: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento' | 'Allegato'
+    operazione?: OperazioneTaggata
   ): void => {
     app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
       `${PREFISSO}/:identificativo/${segmento}`,
@@ -347,6 +359,62 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       return null
     },
     'Allegato'
+  )
+
+  // Operazioni del FIR in viaggio (piano `2026-11-18-rentri-fir-viaggio.md`,
+  // P0 T1). Tutte ASYNC (202 + TransazioneModel) e validate contro i modelli
+  // del contratto, generati in `schema-*.ts`.
+  registraOperazioneAsincrona('quantita', corpo => validaQuantita(corpo), 'Quantita')
+  registraOperazioneAsincrona('trasporto', corpo => validaTrasportoTerrestre(corpo), 'Trasporto')
+  registraOperazioneAsincrona('annotazione', corpo => validaAnnotazione(corpo), 'Annotazione')
+  registraOperazioneAsincrona('sosta-tecnica', corpo => validaSostaTecnica(corpo), 'SostaTecnica')
+  registraOperazioneAsincrona(
+    'trasbordo-totale',
+    corpo => validaTrasbordoTotale(corpo),
+    'TrasbordoTotale'
+  )
+  registraOperazioneAsincrona(
+    'trasbordo-parziale',
+    corpo => validaTrasbordoParziale(corpo),
+    'TrasbordoParziale'
+  )
+  registraOperazioneAsincrona(
+    'destinatario',
+    corpo => validaDestinatario(corpo),
+    'NuovoDestinatario'
+  )
+  // `reset` e `rollback-firma`: nessun requestBody nel contratto.
+  registraOperazioneAsincrona('reset', () => null, 'Reset')
+  registraOperazioneAsincrona('rollback-firma', () => null, 'RollbackFirma')
+
+  // POST /{numero_fir}/invia-a-dispositivo (formulari.yaml riga 1583):
+  // SINCRONA, 200 senza corpo. `credentials_id` e' obbligatorio. La fake non
+  // verifica che la credenziale esista ne' l'associazione all'unita' locale
+  // (divergenza permissiva, FEDELTA.md).
+  app.post<{ Params: { identificativo: string }; Querystring: { credentials_id?: string } }>(
+    `${PREFISSO}/:identificativo/invia-a-dispositivo`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+      if (!richiesta.query.credentials_id) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Parametro richiesto non specificato',
+          detail: "'credentials_id' e' obbligatorio.",
+        })
+      }
+      if (!archivio.leggiFormulario(numeroFir)) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      return risposta.status(200).send()
+    }
   )
 
   // DELETE /{numero_fir}/allegato/{allegato_id} (formulari.yaml righe

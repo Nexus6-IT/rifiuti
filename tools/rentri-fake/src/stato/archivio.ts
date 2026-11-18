@@ -49,8 +49,18 @@ export interface Formulario {
    * macchina a stati reale dell'ente (fuori scope, v. `operazione.ts`).
    */
   pendingOperazione?:
-    | { tipo: 'Accettazione'; corpo: Record<string, unknown> }
-    | { tipo: 'Annulla'; corpo: Record<string, unknown> }
+    | { tipo: 'Accettazione'; corpo: Record<string, unknown>; statoPrecedente: string }
+    | { tipo: 'Annulla'; corpo: Record<string, unknown>; statoPrecedente: string }
+  /**
+   * Ultima firma apposta con successo e non ancora annullata: serve a
+   * `rollback-firma` (formulari.yaml riga 2079) per tornare allo stato di
+   * attesa firma precedente. Mai registrata per la firma di annullamento, che
+   * il contratto esclude dal rollback.
+   */
+  ultimaFirma?: {
+    statoPrecedente: string
+    pending: NonNullable<Formulario['pendingOperazione']>
+  }
   /**
    * Testo delle note di annullamento (R3 Task 5), impostato
    * dall'applicazione dell'effetto `NoteAnnullamento` — non da una firma
@@ -151,6 +161,15 @@ export interface Transazione {
       | 'NoteAnnullamento'
       | 'Allegato'
       | 'RimuoviAllegato'
+      | 'Quantita'
+      | 'Trasporto'
+      | 'Annotazione'
+      | 'SostaTecnica'
+      | 'TrasbordoTotale'
+      | 'TrasbordoParziale'
+      | 'NuovoDestinatario'
+      | 'Reset'
+      | 'RollbackFirma'
     corpo?: Record<string, unknown>
     /**
      * `allegato_id` da rimuovere (R3 Task 6, `DELETE /{numero_fir}/allegato/{allegato_id}`):
@@ -610,17 +629,22 @@ export class Archivio {
     if (!formulario) return
 
     if (contesto.operazione === 'Accettazione') {
-      formulario.stato = 'FirmaAccettazione'
       formulario.pendingOperazione = {
         tipo: 'Accettazione',
         corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
       }
+      formulario.stato = 'FirmaAccettazione'
       return
     }
 
     if (contesto.operazione === 'Annulla') {
+      formulario.pendingOperazione = {
+        tipo: 'Annulla',
+        corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
+      }
       formulario.stato = 'FirmaAnnullamento'
-      formulario.pendingOperazione = { tipo: 'Annulla', corpo: contesto.corpo ?? {} }
       return
     }
 
@@ -637,6 +661,7 @@ export class Archivio {
       if (!pendente) return
 
       if (pendente.tipo === 'Accettazione') {
+        formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
         const tipoAccettazione = pendente.corpo.tipo_accettazione
         formulario.stato = tipoAccettazione === 'A' ? 'Accettato' : 'RespintoAccettatoParzialmente'
         formulario.pendingOperazione = undefined
@@ -649,6 +674,33 @@ export class Archivio {
         return
       }
     }
+
+    // `reset`: cancella i dati inseriti e non ancora firmati, tornando allo
+    // stato precedente (formulari.yaml riga 1888). Senza nulla in attesa di
+    // firma non c'e' niente da annullare.
+    if (contesto.operazione === 'Reset') {
+      const pendente = formulario.pendingOperazione
+      if (!pendente) return
+      formulario.stato = pendente.statoPrecedente
+      formulario.pendingOperazione = undefined
+      return
+    }
+
+    // `rollback-firma`: riporta all'attesa di firma precedente all'ultima
+    // firma (riga 2079). La firma di annullamento non e' reversibile.
+    if (contesto.operazione === 'RollbackFirma') {
+      const ultima = formulario.ultimaFirma
+      if (!ultima) return
+      formulario.stato = ultima.statoPrecedente
+      formulario.pendingOperazione = ultima.pending
+      formulario.ultimaFirma = undefined
+      return
+    }
+
+    // Quantita, trasporto, annotazione, sosta tecnica, trasbordi, nuovo
+    // destinatario: la fake registra il ciclo (202, esito) ma non applica
+    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno
+    // (piano FIR in viaggio, P2-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito
