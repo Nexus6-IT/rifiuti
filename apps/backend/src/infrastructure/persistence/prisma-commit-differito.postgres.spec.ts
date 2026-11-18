@@ -135,7 +135,7 @@ describe('Errore del COMMIT di un vincolo differito (Postgres reale)', () => {
     }
   })
 
-  describe("B2: client applicativo SENZA contesto tenant (ramo senza set_config)", () => {
+  describe('B2: client applicativo SENZA contesto tenant (ramo senza set_config)', () => {
     for (const [nome, esegui] of FORME) {
       it(`${nome}: l'errore del commit arriva e le scritture non restano`, async () => {
         const e = await errore(() => esegui(applicativo as unknown as Cliente))
@@ -150,7 +150,7 @@ describe('Errore del COMMIT di un vincolo differito (Postgres reale)', () => {
     }
   })
 
-  describe("C: PrismaSistemaService (chiude i vincoli da solo, senza tenant)", () => {
+  describe('C: PrismaSistemaService (chiude i vincoli da solo, senza tenant)', () => {
     for (const [nome, esegui] of FORME) {
       it(`${nome}: l'errore del commit arriva e le scritture non restano`, async () => {
         const e = await errore(() => esegui(sistema as unknown as Cliente))
