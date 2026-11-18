@@ -65,8 +65,9 @@ export interface OpzioniInserimento<R> {
   inserisciBlocco: InserisciBlocco<R>
   /**
    * Vincoli differiti da chiudere con `SET CONSTRAINTS ... IMMEDIATE` come ULTIMO statement del
-   * blocco: con Prisma 5.22 l'errore sollevato dal COMMIT non arriva all'applicazione (la
-   * transazione e' annullata ma la promise si risolve). Default: la rete dei movimenti importati.
+   * blocco. Con il client esteso di `PrismaService` e' ridondante (chiude gia' `ALL` da solo);
+   * serve con un client nudo, dove Prisma 5.22 perde l'errore del COMMIT (la transazione e'
+   * annullata ma la promise si risolve). Default: la rete dei movimenti importati.
    */
   vincoliDifferiti?: readonly string[]
 }

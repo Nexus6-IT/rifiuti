@@ -11,14 +11,18 @@
 import { PrismaClient } from '@prisma/client'
 import { TenantContext } from '../../core/context/tenant-context'
 import { creaPrismaServiceApplicativo } from './prisma.service'
+import { PrismaSistemaService } from './prisma-sistema.service'
 import { confermaVincoliDifferiti } from './prisma-tenant-transazione'
 
-process.env.DATABASE_URL =
-  process.env.DATABASE_URL ??
-  'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
+// Nessun fallback su una porta fissa: la 55432 appartiene a un altro worktree e questo spec
+// scriverebbe sul suo database. In CI e in locale DATABASE_URL e' sempre impostato.
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL mancante: lo spec Postgres non parte su un database a caso')
+}
 
 const nudo = new PrismaClient()
 const applicativo = creaPrismaServiceApplicativo()
+const sistema = new PrismaSistemaService()
 
 type Cliente = {
   $transaction: (...args: any[]) => any // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -80,6 +84,7 @@ describe('Errore del COMMIT di un vincolo differito (Postgres reale)', () => {
     await nudo.$executeRawUnsafe(`DROP FUNCTION IF EXISTS t_diff_commit_ko()`)
     await nudo.$disconnect()
     await applicativo.$disconnect()
+    await sistema.$disconnect()
   })
 
   describe('A: PrismaClient nudo (comportamento di Prisma 5.22, non nostro)', () => {
@@ -128,5 +133,38 @@ describe('Errore del COMMIT di un vincolo differito (Postgres reale)', () => {
         expect(await contaRighe()).toBe(0)
       })
     }
+  })
+
+  describe('B2: client applicativo SENZA contesto tenant (ramo senza set_config)', () => {
+    for (const [nome, esegui] of FORME) {
+      it(`${nome}: l'errore del commit arriva e le scritture non restano`, async () => {
+        const e = await errore(() => esegui(applicativo as unknown as Cliente))
+        expect(String(e)).toContain('ko al commit')
+        expect(await contaRighe()).toBe(0)
+      })
+      it(`${nome} su .db: l'errore del commit arriva`, async () => {
+        const e = await errore(() => esegui(applicativo.db as unknown as Cliente))
+        expect(String(e)).toContain('ko al commit')
+        expect(await contaRighe()).toBe(0)
+      })
+    }
+  })
+
+  describe('C: PrismaSistemaService (chiude i vincoli da solo, senza tenant)', () => {
+    for (const [nome, esegui] of FORME) {
+      it(`${nome}: l'errore del commit arriva e le scritture non restano`, async () => {
+        const e = await errore(() => esegui(sistema as unknown as Cliente))
+        expect(String(e)).toContain('ko al commit')
+        expect(await contaRighe()).toBe(0)
+      })
+    }
+
+    it('senza errori la scrittura resta (nessun effetto collaterale)', async () => {
+      await nudo.$executeRawUnsafe(`ALTER TABLE t_diff_commit DISABLE TRIGGER t_diff_commit_chk`)
+      await sistema.$transaction(async tx => {
+        await tx.$executeRaw`INSERT INTO t_diff_commit VALUES (7)`
+      })
+      expect(await contaRighe()).toBe(1)
+    })
   })
 })

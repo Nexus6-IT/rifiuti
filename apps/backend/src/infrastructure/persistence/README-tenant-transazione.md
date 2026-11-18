@@ -34,8 +34,21 @@ filtrato usare `this.prisma.db.$transaction`. Il batch `$transaction([a, b])` e'
 
 Vincoli differiti: con Prisma 5.22 l'errore del COMMIT di una transazione interattiva non arriva
 all'applicazione (la transazione e' annullata ma `$transaction` risulta riuscita). Il client esteso
-chiude da solo i vincoli (`SET CONSTRAINTS ALL IMMEDIATE` come ultimo statement); con un
-`PrismaClient` nudo chiamare `confermaVincoliDifferiti(tx)`. Prova: `prisma-commit-differito.postgres.spec.ts`.
+chiude da solo i vincoli (`SET CONSTRAINTS ALL IMMEDIATE` come ultimo statement, subito prima
+del COMMIT); lo fa anche `PrismaSistemaService` (override di `$transaction`, forma interattiva).
+Con un `PrismaClient` nudo (script, seed, test) chiamare `confermaVincoliDifferiti(tx)`.
+Prova: `prisma-commit-differito.postgres.spec.ts`.
+
+Due conseguenze da conoscere:
+- se `fn` cattura un errore SQL e termina normalmente, la transazione e' gia' abortita e il SET
+  fallisce con `P2010 / 25P02 current transaction is aborted`, che nasconde la causa originale
+  (prima l'errore e le scritture si perdevano in silenzio). Non catturare errori SQL dentro `fn`
+  senza rilanciarli; per un tentativo che puo' fallire usare un SAVEPOINT (vedi `aggancio-registro.ts`);
+- il SET anticipa SOLO i vincoli differiti. Gli altri errori che Postgres solleva al COMMIT, per
+  esempio `40001` di una transazione `Serializable` (conflitto SSI), con Prisma 5.22 restano persi
+  come prima. **Non usare `isolationLevel: 'Serializable'` nelle transazioni interattive** finche'
+  il difetto di Prisma c'e'; oggi il backend usa solo `RepeatableRead`. Ticket
+  `2026-11-14-prisma-errore-commit-vincolo-differito` (segnalazione upstream ancora da aprire).
 
 Avvertenze (dettagli nei commenti del codice):
 - `await` dentro `TenantContext.run`: il tenant e' letto quando la PrismaPromise viene eseguita,

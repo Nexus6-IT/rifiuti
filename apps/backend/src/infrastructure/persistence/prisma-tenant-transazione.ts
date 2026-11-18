@@ -75,8 +75,15 @@ export async function impostaTenant(tx: Prisma.TransactionClient, tenantId: stri
  * (`$transaction(async tx => ...)`) NON arriva all'applicazione: `$transaction` ritorna il valore
  * di `fn` come se fosse andata bene, ma Postgres ha annullato la transazione (provato dallo spec
  * `prisma-commit-differito.postgres.spec.ts`, caso A). Il batch `$transaction([...])` non ha il
- * problema. Il client esteso di questo modulo la chiama da solo come ULTIMO statement; chi usa un
- * `PrismaClient` nudo (per esempio `PrismaSistemaService`) la chiama a mano.
+ * problema. Il client esteso di questo modulo e `PrismaSistemaService` la chiamano da soli come
+ * ULTIMO statement; chi usa un `PrismaClient` nudo (script, seed, test) la chiama a mano.
+ *
+ * Conseguenza: se `fn` cattura un errore SQL e termina normalmente, la transazione e' gia'
+ * abortita e il SET fallisce con `25P02 current transaction is aborted` (P2010), che nasconde la
+ * causa originale. Prima l'errore si perdeva in silenzio insieme alle scritture.
+ *
+ * Limite: anticipa SOLO i vincoli differiti. Gli altri errori che Postgres solleva al COMMIT
+ * (per esempio `40001` di una transazione `Serializable`) restano persi: vedi il README.
  */
 export async function confermaVincoliDifferiti(
   tx: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>
@@ -85,7 +92,7 @@ export async function confermaVincoliDifferiti(
 }
 
 /** Esegue `fn` e poi chiude i vincoli differiti, nella stessa transazione. */
-function conVincoliChiusi(
+export function conVincoliChiusi(
   fn: (tx: Prisma.TransactionClient) => Promise<unknown>
 ): (tx: Prisma.TransactionClient) => Promise<unknown> {
   return async tx => {

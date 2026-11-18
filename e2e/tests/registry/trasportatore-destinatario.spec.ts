@@ -314,9 +314,9 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
   /**
    * "Emissione non impedita" verificato qui SENZA completare l'intera
    * creazione del FIR (CER/quantità/provenienza/tratta): quel percorso non
-   * ha ancora una copertura E2E stabile in questa suite (vedi
-   * `e2e/tests/fir/fir-lifecycle.spec.ts`, ancora `test.fixme` per lo
-   * stesso motivo — "richiede dati di fixture stabili") e costruirlo da
+   * ha una copertura E2E dedicata a questo test (il ciclo di
+   * vita completo sta in `e2e/tests/fir/fir-lifecycle.spec.ts`, che oggi ha
+   * test attivi e nessun `test.fixme`) e costruirlo da
    * zero qui, senza poterlo eseguire in questa sessione (vincolo
    * d'ambiente), sarebbe un test complesso mai verificato. Si esercita
    * invece il vero codice di validazione del form (`validateFir()`,

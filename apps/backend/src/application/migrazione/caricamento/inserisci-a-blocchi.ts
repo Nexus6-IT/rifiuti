@@ -8,8 +8,11 @@
  * con il numero del blocco e il vincolo violato (mai i valori), e il caricamento si ferma. I
  * conteggi si aggiornano alla fine di ogni blocco, nella stessa transazione.
  *
- * Ogni blocco chiude con `SET CONSTRAINTS ... IMMEDIATE`: senza, l'errore del vincolo differito dei
- * movimenti importati (Prisma 5.22) non arriverebbe qui. Log: solo id e conteggi.
+ * Ogni blocco chiude con `SET CONSTRAINTS ... IMMEDIATE` sui vincoli elencati. Dal fix del
+ * 18/11 il client esteso di `PrismaService` lo fa gia' da solo con `ALL` come ultimo statement:
+ * questo SET esplicito e' ridondante (un no-op su un vincolo gia' immediato), tenuto perche' vale
+ * anche con un client nudo (Prisma 5.22 perde l'errore del COMMIT) e perche' documenta qui quali
+ * vincoli ci si aspetta. Log: solo id e conteggi.
  */
 import { TenantContext } from '../../../core/context/tenant-context'
 import type { LoggerService } from '../../../core/logger/logger.service'
