@@ -807,6 +807,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
           'cer_code',
           'counterpart_address',
           'counterpart_name',
+          'counterpart_sede_id', // sede della controparte scelta nel form (fuori dall'hash)
           'created_at',
           'entry_hash',
           'fir_id',
