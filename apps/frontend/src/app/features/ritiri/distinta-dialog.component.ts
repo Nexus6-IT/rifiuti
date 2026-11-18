@@ -9,7 +9,7 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { ToastService } from '../../core/services/toast.service'
 import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
-import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
+import { ModelloStampaElenco } from '../impostazioni/modelli-stampa/modello-stampa.model'
 import { CampoDataComponent } from '../../shared/components/campo-data.component'
 import { messaggioErroreRitiri } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
@@ -120,14 +120,14 @@ export class DistintaDialogComponent implements OnInit {
   mezzo = ''
   modelloId = ''
   /** Modelli utilizzabili per la distinta (ambito DISTINTA_RITIRI o GENERALE), predefinito in testa. */
-  readonly modelli = signal<ModelloStampaVista[]>([])
+  readonly modelli = signal<ModelloStampaElenco[]>([])
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
 
   ngOnInit(): void {
     this.modelliServizio.elenco().subscribe({
       next: tutti => {
-        const per = (m: ModelloStampaVista) =>
+        const per = (m: ModelloStampaElenco) =>
           m.ambito === 'DISTINTA_RITIRI' || m.ambito === 'GENERALE'
         const lista = tutti.filter(per)
         // come il server: predefinito della distinta, poi quello generale

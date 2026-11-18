@@ -6,7 +6,7 @@ describe('StampaRitiriService — limite della distinta', () => {
     const tx = { automezzo: { findFirst: jest.fn() } }
     const prisma = { $transaction: async (fn: (t: unknown) => unknown) => fn(tx) }
     const repo = { elenca: jest.fn().mockResolvedValue({ righe: [{}], totale: 2500 }) }
-    const modelli = { list: jest.fn().mockResolvedValue([]), getById: jest.fn() }
+    const modelli = { listPredefiniti: jest.fn().mockResolvedValue([]), getById: jest.fn() }
     const pdf = { generateDistintaPDF: jest.fn() }
     const s = new StampaRitiriService(
       prisma as never,
@@ -25,7 +25,7 @@ describe('StampaRitiriService — limite della distinta', () => {
     const tx = { automezzo: { findFirst: jest.fn() } }
     const prisma = { $transaction: async (fn: (t: unknown) => unknown) => fn(tx) }
     const repo = { elenca: jest.fn().mockResolvedValue({ righe: [], totale: 0 }) }
-    const modelli = { list: jest.fn().mockResolvedValue([]), getById: jest.fn() }
+    const modelli = { listPredefiniti: jest.fn().mockResolvedValue([]), getById: jest.fn() }
     const pdf = { generateDistintaPDF: jest.fn().mockResolvedValue(Buffer.from('%PDF')) }
     const s = new StampaRitiriService(
       prisma as never,

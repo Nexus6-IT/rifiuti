@@ -38,7 +38,7 @@ describe('PdfController — QR del formulario su downloadFIR', () => {
   let prisma: { fIR: { findFirst: jest.Mock } }
   let mudGenerator: { generateMUDReport: jest.Mock }
   let verifySignaturesUseCase: { generateVerificationUrl: jest.Mock }
-  let modelli: { list: jest.Mock; getById: jest.Mock }
+  let modelli: { listPredefiniti: jest.Mock; getById: jest.Mock }
   let res: { set: jest.Mock; send: jest.Mock }
 
   const firVidimato = {
@@ -67,7 +67,7 @@ describe('PdfController — QR del formulario su downloadFIR', () => {
     verifySignaturesUseCase = {
       generateVerificationUrl: jest.fn().mockReturnValue('https://rifiuti.ignicraft.com/verify/x'),
     }
-    modelli = { list: jest.fn().mockResolvedValue([]), getById: jest.fn() }
+    modelli = { listPredefiniti: jest.fn().mockResolvedValue([]), getById: jest.fn() }
     res = { set: jest.fn(), send: jest.fn() }
 
     controller = new PdfController(

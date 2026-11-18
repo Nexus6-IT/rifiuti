@@ -35,6 +35,12 @@ export interface ModelloStampaVista extends DatiModelloStampa {
   versione: number
 }
 
+/**
+ * Voce dell'elenco (`GET /modelli-stampa`): senza il logo, che pesa fino a 256 KiB e serve solo a
+ * chi modifica il modello (lo legge con `getById`). `haLogo` basta a mostrarne la presenza.
+ */
+export type ModelloStampaElenco = Omit<ModelloStampaVista, 'logoBase64'> & { haLogo: boolean }
+
 /** Alla creazione bastano il nome; il resto ha i valori predefiniti della colonna. */
 export type NuovoModelloStampa = Partial<DatiModelloStampa> & Pick<DatiModelloStampa, 'nome'>
 /** La modifica sostituisce tutti i campi (PUT) e porta la versione letta. */
@@ -179,6 +185,29 @@ export class ModelliStampaService {
         where: { tenantId },
         select: SENZA_LOGO,
         orderBy: [{ ambito: 'asc' }, { isDefault: 'desc' }, { name: 'asc' }],
+      })
+      return (await this.conLogo(tenantId, righe)).map(vista)
+    })
+  }
+
+  /** Elenco per la pagina dei modelli: come `list` ma senza il logo (solo `haLogo`). */
+  async listSenzaLogo(tenantId: string): Promise<ModelloStampaElenco[]> {
+    return (await this.list(tenantId)).map(({ logoBase64, ...resto }) => ({
+      ...resto,
+      haLogo: logoBase64 !== null,
+    }))
+  }
+
+  /**
+   * Solo i modelli predefiniti (al piu' uno per ambito), con il logo: e' quel che serve a stampare
+   * quando il chiamante non indica un modello. Non carica i loghi degli altri modelli.
+   */
+  async listPredefiniti(tenantId: string): Promise<ModelloStampaVista[]> {
+    return nelContestoTenant(tenantId, async () => {
+      const righe = await this.prisma.companyTemplate.findMany({
+        where: { tenantId, isDefault: true },
+        select: SENZA_LOGO,
+        orderBy: [{ ambito: 'asc' }, { name: 'asc' }],
       })
       return (await this.conLogo(tenantId, righe)).map(vista)
     })

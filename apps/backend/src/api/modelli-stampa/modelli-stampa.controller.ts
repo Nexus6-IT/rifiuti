@@ -48,9 +48,20 @@ export class ModelliStampaController {
 
   @Get()
   @Roles(...RUOLI_LETTURA)
-  @ApiOperation({ summary: 'Modelli di stampa dell’azienda (per ambito, predefinito per primo)' })
+  @ApiOperation({
+    summary: 'Modelli di stampa dell’azienda (per ambito, predefinito per primo), senza logo',
+  })
   list(@Req() req: any) {
-    return this.modelli.list(requireRequestTenantId(req))
+    return this.modelli.listSenzaLogo(requireRequestTenantId(req))
+  }
+
+  // Dopo `GET /` e prima delle rotte con `:id/...`: il dettaglio porta il logo, che l'elenco non ha.
+  @Get(':id')
+  @Roles(...RUOLI_LETTURA)
+  @ApiOperation({ summary: 'Un modello di stampa, logo compreso' })
+  @ApiResponse({ status: 404, description: 'Modello non trovato' })
+  dettaglio(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.modelli.getById(requireRequestTenantId(req), id)
   }
 
   @Post()

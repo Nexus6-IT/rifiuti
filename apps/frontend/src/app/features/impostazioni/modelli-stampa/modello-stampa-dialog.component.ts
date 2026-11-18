@@ -23,6 +23,7 @@ import {
   COPIE_MAX,
   COPIE_MIN,
   DatiModelloStampa,
+  ModelloStampaElenco,
   ModelloStampaVista,
 } from './modello-stampa.model'
 import { ModelliStampaService } from './modelli-stampa.service'
@@ -162,7 +163,7 @@ const COLORE = /^#[0-9A-Fa-f]{6}$/
         <p-button
           label="Salva"
           icon="pi pi-check"
-          [disabled]="form.invalid || inCorso()"
+          [disabled]="form.invalid || inCorso() || caricandoLogo()"
           (onClick)="salva()"
           data-testid="modello-dlg-salva"
         />
@@ -227,7 +228,7 @@ export class ModelloStampaDialogComponent implements OnChanges {
 
   @Input() visible = false
   /** null = nuovo. */
-  @Input() elemento: ModelloStampaVista | null = null
+  @Input() elemento: ModelloStampaElenco | null = null
   @Output() salvato = new EventEmitter<ModelloStampaVista>()
   @Output() visibleChange = new EventEmitter<boolean>()
 
@@ -237,6 +238,8 @@ export class ModelloStampaDialogComponent implements OnChanges {
   readonly errore = signal<string | null>(null)
   readonly erroreLogo = signal<string | null>(null)
   readonly inCorso = signal(false)
+  /** Il logo di un modello esistente arriva dal dettaglio (l'elenco non lo porta). */
+  readonly caricandoLogo = signal(false)
   readonly logo = signal<string | null>(null)
   readonly logoUrl = computed(() => logoComeDataUrl(this.logo()))
   private readonly modifiche = signal(0)
@@ -284,10 +287,29 @@ export class ModelloStampaDialogComponent implements OnChanges {
       colorePrimario: e?.colorePrimario ?? COLORE_PRIMARIO_PREDEFINITO,
       coloreSecondario: e?.coloreSecondario ?? COLORE_SECONDARIO_PREDEFINITO,
     })
-    this.logo.set(e?.logoBase64 ?? null)
+    this.logo.set(null)
     this.erroreLogo.set(null)
     this.errore.set(null)
     this.inCorso.set(false)
+    this.caricandoLogo.set(false)
+    if (e?.haLogo) this.caricaLogo(e.id)
+  }
+
+  /** Salva resta bloccato finche' il logo non e' arrivato: un salvataggio prima lo azzererebbe. */
+  private caricaLogo(id: string): void {
+    this.caricandoLogo.set(true)
+    this.servizio.dettaglio(id).subscribe({
+      next: m => {
+        // il dialogo e' stato riaperto su un altro modello nel frattempo: risposta superata
+        if (this.elemento?.id !== id) return
+        this.logo.set(m.logoBase64)
+        this.caricandoLogo.set(false)
+      },
+      error: err => {
+        if (this.elemento?.id !== id) return
+        this.errore.set(messaggioErrore(err, 'Impossibile caricare il logo del modello.'))
+      },
+    })
   }
 
   async scegliLogo(evento: Event): Promise<void> {
@@ -305,7 +327,7 @@ export class ModelloStampaDialogComponent implements OnChanges {
   }
 
   salva(): void {
-    if (this.form.invalid || this.inCorso()) return
+    if (this.form.invalid || this.inCorso() || this.caricandoLogo()) return
     const v = this.form.getRawValue()
     const dati: DatiModelloStampa = {
       nome: v.nome.trim(),

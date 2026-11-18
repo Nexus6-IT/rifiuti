@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable } from 'rxjs'
 import { environment } from '../../../../environments/environment'
-import { DatiModelloStampa, ModelloStampaVista } from './modello-stampa.model'
+import { DatiModelloStampa, ModelloStampaElenco, ModelloStampaVista } from './modello-stampa.model'
 
 /**
  * Servizio HTTP dei modelli di stampa (`ModelliStampaController`: elenco per tutti i ruoli, scrittura solo ADMIN). Le modifiche
@@ -13,8 +13,14 @@ export class ModelliStampaService {
   private readonly http = inject(HttpClient)
   private readonly url = `${environment.apiUrl}/modelli-stampa`
 
-  elenco(): Observable<ModelloStampaVista[]> {
-    return this.http.get<ModelloStampaVista[]>(this.url)
+  /** Elenco senza i loghi (solo `haLogo`). */
+  elenco(): Observable<ModelloStampaElenco[]> {
+    return this.http.get<ModelloStampaElenco[]>(this.url)
+  }
+
+  /** Un modello con il logo: serve alla modifica, l'elenco non lo porta. */
+  dettaglio(id: string): Observable<ModelloStampaVista> {
+    return this.http.get<ModelloStampaVista>(`${this.url}/${encodeURIComponent(id)}`)
   }
 
   crea(dati: DatiModelloStampa): Observable<ModelloStampaVista> {

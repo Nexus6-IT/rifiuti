@@ -76,7 +76,7 @@ export class PdfController {
     const esito = sceglieModelloFir(
       modelloId !== undefined
         ? { tipo: 'ESPLICITO', modello: await this.modelliStampa.getById(tenantId, modelloId) }
-        : { tipo: 'PREDEFINITO', elenco: await this.modelliStampa.list(tenantId) }
+        : { tipo: 'PREDEFINITO', elenco: await this.modelliStampa.listPredefiniti(tenantId) }
     )
     if (esito.esito === 'AMBITO_NON_VALIDO') {
       throw new BadRequestException({
