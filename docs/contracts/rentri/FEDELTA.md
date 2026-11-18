@@ -564,3 +564,44 @@ ajv dedicata (`x-pattern-insensibile`, confronto con `RegExp(resto, 'iu')`): `au
 `auth_data[0].id` = `mobile`/`Mobile`/`MOBILE` passa, qualunque altro valore da' 400. La
 traduzione e' limitata al caso «`(?i)` iniziale»: un flag in mezzo al pattern resta in
 `PATTERN_NON_APPLICABILI` e dichiarato qui sopra.
+
+## 8. Operazioni del FIR in viaggio (2026-11-18, piano `2026-11-18-rentri-fir-viaggio.md`, P0)
+
+La fake ora espone le rotte `quantita`, `trasporto`, `annotazione`, `sosta-tecnica`,
+`trasbordo-totale`, `trasbordo-parziale`, `destinatario`, `reset`, `rollback-firma` (tutte
+ASYNC, 202 + `TransazioneModel`) e `invia-a-dispositivo` (sincrona, 200). I corpi sono
+validati contro i modelli del contratto, generati con `npm run genera-schema:<nome>` e
+guardati da `test/schema-viaggio-allineato-al-contratto.test.ts`.
+
+**Macchina degli stati.** Ricavata dalla sezione «Stati del formulario ammessi» della
+descrizione di ogni operazione nel contratto, dove esiste (modifica, quantita', trasporto,
+accettazione, annotazione, annullamento, hash, firma, reset, sosta, trasbordi, nuovo
+destinatario, note di annullamento). Tre cose non sono nel contratto e sono **dedotte**:
+quale tra `DatiQuantita`/`DatiQuantitaUpdate` e `Trasporto`/`TrasportoUpdate` spetta a
+ciascuno stato; `Allegato` (senza vincoli di stato); `RollbackFirma` (il contratto elenca
+le condizioni, non gli stati: la fake lo propone nei soli stati del viaggio). Le
+**transizioni** fra stati restano un'ipotesi: oggi la fake applica solo quelle di
+accettazione, annullamento, `reset` (torna allo stato precedente) e `rollback-firma`
+(torna all'attesa di firma, mai per la firma di annullamento).
+Cambiamento rispetto a prima: `Accettato` ammette l'annotazione (non e' piu' lista vuota),
+`RespintoAccettatoParzialmente` ammette `NuovoDestinatario`, `Accettazione` solo in
+`InserimentoAccettazione`, uno stato sconosciuto non propone nulla.
+
+**Divergenze dichiarate.**
+- Restrittiva: `POST /trasporto` e' un `oneOf` terrestre/marittimo/ferroviario; la fake
+  accetta solo il terrestre (l'unico che WasteFlow invia).
+- Restrittiva: la sosta tecnica richiede ripresa successiva alla sospensione (il contratto
+  descrive solo due `date-time`).
+- Permissiva: `invia-a-dispositivo` non verifica che `credentials_id` esista ne' che sia
+  associato all'unita' locale (riga 1583).
+- Permissiva: nessuna delle operazioni controlla il ruolo del soggetto (produttore,
+  trasportatore, destinatario) ne' le visibilita'.
+
+**Path di stato dedicati (piano, P0 T3): NON implementato, da rivedere.** Il piano chiede
+che i client di copie e trasmissioni interroghino `/copia-digitale/{tid}/status`,
+`/copia-cartacea/{tid}/status`, `/trasmissioni/{tid}/status` e che la fake risponda 404 sul
+path generico. Il contratto, pero', marca quei tre path come **DEPRECATI** («utilizzare
+/{transazioneId}/status», righe 2951, 3681, 5099) e i client usano gia' il canonico
+di proposito. Adottarli renderebbe la fake meno fedele e porterebbe i client su endpoint
+in dismissione. Resta valido il punto della checklist demo: verificare cosa risponde
+l'ente al path generico per una transazione di copia o trasmissione.
