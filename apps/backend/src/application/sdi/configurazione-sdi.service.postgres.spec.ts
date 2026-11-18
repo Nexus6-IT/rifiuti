@@ -357,4 +357,17 @@ describe('ConfigurazioneSdiService — Postgres reale, ruolo wasteflow_app', () 
     const incrociata = await nel(b.tenantId, () => service.leggi(a.tenantId)).catch(e => e)
     expect(incrociata).toBeInstanceOf(Error)
   })
+
+  it('chiave di cifratura cambiata: la verifica risponde 409 SDI_CREDENZIALI_NON_DECIFRABILI, non un 500', async () => {
+    const a = await azienda()
+    await crea(a, { credenziali: { apiKey: 'x' } })
+    const altra = new ConfigurazioneSdiService(
+      app,
+      { get: () => 'un-altra-chiave' } as unknown as ConfigService,
+      new RegistroProviderSdi([new ProviderSdiFake()])
+    )
+    await expect(
+      nel(a.tenantId, () => altra.verifica(a.tenantId, a.utenteId))
+    ).rejects.toMatchObject({ response: { error: 'SDI_CREDENZIALI_NON_DECIFRABILI' } })
+  })
 })

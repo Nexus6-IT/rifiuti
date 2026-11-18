@@ -96,3 +96,5 @@ contiene i GRANT a `wasteflow_app` e `wasteflow_sistema`, ma i ruoli sono del
 cluster e non stanno nel dump. `ops/restore.sh` li crea `NOLOGIN`, senza password,
 se mancano, PRIMA di caricare il dump (no-op se esistono); LOGIN, password e diritti
 li da' poi `ops/db-ruoli.sh` dopo le migration. Nessun intervento a mano.
+
+- `notifiche_sdi` (4.5a) e' protetta dalle sole REVOKE ai ruoli applicativi, senza un trigger contro il proprietario come le tabelle delle pese: scelta voluta, da rivedere se serve immutabilita' anche per il proprietario.

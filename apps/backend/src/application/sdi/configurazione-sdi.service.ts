@@ -33,7 +33,7 @@ import {
   RegistroProviderSdi,
 } from '../fatturazione/sdi/registro-provider-sdi'
 
-/** Nome della variabile con la chiave di cifratura (costante: la guardia statica non vuole literal nei `.get`). */
+/** Nome della variabile con la chiave di cifratura (solo per i messaggi d'errore; la lettura usa il literal, cosi' la guardia di produzione la vede). */
 export const VARIABILE_CHIAVE_CIFRATURA_SDI = 'SDI_CREDENTIAL_ENC_KEY'
 
 const MAX_CHIAVI_CREDENZIALI = 10
@@ -157,7 +157,7 @@ export class ConfigurazioneSdiService {
   ) {}
 
   private chiave(): string {
-    return this.config.get<string>(VARIABILE_CHIAVE_CIFRATURA_SDI) ?? ''
+    return this.config.get<string>('SDI_CREDENTIAL_ENC_KEY') ?? ''
   }
 
   private chiaveObbligatoria(): string {
@@ -469,9 +469,16 @@ export class ConfigurazioneSdiService {
    */
   private decifraCredenziali(cifrate: string | null): CredenzialiSdi | null {
     if (cifrate === null) return null
-    return JSON.parse(
-      decifraSegreto(cifrate, this.chiaveObbligatoria(), VARIABILE_CHIAVE_CIFRATURA_SDI)
-    )
+    const chiave = this.chiaveObbligatoria()
+    try {
+      return JSON.parse(decifraSegreto(cifrate, chiave, VARIABILE_CHIAVE_CIFRATURA_SDI))
+    } catch {
+      throw new ConflictException({
+        error: 'SDI_CREDENZIALI_NON_DECIFRABILI',
+        message:
+          'Le credenziali salvate non sono leggibili (chiave cambiata o dati alterati): reinseriscile.',
+      })
+    }
   }
 
   private validaDati(d: DatiConfigurazioneSdi): void {

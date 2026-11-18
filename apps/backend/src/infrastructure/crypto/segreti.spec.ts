@@ -37,4 +37,9 @@ describe('segreti (AES-256-GCM, formato iv:tag:ct)', () => {
       'payload cifrato non valido'
     )
   })
+
+  it('compatibilita: un payload prodotto dalla vecchia implementazione RENTRI si decifra ancora', () => {
+    const vecchio = '8aNrnduhROdXqXb3:CaniWY14dVzgXcojyiuB9g==:9P8va/BHwHp2mb52c2vx3ew/xQ=='
+    expect(decifraSegreto(vecchio, 'segreto-rentri-fisso', 'K')).toBe('-----BEGIN KEY-----')
+  })
 })
