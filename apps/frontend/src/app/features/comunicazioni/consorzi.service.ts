@@ -5,7 +5,8 @@ import { map } from 'rxjs/operators'
 import { environment } from '../../../environments/environment'
 import {
   Consorzio,
-  FileScaricato,
+  EstrattoScaricato,
+  KgStimatiAnno,
   InputRegolaConsorzio,
   MarcaturaMovimento,
   RegolaConsorzio,
@@ -24,6 +25,25 @@ function nomeFileDa(disposition: string | null): string | null {
   }
   const semplice = /filename="?([^";]+)"?/i.exec(disposition)
   return semplice ? semplice[1].trim() : null
+}
+
+/** Legge `X-Kg-Stimati` (JSON); un valore assente o malformato vale «nessun kg stimato». */
+function kgStimatiDa(valore: string | null): KgStimatiAnno[] {
+  if (!valore) return []
+  try {
+    const dati: unknown = JSON.parse(valore)
+    return Array.isArray(dati)
+      ? dati.filter(
+          (k): k is KgStimatiAnno =>
+            !!k &&
+            typeof k.anno === 'number' &&
+            typeof k.annoMud === 'number' &&
+            typeof k.righe === 'number'
+        )
+      : []
+  } catch {
+    return []
+  }
 }
 
 /** Client HTTP della marcatura per consorzio (4.9b). Backend: `/comunicazioni/consorzi`. */
@@ -74,7 +94,7 @@ export class ConsorziService {
     da: string,
     a: string,
     unitaLocaleId?: string
-  ): Observable<FileScaricato> {
+  ): Observable<EstrattoScaricato> {
     let params = new HttpParams().set('consorzio', consorzio).set('da', da).set('a', a)
     if (unitaLocaleId) params = params.set('unitaLocaleId', unitaLocaleId)
     return this.http
@@ -83,6 +103,7 @@ export class ConsorziService {
         map((r: HttpResponse<Blob>) => ({
           blob: r.body ?? new Blob(),
           nomeFile: nomeFileDa(r.headers.get('Content-Disposition')),
+          kgStimati: kgStimatiDa(r.headers.get('X-Kg-Stimati')),
         }))
       )
   }

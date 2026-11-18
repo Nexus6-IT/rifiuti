@@ -25,6 +25,8 @@ export interface RigaEstrattoConsorzio {
   indirizzoControparte: string | null
   firNumero: string | null
   origine: 'REGOLA' | 'MANUALE'
+  /** Anno del MUD i cui pesi specifici hanno stimato i kg; assente = kg esatti o non calcolati. */
+  kgStimatiDaMud?: number
 }
 
 const BOM = '﻿'
@@ -43,6 +45,7 @@ const INTESTAZIONE = [
   'Indirizzo controparte',
   'FIR',
   'Marcatura',
+  'Note kg',
 ] as const
 
 /** «160601» -> «16 06 01», con «*» se pericoloso. */
@@ -80,6 +83,9 @@ export function estrattoConsorzioCsv(
       cellaTestoCsv(r.indirizzoControparte),
       cellaTestoCsv(r.firNumero),
       cellaCsv(r.origine === 'MANUALE' ? 'Manuale' : 'Regola'),
+      cellaCsv(
+        r.kgStimatiDaMud === undefined ? '' : `Stimati con i pesi del MUD ${r.kgStimatiDaMud}`
+      ),
     ].join(';')
   })
   return BOM + [INTESTAZIONE.map(h => cellaCsv(h)).join(';'), ...linee].join('\r\n') + '\r\n'

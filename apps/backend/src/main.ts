@@ -94,6 +94,8 @@ async function bootstrap() {
       'X-Documenti-Saltati',
       'X-Fir-Esclusi',
       'X-Ritiri-Saltati',
+      'X-Righe',
+      'X-Kg-Stimati',
     ],
     maxAge: 3600, // Cache preflight requests for 1 hour
   })

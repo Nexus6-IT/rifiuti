@@ -8,6 +8,7 @@ import {
   eConsorzio,
   type MovimentoDaClassificare,
 } from '../../domain/comunicazioni/classifica-consorzio'
+import { convertiInKg } from '../../domain/waste-movement/unita-misura-registro'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import { leggiIntegrazioni } from '../mud/aggregazione/mud-integrazioni'
@@ -18,6 +19,7 @@ import {
   MarcaturaNonValidaError,
   type EstrattoConsorzio,
   type EstrattoConsorziPort,
+  type KgStimatiAnno,
 } from './marcatura-consorzi.port'
 
 /** Un estratto copre al massimo cinque anni: oltre, il periodo e' quasi certamente un errore. */
@@ -35,6 +37,9 @@ const giornoSuccessivo = (d: string) =>
  * giorni di Roma: inizio alle 00:00 del primo giorno, fine alle 00:00 del giorno dopo l'ultimo.
  * I pesi specifici (kg per unita' non di massa) sono quelli del MUD di ciascun anno solare di Roma
  * toccato dal periodo: una sola lettura dei MUD per tutti gli anni, e ogni movimento usa i pesi del proprio anno.
+ * Per un anno senza MUD (di solito l'anno in corso) si ripiega sui pesi del MUD precedente piu'
+ * vicino che ne abbia, e l'estratto lo dichiara (`kgStimati`, `avvisi`): il ripiego vale solo qui,
+ * le comunicazioni O.R.SO. non lo usano e i loro hash non cambiano.
  */
 @Injectable()
 export class EstrattoConsorziService implements EstrattoConsorziPort {
@@ -86,13 +91,34 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
       }),
     ])
     // `MUDReport` e' unico per (azienda, anno): al piu' un report per anno.
-    const pesiSpecificiPerAnno: Record<
-      number,
-      ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']
-    > = {}
+    type PesiSpecifici = ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']
+    const pesiSpecificiPerAnno: Record<number, PesiSpecifici> = {}
+    const annoMudDiRipiego = new Map<number, number>()
+    // Anno «mancante» = nessun MUD oppure MUD senza alcun peso specifico (bozza): stesso criterio
+    // con cui si scelgono i MUD precedenti di ripiego. Il ripiego e' per anno intero, non per CER.
+    const mancanti: number[] = []
     for (const anno of anni) {
       const record = reportMud.find(r => r.year === anno)
       pesiSpecificiPerAnno[anno] = leggiIntegrazioni(record?.reportData).pesiSpecifici
+      if (Object.keys(pesiSpecificiPerAnno[anno]).length === 0) mancanti.push(anno)
+    }
+    if (mancanti.length > 0) {
+      // Ripiego: MUD piu' vicino PRECEDENTE all'anno mancante, fra quelli con almeno un peso.
+      const precedenti = (
+        await this.prisma.mUDReport.findMany({
+          where: { tenantId, year: { lt: Math.max(...mancanti) } },
+          select: { year: true, reportData: true },
+          orderBy: { year: 'desc' },
+        })
+      )
+        .map(r => ({ year: r.year, pesi: leggiIntegrazioni(r.reportData).pesiSpecifici }))
+        .filter(r => Object.keys(r.pesi).length > 0)
+      for (const anno of mancanti) {
+        const vicino = precedenti.find(r => r.year < anno)
+        if (!vicino) continue
+        pesiSpecificiPerAnno[anno] = vicino.pesi
+        annoMudDiRipiego.set(anno, vicino.year)
+      }
     }
 
     const righe: Array<RigaEstrattoConsorzio & { ordine: string }> = []
@@ -123,10 +149,17 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
       giorno: giornoItaliano(m.movementDate),
     }))
     const esiti = await this.marcatura.classifica(tenantId, daClassificare)
+    const stimatiPerAnno = new Map<number, number>()
     letti.forEach((m, i) => {
       const marcatura = esiti[i].marcature.find(x => x.consorzio === consorzio)
       if (!marcatura) return
       const data = giornoItaliano(m.movementDate)
+      const anno = Number(data.slice(0, 4))
+      const annoMud = annoMudDiRipiego.get(anno)
+      // Stimato = unita' non di massa convertita con i pesi di un MUD di un altro anno.
+      const stimato =
+        annoMud !== undefined && m.kg !== null && convertiInKg(m.quantita, m.unita) === null
+      if (stimato) stimatiPerAnno.set(anno, (stimatiPerAnno.get(anno) ?? 0) + 1)
       righe.push({
         data,
         numero: m.numero,
@@ -141,11 +174,24 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
         indirizzoControparte: m.indirizzoControparte,
         firNumero: m.firNumero,
         origine: marcatura.origine,
+        kgStimatiDaMud: stimato ? annoMud : undefined,
         ordine: `${data}|${m.numero.split('/')[1]}|${m.numero.split('/')[0].padStart(10, '0')}|${m.id}`,
       })
     })
     righe.sort((x, y) => x.ordine.localeCompare(y.ordine))
+    const kgStimati: KgStimatiAnno[] = [...stimatiPerAnno.entries()]
+      .sort(([x], [y]) => x - y)
+      .map(([anno, nRighe]) => ({
+        anno,
+        annoMud: annoMudDiRipiego.get(anno) as number,
+        righe: nRighe,
+      }))
     return {
+      kgStimati,
+      avvisi: kgStimati.map(
+        k =>
+          `I kg dei movimenti del ${k.anno} in unità non di massa sono stimati con i pesi specifici del MUD ${k.annoMud}, perché il MUD ${k.anno} è assente o senza pesi specifici (${k.righe} ${k.righe === 1 ? 'riga' : 'righe'}).`
+      ),
       nomeFile: `estratto-${consorzio.toLowerCase()}-${da}_${a}.csv`,
       csv: estrattoConsorzioCsv(consorzio, righe),
       righe: righe.length,

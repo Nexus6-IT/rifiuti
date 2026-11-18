@@ -74,6 +74,18 @@ export interface FileScaricato {
   nomeFile: string | null
 }
 
+/** Kg di un anno stimati con i pesi specifici del MUD di un anno precedente (anno senza MUD). */
+export interface KgStimatiAnno {
+  anno: number
+  annoMud: number
+  righe: number
+}
+
+/** File dell'estratto per consorzio, con gli eventuali kg stimati dichiarati dal backend. */
+export interface EstrattoScaricato extends FileScaricato {
+  kgStimati: KgStimatiAnno[]
+}
+
 /** «13» -> «13 xx xx», «1606» -> «16 06 xx», «160601» -> «16 06 01». */
 export function descriviCer(cer: string, esatto: boolean): string {
   if (esatto) return `${cer.slice(0, 2)} ${cer.slice(2, 4)} ${cer.slice(4)}`

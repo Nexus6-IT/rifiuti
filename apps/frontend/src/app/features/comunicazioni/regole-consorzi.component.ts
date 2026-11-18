@@ -215,6 +215,14 @@ interface OpzioneCausale {
           data-testid="estratto-scarica"
         ></p-button>
       </div>
+      <p
+        *ngFor="let avviso of avvisiKgStimati()"
+        class="mt-2 text-orange-700"
+        role="status"
+        data-testid="estratto-avviso-kg-stimati"
+      >
+        <i class="pi pi-exclamation-triangle mr-2"></i>{{ avviso }}
+      </p>
     </section>
 
     <p-dialog
@@ -346,6 +354,8 @@ export class RegoleConsorziComponent implements OnInit {
   readonly erroriForm = signal<string[]>([])
   readonly inCorso = signal(false)
   readonly scaricando = signal(false)
+  /** Avvisi dell'ultimo estratto scaricato: kg stimati con i pesi del MUD di un anno precedente. */
+  readonly avvisiKgStimati = signal<string[]>([])
   /** Causali del catalogo (carichi e scarichi) fra cui scegliere; la prima voce e' «nessun filtro». */
   readonly causali = signal<OpzioneCausale[]>([])
   readonly daSempre = DA_SEMPRE
@@ -503,6 +513,7 @@ export class RegoleConsorziComponent implements OnInit {
   scarica(): void {
     if (!this.estrattoValido() || this.scaricando()) return
     this.scaricando.set(true)
+    this.avvisiKgStimati.set([])
     this.servizio
       .scaricaEstratto(
         this.estrattoConsorzio,
@@ -513,6 +524,12 @@ export class RegoleConsorziComponent implements OnInit {
       .subscribe({
         next: f => {
           this.scaricando.set(false)
+          this.avvisiKgStimati.set(
+            f.kgStimati.map(
+              k =>
+                `I kg del ${k.anno} sono stimati con i pesi specifici del MUD ${k.annoMud} (il MUD ${k.anno} è assente o senza pesi specifici): ${k.righe} ${k.righe === 1 ? 'riga' : 'righe'} nell’estratto, segnalate nella colonna «Note kg».`
+            )
+          )
           const url = URL.createObjectURL(f.blob)
           const a = document.createElement('a')
           a.href = url

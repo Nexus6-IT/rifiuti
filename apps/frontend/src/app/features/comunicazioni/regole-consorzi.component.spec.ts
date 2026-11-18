@@ -236,10 +236,39 @@ describe('RegoleConsorziComponent', () => {
     expect(svc.scaricaEstratto).not.toHaveBeenCalled()
     component.estrattoA = '2026-03-31'
     component.estrattoConsorzio = 'COBAT'
-    svc.scaricaEstratto.and.returnValue(of({ blob: new Blob(['x']), nomeFile: 'e.csv' }))
+    svc.scaricaEstratto.and.returnValue(
+      of({ blob: new Blob(['x']), nomeFile: 'e.csv', kgStimati: [] })
+    )
     spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
     spyOn(URL, 'revokeObjectURL')
     component.scarica()
     expect(svc.scaricaEstratto).toHaveBeenCalledWith('COBAT', '2026-03-01', '2026-03-31', undefined)
+  })
+
+  it('estratto con kg stimati: mostra l’avviso con anno, anno MUD e righe; sparisce al download successivo', () => {
+    setup(false)
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(URL, 'revokeObjectURL')
+    svc.scaricaEstratto.and.returnValue(
+      of({
+        blob: new Blob(['x']),
+        nomeFile: 'e.csv',
+        kgStimati: [{ anno: 2026, annoMud: 2025, righe: 3 }],
+      })
+    )
+    component.scarica()
+    fixture.detectChanges()
+    const avviso = fixture.nativeElement.querySelector('[data-testid="estratto-avviso-kg-stimati"]')
+    expect(avviso.textContent).toContain('2026')
+    expect(avviso.textContent).toContain('MUD 2025')
+    expect(avviso.textContent).toContain('3 righe')
+    svc.scaricaEstratto.and.returnValue(
+      of({ blob: new Blob(['x']), nomeFile: 'e.csv', kgStimati: [] })
+    )
+    component.scarica()
+    fixture.detectChanges()
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="estratto-avviso-kg-stimati"]')
+    ).toBeNull()
   })
 })

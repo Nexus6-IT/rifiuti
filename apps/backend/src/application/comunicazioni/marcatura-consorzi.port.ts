@@ -83,7 +83,19 @@ export interface MarcaturaConsorziPort {
 
 export const ESTRATTO_CONSORZI_SERVICE = Symbol('ESTRATTO_CONSORZI_SERVICE')
 
+/** Kg di un anno stimati con i pesi specifici del MUD di un anno precedente (anno senza MUD). */
+export interface KgStimatiAnno {
+  anno: number
+  annoMud: number
+  /** Righe dell'estratto con kg stimati in quell'anno. */
+  righe: number
+}
+
 export interface EstrattoConsorzio {
+  /** Anni con kg stimati (vuoto se nessuno): le righe interessate hanno la nota nel CSV. */
+  kgStimati: KgStimatiAnno[]
+  /** Avvisi leggibili, uno per anno in `kgStimati`. */
+  avvisi: string[]
   nomeFile: string
   /** CSV con BOM, separatore `;`. */
   csv: string

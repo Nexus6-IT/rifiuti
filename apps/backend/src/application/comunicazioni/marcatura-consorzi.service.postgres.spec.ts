@@ -634,9 +634,9 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       expect(linee[1]).toContain('"13 02 05*"')
       expect(linee[1]).toContain('"Officina Rossi"')
       expect(linee[1]).toContain('"100"')
-      expect(linee[1].endsWith('"Regola"')).toBe(true)
+      expect(linee[1].endsWith('"Regola";""')).toBe(true)
       expect(linee[2]).toContain('"\'=CMD()"')
-      expect(linee[2].endsWith('"Manuale"')).toBe(true)
+      expect(linee[2].endsWith('"Manuale";""')).toBe(true)
     })
 
     it('I3: i limiti del periodo sono i giorni di Roma, non la mezzanotte UTC', async () => {

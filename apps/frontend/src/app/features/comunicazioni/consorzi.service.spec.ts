@@ -77,6 +77,19 @@ describe('ConsorziService', () => {
     })
   })
 
+  it('scaricaEstratto: legge i kg stimati da X-Kg-Stimati, assenti o malformati = nessuno', () => {
+    const esiti: unknown[] = []
+    for (const valore of ['[{"anno":2026,"annoMud":2025,"righe":3}]', undefined, 'non json']) {
+      service
+        .scaricaEstratto('COBAT', '2026-01-01', '2026-01-31')
+        .subscribe(f => esiti.push(f.kgStimati))
+      http
+        .expectOne(r => r.url.endsWith('/comunicazioni/consorzi/estratto'))
+        .flush(new Blob(), { headers: valore ? { 'X-Kg-Stimati': valore } : {} })
+    }
+    expect(esiti).toEqual([[{ anno: 2026, annoMud: 2025, righe: 3 }], [], []])
+  })
+
   it('scaricaEstratto senza sede non manda unitaLocaleId', () => {
     service.scaricaEstratto('COBAT', '2026-01-01', '2026-01-31').subscribe()
     const req = http.expectOne(r => r.url.endsWith('/comunicazioni/consorzi/estratto'))
