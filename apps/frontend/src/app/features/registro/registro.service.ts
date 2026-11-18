@@ -110,6 +110,11 @@ export interface RegistraMovimentoRequest {
   operationCode?: string
   counterpartName?: string
   counterpartAddress?: string
+  /**
+   * Sede della ditta controparte, scelta dall'anagrafica o dal FIR; assente se nome o indirizzo sono
+   * stati modificati a mano (il backend ripiega sul FIR e sul nome).
+   */
+  counterpartSedeId?: string
   firId?: string
   notes?: string
   /** Blocco «Fatturazione» (4.3): senza, il legame nasce PROPOSTO e non viene mai confermato. */
