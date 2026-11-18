@@ -33,6 +33,8 @@ import {
   inserisciAnnotazione,
   numeraAnnotazione,
 } from '../numerazione-annotazione'
+import { sedeControparteRettifica } from '../sede-controparte-rettifica'
+import { MSG_SEDE_CONTROPARTE_NON_TROVATA, sedeControparteEsiste } from '../sede-controparte'
 import { validaDatiMovimento } from '../valida-dati-movimento'
 import {
   caricaCatalogoCausali,
@@ -67,6 +69,11 @@ export interface DatiRettifica {
   operationCode?: string
   counterpartName?: string
   counterpartAddress?: string
+  /**
+   * Sede della controparte (D3): stringa = quella; `null` = azzeramento; assente = si propaga quella
+   * del predecessore solo se nome e indirizzo non cambiano (v. `sedeControparteRettifica`).
+   */
+  counterpartSedeId?: string | null
   notes?: string
 }
 
@@ -128,6 +135,8 @@ interface DatiAnnotazione {
   operationCode: string | null
   counterpartName: string | null
   counterpartAddress: string | null
+  /** Sede della controparte; non entra nell'hash. */
+  counterpartSedeId: string | null
   movementDate: Date
   notes: string | null
 }
@@ -331,6 +340,7 @@ export class CorreggiMovimentoUseCase {
           operationCode: dati.operationCode,
           counterpartName: dati.counterpartName,
           counterpartAddress: dati.counterpartAddress,
+          counterpartSedeId: dati.counterpartSedeId,
           firId: originale.firId,
           // La correzione non e' la ricopia: l'indice unico della ricopia non la vede.
           firIdRicopia: null,
@@ -494,6 +504,8 @@ export class CorreggiMovimentoUseCase {
         operationCode: originale.operationCode,
         counterpartName: originale.counterpartName,
         counterpartAddress: originale.counterpartAddress,
+        // Annullamento: copia alla lettera, come gli altri campi.
+        counterpartSedeId: originale.counterpartSedeId,
         movementDate: originale.movementDate,
         notes: originale.notes,
         fatturabile: true,
@@ -532,6 +544,15 @@ export class CorreggiMovimentoUseCase {
     } catch (err) {
       throw new BadRequestException((err as Error).message)
     }
+    // Sede della controparte (D3): una sede indicata esplicitamente deve esistere nell'azienda (come
+    // alla registrazione; una disattivata si accetta); altrimenti vale la regola di propagazione.
+    const counterpartSedeId = sedeControparteRettifica(originale, r)
+    if (
+      typeof r.counterpartSedeId === 'string' &&
+      !(await sedeControparteEsiste(tx, originale.tenantId, r.counterpartSedeId))
+    ) {
+      throw new BadRequestException(MSG_SEDE_CONTROPARTE_NON_TROVATA)
+    }
     return {
       type: originale.type,
       causale: r.causale,
@@ -546,6 +567,7 @@ export class CorreggiMovimentoUseCase {
       operationCode: r.operationCode ?? null,
       counterpartName: r.counterpartName ?? null,
       counterpartAddress: r.counterpartAddress ?? null,
+      counterpartSedeId,
       movementDate: r.movementDate,
       notes: r.notes ?? null,
       fatturabile: validazione.fatturabile,
