@@ -1,0 +1,2128 @@
+{
+  "CLIFOR": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "EST",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "ALI",
+      "tipoSql": "varchar(30)"
+    },
+    {
+      "nome": "TIT",
+      "tipoSql": "varchar(12)"
+    },
+    {
+      "nome": "CODFIS",
+      "tipoSql": "varchar(16)"
+    },
+    {
+      "nome": "PIVA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IND",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "NUM",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "FRAZ",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "COM",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CAP",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "PROV",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "ISTAT",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "TEL",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "FAX",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CODZN",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CONTO",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "IVA",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "REGV",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "REGA",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "SOSP",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "FG",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "PAG",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "BANC",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "CCC",
+      "tipoSql": "varchar(13)"
+    },
+    {
+      "nome": "CINC",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "BANA",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "CCA",
+      "tipoSql": "varchar(13)"
+    },
+    {
+      "nome": "CINA",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CONTR",
+      "tipoSql": "varchar(17)"
+    },
+    {
+      "nome": "CCR",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "AGE",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "INIZ",
+      "tipoSql": "varchar(18)"
+    },
+    {
+      "nome": "SSI",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "DAR",
+      "tipoSql": "varchar(18)"
+    },
+    {
+      "nome": "AVE",
+      "tipoSql": "varchar(18)"
+    },
+    {
+      "nome": "SFI",
+      "tipoSql": "varchar(18)"
+    },
+    {
+      "nome": "SSF",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "TIT2",
+      "tipoSql": "varchar(12)"
+    },
+    {
+      "nome": "RAG2",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "EST2",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "IND2",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "NUM2",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "FRAZ2",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "COM2",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CAP2",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "PRO2",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "CH1",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH2",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH3",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "AN1",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "AN2",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "AN3",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "LIS",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "SPB",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "SPS",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "FID",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "MUL",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "VALUTA",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "APPUNT",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "SEDI LEGALI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "EST",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "ALI",
+      "tipoSql": "varchar(30)"
+    },
+    {
+      "nome": "TIT",
+      "tipoSql": "varchar(12)"
+    },
+    {
+      "nome": "CODFIS",
+      "tipoSql": "varchar(16)"
+    },
+    {
+      "nome": "PIVA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IND",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "NUM",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "FRAZ",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "COM",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CAP",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "PROV",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "ISTAT",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "TEL",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "FAX",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CODZN",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C5",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C6",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C7",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C8",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C9",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "UNITA LOCALI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "IND",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "NUM",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "FRAZ",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "COM",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CAP",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "PROV",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "ISTAT",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "TEL",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "FAX",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CODZN",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CH1",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH2",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH3",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "AN1",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "AN2",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "AN3",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "CLI",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "CCIIAA",
+      "tipoSql": "varchar(20)"
+    },
+    {
+      "nome": "NREA",
+      "tipoSql": "varchar(9)"
+    },
+    {
+      "nome": "ISTATAT",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "NADD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "MUD",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "NOM",
+      "tipoSql": "varchar(25)"
+    },
+    {
+      "nome": "COG",
+      "tipoSql": "varchar(25)"
+    },
+    {
+      "nome": "APPUNT",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "TIPAZ",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "COU",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "CONT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "ELAD",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C5",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C6",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C7",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C8",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C9",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "AUTORIZZAZIONI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(11)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "NUM",
+      "tipoSql": "varchar(16)"
+    },
+    {
+      "nome": "DEL",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCAD",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "ENTE",
+      "tipoSql": "varchar(60)"
+    },
+    {
+      "nome": "ALBO",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "SMALT",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "CER",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "TIPO",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "AUTOMEZZI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(11)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "TARGA",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "RIMORCHIO",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "TARA",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "AUT",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "CH1",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH2",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH3",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "AUTISTI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(11)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "MATR",
+      "tipoSql": "varchar(20)"
+    },
+    {
+      "nome": "IND",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "LOC",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "ANN",
+      "tipoSql": "varchar(35)"
+    },
+    {
+      "nome": "CH1",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH2",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "CH3",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "MAGAZZINI RIFIUTI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "NUMERAZIONI": [
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "A",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "B",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "C",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "D",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "E",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "F",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "G",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "H",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "I",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "J",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "K",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "L",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "M",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "N",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "O",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "P",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "Q",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "R",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "S",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "T",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "U",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "V",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "W",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "X",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "Y",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "Z",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "SS",
+      "tipoSql": "varchar(14)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "RENrelazioniIniziali": [
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IDSCARICO",
+      "tipoSql": "int"
+    },
+    {
+      "nome": "IDCARICO",
+      "tipoSql": "int"
+    },
+    {
+      "nome": "ANNOCARICO",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "PROTOCOLLOCARICO",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "CER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "REGISTRO",
+      "tipoSql": "varchar(12)"
+    },
+    {
+      "nome": "SCARICOKG",
+      "tipoSql": "decimal(18,6)"
+    },
+    {
+      "nome": "ALTREINFO",
+      "tipoSql": "varchar(255)"
+    }
+  ],
+  "RENesportazioni": [
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "REGISTRO",
+      "tipoSql": "varchar(60)"
+    },
+    {
+      "nome": "PROTOCOLLOINIZIO",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROTOCOLLOFINE",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "DATAINIZIO",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "DATAFINE",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "TIPOREGISTRO",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "UTENTE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "TIM",
+      "tipoSql": "int"
+    },
+    {
+      "nome": "GUIDTRANS",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "RECUPERATO",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "GUIDVERIFICA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VERIFICATO",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "NOMEFILEXML",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "DOCUMENTO",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "HASH",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "DATAHASH",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "ALTREINFO",
+      "tipoSql": "varchar(255)"
+    }
+  ],
+  "XRENTRIFORMULARI": [
+    {
+      "nome": "CODICEFISCALE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "NUMEROFIR",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "DATAEMISSIONE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "CER",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "RUOLOAZIENDA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "STATO",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "QUARTACOPIA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "NOTIFICA",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "INVIATORENTRI",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "INVIATODH",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "PRODUTTORE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "TRASPORTATORE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "DESTINATARIO",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IDENTIFICATIVOPROD",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IDENTIFICATIVOTRAS",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "IDENTIFICATIVODEST",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    }
+  ],
+  "XRENTRIFIRTRASMESSI": [
+    {
+      "nome": "IDRENTRI",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "CODICEFISCALE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "NUMEROFIR",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "UNITALOCALE",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "XSEANNULLATO",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    }
+  ],
+  "CONTRATTI": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(7)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "NUM",
+      "tipoSql": "varchar(12)"
+    },
+    {
+      "nome": "DATAI",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "DATAF",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "CODCAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CODTIP",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CLIFAT",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "PAG",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "BAN",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "CC",
+      "tipoSql": "varchar(13)"
+    },
+    {
+      "nome": "AGE",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SPB",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "BOLLO",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "AN1",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "AN2",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "AN3",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "TFAT",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "SOSP",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IVAS",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "PERIODI",
+      "tipoSql": "text"
+    },
+    {
+      "nome": "RINNOVO",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "ELENCHIADDEB": [
+    {
+      "nome": "PRECOD",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "NOTA1",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "NOTA2",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "ADDEBCON": [
+    {
+      "nome": "COD",
+      "tipoSql": "int identity"
+    },
+    {
+      "nome": "CLIE",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "CONTR",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "ELENCO",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "ADDEB",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "RIFER",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "TIPO",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "QTA",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "UM",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "PREZZO",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "IVA",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "PROVV",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "TPROV",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "TIPOLOG",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "SF",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "RECUP",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "CATQ",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "CATEG",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CONTROP",
+      "tipoSql": "varchar(17)"
+    },
+    {
+      "nome": "CCR",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "SPECIAL",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "INTEND",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "SCA1",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA2",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA3",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA4",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA5",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA6",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA7",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA8",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA9",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA10",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA11",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "SCA12",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "GIAF1",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF2",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF3",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF4",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF5",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF6",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF7",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF8",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF9",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF10",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF11",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "GIAF12",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "CONDIZ",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "FACC",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "FDET",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SOMMA",
+      "tipoSql": "varchar(18)"
+    },
+    {
+      "nome": "DATAC",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "CFATT",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ],
+  "ADDEBITI": [
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(5)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(45)"
+    },
+    {
+      "nome": "GRUPPO",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "UM",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "IVA",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "PREZZO1",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO1",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG1",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PREZZO2",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO2",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG2",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PREZZO3",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO3",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG3",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PREZZO4",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO4",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG4",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PREZZO5",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO5",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG5",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PREZZO6",
+      "tipoSql": "varchar(10)"
+    },
+    {
+      "nome": "SCONTO6",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "PROVVAG6",
+      "tipoSql": "varchar(8)"
+    },
+    {
+      "nome": "TIPADD",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "CATADD",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "TIPOPROVV",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "CONTROP",
+      "tipoSql": "varchar(17)"
+    },
+    {
+      "nome": "CENTROCR",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CATSTAT1",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "CATSTAT2",
+      "tipoSql": "varchar(3)"
+    },
+    {
+      "nome": "ARTICMAG",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "VARIANTE",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(15)"
+    }
+  ],
+  "CONDIZIONI DI PAGAMENTO": [
+    {
+      "nome": "COD",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "DES",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "NR",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "MOD",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "SCA",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "FM",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "IMP",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "POI",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "VAL",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "RIVA",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "RSPE",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "D11",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D12",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D13",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D21",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D22",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D23",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D31",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D32",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D33",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D41",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D42",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "D43",
+      "tipoSql": "varchar(50)"
+    },
+    {
+      "nome": "C21",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C22",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C23",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C24",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C31",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C32",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C33",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C34",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C41",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C42",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C43",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C44",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C51",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C52",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C53",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C54",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C61",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C62",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C63",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C64",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C71",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C72",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C73",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C74",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C81",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C82",
+      "tipoSql": "varchar(4)"
+    },
+    {
+      "nome": "C83",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "C84",
+      "tipoSql": "varchar(2)"
+    },
+    {
+      "nome": "C1",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C2",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C3",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "C4",
+      "tipoSql": "varchar(255)"
+    },
+    {
+      "nome": "VER",
+      "tipoSql": "varchar(6)"
+    },
+    {
+      "nome": "ID",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "IDT",
+      "tipoSql": "varchar(15)"
+    },
+    {
+      "nome": "BLOK",
+      "tipoSql": "varchar(1)"
+    },
+    {
+      "nome": "IMPORT",
+      "tipoSql": "varchar(30)"
+    }
+  ]
+}

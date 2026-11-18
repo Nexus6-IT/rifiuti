@@ -1,6 +1,7 @@
 import * as sql from 'mssql'
 import {
   ColonnaSql,
+  InfoOrigine,
   SorgenteSql,
 } from '../../../apps/backend/src/application/migrazione/estrazione/estrai-staging'
 
@@ -67,6 +68,17 @@ export async function apriSorgente(cfg: ConfigurazioneSorgente): Promise<Sorgent
           WHERE c.object_id = OBJECT_ID(@nome)
           ORDER BY c.column_id`)
       return r.recordset.map((x) => ({ nome: x.nome, tipo: x.tipo.toLowerCase() }))
+    },
+
+    async infoOrigine(): Promise<InfoOrigine> {
+      const r = await pool.request().query<{ versione: string | null; collation: string | null }>(`
+        SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(40)) AS versione,
+               CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS NVARCHAR(80)) AS collation`)
+      const riga = r.recordset[0]
+      return {
+        ...(riga?.versione ? { versioneSqlServer: riga.versione } : {}),
+        ...(riga?.collation ? { collation: riga.collation } : {}),
+      }
     },
 
     leggiRighe(select: string): AsyncIterable<(string | null)[]> {

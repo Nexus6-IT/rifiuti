@@ -24,6 +24,7 @@ import { join } from 'path'
 import * as sql from 'mssql'
 import { analizzaArchivio } from '../../../apps/backend/src/application/migrazione/analisi/analizza-archivio'
 import { eScrittura, estraiStaging } from '../../../apps/backend/src/application/migrazione/estrazione/estrai-staging'
+import { TABELLE_DOCUMENTATE } from '../../../apps/backend/src/application/migrazione/staging/colonne-documentate'
 import { apriStaging } from '../../../apps/backend/src/application/migrazione/staging/lettore-staging'
 import { apriSorgente } from '../src/adattatore-mssql'
 
@@ -247,6 +248,13 @@ descrivi('estrattore contro SQL Server (container usa e getta)', () => {
       const staging = await apriStaging(cartella)
       // le colonne del catalogo documentato coincidono con quelle reali dei modelli
       expect(staging.avvisi).toEqual([])
+      // I1: le colonne reali delle tabelle del catalogo esteso (stesso ordine di column_id) sono
+      // quelle del catalogo committato; DOCUMENTO di RENesportazioni non viene letta.
+      for (const t of TABELLE_DOCUMENTATE.filter((x) => x.database !== 'MUD')) {
+        expect(manifest.tabelle[t.nome].colonne).toEqual(t.colonne.map((c) => c.nome))
+      }
+      expect(manifest.origine?.versioneSqlServer).toMatch(/^\d+\./)
+      expect(manifest.origine?.improntaSchema).toMatch(/^[0-9a-f]{64}$/)
       const rapporto = await analizzaArchivio(staging)
       for (const t of rapporto.confronto1.perTabella) {
         expect(t.righeLette).toBe(t.righeDichiarate)
