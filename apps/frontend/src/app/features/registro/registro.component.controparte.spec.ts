@@ -24,6 +24,7 @@ import { Produttore } from '../../shared/models/registry.model'
 describe('RegistroComponent — sede della controparte nel payload', () => {
   let component: RegistroComponent
   let registra: jasmine.Spy
+  let getDitta: jasmine.Spy
 
   const fir = {
     id: 'fir-1',
@@ -54,8 +55,34 @@ describe('RegistroComponent — sede della controparte nel payload', () => {
     sedeLegale: { via: 'Via Roma', civico: '1', cap: '38060', comune: 'Calliano', provincia: 'TN' },
   } as unknown as Produttore
 
+  const sedeA = {
+    id: 'sede-predefinita',
+    via: 'Via Roma',
+    civico: '1',
+    cap: '38060',
+    citta: 'Calliano',
+    provincia: 'TN',
+    attiva: true,
+    principale: true,
+  }
+  const sedeB = {
+    id: 'sede-b',
+    via: 'Via Dante',
+    civico: '2',
+    cap: '38122',
+    citta: 'Trento',
+    provincia: 'TN',
+    attiva: true,
+    principale: false,
+  }
+  const sedeOff = { ...sedeB, id: 'sede-off', attiva: false }
+  const dittaConSedi = { id: 'd1', sedi: [sedeA, sedeB, sedeOff] }
+  const produttoreMulti = { ...produttore, dittaId: 'd1', numeroSedi: 2 } as unknown as Produttore
+  const scegliMulti = () => component.onProduttoreSelect({ value: produttoreMulti } as never)
+
   function crea(partitaIvaAzienda = '99999999999'): void {
     registra = jasmine.createSpy('registra').and.returnValue(NEVER)
+    getDitta = jasmine.createSpy('getDitta').and.returnValue(of(dittaConSedi))
     TestBed.configureTestingModule({
       providers: [
         { provide: FeatureFlagsService, useValue: { has: () => true } },
@@ -89,7 +116,10 @@ describe('RegistroComponent — sede della controparte nel payload', () => {
           },
         },
         { provide: FirService, useValue: { getFIRList: () => of({ items: [] }) } },
-        { provide: RegistryService, useValue: { getProduttori: () => of({ items: [] }) } },
+        {
+          provide: RegistryService,
+          useValue: { getProduttori: () => of({ items: [] }), getDitta },
+        },
       ],
     })
     component = TestBed.runInInjectionContext(() => new RegistroComponent())
@@ -191,5 +221,110 @@ describe('RegistroComponent — sede della controparte nel payload', () => {
         counterpartAddress: 'Via Roma 1, 38060 Calliano (TN)',
       })['counterpartSedeId']
     ).toBeUndefined()
+  })
+  describe('selettore della sede', () => {
+    it('ditta con piu sedi: elenca le sole sedi attive e preseleziona la predefinita', () => {
+      crea()
+      scegliMulti()
+      expect(getDitta).toHaveBeenCalledWith('d1')
+      expect(component.sediControparte().map(s => s.id)).toEqual(['sede-predefinita', 'sede-b'])
+      expect(component.sedeControparteSelezionata()).toBe('sede-predefinita')
+      expect(salva()['counterpartSedeId']).toBe('sede-predefinita')
+    })
+
+    it('ditta con una sola sede: nessun selettore e nessuna chiamata, sede automatica', () => {
+      crea()
+      component.onProduttoreSelect({
+        value: { ...produttore, dittaId: 'd1', numeroSedi: 1 },
+      } as never)
+      expect(getDitta).not.toHaveBeenCalled()
+      expect(component.sediControparte()).toEqual([])
+      expect(salva()['counterpartSedeId']).toBe('sede-predefinita')
+    })
+
+    it('sede scelta dall utente: va nel payload e l indirizzo diventa quello della sede', () => {
+      crea()
+      scegliMulti()
+      component.onSedeControparteChange('sede-b')
+      expect(component.form.get('counterpartAddress')?.value).toBe('Via Dante 2, 38122 Trento (TN)')
+      expect(salva()['counterpartSedeId']).toBe('sede-b')
+    })
+
+    it('sede scelta e indirizzo poi modificato a mano: niente counterpartSedeId', () => {
+      crea()
+      scegliMulti()
+      component.onSedeControparteChange('sede-b')
+      component.form.patchValue({ counterpartAddress: 'Via Dante 22' })
+      expect(salva()['counterpartSedeId']).toBeUndefined()
+    })
+
+    it('id non presente fra le sedi: ignorato', () => {
+      crea()
+      scegliMulti()
+      component.onSedeControparteChange('sconosciuta')
+      expect(salva()['counterpartSedeId']).toBe('sede-predefinita')
+    })
+
+    it('cambio di produttore: il selettore si riallinea; cancellazione: si svuota', () => {
+      crea()
+      scegliMulti()
+      component.onProduttoreSelect({ value: produttore } as never)
+      expect(component.sediControparte()).toEqual([])
+      scegliMulti()
+      component.onProduttoreClear()
+      expect(component.sediControparte()).toEqual([])
+    })
+
+    it('apertura di un nuovo form: selettore svuotato', () => {
+      crea()
+      scegliMulti()
+      component.apriForm()
+      expect(component.sediControparte()).toEqual([])
+    })
+  })
+
+  describe('ordine: scelta esplicita > sede del FIR > predefinita', () => {
+    const firConProduttore = {
+      ...fir,
+      produttore: {
+        partitaIva: '01111111111',
+        ragioneSociale: 'Comune di Calliano',
+        indirizzo: 'Via FIR 9, Calliano (TN)',
+        sedeId: 'sede-b',
+      },
+    } as unknown as FIR
+
+    it('FIR collegato e poi stessa ditta riselezionata dall anagrafica: resta la sede del FIR', () => {
+      crea('02222222222')
+      component.onFirSelect({ value: { fir: firConProduttore, label: 'FIR-2026-1' } } as never)
+      scegliMulti()
+      expect(salva()['counterpartSedeId']).toBe('sede-b')
+      expect(component.sedeControparteSelezionata()).toBe('sede-b')
+    })
+
+    it('FIR collegato e poi ditta diversa dall anagrafica: la predefinita della nuova', () => {
+      crea('02222222222')
+      component.onFirSelect({ value: { fir: firConProduttore, label: 'FIR-2026-1' } } as never)
+      component.onProduttoreSelect({
+        value: { ...produttore, ragioneSociale: 'Altra ditta' },
+      } as never)
+      expect(salva()['counterpartSedeId']).toBe('sede-predefinita')
+    })
+
+    it('scelta esplicita e poi stessa ditta riselezionata: resta la scelta', () => {
+      crea()
+      scegliMulti()
+      component.onSedeControparteChange('sede-b')
+      scegliMulti()
+      expect(salva()['counterpartSedeId']).toBe('sede-b')
+    })
+
+    it('scelta esplicita e poi FIR collegato: vince il FIR (azione piu recente)', () => {
+      crea('02222222222')
+      scegliMulti()
+      component.onSedeControparteChange('sede-b')
+      component.onFirSelect({ value: { fir, label: 'FIR-2026-1' } } as never)
+      expect(salva()['counterpartSedeId']).toBe('sede-produttore')
+    })
   })
 })

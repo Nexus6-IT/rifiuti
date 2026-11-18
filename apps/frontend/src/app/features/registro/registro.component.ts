@@ -56,7 +56,7 @@ import { CompanyService } from '../../core/services/company.service'
 import { FirService } from '../fir/fir.service'
 import { RegistryService } from '../registry/registry.service'
 import { FIR, ParteFIR } from '../../shared/models/fir.model'
-import { Produttore } from '../../shared/models/registry.model'
+import { Produttore, SedeDitta } from '../../shared/models/registry.model'
 import {
   RegistroService,
   Movimento,
@@ -72,7 +72,13 @@ import {
   EsitoCorrezioneMovimento,
 } from './registro.service'
 import { etichettaRegistro, registroPredefinito } from './registro-sede'
-import { sedeControparteDaInviare, type SceltaControparte } from './registro-controparte'
+import {
+  indirizzoDaSede,
+  sceltaDaAnagrafica,
+  sceltaDaSedeScelta,
+  sedeControparteDaInviare,
+  type SceltaControparte,
+} from './registro-controparte'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
 import { giorniDiRitardo } from './registro-ritardo'
 import {
@@ -935,6 +941,7 @@ function fineGiornata(d: Date): Date {
                     [suggestions]="produttoreSuggestions"
                     (completeMethod)="cercaProduttore($event)"
                     (onSelect)="onProduttoreSelect($event)"
+                    (onClear)="onProduttoreClear()"
                     field="ragioneSociale"
                     [dropdown]="true"
                     [forceSelection]="true"
@@ -958,6 +965,29 @@ function fineGiornata(d: Date): Date {
                   </p-autoComplete>
                   <small class="field-hint"
                     >Compila i campi controparte sottostanti (restano modificabili).</small
+                  >
+                </div>
+              </div>
+
+              <div class="col-12" *ngIf="sediControparte().length > 1">
+                <div class="field">
+                  <label for="sedeControparte">Sede della controparte</label>
+                  <p-dropdown
+                    inputId="sedeControparte"
+                    data-testid="registro-sede-controparte"
+                    [options]="sediControparteOptions()"
+                    [ngModel]="sedeControparteSelezionata()"
+                    [ngModelOptions]="{ standalone: true }"
+                    (onChange)="onSedeControparteChange($event.value)"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Scegli la sede"
+                    styleClass="w-full"
+                    ariaLabel="Sede della controparte"
+                  ></p-dropdown>
+                  <small class="field-hint"
+                    >La ditta ha più sedi: la predefinita è preselezionata, l'indirizzo segue la
+                    sede scelta.</small
                   >
                 </div>
               </div>
@@ -1721,6 +1751,20 @@ export class RegistroComponent implements OnInit {
    * `sedeControparteDaInviare` la manda solo se nome e indirizzo non sono stati modificati a mano.
    */
   private sceltaControparte: SceltaControparte | null = null
+
+  /** Sedi attive della ditta controparte, solo se ne ha piu' di una (il selettore compare allora). */
+  private sceltaControparteDittaId: string | null = null
+  readonly sediControparte = signal<SedeDitta[]>([])
+  /** Sede della controparte mostrata nel selettore (segue `sceltaControparte`). */
+  readonly sedeControparteSelezionata = signal<string | null>(null)
+  readonly sediControparteOptions = computed(() =>
+    this.sediControparte().map(s => ({
+      value: s.id,
+      label:
+        [s.denominazione, indirizzoDaSede(s)].filter(Boolean).join(' — ') +
+        (s.principale ? ' (principale)' : ''),
+    }))
+  )
   /** Suggerimenti produttori (filtrati client-side sull'anagrafica del tenant). */
   produttoreSuggestions: Produttore[] = []
 
@@ -1975,6 +2019,7 @@ export class RegistroComponent implements OnInit {
     this.selectedFir = null
     this.selectedProduttore = null
     this.sceltaControparte = null
+    this.azzeraSediControparte()
     this.firCollegato = null
     this.ruoloHint.set(null)
     // Precarica i cataloghi per gli autocomplete (best-effort, non bloccante).
@@ -2003,6 +2048,7 @@ export class RegistroComponent implements OnInit {
   chiudiForm(): void {
     this.formVisible = false
     this.sceltaControparte = null
+    this.azzeraSediControparte()
     this.ripristinaForm?.()
     this.ripristinaForm = null
   }
@@ -2227,7 +2273,10 @@ export class RegistroComponent implements OnInit {
     this.form.get('firId')?.setValue('')
   }
 
-  /** Selezione di un produttore dall'anagrafica: compila i campi controparte. */
+  /**
+   * Selezione di un produttore dall'anagrafica: compila i campi controparte. Con piu' sedi carica
+   * l'elenco per il selettore. Ordine della sede: scelta esplicita > sede del FIR > predefinita.
+   */
   onProduttoreSelect(event: AutoCompleteSelectEvent): void {
     const p = event.value as Produttore
     if (!p) return
@@ -2235,7 +2284,51 @@ export class RegistroComponent implements OnInit {
     const indirizzo = this.indirizzoProduttore(p)
     this.form.patchValue({ counterpartName: nome, counterpartAddress: indirizzo })
     // La sede predefinita del ruolo; l'indirizzo scritto resta quello della sede legale (Q1).
-    this.sceltaControparte = { sedeId: p.sedeId ?? null, nome, indirizzo }
+    this.sceltaControparte = sceltaDaAnagrafica(this.sceltaControparte, {
+      sedeId: p.sedeId ?? null,
+      nome,
+      indirizzo,
+    })
+    this.sedeControparteSelezionata.set(this.sceltaControparte.sedeId ?? null)
+    this.caricaSediControparte(p)
+  }
+
+  /** Cancellazione del produttore scelto: il selettore sparisce, i campi compilati restano. */
+  onProduttoreClear(): void {
+    this.azzeraSediControparte()
+  }
+
+  /** Scelta della sede nel selettore: l'indirizzo segue la sede e la scelta diventa esplicita. */
+  onSedeControparteChange(sedeId: string | null): void {
+    const sede = this.sediControparte().find(s => s.id === sedeId)
+    if (!sede) return
+    const nome = this.form.get('counterpartName')?.value ?? ''
+    this.sceltaControparte = sceltaDaSedeScelta(nome, sede)
+    this.sedeControparteSelezionata.set(sede.id)
+    this.form.patchValue({ counterpartAddress: this.sceltaControparte.indirizzo })
+  }
+
+  private azzeraSediControparte(): void {
+    this.sediControparte.set([])
+    this.sedeControparteSelezionata.set(null)
+    this.sceltaControparteDittaId = null
+  }
+
+  /** Con una sola sede (o senza ditta) resta tutto automatico: nessuna chiamata, nessun selettore. */
+  private caricaSediControparte(p: Produttore): void {
+    this.sediControparte.set([])
+    if (!p.dittaId || (p.numeroSedi ?? 0) < 2) return
+    const dittaId = p.dittaId
+    this.sceltaControparteDittaId = dittaId
+    this.registryService.getDitta(dittaId).subscribe({
+      next: ditta => {
+        // risposta in ritardo: vale solo se la scelta e' ancora quella di questa ditta
+        if (this.sceltaControparte === null || this.sceltaControparteDittaId !== dittaId) return
+        const attive = ditta.sedi.filter(s => s.attiva)
+        this.sediControparte.set(attive.length > 1 ? attive : [])
+      },
+      error: () => this.sediControparte.set([]),
+    })
   }
 
   /** Imposta la controparte (nome + indirizzo) dallo snapshot del FIR. */
@@ -2244,7 +2337,8 @@ export class RegistroComponent implements OnInit {
     const nome = parte?.ragioneSociale ?? ''
     const indirizzo = parte?.indirizzo ?? ''
     this.form.patchValue({ counterpartName: nome, counterpartAddress: indirizzo })
-    this.sceltaControparte = { sedeId: parte?.sedeId ?? null, nome, indirizzo }
+    this.sceltaControparte = { sedeId: parte?.sedeId ?? null, nome, indirizzo, origine: 'fir' }
+    this.azzeraSediControparte()
   }
 
   /**
