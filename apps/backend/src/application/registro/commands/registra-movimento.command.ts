@@ -50,6 +50,11 @@ export class RegistraMovimentoCommand {
      * Blocco «Fatturazione» facoltativo (fase 4.3): conferma o propone il legame con cliente e
      * prezzo. Senza, il legame (se la causale e' fatturabile) nasce solo come proposta.
      */
-    public readonly legame?: DatiLegameRegistrazione
+    public readonly legame?: DatiLegameRegistrazione,
+    /**
+     * Sede della ditta controparte (scelta nel form). Facoltativa; se indicata deve esistere
+     * nell'azienda. Non entra nell'hash di vidimazione.
+     */
+    public readonly counterpartSedeId?: string | null
   ) {}
 }

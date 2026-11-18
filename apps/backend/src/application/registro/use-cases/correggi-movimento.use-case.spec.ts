@@ -618,4 +618,85 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
       motivo: 'errore',
     })
   })
+
+  describe('sede della controparte (D3)', () => {
+    const SEDE = '00000000-0000-4000-8000-0000000000c1'
+    const ALTRA = '00000000-0000-4000-8000-0000000000c2'
+    const conSede = (over: Record<string, unknown> = {}) =>
+      riga({
+        counterpartSedeId: SEDE,
+        counterpartName: 'Comune di Calliano',
+        counterpartAddress: 'Via Roma 1, Calliano (TN)',
+        ...over,
+      })
+    const stessi = {
+      counterpartName: 'Comune di Calliano',
+      counterpartAddress: 'Via Roma 1, Calliano (TN)',
+    }
+    /** Transazione con la sede indicata come esistente o no. */
+    const txConSede = (esiste: boolean, original = conSede()) => {
+      const tx = creaTx({ letti: [original, original] }) as ReturnType<typeof creaTx> & {
+        sedeDitta: { findFirst: jest.Mock }
+      }
+      tx.sedeDitta = { findFirst: jest.fn().mockResolvedValue(esiste ? { id: ALTRA } : null) }
+      return tx
+    }
+    const sedeScritta = (tx: ReturnType<typeof creaTx>) =>
+      tx.wasteMovement.create.mock.calls[0][0].data.counterpartSedeId
+
+    it('rettifica della sola quantita: la sede si propaga', async () => {
+      const tx = txConSede(true)
+      await creaUseCase(tx).rettifica({ ...base, dati: { ...dati, ...stessi } })
+      expect(sedeScritta(tx)).toBe(SEDE)
+      expect(tx.sedeDitta.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('rettifica con nome cambiato e sede assente: NULL', async () => {
+      const tx = txConSede(true)
+      await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, ...stessi, counterpartName: 'Comune di Trento' },
+      })
+      expect(sedeScritta(tx)).toBeNull()
+    })
+
+    it('rettifica con sede null esplicita: azzeramento', async () => {
+      const tx = txConSede(true)
+      await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, ...stessi, counterpartSedeId: null },
+      })
+      expect(sedeScritta(tx)).toBeNull()
+    })
+
+    it('rettifica con sede esplicita: validata e usata', async () => {
+      const tx = txConSede(true)
+      await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, ...stessi, counterpartSedeId: ALTRA },
+      })
+      expect(tx.sedeDitta.findFirst).toHaveBeenCalledWith({
+        where: { id: ALTRA, tenantId: TENANT },
+        select: { id: true },
+      })
+      expect(sedeScritta(tx)).toBe(ALTRA)
+    })
+
+    it('rettifica con sede esplicita non trovata: 400 e nessuna riga', async () => {
+      const tx = txConSede(false)
+      await expect(
+        creaUseCase(tx).rettifica({
+          ...base,
+          dati: { ...dati, ...stessi, counterpartSedeId: ALTRA },
+        })
+      ).rejects.toBeInstanceOf(BadRequestException)
+      expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    })
+
+    it('annullamento: copia alla lettera la sede del predecessore', async () => {
+      const tx = txConSede(true)
+      await creaUseCase(tx).annulla(base)
+      expect(sedeScritta(tx)).toBe(SEDE)
+    })
+  })
 })

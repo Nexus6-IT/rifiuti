@@ -22,7 +22,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
   creaAziendaMud,
   creaMovimento,
@@ -331,6 +331,100 @@ describe('Lettore dettagli tracciato — Postgres reale, ruolo wasteflow_app', (
     expect(d.fir.size).toBe(6)
     expect(sei.totale()).toBe(uno.totale())
     expect(sei.totale()).toBeLessThanOrEqual(9)
+  })
+
+  describe('sede della controparte scelta nel form (colonna del movimento)', () => {
+    async function dittaConSedi(az: AziendaMud, nome: string) {
+      const ditta = await owner.ditta.create({
+        data: { tenantId: az.tenantId, ragioneSociale: nome, partitaIva: partitaIvaUnica() },
+      })
+      const sede = (principale: boolean, attiva: boolean, comune: string) =>
+        owner.sedeDitta.create({
+          data: {
+            tenantId: az.tenantId,
+            dittaId: ditta.id,
+            via: 'Via Roma',
+            civico: '1',
+            cap: '38060',
+            comune,
+            provincia: 'TN',
+            principale,
+            attiva,
+          },
+        })
+      return {
+        ditta,
+        legale: await sede(true, true, 'Calliano'),
+        chiusa: await sede(false, false, 'Trento'),
+      }
+    }
+
+    it('carica la sede della colonna anche senza FIR e senza nome; `attiva` riflette il database', async () => {
+      const az = await nuovaAzienda('D5')
+      const { ditta, legale, chiusa } = await dittaConSedi(az, 'Comune di Calliano')
+      const m = await creaMovimento(owner, az, {
+        type: 'CARICO',
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '20 03 01',
+        quantita: 10,
+        giorno: '2026-05-10',
+        counterpartSedeId: chiusa.id,
+      })
+      const { db } = contaQuery()
+      const d = await nel(az, () =>
+        leggiDettagliTracciato(db, {
+          tenantId: az.tenantId,
+          movimenti: [{ firId: null, radiceId: m.id, sedeControparteId: chiusa.id }],
+        })
+      )
+      expect(d.sedi.get(chiusa.id)).toMatchObject({
+        id: chiusa.id,
+        attiva: false,
+        principale: false,
+      })
+      expect(d.sedi.get(chiusa.id)?.ditta.ragioneSociale).toBe(ditta.ragioneSociale)
+      // La sede legale della stessa ditta si carica per la sede legale, ed e' attiva.
+      expect(d.sedeLegalePerDitta.get(ditta.id)).toMatchObject({ id: legale.id, attiva: true })
+    })
+
+    it('non legge la sede di un’altra azienda (il filtro per tenant resta)', async () => {
+      const a = await nuovaAzienda('D6a')
+      const b = await nuovaAzienda('D6b')
+      const { legale } = await dittaConSedi(b, 'Altra ditta')
+      const d = await nel(a, () =>
+        leggiDettagliTracciato(app, {
+          tenantId: a.tenantId,
+          movimenti: [
+            {
+              firId: null,
+              radiceId: '00000000-0000-4000-8000-000000000000',
+              sedeControparteId: legale.id,
+            },
+          ],
+        })
+      )
+      expect(d.sedi.size).toBe(0)
+    })
+
+    it('il numero di query resta fisso: la sede della colonna entra nella stessa findMany per id', async () => {
+      const az = await nuovaAzienda('D7')
+      const sedi: string[] = []
+      for (let i = 0; i < 5; i++) sedi.push((await dittaConSedi(az, `Ditta ${i}`)).legale.id)
+      const richiesta = (ids: string[]) => ({
+        tenantId: az.tenantId,
+        movimenti: ids.map(id => ({
+          firId: null,
+          radiceId: '00000000-0000-4000-8000-000000000000',
+          sedeControparteId: id,
+        })),
+      })
+      const uno = contaQuery()
+      await nel(az, () => leggiDettagliTracciato(uno.db, richiesta(sedi.slice(0, 1))))
+      const cinque = contaQuery()
+      const d = await nel(az, () => leggiDettagliTracciato(cinque.db, richiesta(sedi)))
+      expect(d.sedi.size).toBe(5)
+      expect(cinque.totale()).toBe(uno.totale())
+    })
   })
 
   it('non legge righe di un’altra azienda', async () => {

@@ -36,6 +36,11 @@ export interface MovimentoPerSoggetto {
   controparte: string | null
   /** Indirizzo della controparte scritto nel registro (distingue le sedi di una stessa ditta). */
   indirizzoControparte: string | null
+  /**
+   * Sede della ditta controparte scelta nel form del registro (`counterpart_sede_id`); `null` per i
+   * movimenti storici. Ha la precedenza su FIR e nome.
+   */
+  sedeControparteId?: string | null
 }
 
 type DettagliPerSoggetti = Pick<
@@ -111,18 +116,22 @@ const normalizza = (t: string | null | undefined) =>
     .trim()
 
 /**
- * Senza FIR il soggetto è la ditta indicata come controparte del movimento: la denominazione deve
- * coincidere con la ragione sociale di una ditta in anagrafica. Con più sedi decide l'indirizzo
- * (via e comune, poi il solo comune); anche con una sola ditta, se il movimento ha un indirizzo
- * il comune della sede deve comparire in esso; se non basta il movimento resta non identificato
- * (bloccante: va controllata la controparte).
+ * RIPIEGO PER NOME, per i movimenti senza sede scelta (storici o scritti a mano) e senza FIR: il
+ * soggetto è la ditta indicata come controparte del movimento, la cui denominazione deve coincidere
+ * con la ragione sociale di una ditta in anagrafica. Si considerano le sedi ATTIVE della ditta se ce
+ * n'è almeno una, altrimenti tutte (N3). Con più sedi decide l'indirizzo (via e comune, poi il solo
+ * comune); anche con una sola sede, se il movimento ha un indirizzo il comune della sede deve
+ * comparire in esso; se non basta il movimento resta non identificato (bloccante: va controllata la
+ * controparte).
  */
 function sedeDaControparte(
   m: MovimentoPerSoggetto,
   dettagli: Pick<DettagliPerSoggetti, 'sediPerControparte'>
 ): SedeDettaglio | null {
   if (!m.controparte || compatta(m.controparte) === '') return null
-  const candidate = dettagli.sediPerControparte.get(chiaveControparte(m.controparte)) ?? []
+  const tutte = dettagli.sediPerControparte.get(chiaveControparte(m.controparte)) ?? []
+  const attive = tutte.filter(s => s.attiva)
+  const candidate = attive.length > 0 ? attive : tutte
   const indirizzoMov = normalizza(m.indirizzoControparte)
   if (candidate.length === 1) {
     const unica = candidate[0]
@@ -144,14 +153,19 @@ function sedeDaControparte(
 }
 
 /**
- * Sede che identifica il soggetto. Con il FIR: produttore per i carichi, destinatario per gli
- * scarichi; per i FIR creati prima del 31/10 (senza colonne di sede) si ripiega sul produttore o
- * sul destinatario di anagrafica. Senza FIR: la controparte del movimento.
+ * Sede che identifica il soggetto, in quest'ordine (D4):
+ * 1. la sede scelta nel form del registro (`sedeControparteId`), se è fra quelle caricate, anche se
+ *    nel frattempo disattivata (era quella scelta); vince sul FIR perché è la scelta esplicita;
+ * 2. il FIR: produttore per i carichi, destinatario per gli scarichi; per i FIR creati prima del
+ *    31/10 (senza colonne di sede) si ripiega sul produttore o sul destinatario di anagrafica;
+ * 3. senza FIR, il nome della controparte (`sedeDaControparte`, solo movimenti storici).
  */
 function sedeDelMovimento(
   m: MovimentoPerSoggetto,
   dettagli: DettagliPerSoggetti
 ): SedeDettaglio | null {
+  const scelta = m.sedeControparteId ? dettagli.sedi.get(m.sedeControparteId) : undefined
+  if (scelta) return scelta
   if (!m.firId) return sedeDaControparte(m, dettagli)
   const fir = dettagli.fir.get(m.firId)
   if (!fir) return null

@@ -352,6 +352,52 @@ describe('leggiMovimentiOrso — Postgres reale, ruolo wasteflow_app', () => {
     })
   })
 
+  it('sedeControparteId: valorizzato se il movimento ha la sede della controparte, null per i movimenti storici', async () => {
+    const dittaRiga = await owner.ditta.create({
+      data: {
+        tenantId: az.tenantId,
+        ragioneSociale: 'Comune di Calliano',
+        partitaIva: partitaIvaUnica(),
+      },
+    })
+    const ditta = {
+      sedeId: (
+        await owner.sedeDitta.create({
+          data: {
+            tenantId: az.tenantId,
+            dittaId: dittaRiga.id,
+            via: 'Via Roma',
+            civico: '1',
+            cap: '38060',
+            comune: 'Calliano',
+            provincia: 'TN',
+            principale: true,
+          },
+        })
+      ).id,
+    }
+    const con = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '17 02 02',
+      quantita: 5,
+      giorno: '2025-03-19',
+      counterpartName: 'Comune di Calliano',
+      counterpartSedeId: ditta.sedeId,
+    })
+    const senza = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '17 02 02',
+      quantita: 5,
+      giorno: '2025-03-20',
+      counterpartName: 'Comune di Calliano',
+    })
+    const { movimenti } = await leggi(az)
+    expect(movimenti.find(m => m.id === con.id)?.sedeControparteId).toBe(ditta.sedeId)
+    expect(movimenti.find(m => m.id === senza.id)?.sedeControparteId).toBeNull()
+  })
+
   it('giacenze a fine mese: aperture + carichi - scarichi vigenti, anche di anni precedenti', async () => {
     const sede = await owner.rentriUnitaLocale.create({
       data: {

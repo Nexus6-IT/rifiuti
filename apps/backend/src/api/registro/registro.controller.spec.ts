@@ -671,6 +671,16 @@ describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)',
     })
   })
 
+  it('rettifica: counterpartSedeId passa dentro dati (stringa e null); assente resta assente', async () => {
+    const sede = '11111111-1111-4111-8111-111111111111'
+    await crea('OPERATOR').rettifica('mov-1', { ...dto, counterpartSedeId: sede } as any, richiesta)
+    expect(correggi.rettifica.mock.calls[0][0].dati.counterpartSedeId).toBe(sede)
+    await crea('OPERATOR').rettifica('mov-1', { ...dto, counterpartSedeId: null } as any, richiesta)
+    expect(correggi.rettifica.mock.calls[1][0].dati.counterpartSedeId).toBeNull()
+    await crea('OPERATOR').rettifica('mov-1', dto as any, richiesta)
+    expect(correggi.rettifica.mock.calls[2][0].dati).not.toHaveProperty('counterpartSedeId')
+  })
+
   it('rettifica e annullamento: avvisoRentri calcolato sul movimento corretto, azienda selezionata', async () => {
     avviso.calcola.mockResolvedValueOnce('avviso-r').mockResolvedValueOnce('avviso-a')
     const r = await crea('OPERATOR').rettifica('mov-1', dto as any, richiesta)

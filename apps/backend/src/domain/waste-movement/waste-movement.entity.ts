@@ -52,6 +52,8 @@ export interface WasteMovementProps {
   operationCode?: string
   counterpartName?: string
   counterpartAddress?: string
+  /** Sede della ditta controparte (scelta nel form); NON entra nell'hash di vidimazione. */
+  counterpartSedeId?: string | null
   firId?: string
   recordedByUserId?: string
   entryHash: string
@@ -280,6 +282,9 @@ export class WasteMovement {
   }
   get counterpartAddress(): string | undefined {
     return this.props.counterpartAddress
+  }
+  get counterpartSedeId(): string | null | undefined {
+    return this.props.counterpartSedeId
   }
   get firId(): string | undefined {
     return this.props.firId

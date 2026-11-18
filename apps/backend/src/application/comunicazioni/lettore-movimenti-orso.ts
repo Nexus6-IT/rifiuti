@@ -69,6 +69,7 @@ interface MovimentoGrezzo {
   movementDate: Date
   counterpartAddress: string | null
   counterpartName: string | null
+  counterpartSedeId: string | null
   movimentoOriginaleId: string | null
   progressiveYear: number
   progressiveNumber: number
@@ -142,6 +143,8 @@ export interface MovimentoOrso {
   /** Denominazione e indirizzo della controparte, come scritti sul movimento. */
   controparte: string | null
   indirizzoControparte: string | null
+  /** Sede della ditta controparte scelta nel form; `null` per i movimenti storici. */
+  sedeControparteId: string | null
   /** Numero del FIR collegato, se emesso. */
   firNumero: string | null
 }
@@ -314,6 +317,7 @@ export async function leggiMovimentiOrso(
       movementDate: true,
       counterpartAddress: true,
       counterpartName: true,
+      counterpartSedeId: true,
       movimentoOriginaleId: true,
       progressiveYear: true,
       progressiveNumber: true,
@@ -400,6 +404,7 @@ export async function leggiMovimentiOrso(
       causale: m.causale,
       controparte: m.counterpartName?.trim() || null,
       indirizzoControparte: m.counterpartAddress?.trim() || null,
+      sedeControparteId: m.counterpartSedeId,
       firNumero: f?.firNumber?.trim() || null,
     }
   })

@@ -72,6 +72,7 @@ import {
   EsitoCorrezioneMovimento,
 } from './registro.service'
 import { etichettaRegistro, registroPredefinito } from './registro-sede'
+import { sedeControparteDaInviare, type SceltaControparte } from './registro-controparte'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
 import { giorniDiRitardo } from './registro-ritardo'
 import {
@@ -1713,6 +1714,13 @@ export class RegistroComponent implements OnInit {
   firSuggestions: FirOption[] = []
   /** Opzione produttore selezionata (o testo digitato) nell'autocomplete controparte. */
   selectedProduttore: Produttore | string | null = null
+  /**
+   * Sede della controparte scelta dall'anagrafica o dal FIR (D5), con i testi compilati dalla scelta.
+   * Campo del componente, non un controllo del form: niente `valueChanges` (un `patchValue` emette per
+   * ogni controllo e l'ordine delle chiavi azzererebbe la sede appena scelta). Alla registrazione
+   * `sedeControparteDaInviare` la manda solo se nome e indirizzo non sono stati modificati a mano.
+   */
+  private sceltaControparte: SceltaControparte | null = null
   /** Suggerimenti produttori (filtrati client-side sull'anagrafica del tenant). */
   produttoreSuggestions: Produttore[] = []
 
@@ -1966,6 +1974,7 @@ export class RegistroComponent implements OnInit {
     // Azzera lo stato del collegamento FIR / anagrafica.
     this.selectedFir = null
     this.selectedProduttore = null
+    this.sceltaControparte = null
     this.firCollegato = null
     this.ruoloHint.set(null)
     // Precarica i cataloghi per gli autocomplete (best-effort, non bloccante).
@@ -1993,6 +2002,7 @@ export class RegistroComponent implements OnInit {
 
   chiudiForm(): void {
     this.formVisible = false
+    this.sceltaControparte = null
     this.ripristinaForm?.()
     this.ripristinaForm = null
   }
@@ -2221,19 +2231,20 @@ export class RegistroComponent implements OnInit {
   onProduttoreSelect(event: AutoCompleteSelectEvent): void {
     const p = event.value as Produttore
     if (!p) return
-    this.form.patchValue({
-      counterpartName: p.ragioneSociale,
-      counterpartAddress: this.indirizzoProduttore(p),
-    })
+    const nome = p.ragioneSociale
+    const indirizzo = this.indirizzoProduttore(p)
+    this.form.patchValue({ counterpartName: nome, counterpartAddress: indirizzo })
+    // La sede predefinita del ruolo; l'indirizzo scritto resta quello della sede legale (Q1).
+    this.sceltaControparte = { sedeId: p.sedeId ?? null, nome, indirizzo }
   }
 
   /** Imposta la controparte (nome + indirizzo) dallo snapshot del FIR. */
   private applicaControparteDaFir(fir: FIR, tipo: TipoMovimento): void {
     const parte = tipo === 'CARICO' ? fir.produttore : fir.destinatario
-    this.form.patchValue({
-      counterpartName: parte?.ragioneSociale ?? '',
-      counterpartAddress: parte?.indirizzo ?? '',
-    })
+    const nome = parte?.ragioneSociale ?? ''
+    const indirizzo = parte?.indirizzo ?? ''
+    this.form.patchValue({ counterpartName: nome, counterpartAddress: indirizzo })
+    this.sceltaControparte = { sedeId: parte?.sedeId ?? null, nome, indirizzo }
   }
 
   /**
@@ -2357,6 +2368,11 @@ export class RegistroComponent implements OnInit {
         operationCode: v.operationCode || undefined,
         counterpartName: v.counterpartName || undefined,
         counterpartAddress: v.counterpartAddress || undefined,
+        counterpartSedeId: sedeControparteDaInviare(
+          this.sceltaControparte,
+          v.counterpartName,
+          v.counterpartAddress
+        ),
         firId: v.firId || undefined,
         notes: v.notes || undefined,
         ...(this.legame

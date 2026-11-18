@@ -194,6 +194,16 @@ export class RegistraMovimentoDto {
   counterpartAddress?: string
 
   @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Sede della ditta controparte, scelta dall'anagrafica o dal FIR (uuid). Deve appartenere " +
+      "all'azienda. Facoltativa: null o assente = nessuna sede (movimenti scritti a mano).",
+  })
+  @IsUUID()
+  @IsOptional()
+  counterpartSedeId?: string | null
+
+  @ApiPropertyOptional({
     description:
       'ID del FIR collegato (obbligatorio per SCARICO con causale CONFERIMENTO_TRASPORTATORE)',
   })

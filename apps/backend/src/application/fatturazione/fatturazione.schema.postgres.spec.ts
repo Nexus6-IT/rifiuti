@@ -88,6 +88,7 @@ const COLONNE_WASTE_MOVEMENTS_ATTESE = [
   'import_source',
   'legacy_key',
   'lotto_import_id',
+  'counterpart_sede_id', // sede della controparte scelta nel form (fuori dall'hash)
 ]
 
 describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)', () => {

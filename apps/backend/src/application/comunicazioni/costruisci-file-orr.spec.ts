@@ -40,6 +40,7 @@ function sedeTerza(
     provincia: o.provincia ?? 'NA',
     telefono: null,
     principale: true,
+    attiva: true,
     ditta: {
       id: `ditta-${id}`,
       ragioneSociale: o.nome,
@@ -91,6 +92,7 @@ const mov = (id: string, o: Partial<MovimentoOrso> = {}): MovimentoOrso =>
     causale: 'INGRESSO_ESTERNO',
     controparte: null,
     indirizzoControparte: null,
+    sedeControparteId: null,
     firNumero: 'AB1234567890123',
     ...o,
   }) as MovimentoOrso

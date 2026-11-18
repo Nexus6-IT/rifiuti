@@ -73,6 +73,8 @@ export interface SedeDettaglio {
   provincia: string
   telefono: string | null
   principale: boolean
+  /** Sede attiva (le sedi non si cancellano, si disattivano). */
+  attiva: boolean
   ditta: DittaDettaglio
   /** Dati per le comunicazioni; `null` se la sede non ne ha. */
   anagrafica: AnagraficaComunicazioniSede | null
@@ -118,7 +120,12 @@ export const chiaveControparte = (nome: string): string =>
 
 export interface RichiestaDettagli {
   tenantId: string
-  movimenti: ReadonlyArray<{ firId: string | null; radiceId: string }>
+  movimenti: ReadonlyArray<{
+    firId: string | null
+    radiceId: string
+    /** Sede della controparte scelta nel form: si carica anche senza FIR e senza nome. */
+    sedeControparteId?: string | null
+  }>
   /** Se presente si leggono anche i dati del tracciato per movimento. */
   tracciato?: TracciatoDati
   /**
@@ -217,6 +224,7 @@ export async function leggiDettagliTracciato(
     : []
 
   const sedeIds = univoci([
+    ...r.movimenti.map(m => m.sedeControparteId),
     ...firRighe.flatMap(f => [f.producerSedeId, f.receiverSedeId]),
     ...produttoriRighe.map(p => p.sedeId),
     ...trasportatoriRighe.map(t => t.sedeId),
@@ -285,6 +293,7 @@ export async function leggiDettagliTracciato(
       provincia: s.provincia,
       telefono: s.telefono,
       principale: s.principale,
+      attiva: s.attiva,
       ditta,
       anagrafica: anagraficaPerSede.get(s.id) ?? null,
     })

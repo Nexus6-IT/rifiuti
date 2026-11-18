@@ -424,6 +424,98 @@ describe('ComunicazioniOrsoService, modalità dettagliata: Postgres reale, ruolo
     expect(esito.errors).toEqual([])
   })
 
+  it('sede della controparte nel movimento: il soggetto e la sede scelta, lo storico omonimo segue il ripiego per nome', async () => {
+    const az = await nuovaAzienda('OD8')
+    await dettagliata(az)
+    // Una ditta con due sedi attive: Milano (ARPA 111) e Bologna (ARPA 222).
+    const milano = await sedeSoggetto(az, 'Omonimo Rifiuti', { arpa: '111' })
+    const dittaId = (await owner.sedeDitta.findUniqueOrThrow({ where: { id: milano } })).dittaId
+    const bologna = (
+      await owner.sedeDitta.create({
+        data: {
+          tenantId: az.tenantId,
+          dittaId,
+          via: 'Via Emilia',
+          civico: '2',
+          cap: '40100',
+          comune: 'Bologna',
+          provincia: 'BO',
+          principale: false,
+        },
+      })
+    ).id
+    await owner.anagraficaComunicazioniSede.create({
+      data: { tenantId: az.tenantId, sedeDittaId: bologna, codiceOrso: '222', eComune: false },
+    })
+    const senzaFir = async (giorno: string, indirizzo: string, sedeId?: string) => {
+      const m = await creaMovimento(owner, az, {
+        type: 'CARICO',
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '20 03 01',
+        quantita: 100,
+        giorno,
+        operationCode: 'R13',
+        counterpartName: 'Omonimo Rifiuti',
+        counterpartAddress: indirizzo,
+        counterpartSedeId: sedeId,
+      })
+      await owner.wasteMovement.update({
+        where: { id: m.id },
+        data: { wasteDescription: 'Rifiuti urbani' },
+      })
+      return m.id
+    }
+    // Con la colonna: l'indirizzo scritto dice Milano ma la sede scelta e Bologna: vince la scelta.
+    await senzaFir('2025-09-10', 'Via Roma 1, Milano (MI)', bologna)
+    // Storico (senza colonna): il ripiego per nome e indirizzo trova Milano.
+    await senzaFir('2025-09-11', 'Via Roma 1, Milano (MI)')
+
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(a.avvisi).toEqual([])
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
+    )
+    const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    expect(f.xml).toContain('ts="I" s="222"')
+    expect(f.xml).toContain('ts="I" s="111"')
+  })
+
+  it('con la colonna su tutti i movimenti non si cerca nessuna ditta per nome', async () => {
+    const az = await nuovaAzienda('OD9')
+    await dettagliata(az)
+    const sede = await sedeSoggetto(az, 'Destinazione Colonna', { arpa: '333' })
+    const m = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '20 03 01',
+      quantita: 100,
+      giorno: '2025-10-10',
+      operationCode: 'R13',
+      counterpartName: 'Nome Che Non Esiste',
+      counterpartSedeId: sede,
+    })
+    await owner.wasteMovement.update({
+      where: { id: m.id },
+      data: { wasteDescription: 'Rifiuti urbani' },
+    })
+    const spia = jest.spyOn(app.ditta, 'findMany')
+    try {
+      const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+      expect(a.avvisi).toEqual([])
+      // La spia vede le chiamate (la ditta della sede si carica per id)...
+      expect(spia).toHaveBeenCalled()
+      // ...ma nessuna e la ricerca per nome.
+      const ricerchePerNome = spia.mock.calls.filter(
+        ([args]) =>
+          JSON.stringify(args ?? {}).includes('ragioneSociale') &&
+          JSON.stringify(args ?? {}).includes('insensitive')
+      )
+      expect(ricerchePerNome).toHaveLength(0)
+    } finally {
+      spia.mockRestore()
+    }
+  })
+
   it('movimento senza FIR con controparte sconosciuta o ambigua: bloccante con messaggio chiaro', async () => {
     const az = await nuovaAzienda('OD7')
     await dettagliata(az)
