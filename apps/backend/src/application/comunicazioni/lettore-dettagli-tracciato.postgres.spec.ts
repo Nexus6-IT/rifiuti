@@ -29,7 +29,11 @@ import {
   pulisciAziendeMud,
   type AziendaMud,
 } from '../mud/aggregazione/mud-seed.postgres-spec'
-import { leggiDettagliTracciato, type DbDettagli } from './lettore-dettagli-tracciato'
+import {
+  chiaveControparte,
+  leggiDettagliTracciato,
+  type DbDettagli,
+} from './lettore-dettagli-tracciato'
 
 describe('Lettore dettagli tracciato — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -385,6 +389,38 @@ describe('Lettore dettagli tracciato — Postgres reale, ruolo wasteflow_app', (
       expect(d.sedi.get(chiusa.id)?.ditta.ragioneSociale).toBe(ditta.ragioneSociale)
       // La sede legale della stessa ditta si carica per la sede legale, ed e' attiva.
       expect(d.sedeLegalePerDitta.get(ditta.id)).toMatchObject({ id: legale.id, attiva: true })
+    })
+
+    it('ripiego per nome: trova la ditta anche se la ragione sociale e salvata con spazi doppi o ai bordi (N2)', async () => {
+      const az = await nuovaAzienda('N2')
+      const ditta = await owner.ditta.create({
+        data: {
+          tenantId: az.tenantId,
+          ragioneSociale: '  Comune  di   Calliano ',
+          partitaIva: partitaIvaUnica(),
+        },
+      })
+      await owner.sedeDitta.create({
+        data: {
+          tenantId: az.tenantId,
+          dittaId: ditta.id,
+          via: 'Via Roma',
+          civico: '1',
+          cap: '38060',
+          comune: 'Calliano',
+          provincia: 'TN',
+          principale: true,
+          attiva: true,
+        },
+      })
+      const d = await nel(az, () =>
+        leggiDettagliTracciato(app, {
+          tenantId: az.tenantId,
+          movimenti: [],
+          controparti: ['COMUNE   di Calliano '],
+        })
+      )
+      expect(d.sediPerControparte.get(chiaveControparte('COMUNE di Calliano'))).toHaveLength(1)
     })
 
     it('non legge la sede di un’altra azienda (il filtro per tenant resta)', async () => {
