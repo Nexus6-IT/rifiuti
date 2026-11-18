@@ -1320,6 +1320,98 @@ describe('RegistraMovimentoUseCase', () => {
     expect(r.error).toMatch(/^Errore durante la registrazione/)
     expect(r.error).not.toContain('connessione persa')
   })
+
+  describe('sede della controparte (counterpart_sede_id)', () => {
+    const SEDE = 'sede-uuid-001'
+
+    function comando(sede: string | null | undefined): RegistraMovimentoCommand {
+      return new RegistraMovimentoCommand(
+        TENANT,
+        USER,
+        'CARICO',
+        TODAY,
+        TODAY,
+        'PRODUZIONE_INTERNA',
+        '20 03 01',
+        undefined,
+        100,
+        'KG',
+        undefined,
+        undefined,
+        undefined,
+        'Comune di Calliano',
+        'Via Roma 1, Calliano (TN)',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        sede
+      )
+    }
+
+    /** Transazione finta con `sedeDitta.findFirst` configurabile; restituisce tx e la sede catturata. */
+    function transazione(sedeTrovata: boolean) {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+        $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
+        registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
+        sedeDitta: {
+          findFirst: jest.fn().mockResolvedValue(sedeTrovata ? { id: SEDE } : null),
+        },
+        wasteMovement: {
+          create: jest.fn().mockImplementation(async (args: any) => ({
+            ...args.data,
+            id: 'id-sede',
+            createdAt: TODAY,
+            updatedAt: TODAY,
+          })),
+          findMany: jest.fn().mockResolvedValue([]),
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (fn: (t: any) => Promise<any>) => fn(tx))
+      return tx
+    }
+
+    it("sede non trovata nell'azienda: failure con il messaggio e nessuna riga scritta", async () => {
+      const tx = transazione(false)
+      const r = await useCase.execute(comando(SEDE))
+      expect(r.isFailure).toBe(true)
+      expect(r.error).toBe("Sede della controparte non trovata nell'azienda")
+      expect(tx.sedeDitta.findFirst).toHaveBeenCalledWith({
+        where: { id: SEDE, tenantId: TENANT },
+        select: { id: true },
+      })
+      expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    })
+
+    it('il controllo della sede avviene prima della numerazione: un errore non consuma il progressivo', async () => {
+      const tx = transazione(false)
+      await useCase.execute(comando(SEDE))
+      expect(tx.$queryRaw).not.toHaveBeenCalled()
+      expect(tx.$executeRaw).not.toHaveBeenCalled()
+    })
+
+    it('sede trovata: la colonna viene scritta con inserisciAnnotazione', async () => {
+      const tx = transazione(true)
+      const r = await useCase.execute(comando(SEDE))
+      expect(r.isSuccess).toBe(true)
+      expect(tx.wasteMovement.create.mock.calls[0][0].data.counterpartSedeId).toBe(SEDE)
+    })
+
+    it.each([undefined, null])(
+      'senza sede (%s): nessuna query sulle sedi e colonna NULL',
+      async v => {
+        const tx = transazione(true)
+        const r = await useCase.execute(comando(v))
+        expect(r.isSuccess).toBe(true)
+        expect(tx.sedeDitta.findFirst).not.toHaveBeenCalled()
+        expect(tx.wasteMovement.create.mock.calls[0][0].data.counterpartSedeId ?? null).toBeNull()
+      }
+    )
+  })
 })
 
 describe('RegistraMovimentoUseCase: tempo italiano', () => {

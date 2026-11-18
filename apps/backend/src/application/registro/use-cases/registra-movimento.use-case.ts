@@ -35,6 +35,7 @@ import {
 } from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
+import { MSG_SEDE_CONTROPARTE_NON_TROVATA, sedeControparteEsiste } from '../sede-controparte'
 import {
   abbinaNuovoScarico,
   haStoccaggioOAbbinamenti,
@@ -306,6 +307,14 @@ export class RegistraMovimentoUseCase {
           }
           const registroMovimento = registro as RegistroVista
 
+          // Sede della controparte (facoltativa): deve esistere nell'azienda (una disattivata si
+          // accetta: era quella scelta). Controllo PRIMA della numerazione: un errore non scrive nulla.
+          if (command.counterpartSedeId) {
+            if (!(await sedeControparteEsiste(tx, command.tenantId, command.counterpartSedeId))) {
+              throw new DomainError(MSG_SEDE_CONTROPARTE_NON_TROVATA)
+            }
+          }
+
           // Lock per-registro/anno: serializza le numerazioni dello stesso registro in transazioni
           // concorrenti (vedi bloccaProgressivo).
           await bloccaProgressivo(tx, registroMovimento.id, anno)
@@ -356,6 +365,7 @@ export class RegistraMovimentoUseCase {
             operationCode: command.operationCode,
             counterpartName: command.counterpartName,
             counterpartAddress: command.counterpartAddress,
+            counterpartSedeId: command.counterpartSedeId ?? null,
             firId: command.firId,
             recordedByUserId: command.userId,
             notes: command.notes,
@@ -384,6 +394,7 @@ export class RegistraMovimentoUseCase {
             operationCode: entity.operationCode,
             counterpartName: entity.counterpartName,
             counterpartAddress: entity.counterpartAddress,
+            counterpartSedeId: entity.counterpartSedeId ?? null,
             firId: entity.firId,
             // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
             // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.

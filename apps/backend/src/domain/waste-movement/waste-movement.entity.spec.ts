@@ -115,6 +115,20 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     expect(m1.entryHash).toBe(m2.entryHash)
   })
 
+  it("la sede della controparte NON entra nell'hash: stesso entryHash con e senza sede", () => {
+    const senza = WasteMovement.create(buildProps())
+    const con = WasteMovement.create(
+      buildProps({ counterpartSedeId: '11111111-1111-4111-8111-111111111111' })
+    )
+    expect(con.entryHash).toBe(senza.entryHash)
+    expect(con.counterpartSedeId).toBe('11111111-1111-4111-8111-111111111111')
+    expect(senza.counterpartSedeId).toBeUndefined()
+    // anche nell'hash v2 della catena
+    const v2 = (extra: object) =>
+      WasteMovement.create(buildProps({ hashPrecedente: 'a'.repeat(64), ...extra })).entryHash
+    expect(v2({ counterpartSedeId: '11111111-1111-4111-8111-111111111111' })).toBe(v2({}))
+  })
+
   it("l'hash cambia al variare di un campo chiave (quantità)", () => {
     const m1 = WasteMovement.create(buildProps({ quantity: 100 }))
     const m2 = WasteMovement.create(buildProps({ quantity: 200 }))

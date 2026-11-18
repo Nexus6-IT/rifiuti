@@ -55,6 +55,18 @@ describe('RegistraMovimentoDto', () => {
     }
   })
 
+  it('counterpartSedeId: uuid accettato; non uuid respinto; assente e null accettati', async () => {
+    const uuid = '11111111-1111-4111-8111-111111111111'
+    const conSede = (counterpartSedeId: unknown) =>
+      validate(plainToInstance(RegistraMovimentoDto, { ...minimo, counterpartSedeId }))
+    expect(await conSede(uuid)).toEqual([])
+    expect(await conSede(null)).toEqual([])
+    expect(await validate(plainToInstance(RegistraMovimentoDto, minimo))).toEqual([])
+    for (const nonUuid of ['x', '', 123]) {
+      expect((await conSede(nonUuid)).map(e => e.property)).toEqual(['counterpartSedeId'])
+    }
+  })
+
   it('accetta 2 decimali', async () => {
     expect(
       await validate(plainToInstance(RegistraMovimentoDto, { ...minimo, quantity: 1.01 }))
