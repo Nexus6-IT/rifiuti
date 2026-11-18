@@ -314,7 +314,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
   /**
    * "Emissione non impedita" verificato qui SENZA completare l'intera
    * creazione del FIR (CER/quantità/provenienza/tratta): quel percorso non
-   * ha una copertura E2E in questa suite per la sola scadenza (il ciclo di
+   * ha una copertura E2E dedicata a questo test (il ciclo di
    * vita completo sta in `e2e/tests/fir/fir-lifecycle.spec.ts`, che oggi ha
    * test attivi e nessun `test.fixme`) e costruirlo da
    * zero qui, senza poterlo eseguire in questa sessione (vincolo
