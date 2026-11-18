@@ -209,6 +209,7 @@ describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
           {} as never,
           {} as never,
           logger,
+          {} as never,
           {} as never
         )
         await checker.checkRentriCertificateExpiration()

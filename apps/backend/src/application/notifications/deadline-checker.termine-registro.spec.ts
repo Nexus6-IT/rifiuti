@@ -10,6 +10,7 @@ import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-si
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { annotazioniPiuVecchieDaTrasmettere } from '../rentri/registro/scadenza-trasmissione-rentri'
 
@@ -27,6 +28,7 @@ const prisma = {
   notification: { create: jest.fn(), findFirst: jest.fn() },
   tenant: { findFirst: jest.fn() },
 }
+const moduli = { tenantConModulo: jest.fn() }
 const sistema = { tenant: { findMany: jest.fn() } }
 const template = { renderTermineTrasmissioneRegistro: jest.fn().mockResolvedValue('<html/>') }
 const email = { sendEmail: jest.fn().mockResolvedValue(undefined) }
@@ -53,6 +55,7 @@ describe('checkTermineTrasmissioneRegistro', () => {
     jest.clearAllMocks()
     jest.useFakeTimers().setSystemTime(new Date('2026-02-24T08:00:00Z')) // termine 28/02: 4 giorni
     sistema.tenant.findMany.mockResolvedValue([{ id: 't1', ragioneSociale: 'Alfa Srl' }])
+    moduli.tenantConModulo.mockImplementation(async (ids: string[]) => new Set(ids))
     prisma.registroRifiuti.findMany.mockResolvedValue([{ id: 'r1', descrizione: 'Sede Milano' }])
     prisma.user.findMany.mockResolvedValue([utente('u1'), utente('u2', 'OPERATOR')])
     prisma.notification.findFirst.mockResolvedValue(null)
@@ -67,6 +70,7 @@ describe('checkTermineTrasmissioneRegistro', () => {
         { provide: TemplateService, useValue: template },
         { provide: EmailService, useValue: email },
         { provide: LoggerService, useValue: logger },
+        { provide: ModuliAttiviService, useValue: moduli },
       ],
     }).compile()
     service = modulo.get(DeadlineCheckerService)
@@ -156,6 +160,20 @@ describe('checkTermineTrasmissioneRegistro', () => {
     expect(prisma.notification.create).toHaveBeenCalledTimes(1)
     expect(prisma.notification.create.mock.calls[0][0].data.userId).toBe('u2')
     expect(email.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('I3: un’azienda senza il modulo rentri non riceve avvisi (una sola query per tutte)', async () => {
+    sistema.tenant.findMany.mockResolvedValue([
+      { id: 't0', ragioneSociale: 'Senza modulo' },
+      { id: 't1', ragioneSociale: 'Alfa Srl' },
+    ])
+    moduli.tenantConModulo.mockResolvedValue(new Set(['t1']))
+    await service.checkTermineTrasmissioneRegistro()
+    expect(moduli.tenantConModulo).toHaveBeenCalledTimes(1)
+    expect(moduli.tenantConModulo).toHaveBeenCalledWith(['t0', 't1'], 'rentri')
+    expect(prisma.registroRifiuti.findMany).toHaveBeenCalledTimes(1)
+    const tenantAvvisati = prisma.notification.create.mock.calls.map(c => c[0].data.tenantId)
+    expect(new Set(tenantAvvisati)).toEqual(new Set(['t1']))
   })
 
   it('nessuna annotazione da trasmettere: nessun avviso', async () => {

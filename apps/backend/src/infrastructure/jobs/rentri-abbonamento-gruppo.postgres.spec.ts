@@ -115,9 +115,15 @@ describe('Job RENTRI: abbonamento del gruppo — Postgres reale', () => {
     await new EvidenzeDbService(sistema).credenziali()
     expect(idsPassati()).toEqual(attesi)
 
-    const checker = new DeadlineCheckerService(app, sistema, {} as never, {} as never, logger, {
-      scadenzaPresentazione: () => ({ data: '2026-07-09', fonte: 'REGISTRO' }),
-    } as never)
+    const checker = new DeadlineCheckerService(
+      app,
+      sistema,
+      {} as never,
+      {} as never,
+      logger,
+      { scadenzaPresentazione: () => ({ data: '2026-07-09', fonte: 'REGISTRO' }) } as never,
+      {} as never
+    )
     await checker.checkRentriCertificateExpiration()
     expect(idsPassati()).toEqual(attesi)
     spia.mockRestore()

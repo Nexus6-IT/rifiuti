@@ -13,6 +13,7 @@ import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-si
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { TenantContext } from '../../core/context/tenant-context'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
@@ -75,6 +76,7 @@ async function costruisci() {
       },
       { provide: EmailService, useValue: { sendEmail: jest.fn().mockResolvedValue(undefined) } },
       { provide: LoggerService, useValue: logger },
+      { provide: ModuliAttiviService, useValue: {} },
       { provide: MudVersionRegistry, useValue: registry },
     ],
   }).compile()

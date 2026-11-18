@@ -10,6 +10,7 @@ import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from './scadenza-controparte.util'
 import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import {
   formattaDataItaliana,
@@ -53,7 +54,8 @@ export class DeadlineCheckerService {
     private readonly templateService: TemplateService,
     private readonly emailService: EmailService,
     private readonly logger: LoggerService,
-    private readonly registry: MudVersionRegistry
+    private readonly registry: MudVersionRegistry,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(DeadlineCheckerService.name)
   }
@@ -888,8 +890,7 @@ export class DeadlineCheckerService {
    * quotidiano per scelta). Il termine e' indicativo, la fonte normativa e' secondaria: vedi
    * `scadenza-trasmissione-rentri.ts`.
    *
-   * Non e' filtrato per modulo: un registro ha l'identificativo RENTRI solo se l'azienda ha il
-   * modulo rentri quando lo ha impostato.
+   * Solo le aziende con il modulo rentri attivo (`ModuliAttiviService`, come il job F2-9).
    */
   @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async checkTermineTrasmissioneRegistro(): Promise<void> {
@@ -906,8 +907,14 @@ export class DeadlineCheckerService {
         }),
         select: { id: true, ragioneSociale: true },
       })
+      // Solo le aziende col modulo rentri (come il job F2-9): UNA query per tutte, senza N+1.
+      // Senza il modulo il pannello per risolvere e' bloccato: l'avviso sarebbe inutile.
+      const conModulo = await this.moduli.tenantConModulo(
+        tenants.map(t => t.id),
+        'rentri'
+      )
       let notificheCreate = 0
-      for (const tenant of tenants) {
+      for (const tenant of tenants.filter(t => conModulo.has(t.id))) {
         try {
           notificheCreate += await this.avvisaTermineTrasmissioneAzienda(
             tenant.id,

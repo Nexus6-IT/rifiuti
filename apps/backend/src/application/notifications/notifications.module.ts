@@ -6,6 +6,7 @@ import { EmailService } from '../../infrastructure/email/email.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
+import { ModuliAttiviModule } from '../admin/moduli-attivi.module'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 
 /**
@@ -14,7 +15,7 @@ import { MudVersionRegistry } from '../mud/export/mud-version.registry'
  * Handles in-app and email notifications with deadline monitoring and escalation.
  */
 @Module({
-  imports: [PrismaModule, LoggerModule],
+  imports: [PrismaModule, LoggerModule, ModuliAttiviModule],
   providers: [
     NotificationService,
     DeadlineCheckerService,
