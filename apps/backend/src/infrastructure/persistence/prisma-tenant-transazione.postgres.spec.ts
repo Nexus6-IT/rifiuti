@@ -147,6 +147,9 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     expect(sql[0]).toBe('BEGIN')
     expect(sql[1]).toContain('set_config')
     expect(sql[2]).toContain('pg_advisory_xact_lock')
+    // il SET dei vincoli differiti e' l'ultimo statement prima del COMMIT
+    expect(sql[sql.length - 2]).toBe('SET CONSTRAINTS ALL IMMEDIATE')
+    expect(sql[sql.length - 1]).toBe('COMMIT')
     // una sola transazione: un BEGIN e un COMMIT in tutto
     expect(sql.filter(q => q === 'BEGIN')).toHaveLength(1)
     expect(sql.filter(q => q === 'COMMIT')).toHaveLength(1)
@@ -189,7 +192,28 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     ).rejects.toThrow('boom')
     const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql).toContain('ROLLBACK')
+    // se fn lancia il SET non parte: l'errore e' di fn, non del commit
+    expect(sql).not.toContain('SET CONSTRAINTS ALL IMMEDIATE')
     expect(await leggiTenant()).toBe('')
+  })
+
+  it('transazione interattiva senza tenant: SET ultimo statement, nessun set_config', async () => {
+    await client.$transaction(async tx => {
+      await tx.$executeRaw`SELECT 1`
+    })
+    const sql = (await logQuiescente()).map(q => q.trim())
+    expect(sql[0]).toBe('BEGIN')
+    expect(sql.some(q => q.includes('set_config'))).toBe(false)
+    expect(sql[sql.length - 2]).toBe('SET CONSTRAINTS ALL IMMEDIATE')
+    expect(sql[sql.length - 1]).toBe('COMMIT')
+  })
+
+  it('batch: nessun SET CONSTRAINTS (lo statement serve solo alla forma interattiva)', async () => {
+    await TenantContext.run({ tenantId: 'tenant-batch-2' }, () =>
+      client.$transaction([client.$queryRaw`SELECT 1`])
+    )
+    const sql = (await logQuiescente()).map(q => q.trim())
+    expect(sql).not.toContain('SET CONSTRAINTS ALL IMMEDIATE')
   })
 })
 
