@@ -29,7 +29,7 @@ export async function conRateLimiterPerTenant<T>(
 
   const inizio = Date.now()
   const permesso = await rateLimiter.acquisisci(tenantId)
-  metrics.rentriRateLimiterWaitSeconds?.observe(
+  metrics.rentriRateLimiterWaitSeconds.observe(
     { tenant_id: tenantId },
     (Date.now() - inizio) / 1000
   )

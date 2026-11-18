@@ -58,7 +58,7 @@ Legenda: **FATTO** = raggiungibile da HTTP o da un job; **PARZIALE**; **SOLO CLI
 | 17 | Quarta copia digitale | SOLO CLIENT | `rentri-copie.client.ts:82-212` (carica, elenca, conferma; il path di conferma è in minuscolo, come nel contratto). Non è registrata nel DI. La fake ha le rotte (`routes/copie.ts:229-403`) |
 | 18 | Copie cartacee | SOLO CLIENT | `rentri-copie.client.ts:229-360` |
 | 19 | Trasmissione dati FIR pericolosi | SOLO CLIENT | `rentri-trasmissioni.client.ts:92` (invia), `:116` (elenca), `:192` (annulla), `:215` (estrai). Non è registrata nel DI. Fake: `routes/trasmissioni-dati.ts` |
-| 20 | Path di stato dedicati per copie e trasmissioni | DIFETTO APERTO | I client interrogano `/formulari/v1.0/{tid}/status` generico (`rentri-copie.client.ts:22-34`, `rentri-trasmissioni.client.ts:299`). Il contratto ha `/copia-digitale/{tid}/status` (r. 3677), `/copia-cartacea/{tid}/status` (r. 2947) e `/trasmissioni/{tid}/status` (r. 5095). È la raccomandazione 11 di WW-04 |
+| 20 | Path di stato dedicati per copie e trasmissioni | NON UN DIFETTO: path deprecati nel contratto (18/11) | I client interrogano `/formulari/v1.0/{tid}/status` generico (`rentri-copie.client.ts:22-34`, `rentri-trasmissioni.client.ts:299`). Il contratto ha `/copia-digitale/{tid}/status` (r. 3677), `/copia-cartacea/{tid}/status` (r. 2947) e `/trasmissioni/{tid}/status` (r. 5095). È la raccomandazione 11 di WW-04 |
 | 21 | Rate limiter sui client copie/trasmissioni/xFIR | DIFETTO APERTO | Non passano dal limiter per tenant (WW-04 §3 riga 1) |
 | 22 | Frontend | PARZIALE | `fir-detail.component.ts` mostra Accetta il carico (`:520`), Annulla (`:533`), Allegati (`:576`) e le azioni locali Emetti/Presa in carico/Conferma consegna (`:388-410`). Le operazioni di viaggio non esistono |
 
@@ -176,7 +176,7 @@ Tutte le FK sono composte `(fir_id, tenant_id)`, come `FIRAllegatoRentri`. Ogni 
 **Client** (`rentri-api.client.ts`, stesso schema di `inviaAccettazione`: POST asincrona + `attendiEsito` su `/result`, resilienza, limiter)
 - `inviaQuantita`, `inviaTrasporto`, `inviaAnnotazione`, `inviaSostaTecnica`, `inviaTrasbordoTotale`, `inviaTrasbordoParziale`, `inviaNuovoDestinatario`, `rollbackFirma`, `resetStato`.
 - Opzionale (D4): `inviaADispositivo`, sincrona.
-- Registrazione nel DI di `RentriXfirClient`, `RentriCopieClient` e `RentriTrasmissioniClient` in `rentri.module.ts`, **dopo** la correzione dei path di stato dedicati e il passaggio dal rate limiter (P0).
+- Registrazione nel DI di `RentriXfirClient`, `RentriCopieClient` e `RentriTrasmissioniClient` in `rentri.module.ts`, **dopo** il passaggio dal rate limiter (P0). I path di stato dedicati non si adottano: nel contratto sono deprecati (vedi nota in P0).
 
 **Use case** (`application/rentri/viaggio/`, uno per operazione; schema di `AccettaORespingiFIRUseCase`)
 1. Precondizioni locali: FIR del tenant, `verificaFirNonBloccato`, FIR legato, ruolo applicativo, validazione dei campi.
@@ -263,7 +263,7 @@ Regole comuni a ogni pezzo:
 - **T0** Test di allineamento della fake al contratto per i modelli nuovi: generare gli schemi (`genera-schema:*`) di `QuantitaRifiutoModel`, `DatiTrasportoTerrestreModel`, `DatiAnnotazioneModel`, `DatiSostaTecnicaModel`, `DatiTrasbordo{Totale,Parziale}Model`, `DatiDestinatarioFormulario{,Sito}Model`. Test rosso.
 - **T1** Rotte asincrone nella fake con `registraOperazioneAsincrona`: `quantita`, `trasporto`, `annotazione`, `sosta-tecnica`, `trasbordo-totale`, `trasbordo-parziale`, `destinatario`, `reset`, `rollback-firma`. Più `invia-a-dispositivo`, sincrona.
 - **T2** Macchina degli stati della fake estesa (§4.1): fase iniziale Inserimento/Firma, `RespintoAccettatoParzialmente` **non** terminale (ammette `NuovoDestinatario`), `NuovoDestinatario` tolto dalle operazioni iniziali. Test su `operazioniPerStato`.
-- **T3** Path di stato dedicati in `RentriCopieClient` e `RentriTrasmissioniClient` (`/copia-digitale/{tid}/status`, `/copia-cartacea/…`, `/trasmissioni/…`). La fake deve rispondere solo lì: un test dimostra che il path generico dà 404.
+- ~~**T3** Path di stato dedicati in `RentriCopieClient` e `RentriTrasmissioniClient`~~ **Tolto (18/11).** `/copia-digitale/{tid}/status`, `/copia-cartacea/{tid}/status` e `/trasmissioni/{tid}/status` sono marcati DEPRECATI nel contratto (righe 2947, 3677, 5095: «utilizzare /{transazioneId}/status»). I client usano già il canonico; resta nella checklist demo la verifica di cosa risponde l'ente. Vedi FEDELTA.md §8.
 - **T4** Rate limiter per tenant sui tre client (xFIR, copie, trasmissioni). Oracolo con 429 iniettato.
 - **T5** Registrazione dei tre client in `rentri.module.ts`. Test di composizione del modulo.
 - **Fatto**: fake allineata, client registrati ma ancora senza use case. Nessun cambiamento visibile all'utente.

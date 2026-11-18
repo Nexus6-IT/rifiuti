@@ -23,7 +23,7 @@ describe('operazioniPerStato — fase iniziale (Inserimento / Firma)', () => {
     expect(operazioniPerStato('InserimentoQuantita')).not.toContain('Trasporto')
   })
 
-  it('Firma iniziale: propone la firma del ruolo giusto, hash, reset e rollback', () => {
+  it('Firma iniziale: propone la firma del ruolo giusto e l`hash', () => {
     const coppia = operazioniPerStato('FirmaProduttoreTrasportatoreIniziale')
     expect(coppia).toEqual(
       expect.arrayContaining(['AcquisizioneFirmaProduttoreTrasportatore', 'Hash'])
@@ -46,6 +46,22 @@ describe('operazioniPerStato — fase iniziale (Inserimento / Firma)', () => {
     ]) {
       expect(operazioniPerStato(stato)).not.toContain('NuovoDestinatario')
     }
+  })
+})
+
+describe('operazioniPerStato — RollbackFirma', () => {
+  it('non dipende dallo stato: compare solo se la fake ha una firma reversibile', () => {
+    expect(operazioniPerStato('Accettato')).not.toContain('RollbackFirma')
+    expect(operazioniPerStato('Accettato', { ultimaFirmaPresente: true })).toContain(
+      'RollbackFirma'
+    )
+    expect(operazioniPerStato('InserimentoAccettazione')).not.toContain('RollbackFirma')
+  })
+
+  it('mai per la firma di annullamento', () => {
+    expect(operazioniPerStato('FirmaAnnullamento', { ultimaFirmaPresente: true })).not.toContain(
+      'RollbackFirma'
+    )
   })
 })
 
@@ -85,6 +101,7 @@ describe('operazioniPerStato — viaggio e destinatario successivo', () => {
     expect(operazioniPerStato('FirmaAnnotazione')).toContain('Reset')
     expect(operazioniPerStato('FirmaAccettazione')).toContain('Reset')
     expect(operazioniPerStato('FirmaProduttore')).not.toContain('Reset')
+    expect(operazioniPerStato('FirmaProduttoreTrasportatoreIniziale')).not.toContain('Reset')
     expect(operazioniPerStato('InserimentoAccettazione')).not.toContain('Reset')
   })
 

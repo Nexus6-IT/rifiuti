@@ -23,64 +23,110 @@ const PREFISSO = '/formulari/v1.0'
 
 type Rotta = {
   segmento: string
+  /** Stato in cui il contratto ammette l'operazione. */
+  statoAmmesso: string
+  /** Stato in cui NON la ammette. */
+  statoNonAmmesso: string
+  /** Campi aggiuntivi del formulario seminato nello stato ammesso. */
+  extraAmmesso?: Record<string, unknown>
   corpoValido?: () => Record<string, unknown>
   /** Un corpo che il modello del contratto rifiuta. */
   corpoNonValido?: Record<string, unknown>
 }
 
 const ROTTE: Rotta[] = [
-  { segmento: 'quantita', corpoValido: corpoQuantitaValido, corpoNonValido: { rinfusa: true } },
+  {
+    segmento: 'quantita',
+    statoAmmesso: 'InserimentoQuantita',
+    statoNonAmmesso: 'InserimentoAccettazione',
+    corpoValido: corpoQuantitaValido,
+    corpoNonValido: { rinfusa: true },
+  },
   {
     segmento: 'trasporto',
+    statoAmmesso: 'InserimentoTrasportoIniziale',
+    statoNonAmmesso: 'Accettato',
     corpoValido: corpoTrasportoTerrestreValido,
     corpoNonValido: { data_ora_inizio_trasporto: '2026-11-18T08:30:00Z' },
   },
   {
     segmento: 'annotazione',
+    statoAmmesso: 'InserimentoAccettazione',
+    statoNonAmmesso: 'FirmaAccettazione',
     corpoValido: corpoAnnotazioneValido,
     corpoNonValido: { annotazione: 'senza soggetto' },
   },
   {
     segmento: 'sosta-tecnica',
+    statoAmmesso: 'InserimentoAccettazione',
+    statoNonAmmesso: 'Accettato',
     corpoValido: corpoSostaTecnicaValido,
     corpoNonValido: { luogo_stazionamento: 'solo il luogo' },
   },
   {
     segmento: 'trasbordo-totale',
+    statoAmmesso: 'InserimentoAccettazione',
+    statoNonAmmesso: 'Accettato',
     corpoValido: corpoTrasbordoTotaleValido,
     corpoNonValido: { trasportatore: { num_iscr_sito: 'OP1234ABC000009-AB0009' } },
   },
   {
     segmento: 'trasbordo-parziale',
+    statoAmmesso: 'InserimentoAccettazione',
+    statoNonAmmesso: 'Accettato',
     corpoValido: corpoTrasbordoParzialeValido,
     corpoNonValido: { numero_fir: 'BCDFGH00021ZD' },
   },
   {
     segmento: 'destinatario',
+    statoAmmesso: 'RespintoAccettatoParzialmente',
+    statoNonAmmesso: 'InserimentoAccettazione',
     corpoValido: corpoDestinatarioSitoValido,
     corpoNonValido: { denominazione: 'senza codice fiscale ne indirizzo' },
   },
-  { segmento: 'reset' },
-  { segmento: 'rollback-firma' },
+  {
+    segmento: 'reset',
+    statoAmmesso: 'FirmaAnnotazione',
+    statoNonAmmesso: 'InserimentoAccettazione',
+  },
+  {
+    segmento: 'rollback-firma',
+    statoAmmesso: 'Accettato',
+    statoNonAmmesso: 'InserimentoAccettazione',
+    extraAmmesso: {
+      ultimaFirma: {
+        statoPrecedente: 'FirmaAccettazione',
+        pending: {
+          tipo: 'Accettazione',
+          corpo: { tipo_accettazione: 'A' },
+          statoPrecedente: 'InserimentoAccettazione',
+        },
+      },
+    },
+  },
 ]
 
-async function seminaFormulario(app: ReturnType<typeof creaApp>): Promise<void> {
+async function seminaFormulario(
+  app: ReturnType<typeof creaApp>,
+  stato = 'InserimentoAccettazione',
+  extra: Record<string, unknown> = {}
+): Promise<void> {
   const risposta = await app.inject({
     method: 'POST',
     url: '/__controllo/formulario',
-    payload: { numero_fir: NUMERO_FIR_VIAGGIO, stato: 'InserimentoAccettazione' },
+    payload: { numero_fir: NUMERO_FIR_VIAGGIO, stato, ...extra },
   })
   expect(risposta.statusCode).toBe(200)
 }
 
 describe.each(ROTTE)(
   'POST /{numero_fir}/$segmento',
-  ({ segmento, corpoValido, corpoNonValido }) => {
+  ({ segmento, corpoValido, corpoNonValido, statoAmmesso, statoNonAmmesso, extraAmmesso }) => {
     const url = (numeroFir: string): string => `${PREFISSO}/${numeroFir}/${segmento}`
 
     it('202 con TransazioneModel e Location verso /status per un corpo valido', async () => {
       const app = creaApp()
-      await seminaFormulario(app)
+      await seminaFormulario(app, statoAmmesso, extraAmmesso)
 
       const risposta = await app.inject({
         method: 'POST',
@@ -95,9 +141,24 @@ describe.each(ROTTE)(
       expect(risposta.headers.location).toBe(`${PREFISSO}/${transazione_id}/status`)
     })
 
+    it('403 «Operazione non consentita» se lo stato del formulario non ammette l`operazione', async () => {
+      const app = creaApp()
+      await seminaFormulario(app, statoNonAmmesso)
+
+      const risposta = await app.inject({
+        method: 'POST',
+        url: url(NUMERO_FIR_VIAGGIO),
+        headers: await intestazioniAutenticate(),
+        payload: corpoValido?.(),
+      })
+
+      expect(risposta.statusCode).toBe(403)
+      expect(risposta.json().detail).toContain(statoNonAmmesso)
+    })
+
     it('403 senza token', async () => {
       const app = creaApp()
-      await seminaFormulario(app)
+      await seminaFormulario(app, statoAmmesso, extraAmmesso)
 
       const risposta = await app.inject({
         method: 'POST',
@@ -137,7 +198,7 @@ describe.each(ROTTE)(
     if (corpoNonValido) {
       it('400 per un corpo che il modello del contratto rifiuta', async () => {
         const app = creaApp()
-        await seminaFormulario(app)
+        await seminaFormulario(app, statoAmmesso, extraAmmesso)
 
         const risposta = await app.inject({
           method: 'POST',
@@ -174,7 +235,7 @@ describe('Validazioni oltre il modello del contratto', () => {
 
   it('trasporto: la targa non supera i 10 caratteri del contratto', async () => {
     const app = creaApp()
-    await seminaFormulario(app)
+    await seminaFormulario(app, 'InserimentoTrasportoIniziale')
 
     const risposta = await app.inject({
       method: 'POST',
@@ -188,7 +249,7 @@ describe('Validazioni oltre il modello del contratto', () => {
 
   it('quantita: il contratto ammette solo kg e l', async () => {
     const app = creaApp()
-    await seminaFormulario(app)
+    await seminaFormulario(app, 'InserimentoQuantita')
 
     const risposta = await app.inject({
       method: 'POST',
@@ -202,7 +263,7 @@ describe('Validazioni oltre il modello del contratto', () => {
 
   it('destinatario: accetta anche la forma completa (codice fiscale, denominazione, indirizzo)', async () => {
     const app = creaApp()
-    await seminaFormulario(app)
+    await seminaFormulario(app, 'RespintoAccettatoParzialmente')
 
     const risposta = await app.inject({
       method: 'POST',
@@ -216,6 +277,28 @@ describe('Validazioni oltre il modello del contratto', () => {
     })
 
     expect(risposta.statusCode).toBe(202)
+  })
+})
+
+describe('destinatario: oneOf rigoroso', () => {
+  it('rifiuta un corpo che soddisfa entrambe le forme (completa e sito)', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'RespintoAccettatoParzialmente')
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/destinatario`,
+      headers: await intestazioniAutenticate(),
+      payload: {
+        ...corpoDestinatarioSitoValido(),
+        codice_fiscale: '01234567890',
+        denominazione: 'Recuperi Nord Srl',
+        indirizzo: { citta: { comune_id: '015146' }, indirizzo: 'Via Roma' },
+      },
+    })
+
+    expect(risposta.statusCode).toBe(400)
+    expect(risposta.json().detail).toContain('entrambe')
   })
 })
 
@@ -333,16 +416,59 @@ describe('Reset e rollback-firma: effetto sullo stato', () => {
     expect(await stato(app)).toBe('FirmaAccettazione')
   })
 
-  it('un reset senza nulla da annullare non cambia lo stato', async () => {
+  it('un reset fuori dagli stati di firma e` rifiutato con 403, non un esito vuoto', async () => {
     const app = creaApp()
     await seminaFormulario(app)
 
-    await completa(app, await avvia(app, 'reset'))
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/reset`,
+      headers: await intestazioniAutenticate(),
+    })
 
-    expect(await stato(app)).toBe('InserimentoAccettazione')
+    expect(risposta.statusCode).toBe(403)
   })
 
-  it('l`annullamento firmato non e` reversibile con rollback-firma', async () => {
+  it('rollback-firma senza una firma reversibile e` rifiutato con 403', async () => {
+    const app = creaApp()
+    await seminaFormulario(app)
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/rollback-firma`,
+      headers: await intestazioniAutenticate(),
+    })
+
+    expect(risposta.statusCode).toBe(403)
+  })
+
+  it('coerenza: /azioni propone RollbackFirma se e solo se la fake lo eseguirebbe', async () => {
+    const app = creaApp()
+    await seminaFormulario(app)
+    const azioni = async (): Promise<string[]> =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/azioni?identificativo_soggetto=RSSMRA80A01H501U`,
+          headers: await intestazioniAutenticate(),
+        })
+      ).json().azioni
+
+    expect(await azioni()).not.toContain('RollbackFirma')
+
+    await completa(app, await avvia(app, 'accettazione', accettazione))
+    await completa(
+      app,
+      await avvia(app, 'acquisizione-firma', { certificato: 'c', token: 't', firma: 'f' })
+    )
+    expect(await azioni()).toContain('RollbackFirma')
+
+    await completa(app, await avvia(app, 'rollback-firma'))
+    expect(await stato(app)).toBe('FirmaAccettazione')
+    expect(await azioni()).not.toContain('RollbackFirma')
+  })
+
+  it('l`annullamento firmato non e` reversibile: /azioni non propone il rollback e la rotta risponde 403', async () => {
     const app = creaApp()
     await seminaFormulario(app)
     await completa(app, await avvia(app, 'annulla-fir'))
@@ -352,8 +478,13 @@ describe('Reset e rollback-firma: effetto sullo stato', () => {
     )
     expect(await stato(app)).toBe('Annullato')
 
-    await completa(app, await avvia(app, 'rollback-firma'))
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/rollback-firma`,
+      headers: await intestazioniAutenticate(),
+    })
 
+    expect(risposta.statusCode).toBe(403)
     expect(await stato(app)).toBe('Annullato')
   })
 })

@@ -52,7 +52,7 @@ export type Operazione =
  *   spetta a ciascuno stato (la prima inserisce, la seconda corregge un dato
  *   gia' presente), `Allegato` (senza vincoli di stato nel contratto),
  *   `RollbackFirma` (il contratto elenca le condizioni, non gli stati: qui
- *   solo dopo una firma che non ha chiuso il ciclo).
+ *   si propone quando la fake ha memorizzato una firma reversibile).
  * - **Esiti**: `Accettato` ammette solo l'annotazione; `RespintoAccettatoParzialmente`
  *   NON e' terminale, ammette `NuovoDestinatario` (riga 1393); `Annullato`
  *   ammette `NoteAnnullamento` finche' il formulario e' privo di note.
@@ -156,7 +156,9 @@ const STATI_PER_OPERAZIONE: Readonly<Record<Operazione, readonly string[]>> = {
   AcquisizioneFirmaTrasbordoParziale: ['FirmaTrasbordoParziale'],
   AcquisizioneFirmaDestinatarioSuccessivo: ['FirmaDestinatarioSuccessivo'],
   AcquisizioneFirmaAccettazioneSuccessiva: ['FirmaAccettazioneSuccessiva'],
-  RollbackFirma: STATI_VIAGGIO,
+  // Il contratto non lega il rollback a degli stati (riga 2079) ma all'esistenza
+  // di una firma reversibile: si propone solo con `ultimaFirmaPresente`.
+  RollbackFirma: [],
   Modifica: [
     'InserimentoQuantita',
     'InserimentoQuantitaTrasportoIniziale',
@@ -179,14 +181,21 @@ const OPERAZIONI_NELL_ORDINE = Object.keys(STATI_PER_OPERAZIONE) as Operazione[]
  */
 export function operazioniPerStato(
   stato: string,
-  opzioni?: { noteAnnullamentoGiaPresenti?: boolean }
+  opzioni?: { noteAnnullamentoGiaPresenti?: boolean; ultimaFirmaPresente?: boolean }
 ): Operazione[] {
   // `Annullato` NON e' terminale (R3 Task 5): il contratto ammette
   // `NoteAnnullamento` finche' il formulario e' "privo di note" (riga 1656).
   if (stato === 'Annullato') {
     return opzioni?.noteAnnullamentoGiaPresenti ? [] : ['NoteAnnullamento']
   }
-  return OPERAZIONI_NELL_ORDINE.filter(operazione =>
-    STATI_PER_OPERAZIONE[operazione].includes(stato)
+  // `RollbackFirma`: vale per "l'ultima firma apposta (tranne quella di
+  // annullamento)" in qualunque stato la fake ne abbia memorizzata una
+  // (`Formulario.ultimaFirma`), quindi dipende da `ultimaFirmaPresente`.
+  return OPERAZIONI_NELL_ORDINE.filter(
+    operazione =>
+      STATI_PER_OPERAZIONE[operazione].includes(stato) ||
+      (operazione === 'RollbackFirma' &&
+        opzioni?.ultimaFirmaPresente === true &&
+        stato !== 'FirmaAnnullamento')
   )
 }

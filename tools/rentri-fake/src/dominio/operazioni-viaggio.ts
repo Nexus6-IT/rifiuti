@@ -94,13 +94,17 @@ const validaDestinatarioSito = creaValidatoreContratto(
  * `POST /{numero_fir}/destinatario` e' un `oneOf` fra il destinatario descritto
  * per intero (`DatiDestinatarioFormularioModel`) e quello indicato col solo
  * numero di iscrizione del sito (`...SitoModel`, riga 1393). Un corpo e'
- * valido se rispetta almeno una delle due forme; altrimenti si riportano i
+ * valido se rispetta ESATTAMENTE una delle due forme; altrimenti si riportano i
  * motivi di entrambe, che sono quelli che aiutano a correggere.
  */
 export function validaDestinatario(corpo: unknown): string | null {
   const completo = validaDestinatarioCompleto(corpo)
-  if (completo === null) return null
   const sito = validaDestinatarioSito(corpo)
-  if (sito === null) return null
+  // `oneOf` rigoroso: un corpo che soddisfa ENTRAMBE le forme (nessuna ha
+  // `additionalProperties: false`) e' ambiguo e va rifiutato.
+  if (completo === null && sito === null) {
+    return 'Il corpo soddisfa entrambe le forme ammesse (destinatario completo e sito iscritto): indicarne una sola.'
+  }
+  if (completo === null || sito === null) return null
   return `Il corpo non rispetta nessuna delle due forme ammesse. Come destinatario completo: ${completo} Come sito iscritto: ${sito}`
 }

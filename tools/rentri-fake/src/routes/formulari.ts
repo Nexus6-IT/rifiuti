@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio } from '../stato/archivio'
 import { numeroFirValido } from '../dominio/numero-fir'
-import { operazioniPerStato } from '../dominio/operazione'
+import { Operazione, operazioniPerStato } from '../dominio/operazione'
 import { inviaProblemDetails } from '../errori/problem-details'
 import {
   validaAnnotazione,
@@ -186,6 +186,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       stato: formulario.stato,
       azioni: operazioniPerStato(formulario.stato, {
         noteAnnullamentoGiaPresenti: !!formulario.note,
+        ultimaFirmaPresente: !!formulario.ultimaFirma,
       }),
     }
   })
@@ -205,7 +206,10 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   const registraOperazioneAsincrona = (
     segmento: string,
     validaCorpo: (corpo: Record<string, unknown>) => string | null,
-    operazione?: OperazioneTaggata
+    operazione?: OperazioneTaggata,
+    // Operazioni di `/azioni` che rendono ammessa la chiamata nello stato
+    // corrente. Se omesso, nessun controllo (rotte storiche di R3).
+    operazioniAmmesse?: Operazione[]
   ): void => {
     app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
       `${PREFISSO}/:identificativo/${segmento}`,
@@ -220,8 +224,25 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
           })
         }
 
-        if (!archivio.leggiFormulario(numeroFir)) {
+        const formulario = archivio.leggiFormulario(numeroFir)
+        if (!formulario) {
           return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+        }
+
+        // Il contratto elenca gli stati ammessi per ogni operazione e dichiara
+        // 403 «Operazione non consentita» (non definisce un errore dedicato
+        // allo stato sbagliato: scelta dichiarata in FEDELTA.md §8).
+        if (operazioniAmmesse) {
+          const disponibili = operazioniPerStato(formulario.stato, {
+            noteAnnullamentoGiaPresenti: !!formulario.note,
+            ultimaFirmaPresente: !!formulario.ultimaFirma,
+          })
+          if (!operazioniAmmesse.some(o => disponibili.includes(o))) {
+            return inviaProblemDetails(risposta, 403, {
+              title: 'Operazione non consentita',
+              detail: `Nello stato '${formulario.stato}' del formulario l'operazione non e' ammessa.`,
+            })
+          }
         }
 
         const corpo = richiesta.body ?? {}
@@ -364,28 +385,41 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   // Operazioni del FIR in viaggio (piano `2026-11-18-rentri-fir-viaggio.md`,
   // P0 T1). Tutte ASYNC (202 + TransazioneModel) e validate contro i modelli
   // del contratto, generati in `schema-*.ts`.
-  registraOperazioneAsincrona('quantita', corpo => validaQuantita(corpo), 'Quantita')
-  registraOperazioneAsincrona('trasporto', corpo => validaTrasportoTerrestre(corpo), 'Trasporto')
-  registraOperazioneAsincrona('annotazione', corpo => validaAnnotazione(corpo), 'Annotazione')
-  registraOperazioneAsincrona('sosta-tecnica', corpo => validaSostaTecnica(corpo), 'SostaTecnica')
+  registraOperazioneAsincrona('quantita', corpo => validaQuantita(corpo), 'Quantita', [
+    'DatiQuantita',
+    'DatiQuantitaUpdate',
+  ])
+  registraOperazioneAsincrona('trasporto', corpo => validaTrasportoTerrestre(corpo), 'Trasporto', [
+    'Trasporto',
+    'TrasportoUpdate',
+  ])
+  registraOperazioneAsincrona('annotazione', corpo => validaAnnotazione(corpo), 'Annotazione', [
+    'Annotazione',
+  ])
+  registraOperazioneAsincrona('sosta-tecnica', corpo => validaSostaTecnica(corpo), 'SostaTecnica', [
+    'SostaTecnica',
+  ])
   registraOperazioneAsincrona(
     'trasbordo-totale',
     corpo => validaTrasbordoTotale(corpo),
-    'TrasbordoTotale'
+    'TrasbordoTotale',
+    ['TrasbordoTotale']
   )
   registraOperazioneAsincrona(
     'trasbordo-parziale',
     corpo => validaTrasbordoParziale(corpo),
-    'TrasbordoParziale'
+    'TrasbordoParziale',
+    ['TrasbordoParziale']
   )
   registraOperazioneAsincrona(
     'destinatario',
     corpo => validaDestinatario(corpo),
-    'NuovoDestinatario'
+    'NuovoDestinatario',
+    ['NuovoDestinatario']
   )
   // `reset` e `rollback-firma`: nessun requestBody nel contratto.
-  registraOperazioneAsincrona('reset', () => null, 'Reset')
-  registraOperazioneAsincrona('rollback-firma', () => null, 'RollbackFirma')
+  registraOperazioneAsincrona('reset', () => null, 'Reset', ['Reset'])
+  registraOperazioneAsincrona('rollback-firma', () => null, 'RollbackFirma', ['RollbackFirma'])
 
   // POST /{numero_fir}/invia-a-dispositivo (formulari.yaml riga 1583):
   // SINCRONA, 200 senza corpo. `credentials_id` e' obbligatorio. La fake non

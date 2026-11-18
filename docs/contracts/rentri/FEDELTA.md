@@ -579,7 +579,7 @@ accettazione, annotazione, annullamento, hash, firma, reset, sosta, trasbordi, n
 destinatario, note di annullamento). Tre cose non sono nel contratto e sono **dedotte**:
 quale tra `DatiQuantita`/`DatiQuantitaUpdate` e `Trasporto`/`TrasportoUpdate` spetta a
 ciascuno stato; `Allegato` (senza vincoli di stato); `RollbackFirma` (il contratto elenca
-le condizioni, non gli stati: la fake lo propone nei soli stati del viaggio). Le
+le condizioni, non gli stati: la fake lo propone se ha memorizzato una firma reversibile). Le
 **transizioni** fra stati restano un'ipotesi: oggi la fake applica solo quelle di
 accettazione, annullamento, `reset` (torna allo stato precedente) e `rollback-firma`
 (torna all'attesa di firma, mai per la firma di annullamento).
@@ -594,6 +594,17 @@ Cambiamento rispetto a prima: `Accettato` ammette l'annotazione (non e' piu' lis
   descrive solo due `date-time`).
 - Permissiva: `invia-a-dispositivo` non verifica che `credentials_id` esista ne' che sia
   associato all'unita' locale (riga 1583).
+- Stato sbagliato: le nuove rotte (non quelle storiche di R3: accettazione, annullamento,
+  note, allegati) rispondono **403 «Operazione non consentita»** se lo stato del formulario
+  non ammette l'operazione secondo `operazioniPerStato`. Il contratto elenca gli stati
+  ammessi ma non definisce un errore dedicato: il 403 e' la scelta dichiarata, da verificare
+  sulla demo.
+- `RollbackFirma`: il contratto non lo lega a degli stati ma a delle condizioni (ultima
+  firma, tranne l'annullamento). La fake lo propone e lo esegue solo se ha memorizzato una
+  firma reversibile, oggi quella dell'accettazione. Permissiva: non modella i vincoli dei
+  15 minuti, del download xFIR dopo la firma e delle copie gia' restituite (riga 2079).
+- `destinatario`: `oneOf` rigoroso, un corpo che soddisfa sia la forma completa sia quella
+  col solo sito e' rifiutato (nessuno dei due modelli ha `additionalProperties: false`).
 - Permissiva: nessuna delle operazioni controlla il ruolo del soggetto (produttore,
   trasportatore, destinatario) ne' le visibilita'.
 
