@@ -2,7 +2,8 @@
  * Solo per i test (Fase 3, 3.1): crea, col client del PROPRIETARIO, un movimento importato con la sua
  * riga di blocco `DA_RICONCILIARE` nella stessa transazione, come dovra' fare il caricatore (D3). Il
  * trigger differito `waste_movements_importato_bloccato` e' chiuso con `SET CONSTRAINTS ... IMMEDIATE`
- * per lo stesso motivo del Task 9: Prisma 5.22 non segnala l'errore del COMMIT.
+ * perche' il client e' nudo: Prisma 5.22 non segnala l'errore del COMMIT e il client esteso di
+ * `PrismaService`, che chiude i vincoli da solo, qui non c'e'.
  */
 import type { PrismaClient } from '@prisma/client'
 
