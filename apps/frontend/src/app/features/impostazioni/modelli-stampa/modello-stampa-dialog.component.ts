@@ -157,6 +157,14 @@ const COLORE = /^#[0-9A-Fa-f]{6}$/
         <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="modello-dlg-errore">
           {{ e }}
         </p>
+        <p-button
+          *ngIf="logoNonCaricato()"
+          label="Riprova a caricare il logo"
+          icon="pi pi-refresh"
+          [text]="true"
+          (onClick)="riprovaLogo()"
+          data-testid="modello-dlg-logo-riprova"
+        />
       </form>
       <ng-template pTemplate="footer">
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
@@ -240,6 +248,8 @@ export class ModelloStampaDialogComponent implements OnChanges {
   readonly inCorso = signal(false)
   /** Il logo di un modello esistente arriva dal dettaglio (l'elenco non lo porta). */
   readonly caricandoLogo = signal(false)
+  /** Il caricamento del logo e' fallito: Salva resta bloccato (il PUT sostituisce il logo) finche' non si riprova. */
+  readonly logoNonCaricato = signal(false)
   readonly logo = signal<string | null>(null)
   readonly logoUrl = computed(() => logoComeDataUrl(this.logo()))
   private readonly modifiche = signal(0)
@@ -292,12 +302,15 @@ export class ModelloStampaDialogComponent implements OnChanges {
     this.errore.set(null)
     this.inCorso.set(false)
     this.caricandoLogo.set(false)
+    this.logoNonCaricato.set(false)
     if (e?.haLogo) this.caricaLogo(e.id)
   }
 
   /** Salva resta bloccato finche' il logo non e' arrivato: un salvataggio prima lo azzererebbe. */
   private caricaLogo(id: string): void {
     this.caricandoLogo.set(true)
+    this.logoNonCaricato.set(false)
+    this.errore.set(null)
     this.servizio.dettaglio(id).subscribe({
       next: m => {
         // il dialogo e' stato riaperto su un altro modello nel frattempo: risposta superata
@@ -307,9 +320,14 @@ export class ModelloStampaDialogComponent implements OnChanges {
       },
       error: err => {
         if (this.elemento?.id !== id) return
+        this.logoNonCaricato.set(true)
         this.errore.set(messaggioErrore(err, 'Impossibile caricare il logo del modello.'))
       },
     })
+  }
+
+  riprovaLogo(): void {
+    if (this.elemento) this.caricaLogo(this.elemento.id)
   }
 
   async scegliLogo(evento: Event): Promise<void> {

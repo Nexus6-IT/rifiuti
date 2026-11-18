@@ -210,6 +210,24 @@ describe('ModelliStampaComponent', () => {
     )
   })
 
+  it('logo non caricato: errore, Salva bloccato, Riprova lo ricarica e sblocca', async () => {
+    servizio.dettaglio.and.returnValues(
+      throwError(() => ({ error: { message: 'Logo non disponibile.' } })),
+      of({ ...firCompleto, logoBase64: 'QUJD' })
+    )
+    await apri()
+    fixture.componentInstance.apri({ ...fir, haLogo: true })
+    await stabilizza(fixture)
+    expect(q('modello-dlg-errore')!.textContent).toContain('Logo non disponibile.')
+    expect(bottone('modello-dlg-salva')!.disabled).toBeTrue()
+    q('modello-dlg-logo-riprova')!.querySelector('button')!.click()
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).toHaveBeenCalledTimes(2)
+    expect(q('modello-dlg-errore')).toBeNull()
+    expect(q('modello-dlg-logo-riprova')).toBeNull()
+    expect(bottone('modello-dlg-salva')!.disabled).toBeFalse()
+  })
+
   it('modifica di un modello senza logo: nessuna chiamata al dettaglio', async () => {
     await apri()
     fixture.componentInstance.apri(fir)

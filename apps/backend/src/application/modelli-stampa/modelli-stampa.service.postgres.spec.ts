@@ -342,7 +342,19 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
     await nel(a.tenantId, () =>
       service.rendiPredefinito(a.tenantId, a.utenteId, con.id, con.versione)
     )
-    const elenco = await nel(a.tenantId, () => service.listSenzaLogo(a.tenantId))
+    // mai la colonna del logo: nessuna findMany senza `select` e nessuna con `logoBase64` selezionato
+    const letture = jest.spyOn(app.companyTemplate, 'findMany')
+    let elenco: Awaited<ReturnType<typeof service.listSenzaLogo>>
+    try {
+      elenco = await nel(a.tenantId, () => new ModelliStampaService(app).listSenzaLogo(a.tenantId))
+      expect(letture.mock.calls.length).toBeGreaterThan(0)
+      for (const [args] of letture.mock.calls) {
+        expect(args?.select).toBeDefined()
+        expect((args?.select as Record<string, unknown>).logoBase64).toBeUndefined()
+      }
+    } finally {
+      letture.mockRestore()
+    }
     expect(elenco).toHaveLength(2)
     for (const voce of elenco) expect(voce).not.toHaveProperty('logoBase64')
     expect(Object.fromEntries(elenco.map(v => [v.id, v.haLogo]))).toEqual({

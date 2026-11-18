@@ -190,12 +190,38 @@ export class ModelliStampaService {
     })
   }
 
-  /** Elenco per la pagina dei modelli: come `list` ma senza il logo (solo `haLogo`). */
+  /**
+   * Elenco per la pagina dei modelli: senza il logo, che non si legge mai dal database ne' dalla
+   * cache. `haLogo` viene da una seconda query che seleziona solo gli id dei modelli con logo.
+   */
   async listSenzaLogo(tenantId: string): Promise<ModelloStampaElenco[]> {
-    return (await this.list(tenantId)).map(({ logoBase64, ...resto }) => ({
-      ...resto,
-      haLogo: logoBase64 !== null,
-    }))
+    return nelContestoTenant(tenantId, async () => {
+      const [righe, conLogo] = await Promise.all([
+        this.prisma.companyTemplate.findMany({
+          where: { tenantId },
+          select: SENZA_LOGO,
+          orderBy: [{ ambito: 'asc' }, { isDefault: 'desc' }, { name: 'asc' }],
+        }),
+        this.prisma.companyTemplate.findMany({
+          where: { tenantId, logoBase64: { not: null } },
+          select: { id: true },
+        }),
+      ])
+      const ids = new Set(conLogo.map(r => r.id))
+      return righe.map(r => ({
+        id: r.id,
+        nome: r.name,
+        ambito: r.ambito,
+        copie: r.copie,
+        testoIntestazione: r.headerText,
+        testoPiePagina: r.footerText,
+        colorePrimario: r.primaryColor,
+        coloreSecondario: r.secondaryColor,
+        predefinito: r.isDefault,
+        versione: r.versione,
+        haLogo: ids.has(r.id),
+      }))
+    })
   }
 
   /**
