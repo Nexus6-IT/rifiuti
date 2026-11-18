@@ -315,6 +315,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
             <th scope="col" class="m-hide">CER</th>
             <th scope="col" class="num-col">Quantità</th>
             <th scope="col" class="m-hide" *ngIf="visibili().has('mezzo')">Mezzo</th>
+            <th scope="col" class="m-hide" *ngIf="visibili().has('autista')">Autista</th>
             <th scope="col">Stato</th>
             <th scope="col" class="m-hide" *ngIf="visibili().has('fir')">FIR</th>
             <th scope="col" class="num-col azioni-col" *ngIf="puoScrivere()">
@@ -354,6 +355,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
               <span class="mono">{{ quantita(r.quantitaPresunta) }}</span> {{ r.unita }}
             </td>
             <td class="m-hide" *ngIf="visibili().has('mezzo')">{{ r.automezzo?.targa || '—' }}</td>
+            <td class="m-hide" *ngIf="visibili().has('autista')">{{ r.autista?.nome || '—' }}</td>
             <td>
               <app-pillola-stato
                 [tono]="tono(r.statoVisibile)"
@@ -584,6 +586,7 @@ export class RitiriComponent implements OnInit {
     dal: '',
     al: '',
     automezzoId: '',
+    autistaId: '',
     trasportatoreId: '',
     produttoreId: '',
     cerCode: '',
@@ -604,7 +607,11 @@ export class RitiriComponent implements OnInit {
   readonly conFir = computed(() => this.selezionati().filter(r => r.fir !== null))
   /** Colonne facoltative con almeno un dato nella pagina: le altre non si disegnano. */
   readonly visibili = computed(() =>
-    colonneConDati(this.righe(), { mezzo: r => r.automezzo?.targa, fir: r => r.fir })
+    colonneConDati(this.righe(), {
+      mezzo: r => r.automezzo?.targa,
+      autista: r => r.autista?.nome,
+      fir: r => r.fir,
+    })
   )
   readonly colonneTotali = computed(() => 7 + this.visibili().size + (this.puoScrivere() ? 1 : 0))
 

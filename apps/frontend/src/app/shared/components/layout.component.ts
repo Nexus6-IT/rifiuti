@@ -1369,6 +1369,13 @@ export class LayoutComponent implements OnInit {
       feature: 'rentri',
     },
     {
+      // Anagrafica degli autisti (app campo, P1): backend @RichiedeModulo('ritiri', 'campo').
+      label: 'Autisti',
+      route: '/autisti',
+      icon: 'pi pi-id-card',
+      feature: ['ritiri', 'campo'],
+    },
+    {
       // Modelli di stampa di FIR e distinta ritiri: scrittura solo ADMIN, serve fir o ritiri.
       label: 'Modelli di stampa',
       route: '/impostazioni/modelli-stampa',

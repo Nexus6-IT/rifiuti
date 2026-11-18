@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { PeseService } from '../pese/pese.service'
+import { Autista, AutistiService } from '../autisti/autisti.service'
 import { RegistryService } from '../registry/registry.service'
 import { RitiroDialogComponent } from './ritiro-dialog.component'
 import { RitiriService } from './ritiri.service'
@@ -19,7 +20,27 @@ describe('RitiroDialogComponent', () => {
   let fixture: ComponentFixture<RitiroDialogComponent>
   let servizio: jasmine.SpyObj<RitiriService>
 
-  async function crea(ritiro = null as ReturnType<typeof ritiroDiProva> | null): Promise<void> {
+  const autistaDiProva = (p: Partial<Autista> = {}): Autista => ({
+    id: 'au1',
+    nome: 'Luca',
+    cognome: 'Bianchi',
+    codiceFiscale: null,
+    trasportatoreId: null,
+    patenteNumero: null,
+    patenteCategoria: null,
+    patenteScadenza: null,
+    cqcScadenza: null,
+    adrScadenza: null,
+    telefono: null,
+    userId: null,
+    attivo: true,
+    ...p,
+  })
+
+  async function crea(
+    ritiro = null as ReturnType<typeof ritiroDiProva> | null,
+    autisti: Autista[] | 'errore' = []
+  ): Promise<void> {
     servizio = jasmine.createSpyObj<RitiriService>('RitiriService', ['crea', 'modifica'])
     const registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
       'getProduttori',
@@ -37,6 +58,15 @@ describe('RitiroDialogComponent', () => {
         provideNoopAnimations(),
         { provide: RitiriService, useValue: servizio },
         { provide: RegistryService, useValue: registry },
+        {
+          provide: AutistiService,
+          useValue: {
+            elenca: () =>
+              autisti === 'errore'
+                ? throwError(() => new Error('403'))
+                : of({ righe: autisti, puoOperare: true }),
+          },
+        },
         {
           provide: PeseService,
           useValue: {
@@ -88,6 +118,48 @@ describe('RitiroDialogComponent', () => {
     expect(dati.quantitaPresunta).toBe('1250.50')
     expect(dati.cerCode).toBe('170504')
     expect(salvato).toBeTrue()
+  })
+
+  describe('autista', () => {
+    it('senza autisti (modulo assente o nessun permesso) il campo non si vede', async () => {
+      await crea(null, [])
+      expect(q('rd-autista')).toBeNull()
+      await TestBed.resetTestingModule()
+      await crea(null, 'errore')
+      expect(q('rd-autista')).toBeNull()
+    })
+
+    it('mostra gli autisti attivi e la scelta viaggia nel corpo della creazione', async () => {
+      await crea(null, [
+        autistaDiProva(),
+        autistaDiProva({ id: 'au2', nome: 'Anna', cognome: 'Verdi' }),
+      ])
+      const select = q<HTMLSelectElement>('rd-autista')!
+      expect(Array.from(select.options).map(o => o.textContent?.trim())).toEqual([
+        'Nessuno',
+        'Bianchi Luca',
+        'Verdi Anna',
+      ])
+      fixture.componentInstance.form.patchValue({ autistaId: 'au2' })
+      expect(fixture.componentInstance['dati']().autistaId).toBe('au2')
+      fixture.componentInstance.form.patchValue({ autistaId: '' })
+      expect(fixture.componentInstance['dati']().autistaId).toBeNull()
+    })
+
+    it('in modifica precompila l’autista del ritiro', async () => {
+      const r = ritiroDiProva({ autista: { id: 'au1', nome: 'Bianchi Luca' } })
+      await crea(r, [autistaDiProva()])
+      expect(q<HTMLSelectElement>('rd-autista')!.value).toBe('au1')
+    })
+
+    it('un autista non più attivo resta scelto e salvabile (non sparisce in silenzio)', async () => {
+      const r = ritiroDiProva({ autista: { id: 'auX', nome: 'Neri Paolo' }, versione: 3 })
+      await crea(r, [autistaDiProva()])
+      expect(q('rd-autista-fuori-elenco')?.textContent).toContain('Neri Paolo (non più attivo)')
+      servizio.modifica.and.returnValue(of(r))
+      bottone('rd-salva')!.click()
+      expect(servizio.modifica.calls.mostRecent().args[1].autistaId).toBe('auX')
+    })
   })
 
   it('l’anteprima della ripetizione elenca le date e il tasto dice quanti ritiri crea', async () => {

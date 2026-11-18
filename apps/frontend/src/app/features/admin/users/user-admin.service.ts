@@ -4,7 +4,7 @@ import { Observable } from 'rxjs'
 import { environment } from '../../../../environments/environment'
 
 /** Ruoli applicativi, allineati all'enum del backend. */
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER'
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER' | 'AUTISTA'
 
 /** Utente come restituito dal backend (`GET /admin/users`). */
 export interface AdminUser {
