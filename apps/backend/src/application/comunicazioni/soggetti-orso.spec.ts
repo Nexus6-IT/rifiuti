@@ -44,6 +44,8 @@ function fir(
 const ISTAT: Record<string, RisoluzioneIstat> = {
   s1: { codice: '015146', origine: 'DA_NOME' },
   s2: { codice: '016024', origine: 'FORZATO' },
+  s3: { codice: '015146', origine: 'DA_NOME' },
+  s4: { codice: '016024', origine: 'DA_NOME' },
   'legale-d-s1': { codice: '015200', origine: 'DA_NOME' },
 }
 
@@ -51,13 +53,18 @@ const mov = (
   id: string,
   tipo: 'CARICO' | 'SCARICO',
   firId: string | null,
-  controparte: { nome: string | null; indirizzo?: string | null } = { nome: null }
+  controparte: {
+    nome: string | null
+    indirizzo?: string | null
+    sedeControparteId?: string | null
+  } = { nome: null }
 ) => ({
   id,
   tipo,
   firId,
   controparte: controparte.nome,
   indirizzoControparte: controparte.indirizzo ?? null,
+  sedeControparteId: controparte.sedeControparteId ?? null,
 })
 
 function dettagli(
@@ -387,6 +394,153 @@ describe('risolviSoggettiOrso', () => {
       )
       expect(r.soggetti.size).toBe(0)
       expect(r.errori).toEqual([])
+    })
+  })
+
+  describe('sede della controparte scelta nel form (ordine: colonna, FIR, nome)', () => {
+    const ditta = (id: string, nome: string) => ({
+      id: `d-${id}`,
+      ragioneSociale: nome,
+      partitaIva: '01234567890',
+      codiceFiscale: null,
+    })
+    // Due ditte omonime in comuni omonimi di province diverse (review N1).
+    const calliTn = sede('s1', {
+      comune: 'Calliano',
+      provincia: 'TN',
+      ditta: ditta('s1', 'Comune di Calliano'),
+    })
+    const calliAt = sede('s2', {
+      dittaId: 'd-s2',
+      comune: 'Calliano',
+      provincia: 'AT',
+      ditta: ditta('s2', 'Comune di Calliano'),
+    })
+
+    it("N1: una sola candidata per nome (TN) ma sede scelta un'altra (AT): vince la sede scelta", async () => {
+      const dd = dettagli([calliTn, calliAt], [], [], {
+        controparti: [['comune di calliano', [calliTn]]],
+      })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('m1', 'CARICO', null, {
+            nome: 'Comune di Calliano',
+            indirizzo: 'Via Roma 1, Calliano (AT)',
+            sedeControparteId: 's2',
+          }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'Inew', chiave: 's2' })
+    })
+
+    it('la colonna vince sul FIR quando i due sono diversi', async () => {
+      const dd = dettagli([calliTn, calliAt], [fir('f1', 's1', 's1')])
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', 'f1', { nome: null, sedeControparteId: 's2' })],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'Inew', chiave: 's2' })
+    })
+
+    it('colonna con id non caricato: ripiego sul FIR, poi sul nome', async () => {
+      const dd = dettagli([calliTn], [fir('f1', 's1', 's1')], [], {
+        controparti: [['comune di calliano', [calliTn]]],
+      })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('perFir', 'CARICO', 'f1', { nome: null, sedeControparteId: 'sconosciuta' }),
+          mov('perNome', 'CARICO', null, {
+            nome: 'Comune di Calliano',
+            sedeControparteId: 'sconosciuta',
+          }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('perFir')).toMatchObject({ tipo: 'Inew', chiave: 's1' })
+      expect(r.soggetti.get('perNome')).toMatchObject({ tipo: 'Inew', chiave: 's1' })
+    })
+
+    it('una sede scelta e poi disattivata si usa lo stesso', async () => {
+      const chiusa = sede('s3', { attiva: false, ditta: ditta('s3', 'Ditta chiusa') })
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', null, { nome: 'Ditta chiusa', sedeControparteId: 's3' })],
+        dettagli([chiusa], []),
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'Inew', chiave: 's3' })
+    })
+
+    it('N2: nome con doppi spazi nel movimento e sede nella colonna: soggetto trovato senza il nome', async () => {
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', null, { nome: '  Comune   di  Calliano ', sedeControparteId: 's1' })],
+        // nessuna entry in sediPerControparte: il nome non serve
+        dettagli([calliTn], []),
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'Inew', chiave: 's1' })
+    })
+  })
+
+  describe('ripiego per nome: si preferiscono le sedi attive (N3)', () => {
+    const base = sede('s1', { comune: 'Milano', via: 'Via Roma' }, { codiceOrso: '55' })
+    const chiusa = sede('s2', {
+      dittaId: 'd-s1',
+      comune: 'Bologna',
+      via: 'Via Emilia',
+      attiva: false,
+      ditta: base.ditta,
+    })
+    const altraAttiva = sede('s4', {
+      dittaId: 'd-s1',
+      comune: 'Bologna',
+      via: 'Via Emilia',
+      ditta: base.ditta,
+    })
+
+    it('una attiva e una disattivata, indirizzo vuoto: la sola attiva', async () => {
+      const r = await risolviSoggettiOrso(
+        [mov('m1', 'CARICO', null, { nome: 'Ditta s1' })],
+        dettagli([base, chiusa], [], [], { controparti: [['ditta s1', [base, chiusa]]] }),
+        istat
+      )
+      expect(r.soggetti.get('m1')).toMatchObject({ tipo: 'I', codice: '55' })
+    })
+
+    it("due attive e una disattivata: decide l'indirizzo come oggi", async () => {
+      const dd = dettagli([base, chiusa, altraAttiva], [], [], {
+        controparti: [['ditta s1', [base, chiusa, altraAttiva]]],
+      })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('a', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Emilia 3, Bologna (BO)' }),
+          mov('b', 'CARICO', null, { nome: 'Ditta s1' }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('a')).toMatchObject({ tipo: 'Inew', chiave: 's4' })
+      expect(r.soggetti.has('b')).toBe(false)
+    })
+
+    it('solo sedi disattivate: comportamento di oggi su tutte', async () => {
+      const chiusa1 = { ...base, attiva: false }
+      const dd = dettagli([chiusa1, chiusa], [], [], {
+        controparti: [['ditta s1', [chiusa1, chiusa]]],
+      })
+      const r = await risolviSoggettiOrso(
+        [
+          mov('a', 'CARICO', null, { nome: 'Ditta s1', indirizzo: 'Via Emilia 3, Bologna (BO)' }),
+          mov('b', 'CARICO', null, { nome: 'Ditta s1' }),
+        ],
+        dd,
+        istat
+      )
+      expect(r.soggetti.get('a')).toMatchObject({ tipo: 'Inew', chiave: 's2' })
+      expect(r.soggetti.has('b')).toBe(false)
     })
   })
 
