@@ -132,6 +132,7 @@ model Tenant {
   soglieDeposito        SogliaDepositoTemporaneo[]
   strumentiPesa         StrumentoPesa[]
   automezzi             Automezzo[]
+  autisti               Autista[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
   rettifichePeso        RettificaPeso[]
@@ -278,8 +279,10 @@ model User {
   executedBackupHistories BackupHistory[]     @relation("ExecutedByUser")
   recordedMovements       WasteMovement[]     @relation("RecordedMovements")
   allegatiRentriCaricati  FIRAllegatoRentri[]
+  autisti                 Autista[]
 
   @@unique([tenantId, fiscalCode])
+  @@unique([id, tenantId], map: "users_id_tenant_id_key")
   @@index([tenantId])
   @@index([keycloakId])
   @@map("users")
@@ -290,6 +293,8 @@ enum UserRole {
   ADMIN
   OPERATOR
   VIEWER
+  /// Autista dell'app campo (P1): vede e scrive solo il proprio giro, mai le rotte d'ufficio.
+  AUTISTA
 
   @@map("user_role")
 }
@@ -1411,6 +1416,7 @@ model Trasportatore {
 
   automezzi Automezzo[]
   ritiri    Ritiro[]
+  autisti   Autista[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
@@ -2803,6 +2809,39 @@ model StrumentoPesa {
 /// Anagrafica degli automezzi (targa + rimorchio) con la tara dichiarata. Mutabile, mai cancellata.
 /// La tara e' tutta o niente (`automezzi_tara_check`); l'indice unico `automezzi_targhe_uniche`
 /// (tenant, targa, rimorchio) e' solo SQL.
+/// Anagrafica degli autisti (app campo, P1). Facoltativamente legata a un utente `AUTISTA` (`user_id`,
+/// un utente = un autista): e' il legame con cui `/campo/giro` trova i ritiri dell'autista. Mai
+/// cancellato (`ruoli-db.sql`): si disattiva. CHECK solo in migration (`20261119200000_autisti`).
+model Autista {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  nome             String    @db.VarChar(100)
+  cognome          String    @db.VarChar(100)
+  codiceFiscale    String?   @map("codice_fiscale") @db.VarChar(16)
+  trasportatoreId  String?   @map("trasportatore_id") @db.Uuid
+  patenteNumero    String?   @map("patente_numero") @db.VarChar(30)
+  patenteCategoria String?   @map("patente_categoria") @db.VarChar(10)
+  patenteScadenza  DateTime? @map("patente_scadenza") @db.Date
+  cqcScadenza      DateTime? @map("cqc_scadenza") @db.Date
+  adrScadenza      DateTime? @map("adr_scadenza") @db.Date
+  telefono         String?   @db.VarChar(30)
+  userId           String?   @unique(map: "autisti_user_id_key") @map("user_id") @db.Uuid
+  attivo           Boolean   @default(true)
+  creatoDa         String    @map("creato_da") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trasportatore Trasportatore? @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_trasportatore_fkey")
+  utente        User?          @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_user_fkey")
+  ritiri        Ritiro[]
+
+  @@unique([id, tenantId], map: "autisti_id_tenant_id_key")
+  @@unique([tenantId, codiceFiscale], map: "autisti_tenant_codice_fiscale_key")
+  @@index([tenantId], map: "autisti_tenant_id_idx")
+  @@map("autisti")
+}
+
 model Automezzo {
   id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String       @map("tenant_id") @db.Uuid
@@ -4534,6 +4573,8 @@ model Ritiro {
   destinatarioId      String               @map("destinatario_id") @db.Uuid
   destinatarioSedeId  String               @map("destinatario_sede_id") @db.Uuid
   automezzoId         String?              @map("automezzo_id") @db.Uuid
+  /// Autista assegnato (app campo, P1): facoltativo, FK composita col tenant.
+  autistaId           String?              @map("autista_id") @db.Uuid
   cerCode             String               @map("cer_code") @db.VarChar(10)
   descrizione         String               @db.VarChar(500)
   statoFisico         String?              @map("stato_fisico") @db.VarChar(50)
@@ -4568,12 +4609,14 @@ model Ritiro {
   destinatario Destinatario  @relation(fields: [destinatarioId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_fkey")
   destinatarioSede SedeDitta @relation("RitiroDestinatarioSede", fields: [destinatarioSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_sede_fkey")
   automezzo    Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
+  autista      Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
   firs         FIR[]
 
   @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
   @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")
   @@index([tenantId, dataPrevista], map: "ritiri_tenant_data_idx")
   @@index([tenantId, automezzoId, dataPrevista, ordineGiro], map: "ritiri_tenant_mezzo_data_idx")
+  @@index([tenantId, autistaId, dataPrevista, ordineGiro], map: "ritiri_tenant_autista_data_idx")
   @@index([tenantId, produttoreId], map: "ritiri_tenant_produttore_idx")
   @@map("ritiri")
 }

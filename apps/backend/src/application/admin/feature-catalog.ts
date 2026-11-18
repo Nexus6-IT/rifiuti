@@ -27,6 +27,7 @@ export const FEATURE_KEYS = [
   'pese',
   'ritiri',
   'comunicazioni',
+  'campo',
 ] as const
 
 /** Tipo della singola chiave feature. */
@@ -48,6 +49,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   pese: 'Pese',
   ritiri: 'Ritiri programmati',
   comunicazioni: 'Comunicazioni a consorzi e osservatori',
+  campo: 'App campo per gli autisti',
 }
 
 /**

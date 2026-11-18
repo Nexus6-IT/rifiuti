@@ -36,7 +36,7 @@ export class StampaRitiriController {
   async distinta(@Req() req: any, @Query() q: DistintaQueryDto, @Res() res: Response) {
     const tenantId = requireRequestTenantId(req)
     const { buffer, nomeFile } = await comeHttpRitiri(() =>
-      this.stampa.distinta(tenantId, q.data, q.automezzoId, q.modelloId)
+      this.stampa.distinta(tenantId, q.data, q.automezzoId, q.modelloId, q.autistaId)
     )
     res.set({
       'Content-Type': 'application/pdf',

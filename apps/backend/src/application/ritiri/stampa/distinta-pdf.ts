@@ -36,6 +36,8 @@ export interface DatiDistinta {
   /** `AAAA-MM-GG`. */
   data: string
   automezzo: { targa: string; descrizione: string | null } | null
+  /** «Cognome Nome» se la distinta e' di un solo autista; assente o `null` = tutti. */
+  autista?: string | null
   righe: RigaDistinta[]
 }
 
@@ -133,6 +135,9 @@ export function definizioneDistinta(
             fontSize: 10,
             color: secondario,
           },
+          ...(dati.autista
+            ? [{ text: `Autista: ${dati.autista}`, fontSize: 10, color: secondario } as Content]
+            : []),
           ...(modello?.headerText ? [{ text: modello.headerText, fontSize: 9 } as Content] : []),
         ],
       },

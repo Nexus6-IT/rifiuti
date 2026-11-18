@@ -21,6 +21,7 @@ export interface RitiroVista {
   trasportatore: { id: string; nome: string }
   destinatario: { id: string; nome: string; sedeId: string }
   automezzo: { id: string; targa: string } | null
+  autista: { id: string; nome: string } | null
   cerCode: string
   descrizione: string
   quantitaPresunta: string
@@ -54,6 +55,7 @@ export interface FiltriRitiri {
   dal?: string
   al?: string
   automezzoId?: string
+  autistaId?: string
   trasportatoreId?: string
   produttoreId?: string
   cerCode?: string
@@ -79,6 +81,8 @@ export interface DatiRitiro {
   destinatarioId: string
   destinatarioSedeId: string
   automezzoId?: string | null
+  /** Autista assegnato (app campo): facoltativo. */
+  autistaId?: string | null
   cerCode: string
   descrizione: string
   statoFisico?: string | null

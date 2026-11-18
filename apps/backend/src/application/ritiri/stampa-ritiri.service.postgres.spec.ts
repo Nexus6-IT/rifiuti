@@ -47,7 +47,9 @@ import {
   AutomezzoNonTrovatoError,
   ModelloAmbitoNonValidoError,
   NessunFirDaStampareError,
+  RitiroDatiNonValidiError,
 } from './errori-ritiri'
+import { AutistaNonTrovatoError } from '../campo/errori-campo'
 import { StampaRitiriService } from './stampa-ritiri.service'
 import { GeneraFirDaRitiriService } from './genera-fir-da-ritiri.service'
 
@@ -108,6 +110,7 @@ describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
   interface Extra {
     cerCode?: string
     automezzoId?: string
+    autistaId?: string
     fascia?: 'MATTINA' | 'POMERIGGIO'
     stato?: 'PROGRAMMATO' | 'ANNULLATO'
     provenienza?: 'URBANO' | 'SPECIALE' | null
@@ -131,6 +134,7 @@ describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
         destinatarioSedeId: a.destinatario.sedeId,
         cerCode: e.cerCode ?? '15 01 01',
         automezzoId: e.automezzoId ?? null,
+        autistaId: e.autistaId ?? null,
         fascia: e.fascia ?? null,
         descrizione: 'Imballaggi',
         quantitaPresunta: '100.00',
@@ -183,6 +187,7 @@ describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
       await owner.activityLog.deleteMany({ where })
       await owner.fIR.deleteMany({ where })
       await owner.ritiro.deleteMany({ where })
+      await owner.autista.deleteMany({ where })
       await owner.companyTemplate.deleteMany({ where })
       await owner.automezzo.deleteMany({ where })
       await owner.produttore.deleteMany({ where })
@@ -247,6 +252,35 @@ describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
       await expect(stampa.distinta(a.t, '2026-12-12', mAltrui.id)).rejects.toBeInstanceOf(
         AutomezzoNonTrovatoError
       )
+    })
+
+    it('con un autista filtra per autista e lo scrive nell intestazione; un autista altrui e` 404', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const x = await owner.autista.create({
+        data: { tenantId: a.t, nome: 'Luca', cognome: 'Bianchi', creatoDa: a.utente },
+      })
+      const altrui = await owner.autista.create({
+        data: { tenantId: b.t, nome: 'Al', cognome: 'Trui', creatoDa: b.utente },
+      })
+      await creaRitiri(a, 2, { dataPrevista: '2026-12-14', autistaId: x.id })
+      await creaRitiri(a, 1, { dataPrevista: '2026-12-14' })
+      const spia = jest.spyOn(pdf, 'generateDistintaPDF')
+
+      await stampa.distinta(a.t, '2026-12-14', undefined, undefined, x.id)
+      expect(spia.mock.calls[0][0].righe).toHaveLength(2)
+      expect(spia.mock.calls[0][0].autista).toBe('Bianchi Luca')
+
+      await stampa.distinta(a.t, '2026-12-14')
+      expect(spia.mock.calls[1][0].righe).toHaveLength(3)
+      expect(spia.mock.calls[1][0].autista).toBeNull()
+
+      await expect(
+        stampa.distinta(a.t, '2026-12-14', undefined, undefined, altrui.id)
+      ).rejects.toBeInstanceOf(AutistaNonTrovatoError)
+      await expect(
+        stampa.distinta(a.t, '2026-12-14', undefined, undefined, 'non-uuid')
+      ).rejects.toBeInstanceOf(RitiroDatiNonValidiError)
     })
 
     it('un giorno senza ritiri produce comunque una distinta (vuota)', async () => {

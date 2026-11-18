@@ -23,6 +23,8 @@ export enum UserRoleDto {
   ADMIN = 'ADMIN',
   OPERATOR = 'OPERATOR',
   VIEWER = 'VIEWER',
+  /** Autista dell'app campo: entra solo nelle rotte `/campo/*` (`@ConsentitoAutista`). */
+  AUTISTA = 'AUTISTA',
 }
 
 export class CreateUserDto {

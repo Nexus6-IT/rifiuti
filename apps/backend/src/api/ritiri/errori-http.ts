@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { DomainError } from '../../core/domain/errors'
+import { AutistaNonTrovatoError } from '../../application/campo/errori-campo'
 import { ModelloStampaNonValidoError } from '../../infrastructure/pdf/definizione-fir'
 import {
   AutomezzoNonTrovatoError,
@@ -26,7 +27,11 @@ export async function comeHttpRitiri<R>(fn: () => Promise<R>): Promise<R> {
     return await fn()
   } catch (err) {
     if (err instanceof HttpException) throw err
-    if (err instanceof RitiroNonTrovatoError || err instanceof AutomezzoNonTrovatoError) {
+    if (
+      err instanceof RitiroNonTrovatoError ||
+      err instanceof AutomezzoNonTrovatoError ||
+      err instanceof AutistaNonTrovatoError
+    ) {
       throw new NotFoundException(err.message)
     }
     if (err instanceof ModelloStampaNonValidoError) {

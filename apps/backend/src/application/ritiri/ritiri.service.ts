@@ -64,7 +64,7 @@ export class RitiriService {
         messaggi.push(`Il filtro «${campo}» non è una data valida.`)
       }
     }
-    for (const campo of ['automezzoId', 'trasportatoreId', 'produttoreId'] as const) {
+    for (const campo of ['automezzoId', 'autistaId', 'trasportatoreId', 'produttoreId'] as const) {
       if (filtri[campo] != null && !eUuid(filtri[campo])) {
         messaggi.push(`Il filtro «${campo}» non è valido.`)
       }
@@ -322,6 +322,9 @@ export class RitiriService {
     }
     if (v.automezzoId && !(await this.repo.automezzoAttivo(tx, tenantId, v.automezzoId))) {
       messaggi.push('Automezzo non trovato.')
+    }
+    if (v.autistaId && !(await this.repo.autistaAttivo(tx, tenantId, v.autistaId))) {
+      messaggi.push('Autista non trovato.')
     }
     if (messaggi.length > 0) throw new RitiroDatiNonValidiError(messaggi)
   }
