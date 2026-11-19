@@ -15,22 +15,22 @@ import { SessioneService } from '../core/sessione.service';
           <p class="sotto">{{ g.autista.nome }} {{ g.autista.cognome }} · {{ g.data }}</p>
         }
       </div>
-      <button type="button" class="secondario" (click)="esci()" data-test="esci">Esci</button>
+      <button type="button" class="secondario" (click)="esci()" data-testid="esci">Esci</button>
     </header>
     <main class="pagina">
       @if (caricamento()) {
         <p class="stato" role="status">Caricamento…</p>
       } @else if (errore(); as e) {
-        <p class="errore" role="alert" data-test="errore">{{ e }}</p>
+        <p class="errore" role="alert" data-testid="errore">{{ e }}</p>
         <button type="button" class="bottone" (click)="carica()">Riprova</button>
       } @else if (giro.corrente(); as g) {
         @if (g.ritiri.length === 0) {
-          <p class="stato" data-test="vuoto">Nessun ritiro programmato per oggi.</p>
+          <p class="stato" data-testid="vuoto">Nessun ritiro programmato per oggi.</p>
         } @else {
-          <ol class="elenco" data-test="elenco">
+          <ol class="elenco" data-testid="elenco">
             @for (r of g.ritiri; track r.id) {
               <li>
-                <a [routerLink]="['/ritiro', r.id]" class="scheda" data-test="ritiro">
+                <a [routerLink]="['/ritiro', r.id]" class="scheda" data-testid="ritiro">
                   <span class="fascia">{{ r.fascia ?? 'Orario libero' }}</span>
                   <strong>{{ r.produttore.nome }}</strong>
                   <span>{{ r.produttore.indirizzo }}</span>

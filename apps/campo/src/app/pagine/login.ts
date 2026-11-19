@@ -9,7 +9,7 @@ export const URL_LOGIN_SPID = '/api/v1/auth/spid/login?RelayState=campo';
     <main class="pagina centro">
       <h1>WasteFlow campo</h1>
       <p>Accedi per vedere il tuo giro di oggi.</p>
-      <a class="bottone" [href]="url" data-test="accedi">Accedi con SPID / CIE</a>
+      <a class="bottone" [href]="url" data-testid="accedi">Accedi con SPID / CIE</a>
     </main>
   `,
 })

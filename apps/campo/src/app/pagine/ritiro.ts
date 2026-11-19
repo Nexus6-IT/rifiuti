@@ -9,12 +9,12 @@ import type { RitiroVista } from '../core/modelli';
   imports: [RouterLink],
   template: `
     <header class="testata">
-      <a routerLink="/" class="indietro" data-test="indietro">‹ Giro</a>
+      <a routerLink="/" class="indietro" data-testid="indietro">‹ Giro</a>
     </header>
     <main class="pagina">
       @if (ritiro(); as r) {
         <h1>{{ r.produttore.nome }}</h1>
-        <dl class="dettaglio" data-test="dettaglio">
+        <dl class="dettaglio" data-testid="dettaglio">
           <dt>Indirizzo</dt>
           <dd>{{ r.produttore.indirizzo }}</dd>
           <dt>Fascia</dt>
@@ -41,7 +41,7 @@ import type { RitiroVista } from '../core/modelli';
       } @else if (caricamento()) {
         <p class="stato" role="status">Caricamento…</p>
       } @else {
-        <p class="errore" role="alert" data-test="non-trovato">
+        <p class="errore" role="alert" data-testid="non-trovato">
           Ritiro non trovato nel giro di oggi.
         </p>
       }
