@@ -62,6 +62,11 @@ export class FirDetailPage {
 
   /** R3 Task 5 — annullamento del formulario, con nota. */
   readonly rentriAnnullaFormulario: Locator
+  readonly firmaInAttesa: Locator
+  readonly firmaScaduta: Locator
+  readonly firmaRiprendi: Locator
+  readonly firmaRichiediDiNuovo: Locator
+  readonly firmaAnnullaRichiesta: Locator
   readonly rentriAnnullaDialog: Locator
   readonly rentriAnnullaMotivoInput: Locator
   readonly rentriAnnullaCancelButton: Locator
@@ -144,6 +149,11 @@ export class FirDetailPage {
       .locator('button')
 
     this.rentriAnnullaFormulario = page.getByTestId('fir-detail-rentri-annulla-formulario')
+    this.firmaInAttesa = page.getByTestId('fir-detail-firma-in-attesa')
+    this.firmaScaduta = page.getByTestId('fir-detail-firma-scaduta')
+    this.firmaRiprendi = page.getByTestId('fir-detail-firma-riprendi')
+    this.firmaRichiediDiNuovo = page.getByTestId('fir-detail-firma-richiedi-di-nuovo')
+    this.firmaAnnullaRichiesta = page.getByTestId('fir-detail-firma-annulla-richiesta')
     this.rentriAnnullaDialog = page.getByTestId('fir-detail-rentri-annulla-dialog')
     this.rentriAnnullaMotivoInput = page.getByTestId('fir-detail-rentri-annulla-motivo-input')
     this.rentriAnnullaCancelButton = page.getByTestId('fir-detail-rentri-annulla-cancel-button')

@@ -29,14 +29,34 @@ export interface AccettaFirRentriPayload {
 /** Esito della firma remota (unione discriminata, v. backend `EsitoCompletamentoFirma`). */
 export type EsitoFirmaRemota =
   | { esito: 'COMPLETATA'; statoFormulario: string }
-  | { esito: 'IN_ATTESA'; handle: string; scadenzaAutorizzazione: string }
+  | { esito: 'IN_ATTESA'; handle: string; sessioneId?: string; scadenzaAutorizzazione: string }
   | {
       esito: 'SCADUTA'
       handle: string
+      sessioneId?: string
       rilevataDa: 'ente' | 'orologio-locale'
       dettaglioEnte?: string
     }
-  | { esito: 'RIFIUTATA'; handle: string; dettaglioEnte?: string }
+  | { esito: 'RIFIUTATA'; handle: string; sessioneId?: string; dettaglioEnte?: string }
+
+/**
+ * Sessione di firma in attesa di conferma sul dispositivo (FIR in viaggio, P1): mai token, digest o
+ * handle, solo quanto serve al banner.
+ */
+export interface SessioneFirmaInAttesa {
+  id: string
+  tipoOperazione: string
+  scadenza: string
+  /** Il limite di attesa e' gia' passato: non si riprende, si chiede una nuova firma. */
+  scaduta: boolean
+}
+
+/** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
+export interface EsitoRollbackOReset {
+  operazione: 'RollbackFirma' | 'Reset'
+  statoFormulario: string
+  sessioneAnnullataId?: string
+}
 
 export interface EsitoAccettaFirRentri {
   tipoAccettazione: 'A' | 'P' | 'R'
@@ -102,6 +122,38 @@ export class RentriFirLifecycleService {
 
   annullaFIR(firId: string, payload: AnnullaFirRentriPayload): Observable<EsitoAnnullaFirRentri> {
     return this.http.post<EsitoAnnullaFirRentri>(`${this.API_URL}/${firId}/annullamento`, payload)
+  }
+
+  /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */
+  firmaInAttesa(firId: string): Observable<{ sessione: SessioneFirmaInAttesa | null }> {
+    return this.http.get<{ sessione: SessioneFirmaInAttesa | null }>(
+      `${this.API_URL}/${firId}/firme/in-attesa`
+    )
+  }
+
+  /**
+   * «Ho confermato, controlla»: riprende il polling della stessa richiesta di firma. Con
+   * `nuovaSessione` (solo dopo scadenza o rifiuto) chiede esplicitamente una nuova richiesta.
+   */
+  riprendiFirma(
+    firId: string,
+    sessioneId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaRemota> {
+    return this.http.post<EsitoFirmaRemota>(
+      `${this.API_URL}/${firId}/firme/${sessioneId}/riprendi`,
+      payload
+    )
+  }
+
+  /** «Annulla la richiesta»: cancella i dati non ancora firmati e chiude la sessione in attesa. */
+  resetStato(firId: string): Observable<EsitoRollbackOReset> {
+    return this.http.post<EsitoRollbackOReset>(`${this.API_URL}/${firId}/reset`, {})
+  }
+
+  /** Annulla l'ultima firma apposta (solo se l'ente lo consente: `/azioni`). */
+  rollbackFirma(firId: string): Observable<EsitoRollbackOReset> {
+    return this.http.post<EsitoRollbackOReset>(`${this.API_URL}/${firId}/rollback-firma`, {})
   }
 
   /** Elenco locale (mai una chiamata a RENTRI, v. backend). */

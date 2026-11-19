@@ -88,12 +88,17 @@ describe('FirDetailComponent', () => {
       'azioniDisponibili',
       'accettaORespingi',
       'annullaFIR',
+      'firmaInAttesa',
+      'riprendiFirma',
+      'resetStato',
       'elencaAllegati',
       'caricaAllegato',
       'eliminaAllegato',
       'scaricaPdf',
     ])
     rentriFirLifecycleService.elencaAllegati.and.returnValue(of([]))
+    // FIR in viaggio P1: default senza firma in attesa (nessun banner).
+    rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione: null }))
     // R3 Task 8: default fail-closed, coerente con `loadFIR` che ora chiama
     // `/azioni` in background per un FIR legato con ruolo abilitato — nessuna
     // operazione dichiarata finché un test non impone esplicitamente il
@@ -1700,6 +1705,119 @@ describe('FirDetailComponent', () => {
       component.apriConsegna()
       component.confermaConsegna()
       expect(firService.confermaConsegna).not.toHaveBeenCalled()
+    })
+  })
+  describe('Firma in attesa di conferma sul dispositivo (FIR in viaggio, P1)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000777',
+    }
+    const scadenzaFutura = new Date(Date.now() + 90_000).toISOString()
+    const sessione = {
+      id: 'sess-1',
+      tipoOperazione: 'ACCETTAZIONE',
+      scadenza: scadenzaFutura,
+      scaduta: false,
+    }
+
+    it('senza sessione aperta non mostra il banner', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      fixture.detectChanges()
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="fir-detail-firma-in-attesa"]'
+        )
+      ).toBeFalsy()
+    })
+
+    it('con una sessione aperta mostra il banner con i due pulsanti e non quello di nuova richiesta', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione }))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      const banner = el.querySelector('[data-testid="fir-detail-firma-in-attesa"]')
+      expect(banner?.textContent).toContain(
+        "In attesa della tua conferma sull'app RENTRI FIR Digitale"
+      )
+      expect(el.querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-annulla-richiesta"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-richiedi-di-nuovo"]')).toBeFalsy()
+    })
+
+    it('sessione scaduta: dice che non e stato firmato nulla e offre la nuova richiesta, non la ripresa', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({ sessione: { ...sessione, scaduta: true } })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-firma-scaduta"]')?.textContent).toContain(
+        'Non è stato firmato nulla'
+      )
+      expect(el.querySelector('[data-testid="fir-detail-firma-richiedi-di-nuovo"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeFalsy()
+    })
+
+    it('un VIEWER non vede il banner e non chiama /firme/in-attesa', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      fixture.detectChanges()
+      expect(rentriFirLifecycleService.firmaInAttesa).not.toHaveBeenCalled()
+    })
+
+    it('«Ho confermato, controlla» riprende la sessione (senza nuovaSessione) e ricarica il FIR', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione }))
+      rentriFirLifecycleService.riprendiFirma.and.returnValue(
+        of({ esito: 'COMPLETATA', statoFormulario: 'InViaggio' })
+      )
+      fixture.detectChanges()
+
+      component.riprendiFirma(firLegato, sessione, false)
+
+      expect(rentriFirLifecycleService.riprendiFirma).toHaveBeenCalledOnceWith(
+        'fir-1',
+        'sess-1',
+        {}
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('«Richiedi di nuovo la firma» invia nuovaSessione: true', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione }))
+      rentriFirLifecycleService.riprendiFirma.and.returnValue(
+        of({ esito: 'IN_ATTESA', handle: 'h', scadenzaAutorizzazione: scadenzaFutura })
+      )
+      fixture.detectChanges()
+
+      component.riprendiFirma(firLegato, sessione, true)
+
+      expect(rentriFirLifecycleService.riprendiFirma).toHaveBeenCalledOnceWith('fir-1', 'sess-1', {
+        nuovaSessione: true,
+      })
+    })
+
+    it('«Annulla la richiesta» chiede conferma e poi fa il reset', () => {
+      setup({ role: 'OPERATOR', autoConfirm: true })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione }))
+      rentriFirLifecycleService.resetStato.and.returnValue(
+        of({ operazione: 'Reset', statoFormulario: 'InserimentoAccettazione' })
+      )
+      fixture.detectChanges()
+
+      component.annullaRichiestaFirma(firLegato)
+
+      expect(rentriFirLifecycleService.resetStato).toHaveBeenCalledOnceWith('fir-1')
     })
   })
 })
