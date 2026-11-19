@@ -103,19 +103,21 @@ describe('I3: tenants_registro_protetto (Postgres reale)', () => {
       expect(await esiste(t)).toBe(true)
     })
 
-    it('il ruolo applicativo non la cancella (nemmeno col flag impostato)', async () => {
+    it('il ruolo applicativo non la cancella (nessun DELETE su tenants, nemmeno col flag)', async () => {
       const t = await prepara()
       for (const flag of [false, true]) {
-        await expect(come(app, t, flag)).rejects.toThrow(/cancellazione azienda rifiutata|23514/)
+        await expect(come(app, t, flag)).rejects.toThrow(
+          /permission denied|cancellazione azienda rifiutata|23514/
+        )
         expect(await esiste(t)).toBe(true)
       }
     })
 
-    it('il ruolo di sistema non la cancella (nemmeno col flag impostato)', async () => {
+    it('il ruolo di sistema non la cancella (nessun DELETE su tenants, nemmeno col flag)', async () => {
       const t = await prepara()
       for (const flag of [false, true]) {
         await expect(come(sistema, t, flag)).rejects.toThrow(
-          /cancellazione azienda rifiutata|23514/
+          /permission denied|cancellazione azienda rifiutata|23514/
         )
         expect(await esiste(t)).toBe(true)
       }
@@ -139,7 +141,9 @@ describe('I3: tenants_registro_protetto (Postgres reale)', () => {
     await owner.$transaction(async tx => {
       await tx.$executeRawUnsafe(`SET LOCAL ${GUC_CONSENTI_CANCELLAZIONE_AZIENDA} = 'on'`)
     })
-    await expect(come(owner, t)).rejects.toThrow(/cancellazione azienda rifiutata|23514/)
+    await expect(come(owner, t)).rejects.toThrow(
+      /permission denied|cancellazione azienda rifiutata|23514/
+    )
     expect(await esiste(t)).toBe(true)
   })
 })
