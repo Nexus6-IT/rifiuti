@@ -54,7 +54,10 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
 
   beforeAll(() => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
-    app = creaPrismaServiceApplicativo()
+    // Le transazioni che `service.calcola` apre da sola hanno di default 5000 ms: sul runner CI
+    // condiviso una singola transazione (BEGIN, set_config, letture) puo' superarli. Qui il
+    // limite e' lo stesso gia' usato in questo file per le transazioni aperte dai test.
+    app = creaPrismaServiceApplicativo({ transactionOptions: { timeout: 60_000, maxWait: 30_000 } })
     service = new PropostaLegameService(app)
   })
 
