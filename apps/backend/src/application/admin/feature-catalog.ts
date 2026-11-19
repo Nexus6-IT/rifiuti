@@ -27,6 +27,7 @@ export const FEATURE_KEYS = [
   'pese',
   'ritiri',
   'comunicazioni',
+  'campo',
   'sdi',
 ] as const
 
@@ -49,6 +50,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   pese: 'Pese',
   ritiri: 'Ritiri programmati',
   comunicazioni: 'Comunicazioni a consorzi e osservatori',
+  campo: 'App campo per gli autisti',
   sdi: 'Emissione fatture allo SDI (tramite provider)',
 }
 

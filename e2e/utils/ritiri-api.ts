@@ -116,6 +116,8 @@ export interface OpzioniRitiro {
   fascia?: 'MATTINA' | 'POMERIGGIO'
   ripetizione?: { ogniGiorni?: number; ogniSettimane?: number; fino: string }
   descrizione?: string
+  /** Autista assegnato (app campo). */
+  autistaId?: string
 }
 
 /** Crea un ritiro (o la serie, con `ripetizione`) e restituisce le occorrenze create. */
@@ -141,6 +143,7 @@ export async function creaRitiri(
     codiceOperazione: 'R13',
     provenienza: 'SPECIALE',
     tipoTratta: 'TERRESTRE',
+    ...(o.autistaId ? { autistaId: o.autistaId } : {}),
     ...(o.ripetizione ? { ripetizione: o.ripetizione } : {}),
   })
   expect(r.ritiri.length, 'ritiri creati').toBeGreaterThan(0)

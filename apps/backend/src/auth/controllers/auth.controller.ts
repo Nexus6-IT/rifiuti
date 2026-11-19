@@ -31,6 +31,7 @@ import {
   VERIFICA_AZIENDA_NON_DISPONIBILE,
 } from '../../core/context/azienda-selezionata-errori'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
+import { ConsentitoAutista } from '../../core/decorators/consentito-autista.decorator'
 
 // Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
 // funzionare anche con una selezione non più valida, altrimenti l'utente resta bloccato.
@@ -196,6 +197,7 @@ export class AuthController {
    * Logout - revoke tokens
    */
   @Post('logout')
+  @ConsentitoAutista('chiude la sessione sul telefono')
   @UseGuards(JwtAuthGuard)
   async logout(@Request() req: any, @Body() dto: LogoutDto) {
     const userId = req.user.id
@@ -216,6 +218,7 @@ export class AuthController {
    * Get current user profile
    */
   @Get('profile')
+  @ConsentitoAutista("l'app legge il proprio profilo")
   @UseGuards(JwtAuthGuard)
   getProfile(@Request() req: any) {
     return req.user

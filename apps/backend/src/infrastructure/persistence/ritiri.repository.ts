@@ -49,6 +49,8 @@ interface RigaRitiro {
   destinatario_sede_id: string
   automezzo_id: string | null
   targa: string | null
+  autista_id: string | null
+  autista_nome: string | null
   cer_code: string
   descrizione: string
   stato_fisico: string | null
@@ -91,6 +93,8 @@ const SELECT_VISTA = Prisma.sql`
          r.destinatario_sede_id::text AS destinatario_sede_id,
          r.automezzo_id::text AS automezzo_id,
          a.targa,
+         r.autista_id::text AS autista_id,
+         (au.cognome || ' ' || au.nome) AS autista_nome,
          r.cer_code, r.descrizione, r.stato_fisico, r.caratteristiche_pericolo, r.numero_colli,
          r.quantita_presunta::text AS quantita_presunta,
          r.unita,
@@ -116,6 +120,7 @@ const SELECT_VISTA = Prisma.sql`
   JOIN destinatari d ON d.id = r.destinatario_id AND d.tenant_id = r.tenant_id
   JOIN ditte dd ON dd.id = d.ditta_id AND dd.tenant_id = r.tenant_id
   LEFT JOIN automezzi a ON a.id = r.automezzo_id AND a.tenant_id = r.tenant_id
+  LEFT JOIN autisti au ON au.id = r.autista_id AND au.tenant_id = r.tenant_id
   LEFT JOIN LATERAL (
     SELECT fx.id, fx.fir_number, fx.status
     FROM firs fx
@@ -146,6 +151,7 @@ function comeVista(r: RigaRitiro, dettaglio: boolean): RitiroVista {
       sedeId: r.destinatario_sede_id,
     },
     automezzo: r.automezzo_id && r.targa ? { id: r.automezzo_id, targa: r.targa } : null,
+    autista: r.autista_id && r.autista_nome ? { id: r.autista_id, nome: r.autista_nome } : null,
     cerCode: r.cer_code,
     descrizione: r.descrizione,
     quantitaPresunta: r.quantita_presunta,
@@ -309,6 +315,7 @@ export class RitiriRepository {
     if (filtri.al) condizioni.push(Prisma.sql`r.data_prevista <= ${filtri.al}::date`)
     if (filtri.automezzoId)
       condizioni.push(Prisma.sql`r.automezzo_id = ${filtri.automezzoId}::uuid`)
+    if (filtri.autistaId) condizioni.push(Prisma.sql`r.autista_id = ${filtri.autistaId}::uuid`)
     if (filtri.trasportatoreId) {
       condizioni.push(Prisma.sql`r.trasportatore_id = ${filtri.trasportatoreId}::uuid`)
     }
@@ -377,6 +384,20 @@ export class RitiriRepository {
     return a !== null
   }
 
+  /** Autista oggi salvato sul ritiro (anche disattivato), `null` se nessuno. */
+  async autistaDelRitiro(tx: Tx, tenantId: string, id: string): Promise<string | null> {
+    const r = await tx.ritiro.findFirst({ where: { id, tenantId }, select: { autistaId: true } })
+    return r?.autistaId ?? null
+  }
+
+  async autistaAttivo(tx: Tx, tenantId: string, id: string): Promise<boolean> {
+    const a = await tx.autista.findFirst({
+      where: { id, tenantId, attivo: true },
+      select: { id: true },
+    })
+    return a !== null
+  }
+
   // --- interni -----------------------------------------------------------------------------
 
   private colonne(v: ValoriRitiro) {
@@ -390,6 +411,7 @@ export class RitiriRepository {
       destinatarioId: v.destinatarioId,
       destinatarioSedeId: v.destinatarioSedeId,
       automezzoId: v.automezzoId,
+      autistaId: v.autistaId,
       cerCode: v.cerCode,
       descrizione: v.descrizione,
       statoFisico: v.statoFisico,

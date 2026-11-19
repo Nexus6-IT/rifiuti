@@ -18,6 +18,7 @@ import {
 import { ModelliStampaService } from '../modelli-stampa/modelli-stampa.service'
 import { sceglieModelloFir } from '../modelli-stampa/scelta-modello-fir'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { AutistaNonTrovatoError } from '../campo/errori-campo'
 import {
   AutomezzoNonTrovatoError,
   ModelloAmbitoNonValidoError,
@@ -67,15 +68,19 @@ export class StampaRitiriService {
     tenantId: string,
     data: string,
     automezzoId?: string,
-    modelloId?: string
+    modelloId?: string,
+    autistaId?: string
   ): Promise<PdfStampato> {
     if (!DATA.test(data ?? '')) throw new RitiroDatiNonValidiError(['La data non è valida.'])
     if (automezzoId !== undefined && !eUuid(automezzoId)) {
       throw new RitiroDatiNonValidiError(['Automezzo non valido.'])
     }
+    if (autistaId !== undefined && !eUuid(autistaId)) {
+      throw new RitiroDatiNonValidiError(['Autista non valido.'])
+    }
     return nelContestoTenant(tenantId, async () => {
       const modello = await this.modelloDistinta(tenantId, modelloId)
-      const { righe, automezzo } = await this.prisma.$transaction(async tx => {
+      const { righe, automezzo, autista } = await this.prisma.$transaction(async tx => {
         const mezzo = automezzoId
           ? await tx.automezzo.findFirst({
               where: { id: automezzoId, tenantId },
@@ -83,25 +88,39 @@ export class StampaRitiriService {
             })
           : null
         if (automezzoId && !mezzo) throw new AutomezzoNonTrovatoError()
+        const guidatore = autistaId
+          ? await tx.autista.findFirst({
+              where: { id: autistaId, tenantId },
+              select: { nome: true, cognome: true },
+            })
+          : null
+        if (autistaId && !guidatore) throw new AutistaNonTrovatoError()
         const elenco = await this.repo.elenca(
           tx,
           tenantId,
-          { dal: data, al: data, stato: 'PROGRAMMATO', ...(automezzoId ? { automezzoId } : {}) },
+          {
+            dal: data,
+            al: data,
+            stato: 'PROGRAMMATO',
+            ...(automezzoId ? { automezzoId } : {}),
+            ...(autistaId ? { autistaId } : {}),
+          },
           1,
           DIMENSIONE_MASSIMA
         )
         if (elenco.totale > elenco.righe.length) {
           throw new RitiroDatiNonValidiError([
-            automezzoId
-              ? 'Troppi ritiri per questo mezzo in un giorno per una sola distinta.'
+            automezzoId || autistaId
+              ? 'Troppi ritiri per questo mezzo o autista in un giorno per una sola distinta.'
               : 'Troppi ritiri nel giorno per una sola distinta: scegli un mezzo.',
           ])
         }
-        return { righe: elenco.righe, automezzo: mezzo }
+        return { righe: elenco.righe, automezzo: mezzo, autista: guidatore }
       })
       const dati: DatiDistinta = {
         data,
         automezzo: automezzo ? { targa: automezzo.targa, descrizione: null } : null,
+        autista: autista ? `${autista.cognome} ${autista.nome}` : null,
         righe: righe.map(r => ({
           fascia: r.fascia,
           ordineGiro: r.ordineGiro,

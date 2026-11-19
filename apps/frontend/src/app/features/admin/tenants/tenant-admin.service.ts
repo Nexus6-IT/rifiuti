@@ -22,6 +22,7 @@ export type FeatureFlag =
   | 'pese'
   | 'ritiri'
   | 'comunicazioni'
+  | 'campo'
   | 'sdi'
 
 /** Stato dell'abbonamento del tenant. */

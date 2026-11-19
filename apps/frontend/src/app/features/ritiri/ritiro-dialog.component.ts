@@ -24,6 +24,7 @@ import { Observable } from 'rxjs'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { ProvenienzaRifiuto, TipoTratta } from '../fir/fir.service'
 import { Automezzo, PeseService } from '../pese/pese.service'
+import { Autista, AutistiService, nomeAutista } from '../autisti/autisti.service'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
 import { RegistryService } from '../registry/registry.service'
 import { CampoDataComponent } from '../../shared/components/campo-data.component'
@@ -223,6 +224,25 @@ type ValoriForm = {
             >
               <option value="">Nessuno</option>
               <option *ngFor="let a of automezzi()" [value]="a.id">{{ a.targa }}</option>
+            </select>
+          </div>
+          <div class="field" *ngIf="autisti().length || ritiro?.autista">
+            <label for="rd-autista">Autista</label>
+            <select
+              id="rd-autista"
+              class="p-inputtext w-full"
+              formControlName="autistaId"
+              data-testid="rd-autista"
+            >
+              <option value="">Nessuno</option>
+              <option
+                *ngIf="autistaFuoriElenco() as a"
+                [value]="a.id"
+                data-testid="rd-autista-fuori-elenco"
+              >
+                {{ a.nome }} (non più attivo)
+              </option>
+              <option *ngFor="let a of autisti()" [value]="a.id">{{ nomeAutista(a) }}</option>
             </select>
           </div>
         </div>
@@ -511,6 +531,7 @@ type ValoriForm = {
 export class RitiroDialogComponent implements OnInit {
   private readonly servizio = inject(RitiriService)
   private readonly pese = inject(PeseService)
+  private readonly autistiServizio = inject(AutistiService)
   private readonly registry = inject(RegistryService)
 
   /** Ritiro da modificare; assente = nuovo. */
@@ -526,6 +547,9 @@ export class RitiroDialogComponent implements OnInit {
   readonly statiFisici = STATI_FISICI
   readonly massimo = MAX_OCCORRENZE
   readonly automezzi = signal<Automezzo[]>([])
+  /** Autisti attivi; senza il modulo (o senza permessi) l'elenco resta vuoto e il campo nascosto. */
+  readonly autisti = signal<Autista[]>([])
+  readonly nomeAutista = nomeAutista
   readonly sediProduttore = signal<SedeDitta[]>([])
   readonly sediDestinatario = signal<SedeDitta[]>([])
   readonly salvataggio = signal(false)
@@ -547,6 +571,7 @@ export class RitiroDialogComponent implements OnInit {
     destinatarioId: new FormControl('', { nonNullable: true }),
     destinatarioSedeId: new FormControl(SEDE_NON_SCELTA, { nonNullable: true }),
     automezzoId: new FormControl('', { nonNullable: true }),
+    autistaId: new FormControl('', { nonNullable: true }),
     cerCode: new FormControl('', { nonNullable: true }),
     descrizione: new FormControl('', { nonNullable: true }),
     quantita: new FormControl<number | null>(null),
@@ -585,7 +610,21 @@ export class RitiroDialogComponent implements OnInit {
       next: e => this.automezzi.set(e.righe.filter(a => a.attivo)),
       error: () => this.automezzi.set([]),
     })
+    this.autistiServizio.elenca(true).subscribe({
+      next: e => this.autisti.set(e.righe),
+      error: () => this.autisti.set([]),
+    })
     if (this.ritiro) this.precompila(this.ritiro)
+  }
+
+  /**
+   * L'autista del ritiro che non e' piu' tra gli attivi: resta scelto (e salvabile) finche' non lo
+   * si cambia, altrimenti aprire e salvare un ritiro vecchio lo toglierebbe in silenzio.
+   */
+  autistaFuoriElenco(): { id: string; nome: string } | null {
+    const a = this.ritiro?.autista
+    if (!a || this.autisti().some(x => x.id === a.id)) return null
+    return a
   }
 
   private precompila(r: RitiroVista): void {
@@ -599,6 +638,7 @@ export class RitiroDialogComponent implements OnInit {
       destinatarioId: r.destinatario.id,
       destinatarioSedeId: r.destinatario.sedeId,
       automezzoId: r.automezzo?.id ?? '',
+      autistaId: r.autista?.id ?? '',
       cerCode: r.cerCode,
       descrizione: r.descrizione,
       quantita: Number(r.quantitaPresunta),
@@ -709,6 +749,7 @@ export class RitiroDialogComponent implements OnInit {
       destinatarioId: v.destinatarioId,
       destinatarioSedeId: v.destinatarioSedeId,
       automezzoId: v.automezzoId || null,
+      autistaId: v.autistaId || null,
       cerCode: v.cerCode,
       descrizione: v.descrizione.trim(),
       statoFisico: testo(v.statoFisico),

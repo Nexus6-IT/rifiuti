@@ -69,6 +69,11 @@ export class DatiRitiroDto {
   @IsUUID('all', { message: 'Automezzo non valido.' })
   automezzoId?: string | null
 
+  @ApiPropertyOptional({ nullable: true, description: 'Autista assegnato (app campo)' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Autista non valido.' })
+  autistaId?: string | null
+
   @IsString()
   @MaxLength(10, { message: 'Il codice CER non è valido.' })
   cerCode!: string
@@ -229,6 +234,10 @@ export class ElencoRitiriQueryDto {
 
   @IsOptional()
   @IsUUID('all')
+  autistaId?: string
+
+  @IsOptional()
+  @IsUUID('all')
   trasportatoreId?: string
 
   @IsOptional()
@@ -283,6 +292,11 @@ export class DistintaQueryDto {
   @IsOptional()
   @IsUUID('all', { message: 'Automezzo non valido.' })
   automezzoId?: string
+
+  @ApiPropertyOptional({ description: 'Un solo autista; assente = tutti gli autisti' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Autista non valido.' })
+  autistaId?: string
 
   @ApiPropertyOptional({
     description: 'Modello di stampa; assente = predefinito DISTINTA/GENERALE',

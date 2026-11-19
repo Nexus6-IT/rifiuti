@@ -105,7 +105,19 @@ describe('StampaRitiriController - catena HTTP', () => {
         .expect(200)
       expect(r.headers['content-type']).toContain('application/pdf')
       expect(r.headers['content-disposition']).toBe('attachment; filename="distinta-ritiri-x.pdf"')
-      expect(stampa.distinta).toHaveBeenCalledWith(TENANT, '2026-12-01', U(3), U(4))
+      expect(stampa.distinta).toHaveBeenCalledWith(TENANT, '2026-12-01', U(3), U(4), undefined)
+      // Con un autista: il quinto argomento
+      await http()
+        .get(`/ritiri/distinta.pdf?data=2026-12-01&autistaId=${U(7)}`)
+        .expect(200)
+      expect(stampa.distinta).toHaveBeenLastCalledWith(
+        TENANT,
+        '2026-12-01',
+        undefined,
+        undefined,
+        U(7)
+      )
+      await http().get('/ritiri/distinta.pdf?data=2026-12-01&autistaId=x').expect(400)
       expect(dettaglio).not.toHaveBeenCalled()
     })
 

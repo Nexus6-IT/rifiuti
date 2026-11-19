@@ -122,6 +122,23 @@ describe('feature-catalog: comunicazioni', () => {
   })
 })
 
+describe('feature-catalog: campo', () => {
+  it('il modulo campo e solo in ENTERPRISE e si aggiunge ai piani via featureFlags', () => {
+    expect(FEATURE_KEYS).toContain('campo')
+    expect(isFeatureKey('campo')).toBe(true)
+    expect(FEATURE_LABELS.campo).toBe('App campo per gli autisti')
+    expect(PLAN_FEATURES[SubscriptionTier.ENTERPRISE]).toContain('campo')
+    expect(PLAN_FEATURES[SubscriptionTier.PROFESSIONAL]).not.toContain('campo')
+    expect(PLAN_FEATURES[SubscriptionTier.TRIAL]).not.toContain('campo')
+    expect(
+      effectiveFeatures({
+        subscriptionTier: SubscriptionTier.PROFESSIONAL,
+        featureFlags: ['campo'],
+      })
+    ).toContain('campo')
+  })
+})
+
 describe('feature-catalog: sdi', () => {
   it('il modulo sdi e solo in ENTERPRISE e si aggiunge ai piani via featureFlags', () => {
     expect(FEATURE_KEYS).toContain('sdi')

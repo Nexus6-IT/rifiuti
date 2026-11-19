@@ -9,6 +9,7 @@ export const ritiroDiProva = (p: Partial<RitiroVista> = {}): RitiroVista => ({
   trasportatore: { id: 't1', nome: 'Trasporti Bianchi' },
   destinatario: { id: 'd1', nome: 'Impianto Verdi', sedeId: 's2' },
   automezzo: { id: 'a1', targa: 'AB123CD' },
+  autista: null,
   cerCode: '170504',
   descrizione: 'Terre e rocce',
   quantitaPresunta: '1250.50',

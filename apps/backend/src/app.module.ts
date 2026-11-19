@@ -14,6 +14,7 @@ import { PrometheusModule } from '@willsoto/nestjs-prometheus'
 import { HttpExceptionFilter } from './core/filters/http-exception.filter'
 import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
 import { TenantSwitchInterceptor } from './core/interceptors/tenant-switch.interceptor'
+import { RuoloAutistaInterceptor } from './core/interceptors/ruolo-autista.interceptor'
 import { ModuloAttivoInterceptor } from './core/interceptors/modulo-attivo.interceptor'
 import { ModuliAttiviModule } from './application/admin/moduli-attivi.module'
 import { AuthModule } from './auth/auth.module'
@@ -55,6 +56,7 @@ import { RegistroModule } from './api/registro/registro.module'
 import { PeseModule } from './api/pese/pese.module'
 import { AgentiPesaIngressoModule } from './api/agenti-pesa/agenti-pesa-ingresso.module'
 import { RitiriModule } from './ritiri/ritiri.module'
+import { CampoModule } from './campo/campo.module'
 import { ComunicazioniModule } from './api/comunicazioni/comunicazioni.module'
 import { ClientiModule } from './api/clienti/clienti.module'
 import { ListinoModule } from './api/listino/listino.module'
@@ -159,6 +161,8 @@ import { AccessRequestModule } from './application/access-request/access-request
     PeseModule,
     AgentiPesaIngressoModule,
     RitiriModule,
+    // App campo (P1): anagrafica autisti e giro dell'autista (modulo `campo`).
+    CampoModule,
     ComunicazioniModule,
     ClientiModule,
     ListinoModule,
@@ -188,6 +192,12 @@ import { AccessRequestModule } from './application/access-request/access-request
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Fail-closed per il ruolo AUTISTA (app campo): entra solo nelle rotte `@ConsentitoAutista()`.
+    // DEVE stare PRIMA di TenantSwitchInterceptor (c'e' un test sull'ordine).
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RuoloAutistaInterceptor,
     },
     // Validazione header X-Tenant-ID per tutti gli utenti (non solo SUPER_ADMIN).
     // Gira dopo i guard Passport (JWT), quindi req.user è disponibile.

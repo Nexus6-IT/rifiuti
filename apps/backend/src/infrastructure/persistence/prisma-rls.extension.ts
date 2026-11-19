@@ -143,6 +143,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'MappaturaExportContabile',
   // Ritiri programmati (4.7).
   'Ritiro',
+  // Anagrafica autisti (app campo, P1).
+  'Autista',
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
   'ComunicazioneConsorzio',
   'ComunicazioneConsorzioMovimento',

@@ -47,6 +47,13 @@ describe('distinta dei ritiri, definizione pura', () => {
     expect(t).toContain('1.250,5')
   })
 
+  it("mostra l'autista nell'intestazione solo se la distinta e' per un autista", () => {
+    const senza = testo(definizioneDistinta(dati([riga()]), null))
+    expect(senza).not.toContain('Autista:')
+    const con = testo(definizioneDistinta({ ...dati([riga()]), autista: 'Bianchi Luca' }, null))
+    expect(con).toContain('Autista: Bianchi Luca')
+  })
+
   it('senza FIR scrive «FIR non generato», con FIR il numero', () => {
     const t = testo(definizioneDistinta(dati([riga(), riga({ numeroFir: 'XYZ123/26' })]), null))
     expect(t.split(FIR_NON_GENERATO)).toHaveLength(2)

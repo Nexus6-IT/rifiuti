@@ -119,6 +119,25 @@ describe('RitiriService', () => {
     con.flush(new Blob(['x']))
   })
 
+  it('distinta manda l’autista solo se indicato', () => {
+    service.distinta('2026-12-01', undefined, undefined, 'au1').subscribe()
+    const con = http.expectOne(r => r.url === `${base}/distinta.pdf`)
+    expect(con.request.params.get('autistaId')).toBe('au1')
+    expect(con.request.params.has('automezzoId')).toBeFalse()
+    con.flush(new Blob(['x']))
+    service.distinta('2026-12-01', 'm1').subscribe()
+    const senza = http.expectOne(r => r.url === `${base}/distinta.pdf`)
+    expect(senza.request.params.has('autistaId')).toBeFalse()
+    senza.flush(new Blob(['x']))
+  })
+
+  it('l’elenco porta il filtro autista', () => {
+    service.elenca({ autistaId: 'au1' }).subscribe()
+    const r = http.expectOne(x => x.url === base)
+    expect(r.request.params.get('autistaId')).toBe('au1')
+    r.flush({ righe: [], totale: 0 })
+  })
+
   it('un errore con corpo Blob torna con il corpo JSON letto (400 e 404 distinguibili)', done => {
     service.stampaFir(['a']).subscribe({
       error: err => {

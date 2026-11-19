@@ -47,6 +47,8 @@ export interface RitiroVista {
   trasportatore: RitiroSoggetto
   destinatario: RitiroDestinatario
   automezzo: { id: string; targa: string } | null
+  /** Autista assegnato (app campo): `nome` e' «Cognome Nome». */
+  autista: { id: string; nome: string } | null
   cerCode: string
   descrizione: string
   /** Decimale come stringa (es. «1250.50»). */
@@ -81,6 +83,7 @@ export interface FiltriRitiri {
   dal?: string
   al?: string
   automezzoId?: string
+  autistaId?: string
   trasportatoreId?: string
   produttoreId?: string
   cerCode?: string
@@ -108,6 +111,7 @@ export interface DatiRitiro {
   destinatarioId: string
   destinatarioSedeId: string
   automezzoId?: string | null
+  autistaId?: string | null
   cerCode: string
   descrizione: string
   statoFisico?: string | null

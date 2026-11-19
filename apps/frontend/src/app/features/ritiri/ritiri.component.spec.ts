@@ -291,7 +291,7 @@ describe('RitiriComponent', () => {
     expect(mezzo).not.toBeNull()
     bottone('di-scarica')!.click()
     fixture.detectChanges()
-    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md1')
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md1', undefined)
     expect(toast.success).toHaveBeenCalledWith('Distinta scaricata.')
   })
 
@@ -466,7 +466,12 @@ describe('RitiriComponent', () => {
     const menu = q<HTMLSelectElement>('di-modello')!
     expect(menu.selectedOptions[0].textContent).toContain('Modello predefinito')
     bottone('di-scarica')!.click()
-    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, undefined)
+    expect(servizio.distinta).toHaveBeenCalledOnceWith(
+      '2026-12-01',
+      undefined,
+      undefined,
+      undefined
+    )
   })
 
   it('Distinta: il menu offre i modelli della distinta e passa quello scelto', async () => {
@@ -485,7 +490,7 @@ describe('RitiriComponent', () => {
     menu.value = 'md2'
     menu.dispatchEvent(new Event('change'))
     bottone('di-scarica')!.click()
-    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md2')
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md2', undefined)
   })
 
   it('senza modelli leggibili la stampa parte senza modello (predefinito del server)', async () => {

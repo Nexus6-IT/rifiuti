@@ -36,6 +36,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Amministratore',
   OPERATOR: 'Operatore',
   VIEWER: 'Visualizzatore',
+  AUTISTA: 'Autista (app campo)',
 }
 
 /** Regex CF persona fisica (16 alfanumerici); validazione di forma, non di checksum. */

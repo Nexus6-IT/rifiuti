@@ -26,6 +26,7 @@ export interface ValoriRitiro {
   destinatarioId: string
   destinatarioSedeId: string
   automezzoId: string | null
+  autistaId: string | null
   cerCode: string
   descrizione: string
   statoFisico: string | null
@@ -103,6 +104,9 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
   if (dati.automezzoId != null && !eUuid(dati.automezzoId)) {
     messaggi.push("L'automezzo indicato non è valido.")
   }
+  if (dati.autistaId != null && !eUuid(dati.autistaId)) {
+    messaggi.push("L'autista indicato non è valido.")
+  }
 
   const cerCode = (dati.cerCode ?? '').trim()
   if (!cerCode || cerCode.length > 10) messaggi.push('Il codice CER non è valido.')
@@ -156,6 +160,7 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
       destinatarioId: dati.destinatarioId,
       destinatarioSedeId: dati.destinatarioSedeId,
       automezzoId: dati.automezzoId ?? null,
+      autistaId: dati.autistaId ?? null,
       cerCode,
       descrizione,
       statoFisico,

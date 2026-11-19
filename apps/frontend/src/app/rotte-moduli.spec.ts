@@ -51,6 +51,7 @@ const MAPPA_MODULI: Record<string, string | string[]> = {
   'fatturazione/export-contabile/:adattatore': 'contratti',
   ritiri: 'ritiri',
   'ritiri/giorno': 'ritiri',
+  autisti: ['ritiri', 'campo'],
   'impostazioni/modelli-stampa': ['fir', 'ritiri'],
   'reference-data': 'reference_data',
   'rentri/certificato': 'rentri',

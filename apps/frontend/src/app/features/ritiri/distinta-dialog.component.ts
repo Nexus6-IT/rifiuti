@@ -11,6 +11,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
 import { ModelloStampaElenco } from '../impostazioni/modelli-stampa/modello-stampa.model'
 import { CampoDataComponent } from '../../shared/components/campo-data.component'
+import { Autista, AutistiService, nomeAutista } from '../autisti/autisti.service'
 import { messaggioErroreRitiri } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
 import { scaricaPdf } from './scarica-pdf'
@@ -50,6 +51,19 @@ import { scaricaPdf } from './scarica-pdf'
         >
           <option value="">Tutti i mezzi</option>
           <option *ngFor="let m of mezzi" [value]="m.id">{{ m.targa }}</option>
+        </select>
+      </div>
+      <div class="field" *ngIf="autisti().length">
+        <label for="di-autista">Autista</label>
+        <select
+          id="di-autista"
+          class="p-inputtext"
+          [(ngModel)]="autista"
+          name="autista"
+          data-testid="di-autista"
+        >
+          <option value="">Tutti gli autisti</option>
+          <option *ngFor="let a of autisti()" [value]="a.id">{{ nomeAutista(a) }}</option>
         </select>
       </div>
       <div class="field" *ngIf="modelli().length">
@@ -112,12 +126,17 @@ export class DistintaDialogComponent implements OnInit {
   private readonly servizio = inject(RitiriService)
   private readonly toast = inject(ToastService)
   private readonly modelliServizio = inject(ModelliStampaService)
+  private readonly autistiServizio = inject(AutistiService)
 
   @Input() data = ''
   @Input() mezzi: { id: string; targa: string }[] = []
   @Output() chiuso = new EventEmitter<void>()
 
   mezzo = ''
+  autista = ''
+  readonly nomeAutista = nomeAutista
+  /** Autisti attivi; senza il modulo (o senza permessi) l'elenco resta vuoto e il campo nascosto. */
+  readonly autisti = signal<Autista[]>([])
   modelloId = ''
   /** Modelli utilizzabili per la distinta (ambito DISTINTA_RITIRI o GENERALE), predefinito in testa. */
   readonly modelli = signal<ModelloStampaElenco[]>([])
@@ -125,6 +144,10 @@ export class DistintaDialogComponent implements OnInit {
   readonly inCorso = signal(false)
 
   ngOnInit(): void {
+    this.autistiServizio.elenca(true).subscribe({
+      next: e => this.autisti.set(e.righe),
+      error: () => this.autisti.set([]),
+    })
     this.modelliServizio.elenco().subscribe({
       next: tutti => {
         const per = (m: ModelloStampaElenco) =>
@@ -151,7 +174,12 @@ export class DistintaDialogComponent implements OnInit {
     this.errore.set(null)
     this.inCorso.set(true)
     this.servizio
-      .distinta(this.data, this.mezzo || undefined, this.modelloId || undefined)
+      .distinta(
+        this.data,
+        this.mezzo || undefined,
+        this.modelloId || undefined,
+        this.autista || undefined
+      )
       .subscribe({
         next: risposta => {
           this.inCorso.set(false)

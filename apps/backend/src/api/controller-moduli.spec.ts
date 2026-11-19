@@ -209,6 +209,14 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['pese'],
     motivo: 'Agenti di pesa e letture dello strumento (4.8b)',
   },
+  'api/campo/campo.controller.ts': {
+    chiavi: ['campo'],
+    motivo: "App campo: giro dell'autista (P1)",
+  },
+  'api/campo/autisti.controller.ts': {
+    chiavi: ['ritiri', 'campo'],
+    motivo: "Anagrafica autisti: serve ai ritiri (assegnazione) e all'app campo",
+  },
   'api/ritiri/ritiri.controller.ts': { chiavi: ['ritiri'], motivo: 'Ritiri programmati' },
   'api/ritiri/stampa-ritiri.controller.ts': {
     chiavi: ['ritiri'],
