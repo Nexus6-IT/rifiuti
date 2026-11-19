@@ -144,7 +144,10 @@ export class ApriRegistroRentriDto {
   @IsString({ each: true, message: 'Ogni codice deve essere un testo.' })
   attivitaRecSmalt?: string[]
 
-  @ApiPropertyOptional({ maxLength: 250, description: 'Assente = descrizione del registro locale.' })
+  @ApiPropertyOptional({
+    maxLength: 250,
+    description: 'Assente = descrizione del registro locale.',
+  })
   @IsOptional()
   @IsString({ message: 'La descrizione deve essere un testo.' })
   @MaxLength(250, { message: 'La descrizione può avere al massimo 250 caratteri.' })
