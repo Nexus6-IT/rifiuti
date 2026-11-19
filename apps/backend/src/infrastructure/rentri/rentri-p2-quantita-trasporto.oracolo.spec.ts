@@ -1,7 +1,7 @@
 import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
-import { RentriApiError } from './rentri-http-resilienza'
+import { RispostaRentriInattesaError } from './rentri-http-resilienza'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
@@ -10,7 +10,7 @@ import { InviaDatiViaggioFirRentriUseCase } from '../../application/rentri/invia
 import { DatiViaggioFirInMemoria } from '../../application/rentri/dati-viaggio-fir.in-memoria'
 import { EventiFirRentriInMemoria } from '../../application/rentri/eventi-fir-rentri.in-memoria'
 import { mappaNuovoFormulario } from '../../application/rentri/mappatura/mappa-nuovo-formulario'
-import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { FIR, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -157,45 +157,6 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
     }
   }
 
-  function seminaFormulario(payload: {
-    numero_fir: string
-    stato: string
-    identificativo_soggetto: string
-  }): Promise<unknown> {
-    return app.inject({
-      method: 'POST',
-      url: '/__controllo/formulario',
-      payload: { produttore: 'Produttore di prova SRL', ...payload },
-    })
-  }
-
-  class FIRRepositoryFake {
-    private readonly memoria = new Map<string, FIR>()
-    async findById(id: string): Promise<FIR | null> {
-      return this.memoria.get(id) ?? null
-    }
-    async save(fir: FIR): Promise<void> {
-      this.memoria.set(fir.id, fir)
-    }
-  }
-
-  function creaFIRLegato(tenantId: string, numeroFir: string): FIR {
-    const fir = FIR.create({
-      produttoreId: 'produttore-oracolo-p1',
-      trasportatoreId: 'trasportatore-oracolo-p1',
-      destinatarioId: 'destinatario-oracolo-p1',
-      tenantId,
-      rifiuto: { cerCode: '150101', quantita: 100 },
-    })
-    fir.emetti('FIR-ORACOLO-P1-000001', {
-      firmatario: 'Produttore di prova SRL',
-      timestamp: new Date(),
-      certificato: 'certificato-di-prova',
-    })
-    fir.markRENTRISynced(numeroFir)
-    return fir
-  }
-
   class FIRRepositoryFake {
     private readonly memoria = new Map<string, FIR>()
     async findById(id: string): Promise<FIR | null> {
@@ -213,6 +174,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
       destinatarioId: 'destinatario-oracolo-p2',
       tenantId,
       rifiuto: { cerCode: '150101', quantita: 100 },
+      tipoTrattaPrincipale: TipoTratta.TERRESTRE,
     })
     fir.emetti('FIR-ORACOLO-P2-000001', {
       firmatario: 'Produttore di prova SRL',
@@ -566,7 +528,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
         targa_automezzo: 'ABCDEFGHIJK',
       })
       .catch(e => e)
-    expect(errore).toBeInstanceOf(RentriApiError)
+    expect(errore).toBeInstanceOf(RispostaRentriInattesaError)
     expect(errore.status).toBe(400)
   })
 })

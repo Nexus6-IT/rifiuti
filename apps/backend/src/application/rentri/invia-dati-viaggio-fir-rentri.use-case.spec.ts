@@ -1,5 +1,8 @@
 import { FIR, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
+import {
+  RentriApiError,
+  RispostaRentriInattesaError,
+} from '../../infrastructure/rentri/rentri-http-resilienza'
 import { DatiViaggioFirInMemoria } from './dati-viaggio-fir.in-memoria'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
 import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
@@ -228,6 +231,24 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
       })
       expect(eventi.righe[0]).toMatchObject({ esito: 'RIFIUTATA' })
       expect(eventi.righe[0].dettaglioEnte).toContain('numero_colli errato')
+      expect(dati.scritture).toEqual([])
+    })
+
+    it("400 di validazione dell'ente (risposta inattesa non ritentabile): RIFIUTATA con il perche', non INCERTA", async () => {
+      const { useCase, eventi, dati, client } = ambiente()
+      client.inviaQuantita.mockRejectedValueOnce(
+        new RispostaRentriInattesaError(
+          '/formulari/BCDFGH00040ZH/quantita',
+          400,
+          'Corpo della richiesta non valido',
+          "'numero_colli' non valido"
+        )
+      )
+      await expect(useCase.inviaQuantita(quantita())).rejects.toMatchObject({
+        metadata: { rule: 'QUANTITA_RENTRI_RIFIUTATA' },
+      })
+      expect(eventi.righe[0]).toMatchObject({ esito: 'RIFIUTATA' })
+      expect(eventi.righe[0].dettaglioEnte).toContain("'numero_colli' non valido")
       expect(dati.scritture).toEqual([])
     })
 

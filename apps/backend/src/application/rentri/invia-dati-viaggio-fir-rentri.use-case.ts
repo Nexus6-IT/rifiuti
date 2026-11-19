@@ -5,7 +5,10 @@ import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.int
 import { DomainException } from '../../domain/shared/domain-exception'
 import { LoggerService } from '../../core/logger/logger.service'
 import { EsitoFormulario, RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
+import {
+  RentriApiError,
+  RispostaRentriInattesaError,
+} from '../../infrastructure/rentri/rentri-http-resilienza'
 import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
 import { IEventiFirRentriRepository, NuovoEventoFirRentri } from './eventi-fir-rentri.port'
 import { registraEventoFirRentri } from './registra-evento-fir-rentri'
@@ -249,7 +252,11 @@ export class InviaDatiViaggioFirRentriUseCase {
     try {
       esito = await p.invia(numeroFir, corpo)
     } catch (errore) {
-      if (errore instanceof RentriApiError && !errore.retryable) {
+      // Rifiuto DEFINITIVO dell'ente: 403 o un altro 4xx non ritentabile (validazione, 404, ...).
+      const rifiutoDellEnte =
+        (errore instanceof RentriApiError && !errore.retryable) ||
+        errore instanceof RispostaRentriInattesaError
+      if (rifiutoDellEnte) {
         const dettaglio = [errore.problemTitle, errore.problemDetail].filter(Boolean).join(': ')
         await this.registraEvento({
           tenantId,
