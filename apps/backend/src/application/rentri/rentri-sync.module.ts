@@ -38,6 +38,10 @@ import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-c
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
+import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
+import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
+import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
+import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
@@ -400,6 +404,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     // di questo progetto è precisamente il sottosistema scritto e mai cablato.
     // `useFactory` per lo stesso motivo degli altri: `IFIRRepository` è
     // un'interfaccia e sparisce a runtime.
+    // FIR in viaggio P1: sessioni di firma riprendibili (una sola `IN_ATTESA` per FIR).
+    { provide: ISessioniFirmaRentriRepository, useClass: SessioniFirmaRentriRepository },
     {
       provide: CompletaOperazioneConFirmaUseCase,
       useFactory: (
@@ -407,6 +413,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         credentialService: RentriCredentialService,
         rentriApiClient: RENTRIApiClient,
         rateLimiter: RentriRateLimiterService,
+        sessioni: ISessioniFirmaRentriRepository,
         logger: LoggerService
       ) =>
         new CompletaOperazioneConFirmaUseCase(
@@ -414,6 +421,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
           credentialService,
           rentriApiClient,
           rateLimiter,
+          sessioni,
           logger
         ),
       inject: [
@@ -421,6 +429,41 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         RentriCredentialService,
         RENTRIApiClient,
         RentriRateLimiterService,
+        ISessioniFirmaRentriRepository,
+        LoggerService,
+      ],
+    },
+    // FIR in viaggio P1: rollback dell'ultima firma, reset dei dati non firmati, ripresa della sessione.
+    {
+      provide: RollbackEResetFirRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        sessioni: ISessioniFirmaRentriRepository,
+        logger: LoggerService
+      ) =>
+        new RollbackEResetFirRentriUseCase(firRepo, getAzioni, rentriApiClient, sessioni, logger),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        ISessioniFirmaRentriRepository,
+        LoggerService,
+      ],
+    },
+    {
+      provide: GestisciSessioneFirmaRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        sessioni: ISessioniFirmaRentriRepository,
+        completa: CompletaOperazioneConFirmaUseCase,
+        logger: LoggerService
+      ) => new GestisciSessioneFirmaRentriUseCase(firRepo, sessioni, completa, logger),
+      inject: [
+        FIRPrismaRepository,
+        ISessioniFirmaRentriRepository,
+        CompletaOperazioneConFirmaUseCase,
         LoggerService,
       ],
     },

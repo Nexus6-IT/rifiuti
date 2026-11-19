@@ -13,8 +13,9 @@ export class SessioniFirmaRentriInMemoria extends ISessioniFirmaRentriRepository
 
   async trovaAperta(tenantId: string, firId: string): Promise<SessioneFirmaRentri | null> {
     return (
-      this.righe.find(r => r.tenantId === tenantId && r.firId === firId && r.stato === 'IN_ATTESA') ??
-      null
+      this.righe.find(
+        r => r.tenantId === tenantId && r.firId === firId && r.stato === 'IN_ATTESA'
+      ) ?? null
     )
   }
 

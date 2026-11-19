@@ -55,7 +55,9 @@ describe('RentriFirLifecycleController — scaricaPdf', () => {
       {} as any, // GestisciAllegatiFIRUseCase
       scaricaPdfFirUseCase as any,
       creaLogger(),
-      {} as any
+      {} as any,
+      {} as any, // RollbackEResetFirRentriUseCase
+      {} as any // GestisciSessioneFirmaRentriUseCase
     )
   })
 
@@ -204,7 +206,9 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
       gestisciAllegatiFIRUseCase as any,
       {} as any, // ScaricaPdfFirUseCase — non usato da questi test
       creaLogger(),
-      ruolo as any
+      ruolo as any,
+      {} as any, // RollbackEResetFirRentriUseCase
+      {} as any // GestisciSessioneFirmaRentriUseCase
     )
   })
 
@@ -379,7 +383,9 @@ describe('RentriFirLifecycleController: @TenantId è l’azienda selezionata', (
       {} as any,
       {} as any,
       { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
-      {} as any
+      {} as any,
+      {} as any, // RollbackEResetFirRentriUseCase
+      {} as any // GestisciSessioneFirmaRentriUseCase
     )
     const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
     const arg = argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
@@ -420,7 +426,9 @@ describe('RentriFirLifecycleController: ruolo effettivo nell azienda selezionata
       useCase.allegati as any,
       {} as any,
       { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
-      ruolo as any
+      ruolo as any,
+      {} as any, // RollbackEResetFirRentriUseCase
+      {} as any // GestisciSessioneFirmaRentriUseCase
     )
   })
 

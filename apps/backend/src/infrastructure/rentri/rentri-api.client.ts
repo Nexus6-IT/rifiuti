@@ -639,6 +639,69 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Annulla l'ultima firma apposta (`POST /{numero_fir}/rollback-firma` — formulari.yaml riga 2079),
+   * riportando il formulario all'attesa di firma precedente. Il contratto lo ammette solo a certe
+   * condizioni (entro 15 minuti, nessun xFIR scaricato dopo la firma, nessuna copia gia' restituita,
+   * esclusa la firma di annullamento): le verifica l'ente, qui NON si deduce nulla. **Nessun corpo**:
+   * si invia `{}` per lo stesso motivo di {@link annullaFormulario}.
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo di {@link inviaAccettazione}. Restituisce
+   * l'`EsitoFormularioModel` COSÌ COM'È: la decisione su `esito.errore` e' del chiamante
+   * (`RollbackEResetFirRentriUseCase`).
+   */
+  async rollbackFirma(
+    tenantId: string,
+    numeroFir: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postDiDominioSenzaCorpo(tenantId, numeroFir, 'rollback-firma', opzioni)
+  }
+
+  /**
+   * Cancella gli ultimi dati inseriti e non ancora firmati (`POST /{numero_fir}/reset` — formulari.yaml
+   * riga 1888), riportando il formulario allo stato precedente. Ammesso solo negli stati `Firma*` elencati
+   * dal contratto: lo dice `/azioni` (operazione `Reset`). **Nessun corpo** (`{}`).
+   *
+   * **ASYNC (NONBLOCK_PULL)**; esito restituito senza interpretarlo, come {@link rollbackFirma}.
+   */
+  async resetStato(
+    tenantId: string,
+    numeroFir: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postDiDominioSenzaCorpo(tenantId, numeroFir, 'reset', opzioni)
+  }
+
+  /** POST asincrona senza corpo di dominio + attesa dell'esito (`rollback-firma`, `reset`). */
+  private async postDiDominioSenzaCorpo(
+    tenantId: string,
+    numeroFir: string,
+    operazione: 'rollback-firma' | 'reset',
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/${operazione}`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/${operazione}`,
+          {},
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
    * Trasmette le note di annullamento (`POST /{numero_fir}/note-annullamento`
    * — formulari.yaml righe 1642-1738). Corpo: `NoteAnnullamentoModel` (righe
    * 9895-9906), UN SOLO campo, `note` (maxLength 1024) — nome identico in
