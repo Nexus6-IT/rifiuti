@@ -40,6 +40,7 @@ describe('AuthController', () => {
     const mockJwtTokensService = {
       generateTokenPair: jest.fn(),
       generateAccessToken: jest.fn(),
+      generateRefreshToken: jest.fn(),
       verifyRefreshToken: jest.fn(),
       extractTokenFromHeader: jest.fn(),
     }
@@ -192,6 +193,100 @@ describe('AuthController', () => {
         'user-123',
         mockTokens.refreshToken,
         604800 // 7 giorni in secondi
+      )
+    })
+
+    describe("ritorno verso l'app campo (RelayState in elenco chiuso)", () => {
+      const FRONTEND = 'https://rifiuti.ignicraft.com'
+      const TRENTA_GIORNI = 30 * 24 * 60 * 60
+
+      const preparaUtente = (role: string) => {
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role }) as any
+        )
+        jwtTokensService.generateTokenPair.mockReturnValue(createMockTokens())
+        jwtTokensService.generateRefreshToken.mockReturnValue('refresh-30-giorni')
+      }
+      const chiama = async (relayState: unknown) => {
+        const res = { redirect: jest.fn() }
+        const req: any = { user: createMockSpidUser({ id: 'user-123' }) }
+        if (relayState !== undefined) req.body = { RelayState: relayState }
+        await controller.spidCallback(req, res as any)
+        return res.redirect.mock.calls[0][1] as string
+      }
+
+      it('AUTISTA con RelayState=campo: torna a /campo/accesso con refresh a 30 giorni', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        const frammento = new URLSearchParams(url.split('#')[1])
+        expect(frammento.get('refreshToken')).toBe('refresh-30-giorni')
+        expect(frammento.get('accessToken')).toBe('mock-access-token-jwt-string')
+        expect(jwtTokensService.generateRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'tenant-123',
+          '30d'
+        )
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'refresh-30-giorni',
+          TRENTA_GIORNI
+        )
+      })
+
+      it("la sessione unica resta: anche dal canale campo si revoca e si alza l'epoca", async () => {
+        preparaUtente('AUTISTA')
+        await chiama('campo')
+        expect(redisService.revokeAllRefreshTokens).toHaveBeenCalledWith('user-123')
+        expect(redisService.impostaEpocaSessione).toHaveBeenCalledWith('user-123')
+      })
+
+      it("utente d'ufficio dal canale campo: ritorna a campo ma il refresh resta di 7 giorni", async () => {
+        preparaUtente('ADMIN')
+        const url = await chiama('campo')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'mock-refresh-token-jwt-string',
+          7 * 24 * 60 * 60
+        )
+      })
+
+      it("AUTISTA senza RelayState (login dal frontend d'ufficio): 7 giorni e percorso predefinito", async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama(undefined)
+        expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+        expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'mock-refresh-token-jwt-string',
+          7 * 24 * 60 * 60
+        )
+      })
+
+      it.each([
+        'https://evil.example/',
+        '//evil.example',
+        '/campo/accesso',
+        'ufficio',
+        '',
+        ['campo'],
+        { campo: 1 },
+      ])(
+        'RelayState non ammesso %p: percorso predefinito, mai un redirect fuori elenco',
+        async valore => {
+          preparaUtente('AUTISTA')
+          const url = await chiama(valore)
+          expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+          expect(url).not.toContain('evil')
+          expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+          expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+            'user-123',
+            'mock-refresh-token-jwt-string',
+            7 * 24 * 60 * 60
+          )
+        }
       )
     })
   })

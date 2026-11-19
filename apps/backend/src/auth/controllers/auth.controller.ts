@@ -32,6 +32,11 @@ import {
 } from '../../core/context/azienda-selezionata-errori'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 import { ConsentitoAutista } from '../../core/decorators/consentito-autista.decorator'
+import {
+  PERCORSO_ACCESSO_PREDEFINITO,
+  REFRESH_GIORNI_PREDEFINITO,
+  risolviDestinazioneAccesso,
+} from '../destinazioni-accesso'
 
 // Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
 // funzionare anche con una selezione non più valida, altrimenti l'utente resta bloccato.
@@ -96,6 +101,20 @@ export class AuthController {
       role,
     })
 
+    // Canale di ritorno: il RelayState SAML e' solo la CHIAVE di un elenco chiuso (mai un URL),
+    // quindi non c'e' open redirect. Il refresh lungo vale solo per il canale che lo prevede E
+    // solo per il ruolo indicato (app campo: AUTISTA, 30 giorni); tutti gli altri restano a 7.
+    const destinazione = risolviDestinazioneAccesso(req.body?.RelayState)
+    const refreshLungo = destinazione !== null && role === destinazione.ruoloRefreshLungo
+    const refreshGiorni = refreshLungo ? destinazione.refreshGiorni : REFRESH_GIORNI_PREDEFINITO
+    if (refreshLungo) {
+      tokens.refreshToken = this.jwtTokensService.generateRefreshToken(
+        spidUser.id,
+        tenantId,
+        `${refreshGiorni}d`
+      )
+    }
+
     // Sessione singola (regola trasversale): un nuovo accesso invalida il
     // precedente. Si revocano i refresh token gia' emessi e si sposta in
     // avanti l'epoca di sessione, che rende non validi anche gli access
@@ -103,11 +122,11 @@ export class AuthController {
     await this.redisService.revokeAllRefreshTokens(spidUser.id)
     await this.redisService.impostaEpocaSessione(spidUser.id)
 
-    // Store refresh token in Redis (7 days TTL)
+    // Store refresh token in Redis (TTL = durata del refresh token: 7 giorni, 30 per campo/AUTISTA)
     await this.redisService.storeRefreshToken(
       spidUser.id,
       tokens.refreshToken,
-      7 * 24 * 60 * 60 // 7 days in seconds
+      refreshGiorni * 24 * 60 * 60
     )
 
     // Il callback SAML e' una navigazione del browser: si reindirizza alla SPA
@@ -119,7 +138,8 @@ export class AuthController {
       refreshToken: tokens.refreshToken,
       expiresIn: String(tokens.expiresIn),
     }).toString()
-    return res.redirect(302, `${frontendUrl}/auth/callback#${fragment}`)
+    const percorso = destinazione?.percorso ?? PERCORSO_ACCESSO_PREDEFINITO
+    return res.redirect(302, `${frontendUrl}${percorso}#${fragment}`)
   }
 
   /**
