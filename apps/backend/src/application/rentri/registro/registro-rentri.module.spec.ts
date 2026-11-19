@@ -8,6 +8,10 @@ import { AccodaTrasmissioneRentriUseCase } from './accoda-trasmissione-rentri.us
 import { VerificaTrasmissioneRentriUseCase } from './verifica-trasmissione-rentri.use-case'
 import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registro.service'
 import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
+import { RentriRegistroCollegamentoController } from '../../../api/rentri/rentri-registro-collegamento.controller'
+import { CandidatiRegistroRentriUseCase } from './candidati-registro-rentri.use-case'
+import { CollegaRegistroRentriUseCase } from './collega-registro-rentri.use-case'
+import { ApriRegistroRentriUseCase } from './apri-registro-rentri.use-case'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 
@@ -34,6 +38,10 @@ describe('RegistroRentriModule (DI wiring)', () => {
       RentriRegistroTrasmissioneJob,
       RentriRegistroController,
       DettaglioTrasmissioneRentriService,
+      CandidatiRegistroRentriUseCase,
+      CollegaRegistroRentriUseCase,
+      ApriRegistroRentriUseCase,
+      RentriRegistroCollegamentoController,
     ]) {
       expect(moduleRef.get(token, { strict: false })).toBeDefined()
     }
