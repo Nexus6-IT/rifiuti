@@ -48,7 +48,7 @@ export class ElaboraEventiSdiService {
         this.prisma.$queryRaw<EventoDaElaborare[]>`
         SELECT id::text AS id, provider, corpo, ricevuto_il AS "ricevutoIl" FROM "eventi_sdi_ricevuti"
         WHERE tenant_id = ${tenantId}::uuid AND elaborato_il IS NULL
-        ORDER BY ricevuto_il, id LIMIT ${LIMITE_EVENTI_PER_GIRO}::int`
+        ORDER BY esito_elaborazione NULLS FIRST, ricevuto_il, id LIMIT ${LIMITE_EVENTI_PER_GIRO}::int`
     )
     for (const e of eventi) {
       try {
@@ -62,6 +62,7 @@ export class ElaboraEventiSdiService {
             errore instanceof Error ? errore.message : 'errore'
           }`
         )
+        await this.segnaErrore(tenantId, e, ora).catch(() => undefined)
       }
     }
     return esito
@@ -110,6 +111,21 @@ export class ElaboraEventiSdiService {
     )
     await this.chiudi(tenantId, e.id, ora, r ? `OK:${r.statoDopo}` : 'TRASMISSIONE_SCONOSCIUTA')
     return 'elaborati'
+  }
+
+  /** Evento che lancia: dopo 24 ore si chiude, prima passa dietro agli eventi mai provati. */
+  private async segnaErrore(tenantId: string, e: EventoDaElaborare, ora: Date): Promise<void> {
+    if (ora.getTime() - new Date(e.ricevutoIl).getTime() > ATTESA_MASSIMA_TRASMISSIONE_SDI_MS) {
+      await this.chiudi(tenantId, e.id, ora, 'ERRORE')
+      return
+    }
+    await nelContestoTenant(
+      tenantId,
+      async () =>
+        this.prisma.$executeRaw`
+        UPDATE "eventi_sdi_ricevuti" SET esito_elaborazione = 'ERRORE'
+        WHERE id = ${e.id}::uuid AND tenant_id = ${tenantId}::uuid AND elaborato_il IS NULL`
+    )
   }
 
   private async chiudi(tenantId: string, id: string, ora: Date, esito: string): Promise<void> {

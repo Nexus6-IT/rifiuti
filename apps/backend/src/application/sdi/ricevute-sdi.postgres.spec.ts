@@ -413,6 +413,46 @@ describe('Ricevute SDI — Postgres reale, ruolo wasteflow_app', () => {
       expect(await stato(x.trasmissioneId)).toBe('CONSEGNATA')
     }, 120_000)
 
+    it('I3: 100 eventi in attesa non fermano un evento nuovo nello stesso giro', async () => {
+      const x = await aziendaConInviata()
+      for (let i = 0; i < 100; i++) {
+        await owner.$executeRawUnsafe(
+          `INSERT INTO eventi_sdi_ricevuti (tenant_id, provider, id_evento_provider, corpo, ricevuto_il, esito_elaborazione)
+           VALUES ($1::uuid, 'fake', $2, $3::jsonb, now() - interval '1 hour', 'IN_ATTESA_TRASMISSIONE')`,
+          x.az.tenantId,
+          `vecchio-${i}`,
+          JSON.stringify({ idProvider: `ignoto-${i}`, notifica: { tipo: 'RC' } })
+        )
+      }
+      await ricevi(x, 'e-nuovo', notifica('RC'))
+      const e = await eventi.giroAzienda(x.az.tenantId, new Date())
+      expect(e.elaborati).toBe(1)
+      expect(await stato(x.trasmissioneId)).toBe('CONSEGNATA')
+    }, 120_000)
+
+    it('I3: un evento che lancia viene segnato ERRORE (dietro agli altri) e dopo 24 ore si chiude', async () => {
+      const x = await aziendaConInviata()
+      await ricevi(x, 'e-rotto', notifica('RC'))
+      const registra = new RegistraNotificheSdiService(app)
+      jest.spyOn(registra, 'registra').mockRejectedValue(new Error('guasto'))
+      const guasto = new ElaboraEventiSdiService(app, registra)
+      const e1 = await guasto.giroAzienda(x.az.tenantId, new Date())
+      expect(e1.errori).toBe(1)
+      const leggi = async () =>
+        (
+          await owner.$queryRawUnsafe<
+            { esito_elaborazione: string | null; elaborato_il: Date | null }[]
+          >(
+            `SELECT esito_elaborazione, elaborato_il FROM eventi_sdi_ricevuti WHERE tenant_id = $1::uuid`,
+            x.az.tenantId
+          )
+        )[0]
+      expect(await leggi()).toMatchObject({ esito_elaborazione: 'ERRORE', elaborato_il: null })
+      await guasto.giroAzienda(x.az.tenantId, new Date(Date.now() + 25 * ORE))
+      expect(await leggi()).toMatchObject({ esito_elaborazione: 'ERRORE' })
+      expect((await leggi()).elaborato_il).not.toBeNull()
+    }, 120_000)
+
     it('SdiEventiJob: elenca le aziende con eventi da elaborare e li elabora', async () => {
       const x = await aziendaConInviata()
       await ricevi(x, 'e-1', notifica('RC'))
@@ -477,6 +517,34 @@ describe('Ricevute SDI — Postgres reale, ruolo wasteflow_app', () => {
       const chiamate = provider.chiamateNotifiche
       await polling.giroAzienda(x.az.tenantId, dopo(40 * 24 * ORE))
       expect(provider.chiamateNotifiche).toBe(chiamate)
+    }, 120_000)
+
+    it('I1: una trasmissione di un altro ambiente non si interroga con le credenziali di questo', async () => {
+      const x = await aziendaConInviata()
+      await owner.$executeRawUnsafe(
+        `UPDATE configurazioni_sdi SET ambiente = 'PRODUZIONE', invio_attivo = false, verificata_il = NULL
+         WHERE tenant_id = $1::uuid`,
+        x.az.tenantId
+      )
+      const e = await polling.giroAzienda(x.az.tenantId, dopo(3 * ORE))
+      expect(e.controllate).toBe(0)
+      expect(provider.chiamateNotifiche).toBe(0)
+    }, 120_000)
+
+    it('I2: un errore del polling rinvia la trasmissione e non blocca le altre ai giri dopo', async () => {
+      const x = await aziendaConInviata()
+      const spia = jest.spyOn(provider, 'notifiche').mockRejectedValue(new Error('id sconosciuto'))
+      const t1 = dopo(3 * ORE)
+      await polling.giroAzienda(x.az.tenantId, t1)
+      expect(spia).toHaveBeenCalledTimes(1)
+      // Al giro dopo (15 minuti) e' rinviata di 2 ore: non si riprova.
+      await polling.giroAzienda(x.az.tenantId, new Date(t1.getTime() + 15 * 60_000))
+      expect(spia).toHaveBeenCalledTimes(1)
+      await polling.giroAzienda(
+        x.az.tenantId,
+        new Date(t1.getTime() + ATTESA_POLLING_INVIATA_SDI_MS + 1000)
+      )
+      expect(spia).toHaveBeenCalledTimes(2)
     }, 120_000)
 
     it('SdiRiconciliazioneJob: filtra per modulo e porta a CONSEGNATA', async () => {

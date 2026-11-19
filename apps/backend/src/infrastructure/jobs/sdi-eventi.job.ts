@@ -54,10 +54,10 @@ export class SdiEventiJob {
   }
 
   private async giro(): Promise<EsitoGiroGlobaleEventiSdi> {
-    const candidati = await this.sistema.eventoSdiRicevuto.findMany({
+    const candidati = await this.sistema.eventoSdiRicevuto.groupBy({
+      by: ['tenantId'],
       where: { elaboratoIl: null },
-      distinct: ['tenantId'],
-      select: { tenantId: true },
+      orderBy: { tenantId: 'asc' },
       take: LIMITE_AZIENDE_PER_GIRO,
     })
     const totale: EsitoGiroGlobaleEventiSdi = {

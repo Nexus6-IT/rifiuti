@@ -42,4 +42,16 @@ describe('corpo dell’evento SDI', () => {
       file: null,
     })
   })
+
+  it('data di ricezione non valida: corpo con data null, mai un RangeError', () => {
+    const c = corpoDaNotifica('p', {
+      tipo: 'RC',
+      esitoCommittente: null,
+      codiciErrore: [],
+      dataRicezioneSdi: new Date('x'),
+      idNotifica: null,
+      file: null,
+    })
+    expect(c.notifica.dataRicezioneSdi).toBeNull()
+  })
 })

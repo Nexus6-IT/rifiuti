@@ -81,13 +81,19 @@ export class WebhookSdiService {
     if (esito.tipo === 'NON_AUTENTICO') return { tipo: 'NON_AUTENTICO' }
     if (esito.tipo === 'IGNORATO') return { tipo: 'RICEVUTO' }
 
+    // Id vuoto: non idempotente, si rifiuta. Id troppo lungo: SHA-256 (il `slice` farebbe collidere due id diversi).
+    if (esito.idEvento.trim().length === 0) return { tipo: 'NON_AUTENTICO' }
+    const idEvento =
+      esito.idEvento.length <= 100
+        ? esito.idEvento
+        : `sha:${createHash('sha256').update(esito.idEvento, 'utf8').digest('hex')}`
     const corpo = JSON.stringify(corpoDaNotifica(esito.idProvider, esito.notifica))
     const inseriti = await nelContestoTenant(
       tenant.tenantId,
       async () =>
         this.prisma.$executeRaw`
         INSERT INTO "eventi_sdi_ricevuti" (tenant_id, provider, id_evento_provider, corpo)
-        VALUES (${tenant.tenantId}::uuid, ${tenant.provider}, ${esito.idEvento.slice(0, 100)},
+        VALUES (${tenant.tenantId}::uuid, ${tenant.provider}, ${idEvento},
                 ${corpo}::jsonb)
         ON CONFLICT (tenant_id, provider, id_evento_provider) DO NOTHING`
     )

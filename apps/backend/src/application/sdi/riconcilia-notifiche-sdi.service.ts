@@ -69,6 +69,7 @@ export class RiconciliaNotificheSdiService {
         FROM "trasmissioni_sdi" t
         JOIN "documenti_fattura" d ON d.id = t.documento_id AND d.tenant_id = t.tenant_id
         WHERE t.tenant_id = ${tenantId}::uuid AND t.provider = ${config.provider}
+          AND t.ambiente = ${config.ambiente}
           AND t.id_provider IS NOT NULL
           AND ((t.stato = 'INVIATA' AND t.updated_at < ${sogliaInviata}::timestamptz)
             OR (t.stato = 'CONSEGNATA' AND d.formato_trasmissione = 'FPA12'
@@ -86,6 +87,9 @@ export class RiconciliaNotificheSdiService {
       } catch (e) {
         // Provider non raggiungibile: la trasmissione resta com'e' e si riprova al giro dopo.
         esito.errori++
+        // Rinvio: senza spostare `updated_at` la trasmissione resterebbe in testa alla coda e si
+        // riinterrogherebbe ogni giro, bloccando le altre.
+        await this.notifiche.segnaControllata(tenantId, t.id, ora).catch(() => undefined)
         this.logger.warn(
           `Polling SDI della trasmissione ${t.id} (azienda ${tenantId}) non riuscito: ${
             e instanceof Error ? e.message : 'errore'

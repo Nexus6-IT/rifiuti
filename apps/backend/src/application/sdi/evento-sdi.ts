@@ -31,7 +31,10 @@ export function corpoDaNotifica(idProvider: string, n: NotificaSdiGrezza): Corpo
       tipo: n.tipo,
       esitoCommittente: n.esitoCommittente,
       codiciErrore: n.codiciErrore,
-      dataRicezioneSdi: n.dataRicezioneSdi ? n.dataRicezioneSdi.toISOString() : null,
+      dataRicezioneSdi:
+        n.dataRicezioneSdi && !Number.isNaN(n.dataRicezioneSdi.getTime())
+          ? n.dataRicezioneSdi.toISOString()
+          : null,
       idNotifica: n.idNotifica,
       fileBase64: n.file ? n.file.toString('base64') : null,
     },

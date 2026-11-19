@@ -10,7 +10,10 @@ describe('SdiEventiJob', () => {
   beforeEach(() => {
     findMany = jest.fn().mockResolvedValue([{ tenantId: 'a' }, { tenantId: 'b' }])
     giroAzienda = jest.fn().mockResolvedValue(VUOTO)
-    job = new SdiEventiJob({ eventoSdiRicevuto: { findMany } } as never, { giroAzienda } as never)
+    job = new SdiEventiJob(
+      { eventoSdiRicevuto: { groupBy: findMany } } as never,
+      { giroAzienda } as never
+    )
   })
 
   it('senza eventi da elaborare non fa nulla (default in produzione)', async () => {
@@ -24,7 +27,7 @@ describe('SdiEventiJob', () => {
     giroAzienda.mockResolvedValue({ ...VUOTO, elaborati: 2 })
     const r = await job.eseguiEventi()
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { elaboratoIl: null }, distinct: ['tenantId'] })
+      expect.objectContaining({ where: { elaboratoIl: null }, by: ['tenantId'] })
     )
     expect(giroAzienda.mock.calls.map(c => c[0])).toEqual(['a', 'b'])
     expect(r?.elaborati).toBe(4)
