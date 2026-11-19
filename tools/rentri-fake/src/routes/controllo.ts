@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { Archivio, EsitoMessaggio, Formulario } from '../stato/archivio'
 import { inviaProblemDetails } from '../errori/problem-details'
+import { OperazioneRegistro } from '../stato/registri-operatore'
+import { siti } from '../stato/fixture-anagrafiche'
 
 /**
  * Apparato di prova: prefisso __controllo, inesistente in RENTRI e
@@ -105,4 +107,54 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
       return { scaduta: true }
     }
   )
+
+  // Registri dell'operatore (`/operatore/registri`, pezzo E1 del registro eREGI).
+  //
+  // Esito PERSO: l'operazione viene eseguita ma il chiamante riceve un 5xx o
+  // nessuna risposta (connessione chiusa). Riproduce lo scenario che rende non
+  // idempotente la POST di apertura: il registro esiste, il client non lo sa.
+  // Diverso da `/__controllo/guasto`, che fallisce PRIMA di elaborare.
+  app.post<{
+    Body: { operazione: OperazioneRegistro; tipo: '5xx' | 'timeout'; stato?: number; volte?: number }
+  }>('/__controllo/registri/esito-perso', async (richiesta, risposta) => {
+    const { operazione, tipo, stato, volte } = richiesta.body
+    if (!['apri', 'modifica', 'chiudi'].includes(operazione) || !['5xx', 'timeout'].includes(tipo)) {
+      return inviaProblemDetails(risposta, 400, { title: 'Parametri non validi' })
+    }
+    archivio.registriOperatore.impostaEsitoPerso(operazione, {
+      tipo,
+      stato: stato ?? 503,
+      volte: volte ?? 1,
+    })
+    return { impostato: true }
+  })
+
+  // Popola un registro gia' esistente (come quelli aperti dal portale), senza
+  // passare dalla POST: serve agli scenari "collega da elenco" e a quelli in cui
+  // la POST e' andata persa. Non applica le regole di coerenza: e' una scorciatoia
+  // dichiarata, non un campo di protocollo.
+  app.post<{
+    Body: {
+      num_iscr_sito: string
+      attivita: string[]
+      descrizione?: string | null
+      attivita_rec_smalt?: string[] | null
+      identificativo?: string
+      chiuso?: boolean
+    }
+  }>('/__controllo/registri/registro', async (richiesta, risposta) => {
+    const corpo = richiesta.body
+    if (!siti.some(s => s.numIscrSito === corpo.num_iscr_sito)) {
+      return inviaProblemDetails(risposta, 404, { title: 'Sito non trovato a registro' })
+    }
+    const registro = archivio.registriOperatore.apri({
+      numIscrSito: corpo.num_iscr_sito,
+      attivita: corpo.attivita,
+      attivitaRecSmalt: corpo.attivita_rec_smalt,
+      descrizione: corpo.descrizione,
+      identificativo: corpo.identificativo,
+      chiuso: corpo.chiuso,
+    })
+    return { identificativo: registro.identificativo }
+  })
 }

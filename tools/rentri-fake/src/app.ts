@@ -7,6 +7,7 @@ import { registraRotteXfir } from './routes/xfir'
 import { registraRotteControllo } from './routes/controllo'
 import { registraRotteCodifiche } from './routes/codifiche'
 import { registraRotteAnagrafiche } from './routes/anagrafiche'
+import { registraRotteRegistriOperatore } from './routes/anagrafiche-registri'
 import { registraRotteCaRentri } from './routes/ca-rentri'
 import { registraRotteTrasmissioniDati } from './routes/trasmissioni-dati'
 import { registraRotteCopie } from './routes/copie'
@@ -71,6 +72,7 @@ export function creaApp(): FastifyInstance {
   registraRotteXfir(app, archivio)
   registraRotteCodifiche(app, archivio)
   registraRotteAnagrafiche(app, archivio)
+  registraRotteRegistriOperatore(app, archivio)
   registraRotteCaRentri(app, archivio)
   registraRotteTrasmissioniDati(app, archivio)
   registraRotteCopie(app, archivio)

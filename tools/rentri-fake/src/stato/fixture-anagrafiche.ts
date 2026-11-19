@@ -1,9 +1,8 @@
 /**
  * Fixture statiche del servizio `anagrafiche` (`docs/contracts/rentri/anagrafiche.yaml`).
- * Copre solo i path in sola lettura di `Operatore`/`Soggetto delegato`
- * rilevanti per R4 — i `/registri` (apertura/modifica/chiusura registro)
- * restano fuori dall'ambito, sono registri cronologici esplicitamente
- * esclusi dal design del programma.
+ * Operatore, unita' locali e soggetti delegati (sola lettura, R4). I registri
+ * dell'operatore (`/operatore/registri`, pezzo E1 del registro eREGI) sono
+ * stato di scenario, non fixture: vivono in `stato/registri-operatore.ts`.
  */
 
 export interface OperatoreFixture {

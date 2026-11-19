@@ -28,7 +28,9 @@
     "genera-schema:trasbordo-totale": "node scripts/genera-schema.js DatiTrasbordoTotaleModel src/dominio/schema-trasbordo-totale.ts TRASBORDO_TOTALE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
     "genera-schema:trasbordo-parziale": "node scripts/genera-schema.js DatiTrasbordoParzialeModel src/dominio/schema-trasbordo-parziale.ts TRASBORDO_PARZIALE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
     "genera-schema:destinatario": "node scripts/genera-schema.js DatiDestinatarioFormularioModel src/dominio/schema-destinatario.ts DESTINATARIO formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
-    "genera-schema:destinatario-sito": "node scripts/genera-schema.js DatiDestinatarioFormularioSitoModel src/dominio/schema-destinatario-sito.ts DESTINATARIO_SITO formulari.yaml schema-viaggio-allineato-al-contratto.test.ts"
+    "genera-schema:destinatario-sito": "node scripts/genera-schema.js DatiDestinatarioFormularioSitoModel src/dominio/schema-destinatario-sito.ts DESTINATARIO_SITO formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:crea-registro": "node scripts/genera-schema.js CreateRegistroRequest src/dominio/schema-crea-registro.ts CREA_REGISTRO anagrafiche.yaml schema-registri-allineato-al-contratto.test.ts",
+    "genera-schema:modifica-registro": "node scripts/genera-schema.js UpdateRegistroOperatoreRequest src/dominio/schema-modifica-registro.ts MODIFICA_REGISTRO anagrafiche.yaml schema-registri-allineato-al-contratto.test.ts"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
