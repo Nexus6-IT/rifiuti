@@ -167,6 +167,36 @@ describe('FatturazioneService', () => {
     vuota.flush({})
   })
 
+  it('documenti: il filtro statoSdi parte solo se impostato', () => {
+    servizio.documenti({ statoSdi: 'NESSUNA' }).subscribe()
+    const req = http.expectOne(r => r.url === doc)
+    expect(req.request.params.get('statoSdi')).toBe('NESSUNA')
+    req.flush({})
+    servizio.documenti().subscribe()
+    const vuota = http.expectOne(r => r.url === doc)
+    expect(vuota.request.params.has('statoSdi')).toBeFalse()
+    vuota.flush({})
+  })
+
+  it('invioSdi: POST /documenti-fattura/invio-sdi con gli id; confermaGiaEmesso solo se vera', () => {
+    servizio.invioSdi(['d1', 'd2'], false).subscribe()
+    const senza = http.expectOne(`${doc}/invio-sdi`)
+    expect(senza.request.method).toBe('POST')
+    expect(senza.request.body).toEqual({ ids: ['d1', 'd2'] })
+    senza.flush({ accodate: [], saltate: [] })
+    servizio.invioSdi(['d1'], true).subscribe()
+    const con = http.expectOne(`${doc}/invio-sdi`)
+    expect(con.request.body).toEqual({ ids: ['d1'], confermaGiaEmesso: true })
+    con.flush({ accodate: [], saltate: [] })
+  })
+
+  it('riprovaInvioSdi: POST /documenti-fattura/:id/invio-sdi/riprova', () => {
+    servizio.riprovaInvioSdi('d 1').subscribe()
+    const req = http.expectOne(`${doc}/d%201/invio-sdi/riprova`)
+    expect(req.request.method).toBe('POST')
+    req.flush({})
+  })
+
   it('documento: GET /documenti-fattura/:id', () => {
     servizio.documento('d1').subscribe()
     const req = http.expectOne(`${doc}/d1`)

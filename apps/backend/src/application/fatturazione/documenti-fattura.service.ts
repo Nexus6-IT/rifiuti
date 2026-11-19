@@ -4,8 +4,8 @@
 // RigaDocumentoVista, RiepilogoIvaVista, RataVista, Pagina): nessun id interno e nessun tenantId.
 //
 // Per insieme di documenti una query per tabella (testate, clienti, contratti, registri, storni,
-// numerazioni), mai una per documento: `= ANY(ids)` su una tabella sola, tenant sempre dalla
-// richiesta. Il numero di query non dipende dal numero di documenti.
+// numerazioni, trasmissioni SDI), mai una per documento: `= ANY(ids)` su una tabella sola, tenant sempre
+// dalla richiesta. Il numero di query non dipende dal numero di documenti.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
@@ -17,6 +17,12 @@ import {
   type StatoDocumento,
 } from '../../domain/fatturazione/codici'
 import type { FotografiaSalvata } from '../../domain/fatturazione/tipi'
+import {
+  STATI_TRASMISSIONE_SDI,
+  type EsitoFiscale,
+  type StatoTrasmissioneSdi,
+} from '../../domain/fatturazione/sdi/codici'
+import { esitoFiscale } from '../../domain/fatturazione/sdi/stato'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { eDataIso } from './numerazione'
@@ -55,6 +61,10 @@ export interface DocumentoRiga {
   annullabile: boolean
   motivoNonAnnullabile: MotivoNonAnnullabile | null
   stornabile: boolean
+  /** Stato dell'ultima trasmissione SDI (la «viva» se c'e', altrimenti la piu' recente); null = mai accodato (4.5b). */
+  statoSdi: StatoTrasmissioneSdi | null
+  /** Esito fiscale dedotto dallo stato SDI; null se non c'e' una trasmissione. */
+  esitoFiscale: EsitoFiscale | null
 }
 
 export interface RigaDocumentoVista {
@@ -131,7 +141,17 @@ export interface FiltriDocumenti {
   dataA?: string
   elaborazioneId?: string
   conErrori?: boolean
+  /** Stato SDI dell'ultima trasmissione; `NESSUNA` = documenti mai accodati allo SDI (4.5b). */
+  statoSdi?: StatoTrasmissioneSdi | 'NESSUNA'
 }
+
+/**
+ * Trasmissione «corrente» di un documento: la viva (non `ERRORE_INVIO` ne' `SCARTATA`) se esiste,
+ * altrimenti la piu' recente. Stesso criterio nel filtro e nella vista.
+ */
+const ORDINE_TRASMISSIONE_CORRENTE = Prisma.raw(
+  `(t2.stato NOT IN ('ERRORE_INVIO', 'SCARTATA')) DESC, t2.created_at DESC, t2.id DESC`
+)
 
 export const DIMENSIONE_MASSIMA_PAGINA = 100
 /**
@@ -263,6 +283,16 @@ export class DocumentiFatturaService {
         message: 'Lo stato del filtro non è valido.',
       })
     }
+    if (
+      q.statoSdi !== undefined &&
+      q.statoSdi !== 'NESSUNA' &&
+      !(STATI_TRASMISSIONE_SDI as readonly string[]).includes(q.statoSdi)
+    ) {
+      throw new BadRequestException({
+        error: 'FILTRO_NON_VALIDO',
+        message: 'Lo stato SDI del filtro non è valido.',
+      })
+    }
     for (const id of [q.registroIvaId, q.clienteId, q.elaborazioneId]) {
       if (id !== undefined && !UUID.test(id)) {
         throw new BadRequestException({
@@ -294,6 +324,17 @@ export class DocumentiFatturaService {
         if (q.dataA !== undefined) condizioni.push(Prisma.sql`d.data_documento <= ${q.dataA}::date`)
         if (q.elaborazioneId !== undefined)
           condizioni.push(Prisma.sql`d.elaborazione_id = ${q.elaborazioneId}::uuid`)
+        if (q.statoSdi === 'NESSUNA') {
+          condizioni.push(Prisma.sql`NOT EXISTS (SELECT 1 FROM "trasmissioni_sdi" t
+            WHERE t.tenant_id = d.tenant_id AND t.documento_id = d.id)`)
+        } else if (q.statoSdi !== undefined) {
+          condizioni.push(Prisma.sql`EXISTS (SELECT 1 FROM "trasmissioni_sdi" t
+            WHERE t.tenant_id = d.tenant_id AND t.documento_id = d.id
+              AND t.stato = ${q.statoSdi}::stato_trasmissione_sdi
+              AND t.id = (SELECT t2.id FROM "trasmissioni_sdi" t2
+                          WHERE t2.tenant_id = d.tenant_id AND t2.documento_id = d.id
+                          ORDER BY ${ORDINE_TRASMISSIONE_CORRENTE} LIMIT 1))`)
+        }
         if (q.conErrori === true) condizioni.push(Prisma.sql`cardinality(d.errori) > 0`)
         if (q.conErrori === false) condizioni.push(Prisma.sql`cardinality(d.errori) = 0`)
         const dove = Prisma.join(condizioni, ' AND ')
@@ -470,6 +511,7 @@ export class DocumentiFatturaService {
         registri: new Map<string, string>(),
         storni: new Map<string, string>(),
         ultimi: new Map<string, number>(),
+        sdi: new Map<string, StatoTrasmissioneSdi>(),
       }
     }
     const clientiIds = [...new Set(testate.map(t => t.clienteId))]
@@ -496,8 +538,15 @@ export class DocumentiFatturaService {
       SELECT registro_iva_id::text AS registro, anno::int AS anno, ultimo_numero::int AS ultimo
       FROM "numerazioni_fattura"
       WHERE tenant_id = ${tenantId}::uuid AND ${inLista('registro_iva_id', registriIds)}`
+    // Stato SDI: una riga per documento (la trasmissione corrente), una query per tutto l'insieme.
+    const sdi = await tx.$queryRaw<{ documento: string; stato: StatoTrasmissioneSdi }[]>`
+      SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato
+      FROM "trasmissioni_sdi" t2
+      WHERE t2.tenant_id = ${tenantId}::uuid AND ${inLista('t2.documento_id', lista)}
+      ORDER BY t2.documento_id, ${ORDINE_TRASMISSIONE_CORRENTE}`
     return {
       testate,
+      sdi: new Map(sdi.map(r => [r.documento, r.stato])),
       clienti: new Map(clienti.map(c => [c.id, c.denominazione])),
       contratti: new Map(contratti.map(c => [c.id, c.numero])),
       registri: new Map(registri.map(r => [r.id, r.codice])),
@@ -511,6 +560,7 @@ export class DocumentiFatturaService {
     c: Awaited<ReturnType<DocumentiFatturaService['leggiContesto']>>
   ): DocumentoRiga {
     const haStorno = c.storni.has(t.id)
+    const statoSdi = c.sdi.get(t.id) ?? null
     const { annullabile, motivo } = annullabilita({
       stato: t.stato,
       tipoDocumento: t.tipoDocumento,
@@ -546,6 +596,8 @@ export class DocumentiFatturaService {
       annullabile,
       motivoNonAnnullabile: motivo,
       stornabile: t.stato === 'DEFINITIVO' && t.tipoDocumento !== 'TD04' && !haStorno,
+      statoSdi,
+      esitoFiscale: statoSdi === null ? null : esitoFiscale(statoSdi),
     }
   }
 }

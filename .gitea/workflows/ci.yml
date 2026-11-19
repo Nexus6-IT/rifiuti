@@ -670,6 +670,9 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
+          # Invio allo SDI (4.5b): l'interruttore globale e' SPENTO di default; solo questo backend
+          # di collaudo (provider `fake` in-process) lo accende, per l'e2e tests/sdi. Mai in produzione.
+          SDI_INVII_ATTIVI: "true"
         run: |
           # Porta scelta a runtime da porta-libera.sh (non fissa: run parallele).
           export PORT="${E2E_BACKEND_PORT:?E2E_BACKEND_PORT non impostata}"
