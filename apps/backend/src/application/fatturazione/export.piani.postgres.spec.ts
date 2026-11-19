@@ -63,6 +63,8 @@ const MARGINE_MS = 1_500
  * limite piu' largo, che un vero nested loop sulla lista da 5000 supera di molto (>100x).
  */
 const RAPPORTO_MAX_DETTAGLI = 40
+/** Tentativi per ogni campione con statistiche vecchie sopra il limite (vedi `confrontaConFresche`). */
+const TENTATIVI = 3
 const limiteMs = (frescoMs: number, rapporto = RAPPORTO_MAX) => rapporto * frescoMs + MARGINE_MS
 
 describe('ExportService — piani con statistiche vecchie', () => {
@@ -204,7 +206,8 @@ describe('ExportService — piani con statistiche vecchie', () => {
 
   /**
    * Esegue `fn` ESECUZIONI volte con statistiche fresche (riferimento) e poi altrettante con
-   * statistiche vecchie, e verifica che la peggiore delle seconde stia nel limite relativo.
+   * statistiche vecchie, e verifica che la peggiore delle seconde stia nel limite relativo
+   * (ogni campione lento viene rimisurato, vedi sotto: una pausa del runner non e' un piano).
    * Il peggiore, non il totale: il piano generico scatta alla sesta esecuzione e un solo giro
    * patologico verrebbe diluito dagli altri cinque.
    */
@@ -214,23 +217,38 @@ describe('ExportService — piani con statistiche vecchie', () => {
     ripetizioni = ESECUZIONI,
     rapporto = RAPPORTO_MAX
   ) {
-    const misura = async (prima: () => Promise<void>) => {
-      const tempi: number[] = []
-      for (let i = 0; i < ripetizioni; i++) {
-        await prima()
-        const t0 = Date.now()
-        await fn()
-        tempi.push(Date.now() - t0)
-      }
-      return tempi
+    const misuraUna = async (prima: () => Promise<void>) => {
+      await prima()
+      const t0 = Date.now()
+      await fn()
+      return Date.now() - t0
     }
-    const fresche = await misura(rendiFresche)
-    const vecchie = await misura(rendiVecchieLeStatistiche)
+    const fresche: number[] = []
+    for (let i = 0; i < ripetizioni; i++) fresche.push(await misuraUna(rendiFresche))
     const frescoMs = Math.max(...fresche)
+    const limite = limiteMs(frescoMs, rapporto)
+
+    // Un piano patologico e' sistematico: le statistiche vengono svuotate prima di OGNI
+    // misura, quindi e' lento a ogni tentativo. Una pausa del runner condiviso colpisce invece
+    // un solo tentativo (caso reale: un campione da 21 s su fresche da 0,8 s, job 12651). Per
+    // questo ogni campione sopra il limite viene rimisurato fino a TENTATIVI volte e conta il
+    // migliore: il test resta rosso solo se TUTTI i tentativi sono lenti.
+    const vecchie: number[] = []
+    const scartati: number[] = []
+    for (let i = 0; i < ripetizioni; i++) {
+      let migliore = Number.POSITIVE_INFINITY
+      for (let tentativo = 0; tentativo < TENTATIVI && migliore >= limite; tentativo++) {
+        const ms = await misuraUna(rendiVecchieLeStatistiche)
+        if (ms >= limite && tentativo < TENTATIVI - 1) scartati.push(ms)
+        migliore = Math.min(migliore, ms)
+      }
+      vecchie.push(migliore)
+    }
     const peggioreMs = Math.max(...vecchie)
     // eslint-disable-next-line no-console
     console.log(
-      `[T24c] ${nome} fresche ms: ${fresche.join(', ')} | vecchie ms: ${vecchie.join(', ')} | limite ${limiteMs(frescoMs, rapporto)}`
+      `[T24c] ${nome} fresche ms: ${fresche.join(', ')} | vecchie ms: ${vecchie.join(', ')}` +
+        `${scartati.length ? ` (rimisurati dopo: ${scartati.join(', ')})` : ''} | limite ${limite}`
     )
     expect(peggioreMs).toBeLessThan(limiteMs(frescoMs, rapporto))
   }
