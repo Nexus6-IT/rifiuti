@@ -1,0 +1,13 @@
+{
+  "id": "P004",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "1.200 euro l'anno per 5 società sono troppi rispetto ai 69-430 euro che costa un software per una azienda, e la trasmissione a RENTRI non è ancora attiva: per ora il lavoro resta sul portale comunque. Il software lo sceglie il consulente, non io.",
+  "objection": "Pago un software che non trasmette ancora a RENTRI e che io non scelgo: se il consulente non lo usa, resta un costo in più.",
+  "would_change_my_mind": "Il consulente ambientale che segue le società lo raccomanda e accetta di usarlo, e il prezzo scende vicino ai 500 euro l'anno per il gruppo.",
+  "price_too_cheap": 60,
+  "price_cheap": 400,
+  "price_expensive": 700,
+  "price_too_expensive": 900
+}

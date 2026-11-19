@@ -1,0 +1,13 @@
+{
+  "id": "P008",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il mio ERP ha già il modulo rifiuti e non voglio inserire tutto una seconda volta. Il software lo sceglie il consulente ambientale, non io, e WasteFlow non trasmette ancora a RENTRI: resterei comunque a fare il lavoro sul portale.",
+  "objection": "Il doppio inserimento: se i dati vanno su WasteFlow e poi ancora sul portale RENTRI, il lavoro non diminuisce davvero.",
+  "would_change_my_mind": "Il consulente ambientale che segue le mie società lo adotta e il modulo importa da solo i dati del mio ERP senza doppio inserimento, con la trasmissione RENTRI attiva.",
+  "price_too_cheap": 300,
+  "price_cheap": 700,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

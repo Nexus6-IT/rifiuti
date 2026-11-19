@@ -1,0 +1,166 @@
+{
+ "business": "WasteFlow per consulenti ambientali: registri, FIR e scadenze di molte aziende clienti da un solo accesso (trasmissione diretta a RENTRI non ancora attiva, software in attesa di accreditamento)",
+ "seed": 8459,
+ "dealt": 25,
+ "answered": 25,
+ "skipped": [],
+ "buys": 0,
+ "passes": 25,
+ "buy_rate": 0.0,
+ "by_segment": [
+  [
+   "Libero professionista con 5-20 aziende clienti (budget annuo per strumenti software in euro)",
+   11,
+   0.0
+  ],
+  [
+   "Studio con 2-5 tecnici e 20-80 aziende clienti (budget annuo per strumenti software in euro)",
+   9,
+   0.0
+  ],
+  [
+   "Società di consulenza HSE con oltre 80 aziende clienti (budget annuo per strumenti software in euro)",
+   5,
+   0.0
+  ]
+ ],
+ "by_behaviour": [
+  [
+   "Ribalta il costo sul cliente",
+   4,
+   0.0
+  ],
+  [
+   "Lavora sul portale come incaricato",
+   6,
+   0.0
+  ],
+  [
+   "Usa già un software multi-azienda",
+   8,
+   0.0
+  ],
+  [
+   "Fogli di calcolo più portale",
+   4,
+   0.0
+  ],
+  [
+   "Vuole solo software interoperabile",
+   2,
+   0.0
+  ],
+  [
+   "Compra sul prezzo",
+   1,
+   0.0
+  ]
+ ],
+ "by_income": [
+  [
+   "$1,000 to $4,000",
+   13,
+   0.0
+  ],
+  [
+   "$4,000 and up",
+   10,
+   0.0
+  ],
+  [
+   "under $1,000",
+   2,
+   0.0
+  ]
+ ],
+ "why_not": [
+  [
+   "trust",
+   14,
+   [
+    "Il portale RENTRI lo uso già e costa zero, e non vedo perché dovrei pagare 59 euro a azienda per un software che ancora non trasmette niente a RENTRI: la trasmissione la devo fare comunque a mano dal portale. Il controllo delle scadenze mi interesserebbe, ma non so se i dati che importate sono affidabili.",
+    "Non mi fido di un software che non trasmette a RENTRI: dovrei comunque ricopiare tutto sul portale, quindi il lavoro doppio resta. E se un FIR esce sbagliato la sanzione va al mio cliente e la colpa a me."
+   ],
+   [
+    "P002",
+    "P006"
+   ]
+  ],
+  [
+   "need",
+   4,
+   [
+    "Il risparmio non c'e': se RENTRI non trasmette ancora, devo ribattere tutto sul portale comunque, quindi WasteFlow mi fa lavorare due volte. Non vedo cosa mi tolga davvero da fare.",
+    "Il portale RENTRI è gratuito e ci entro già per ogni cliente, quindi non vedo cosa mi tolga. WasteFlow non trasmette ancora a RENTRI, quindi dovrei comunque aprire il portale per ogni azienda: aggiungerei un programma senza togliere lavoro."
+   ],
+   [
+    "P001",
+    "P003"
+   ]
+  ],
+  [
+   "habit",
+   4,
+   [
+    "Uso già un software per più aziende e cambio solo se il fornitore attuale mi mette in difficoltà con un cliente. WasteFlow non trasmette a RENTRI, quindi per la trasmissione devo comunque andare sul portale: non mi risolve la cosa che mi pesa di più.",
+    "Uso gia' un software multi-azienda e cambio solo se il fornitore attuale mi mette in difficolta' con un cliente. WasteFlow non trasmette a RENTRI, quindi dovrei comunque entrare nel portale per ogni cliente: il lavoro doppio resta."
+   ],
+   [
+    "P004",
+    "P005"
+   ]
+  ],
+  [
+   "timing",
+   2,
+   [
+    "Ho già un software multi-azienda che uso ogni settimana, e migrare 30 aziende clienti a metà anno è un rischio che non mi prendo. Le 5 aziende gratuite le proverei volentieri, ma non sposto il lavoro di tutti i clienti mentre la trasmissione RENTRI non è ancora attiva.",
+    "Ho una trentina di aziende da migrare a metà anno e non posso permettermi di sbagliare le scadenze mentre lo faccio. Il software non trasmette ancora a RENTRI, quindi devo comunque passare dal portale, e questo raddoppia il lavoro invece di ridurlo."
+   ],
+   [
+    "P008",
+    "P018"
+   ]
+  ],
+  [
+   "price",
+   1,
+   [
+    "Con la trasmissione RENTRI non ancora attiva devo comunque ricaricare tutto sul portale, quindi non vedo dove sta il risparmio di tempo. Per 59 euro l'anno per ogni cliente, con il mio budget da poche migliaia di euro, voglio un vantaggio concreto che oggi non vedo."
+   ],
+   [
+    "P025"
+   ]
+  ]
+ ],
+ "why_yes": [],
+ "flip": [
+  "Il collegamento diretto a RENTRI attivo e funzionante, con i registri che si trasmettono da WasteFlow senza riscriverli sul portale.",
+  "Una trasmissione diretta a RENTRI già attiva e verificata, con un prezzo che non superi quello che pago oggi per i registri su più aziende.",
+  "Una trasmissione diretta a RENTRI già attiva e accreditata, così che i registri e i FIR partano dal software senza entrare nel portale per ogni cliente.",
+  "Trasmissione diretta a RENTRI attiva e funzionante, con i miei dati importati senza fatica.",
+  "Accreditamento RENTRI completato con trasmissione diretta funzionante, e un import dei dati dal mio software attuale che funzioni davvero senza ricontrollare tutto a mano.",
+  "Trasmissione diretta a RENTRI attiva e accreditata, con un periodo di prova in cui i miei registri restano comunque verificabili da me.",
+  "Due colleghi consulenti che lo usano da mesi su aziende vere, e la trasmissione diretta a RENTRI attiva con la conservazione a norma dichiarata per iscritto.",
+  "Che il mio attuale fornitore mi metta in difficoltà con un cliente, oppure che WasteFlow abbia già l'accreditamento RENTRI attivo e mi faccia vedere un'importazione reale dei miei dati senza perdere niente.",
+  "Referenze di consulenti ambientali che lo usano da mesi, e la trasmissione diretta a RENTRI attiva con prova di funzionamento.",
+  "La trasmissione diretta a RENTRI attiva e funzionante, con una prova sui miei clienti reali senza dover ritrascrivere niente.",
+  "La trasmissione diretta a RENTRI attiva e funzionante, con accreditamento ottenuto e qualche referenza di consulenti che la usano già in produzione.",
+  "Trasmissione diretta a RENTRI attiva e funzionante, con una data certa e una prova su un mio cliente vero.",
+  "Trasmissione diretta a RENTRI attiva e funzionante, con i dati dei miei clienti già importati e un primo mese di prova che mi faccia vedere gli avvisi funzionare davvero.",
+  "Accreditamento RENTRI attivo con trasmissione diretta, e una garanzia scritta che mi copre se un registro o un FIR generato dal software risulta errato.",
+  "Accreditamento RENTRI ottenuto con la trasmissione diretta attiva, e la prova che l'importazione dei miei clienti non mi costa giorni di lavoro.",
+  "La trasmissione diretta a RENTRI attiva e funzionante, cosi' che i dati inseriti una volta sola arrivino al portale.",
+  "Qualche consulente o studio che lo usa da mesi e mi dice che i registri tornano con il portale, più la trasmissione diretta a RENTRI attiva.",
+  "Una trasmissione diretta a RENTRI già attiva e un periodo di affiancamento in cui posso continuare a lavorare anche sui miei fogli.",
+  "Trasmissione diretta a RENTRI attiva e accreditata, con una prova sui miei dati veri su qualche cliente.",
+  "La trasmissione diretta a RENTRI attiva e funzionante, con il controllo dei registri che mi tolga davvero il passaggio sul portale.",
+  "Vedere almeno due consulenti miei colleghi che lo usano da un anno, con la trasmissione RENTRI già attiva e la conservazione a norma documentata.",
+  "Accreditamento RENTRI attivo con trasmissione diretta, e la prova su qualche mio cliente reale che i FIR importati tornano uguali a quelli del software attuale.",
+  "Accreditamento RENTRI ottenuto e trasmissione diretta attiva, con una prova concreta su una mia azienda cliente che il vecchio software non mi da'.",
+  "Referenze di altri studi di consulenza che lo usano da mesi, e l'accreditamento RENTRI attivo, cosi' la trasmissione si fa dal software.",
+  "Trasmissione diretta a RENTRI attiva e funzionante, con prova che mi toglie il doppio inserimento."
+ ],
+ "purchases_first_month_per_buyer": null,
+ "price_answers": 25
+}

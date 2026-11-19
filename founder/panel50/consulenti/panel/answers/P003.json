@@ -1,0 +1,13 @@
+{
+  "id": "P003",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "need",
+  "reason": "Il portale RENTRI è gratuito e ci entro già per ogni cliente, quindi non vedo cosa mi tolga. WasteFlow non trasmette ancora a RENTRI, quindi dovrei comunque aprire il portale per ogni azienda: aggiungerei un programma senza togliere lavoro.",
+  "objection": "Se la trasmissione si fa comunque dal portale RENTRI, WasteFlow diventa un secondo posto dove inserire i dati, e il tempo che perdo ad aprire azienda per azienda resta lo stesso.",
+  "would_change_my_mind": "Una trasmissione diretta a RENTRI già attiva e accreditata, così che i registri e i FIR partano dal software senza entrare nel portale per ogni cliente.",
+  "price_too_cheap": 5,
+  "price_cheap": 15,
+  "price_expensive": 40,
+  "price_too_expensive": 60
+}

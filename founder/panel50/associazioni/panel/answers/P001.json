@@ -1,0 +1,13 @@
+{
+  "id": "P001",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il software lo sceglie la struttura nazionale o regionale, io posso solo segnalarlo. Anche se mi piace, senza una conservazione a norma e con la trasmissione RENTRI ancora in attesa non posso offrire il servizio completo agli associati.",
+  "objection": "Senza conservazione a norma non posso offrirlo come servizio completo, e la trasmissione diretta a RENTRI non e' ancora attiva: finche' non lo e' devo comunque passare dal portale.",
+  "would_change_my_mind": "Una conferma scritta dell'accreditamento RENTRI e della conservazione a norma, con il via libera della struttura nazionale.",
+  "price_too_cheap": 10,
+  "price_cheap": 25,
+  "price_expensive": 60,
+  "price_too_expensive": 90
+}

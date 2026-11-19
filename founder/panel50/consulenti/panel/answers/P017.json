@@ -1,0 +1,13 @@
+{
+  "id": "P017",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Lavoro su registri e FIR che devono reggere a un controllo, e questo software è nuovo, senza referenze e senza conservazione a norma. Il portale RENTRI lo uso già ed è gratuito: non vedo cosa mi dia WasteFlow che mi faccia rischiare i dati dei miei clienti.",
+  "objection": "Siete nuovi, senza referenze né conservazione a norma: se un FIR o un registro esce sbagliato la responsabilità è mia, non vostra.",
+  "would_change_my_mind": "Qualche consulente o studio che lo usa da mesi e mi dice che i registri tornano con il portale, più la trasmissione diretta a RENTRI attiva.",
+  "price_too_cheap": 10,
+  "price_cheap": 40,
+  "price_expensive": 59,
+  "price_too_expensive": 90
+}

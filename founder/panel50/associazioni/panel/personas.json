@@ -1,0 +1,112 @@
+[
+ {
+  "id": "P001",
+  "name": "Ines",
+  "age": 55,
+  "segment": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 8000,
+  "behaviour": "Decide il livello nazionale",
+  "behaviour_how": "Il software lo sceglie la struttura nazionale o regionale; la sede può solo segnalare.",
+  "objection": "Senza conservazione a norma non posso offrirlo come servizio completo",
+  "habit": "il servizio ambiente è una voce del pacchetto servizi che vendi agli associati"
+ },
+ {
+  "id": "P002",
+  "name": "Clara",
+  "age": 37,
+  "segment": "Società di servizi o consorzio di servizi dell'associazione, 100-1.000 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 29000,
+  "behaviour": "Opera sul portale come delegato",
+  "behaviour_how": "Il personale interno lavora sul portale RENTRI per conto delle imprese, impresa per impresa.",
+  "objection": "Abbiamo già una convenzione nazionale con un fornitore noto",
+  "habit": "partecipi alle riunioni regionali dove si confrontano i fornitori software"
+ },
+ {
+  "id": "P003",
+  "name": "Nora",
+  "age": 55,
+  "segment": "Società di servizi o consorzio di servizi dell'associazione, 100-1.000 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 24000,
+  "behaviour": "Opera sul portale come delegato",
+  "behaviour_how": "Il personale interno lavora sul portale RENTRI per conto delle imprese, impresa per impresa.",
+  "objection": "Se non trasmette a RENTRI i nostri operatori devono comunque lavorare sul portale",
+  "habit": "a febbraio 2026 il portale RENTRI ha bloccato il lavoro di tutto l'ufficio per giorni"
+ },
+ {
+  "id": "P004",
+  "name": "Sam",
+  "age": 42,
+  "segment": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 3000,
+  "behaviour": "Ha una convenzione con un fornitore nazionale",
+  "behaviour_how": "La confederazione ha già un accordo con un fornitore (sconto iscritti) e la sede lo usa senza discutere.",
+  "objection": "Il servizio rifiuti agli associati deve stare in piedi a prezzo basso, non posso pagare più di 20-40 euro per impresa",
+  "habit": "a febbraio 2026 il portale RENTRI ha bloccato il lavoro di tutto l'ufficio per giorni"
+ },
+ {
+  "id": "P005",
+  "name": "Rafael",
+  "age": 43,
+  "segment": "Associazione industriale territoriale con ufficio ambiente, 20-100 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 4000,
+  "behaviour": "Ha una convenzione con un fornitore nazionale",
+  "behaviour_how": "La confederazione ha già un accordo con un fornitore (sconto iscritti) e la sede lo usa senza discutere.",
+  "objection": "Abbiamo già una convenzione nazionale con un fornitore noto",
+  "habit": "il tuo ufficio tiene registri e FIR per decine di piccole imprese associate"
+ },
+ {
+  "id": "P006",
+  "name": "Mei",
+  "age": 42,
+  "segment": "Associazione industriale territoriale con ufficio ambiente, 20-100 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 9000,
+  "behaviour": "Decide la giunta, tempi lunghi",
+  "behaviour_how": "Ogni spesa nuova passa dalla giunta o dal consiglio: servono preventivo, confronto e mesi.",
+  "objection": "Il servizio rifiuti agli associati deve stare in piedi a prezzo basso, non posso pagare più di 20-40 euro per impresa",
+  "habit": "molti associati sono micro imprese che non vogliono toccare un software"
+ },
+ {
+  "id": "P007",
+  "name": "Finn",
+  "age": 56,
+  "segment": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 7000,
+  "behaviour": "Rivende il servizio con margine",
+  "behaviour_how": "Compra licenze all'ingrosso e le include in un pacchetto a pagamento per gli associati.",
+  "objection": "Chi ci assiste in pieno periodo di scadenze, se siete un fornitore piccolo?",
+  "habit": "partecipi alle riunioni regionali dove si confrontano i fornitori software"
+ },
+ {
+  "id": "P008",
+  "name": "Hugo",
+  "age": 41,
+  "segment": "Associazione industriale territoriale con ufficio ambiente, 20-100 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 5000,
+  "behaviour": "Opera sul portale come delegato",
+  "behaviour_how": "Il personale interno lavora sul portale RENTRI per conto delle imprese, impresa per impresa.",
+  "objection": "Senza conservazione a norma non posso offrirlo come servizio completo",
+  "habit": "partecipi alle riunioni regionali dove si confrontano i fornitori software"
+ },
+ {
+  "id": "P009",
+  "name": "Mason",
+  "age": 48,
+  "segment": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 7000,
+  "behaviour": "Decide il livello nazionale",
+  "behaviour_how": "Il software lo sceglie la struttura nazionale o regionale; la sede può solo segnalare.",
+  "objection": "Chi ci assiste in pieno periodo di scadenze, se siete un fornitore piccolo?",
+  "habit": "il servizio ambiente è una voce del pacchetto servizi che vendi agli associati"
+ },
+ {
+  "id": "P010",
+  "name": "Quinn",
+  "age": 50,
+  "segment": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+  "income": 2000,
+  "behaviour": "Ha una convenzione con un fornitore nazionale",
+  "behaviour_how": "La confederazione ha già un accordo con un fornitore (sconto iscritti) e la sede lo usa senza discutere.",
+  "objection": "Non posso mettere i dati di centinaia di associati su un fornitore nuovo senza referenze",
+  "habit": "a febbraio 2026 il portale RENTRI ha bloccato il lavoro di tutto l'ufficio per giorni"
+ }
+]

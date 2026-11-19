@@ -1,0 +1,13 @@
+{
+  "id": "P010",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Il software non trasmette a RENTRI: fino all'accreditamento devo comunque entrare nel portale di ogni società, quindi il lavoro doppio resta. Il primo mese gratis è comodo, ma non risolve la scadenza che ho adesso.",
+  "objection": "Se la trasmissione diretta non è attiva, pago 1.200 € l'anno per preparare registri e FIR che poi ricarico a mano nel portale: non so quando arriva l'accreditamento e non voglio pagare per un passaggio intermedio.",
+  "would_change_my_mind": "Accreditamento RENTRI confermato con una data e trasmissione diretta attiva per tutte le società del gruppo.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

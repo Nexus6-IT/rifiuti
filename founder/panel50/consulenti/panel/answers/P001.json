@@ -1,0 +1,13 @@
+{
+  "id": "P001",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "need",
+  "reason": "Il risparmio non c'e': se RENTRI non trasmette ancora, devo ribattere tutto sul portale comunque, quindi WasteFlow mi fa lavorare due volte. Non vedo cosa mi tolga davvero da fare.",
+  "objection": "Dov'e' il risparmio di tempo se la trasmissione si fa ancora dal portale RENTRI e devo controllare i registri di ogni cliente uno per uno?",
+  "would_change_my_mind": "Il collegamento diretto a RENTRI attivo e funzionante, con i registri che si trasmettono da WasteFlow senza riscriverli sul portale.",
+  "price_too_cheap": 5,
+  "price_cheap": 15,
+  "price_expensive": 30,
+  "price_too_expensive": 45
+}

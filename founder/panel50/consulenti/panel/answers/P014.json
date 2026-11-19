@@ -1,0 +1,13 @@
+{
+  "id": "P014",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il software non trasmette a RENTRI e la trasmissione resta sul portale: per me il rischio resta tutto mio, e se un FIR sbaglia la sanzione arriva al cliente e la colpa a me. Non compro uno strumento che non si collega al passaggio che conta.",
+  "objection": "Se il software sbaglia un FIR la sanzione arriva al mio cliente e la colpa a me.",
+  "would_change_my_mind": "Accreditamento RENTRI attivo con trasmissione diretta, e una garanzia scritta che mi copre se un registro o un FIR generato dal software risulta errato.",
+  "price_too_cheap": 0,
+  "price_cheap": 15,
+  "price_expensive": 45,
+  "price_too_expensive": 60
+}

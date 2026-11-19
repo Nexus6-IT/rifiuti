@@ -1,0 +1,13 @@
+{
+  "id": "P019",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il portale RENTRI lo uso ogni giorno per i miei clienti e il software non trasmette ancora: è in attesa di accreditamento. Pago 59 euro a azienda per fare un controllo che mi tocca rifare comunque sul portale, non mi fido ancora di un registro preparato da voi.",
+  "objection": "Se la trasmissione a RENTRI non è attiva, io entro comunque nel portale per ogni cliente. Quindi il tempo lo perdo lo stesso, e in più pago.",
+  "would_change_my_mind": "Trasmissione diretta a RENTRI attiva e accreditata, con una prova sui miei dati veri su qualche cliente.",
+  "price_too_cheap": 8,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 65
+}

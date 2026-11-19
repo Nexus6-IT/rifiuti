@@ -1,0 +1,13 @@
+{
+  "id": "P004",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Uso già un software per più aziende e cambio solo se il fornitore attuale mi mette in difficoltà con un cliente. WasteFlow non trasmette a RENTRI, quindi per la trasmissione devo comunque andare sul portale: non mi risolve la cosa che mi pesa di più.",
+  "objection": "Non trasmette a RENTRI, è solo in attesa di accreditamento. Senza quello devo lavorare su due sistemi, e non so quando sarà attivo.",
+  "would_change_my_mind": "Trasmissione diretta a RENTRI attiva e funzionante, con i miei dati importati senza fatica.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 90
+}

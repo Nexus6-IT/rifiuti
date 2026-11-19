@@ -1,0 +1,35 @@
+{
+  "business": "WasteFlow per consulenti ambientali: registri, FIR e scadenze di molte aziende clienti da un solo accesso (trasmissione diretta a RENTRI non ancora attiva, software in attesa di accreditamento)",
+  "target": "Consulente ambientale, libero professionista o studio, che tiene registri, FIR e scadenze per conto di più aziende produttrici di rifiuti speciali",
+  "where": "Italia, consulenti che operano come incaricati RENTRI per aziende obbligate",
+  "age": [30, 64],
+  "segments": [
+    {"name": "Libero professionista con 5-20 aziende clienti (budget annuo per strumenti software in euro)", "share": 0.45, "income": [200, 1500]},
+    {"name": "Studio con 2-5 tecnici e 20-80 aziende clienti (budget annuo per strumenti software in euro)", "share": 0.35, "income": [1000, 5000]},
+    {"name": "Società di consulenza HSE con oltre 80 aziende clienti (budget annuo per strumenti software in euro)", "share": 0.20, "income": [4000, 15000]}
+  ],
+  "behaviours": [
+    {"name": "Usa già un software multi-azienda", "share": 0.30, "how": "Ha Rifiutoo per consulenti, una Console QuiRifiutiPro o RENTRI Suite; cambia solo se il fornitore attuale lo mette in difficoltà con un cliente."},
+    {"name": "Lavora sul portale come incaricato", "share": 0.25, "how": "Entra nel portale RENTRI per ogni cliente, una azienda alla volta; è lento ma gratuito e ufficiale."},
+    {"name": "Fogli di calcolo più portale", "share": 0.15, "how": "Tiene scadenze e movimenti in Excel e trascrive sul portale; vive di promemoria in agenda."},
+    {"name": "Ribalta il costo sul cliente", "share": 0.15, "how": "Compra un software solo se può includerne il costo nella parcella di ogni azienda cliente."},
+    {"name": "Vuole solo software interoperabile", "share": 0.10, "how": "Non considera nulla che non trasmetta direttamente a RENTRI: la doppia digitazione è il lavoro che vuole togliere."},
+    {"name": "Compra sul prezzo", "share": 0.05, "how": "Confronta il costo per azienda cliente e sceglie il listino più basso a scaglioni."}
+  ],
+  "objections": [
+    "Se non trasmette a RENTRI devo comunque ribattere tutto sul portale: dov'è il risparmio?",
+    "RENTRI Suite costa 50-69 euro per azienda all'anno con conservazione inclusa: perché voi?",
+    "Rifiutoo e Namirial hanno già i piani per consulenti e migliaia di clienti",
+    "Migrare 30 aziende clienti a metà anno è un rischio che non mi prendo",
+    "Se il software sbaglia un FIR la sanzione arriva al mio cliente e la colpa a me",
+    "Siete nuovi, senza referenze né conservazione a norma",
+    "Il portale RENTRI è gratuito e come incaricato ci entro già per ogni cliente"
+  ],
+  "habits": [
+    "a fine mese controlli i registri di tutti i clienti uno per uno sul portale",
+    "un cliente ti ha chiamato perché il trasportatore aveva l'autorizzazione scaduta",
+    "fatturi ai clienti un canone annuo che comprende la tenuta dei registri",
+    "ad aprile rincorri i clienti per il contributo annuo RENTRI di ogni unità locale",
+    "hai provato almeno due software rifiuti negli ultimi tre anni"
+  ]
+}

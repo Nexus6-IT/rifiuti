@@ -1,0 +1,13 @@
+{
+  "id": "P021",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Uso già un software multi-azienda e non cambio per un prodotto nuovo senza referenze: WasteFlow non ha ancora l'accreditamento RENTRI e per la trasmissione devo tornare al portale comunque. Il primo mese gratis e i 5 clienti gratis li provo, ma non passo i miei clienti a un fornitore che non conosco.",
+  "objection": "Siete nuovi, senza referenze né conservazione a norma: se un registro o un FIR non risulta nel posto giusto durante un controllo, la responsabilità resta mia, non vostra.",
+  "would_change_my_mind": "Vedere almeno due consulenti miei colleghi che lo usano da un anno, con la trasmissione RENTRI già attiva e la conservazione a norma documentata.",
+  "price_too_cheap": 8,
+  "price_cheap": 25,
+  "price_expensive": 50,
+  "price_too_expensive": 90
+}

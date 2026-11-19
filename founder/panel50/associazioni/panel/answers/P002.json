@@ -1,0 +1,13 @@
+{
+  "id": "P002",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Abbiamo già una convenzione nazionale con un fornitore noto, e il personale sa già usarlo. WasteFlow non trasmette a RENTRI, quindi per la parte che conta devo comunque entrare nel portale, e cambiare strumento adesso mi costa lavoro senza togliermi quel passaggio.",
+  "objection": "Se non trasmette a RENTRI e non è ancora accreditato, non capisco cosa mi toglie davvero di lavoro rispetto a quello che usiamo oggi. E i dati delle imprese, chi li tiene e dove stanno?",
+  "would_change_my_mind": "Una prova su un gruppo di imprese reali, con l'import dei nostri fogli già fatto e l'accreditamento RENTRI con una data certa.",
+  "price_too_cheap": 0,
+  "price_cheap": 25,
+  "price_expensive": 80,
+  "price_too_expensive": 150
+}

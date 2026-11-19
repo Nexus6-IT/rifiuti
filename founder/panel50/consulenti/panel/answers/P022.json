@@ -1,0 +1,13 @@
+{
+  "id": "P022",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Uso già un software multi-azienda e cambio solo se quello attuale mi mette in difficoltà con un cliente. WasteFlow non trasmette a RENTRI, quindi per le trasmissioni dovrei restare sul portale: due strumenti invece di uno, e non è un motivo per cambiare.",
+  "objection": "Se il software sbaglia un FIR la sanzione arriva al mio cliente e la colpa è mia. Un prodotto appena nato che non è ancora accreditato a RENTRI non mi dà questa garanzia.",
+  "would_change_my_mind": "Accreditamento RENTRI attivo con trasmissione diretta, e la prova su qualche mio cliente reale che i FIR importati tornano uguali a quelli del software attuale.",
+  "price_too_cheap": 10,
+  "price_cheap": 25,
+  "price_expensive": 55,
+  "price_too_expensive": 80
+}

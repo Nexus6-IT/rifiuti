@@ -1,0 +1,13 @@
+{
+  "id": "P024",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Siete nuovi, senza referenze e senza conservazione a norma: non metto registri e FIR di 80 aziende in mano a un fornitore che non conosco. E con RENTRI ancora da fare sul loro portale, il lavoro doppio resta.",
+  "objection": "Affidabilita' di un fornitore appena nato per documenti che devono essere conservati a norma e che possono finire in un controllo.",
+  "would_change_my_mind": "Referenze di altri studi di consulenza che lo usano da mesi, e l'accreditamento RENTRI attivo, cosi' la trasmissione si fa dal software.",
+  "price_too_cheap": 15,
+  "price_cheap": 35,
+  "price_expensive": 75,
+  "price_too_expensive": 120
+}

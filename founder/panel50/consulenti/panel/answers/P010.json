@@ -1,0 +1,13 @@
+{
+  "id": "P010",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Con 80 aziende lavoro già con Excel e il portale RENTRI, e quello che mi serve è non sbagliare una scadenza. Un software che prepara i FIR ma non li trasmette ancora a RENTRI mi obbliga a fare la stessa fatica due volte, e Rifiutoo o Namirial hanno già piani per consulenti.",
+  "objection": "Se la trasmissione diretta non è attiva, il lavoro di inserimento resta sul portale: non capisco cosa mi risparmia davvero, e non mi fido di un prodotto in attesa di accreditamento per registri che devono essere giusti.",
+  "would_change_my_mind": "La trasmissione diretta a RENTRI attiva e funzionante, con una prova sui miei clienti reali senza dover ritrascrivere niente.",
+  "price_too_cheap": 5,
+  "price_cheap": 25,
+  "price_expensive": 55,
+  "price_too_expensive": 80
+}

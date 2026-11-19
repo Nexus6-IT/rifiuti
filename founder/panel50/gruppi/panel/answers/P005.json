@@ -1,0 +1,13 @@
+{
+  "id": "P005",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Siete nuovi e non vedo clienti, referenze né conservazione a norma: per un registro e un FIR che devono reggere a un controllo non mi fido di un software appena partito. Il consulente sceglie lui e non vuole rischiare un dato sbagliato in più.",
+  "objection": "Non avete ancora clienti né referenze, e la trasmissione a RENTRI non è attiva: alla fine dovrei comunque caricare tutto dal portale RENTRI, quindi il software vale poco per il mio problema.",
+  "would_change_my_mind": "Vedere almeno un gruppo simile che usa WasteFlow da qualche mese senza errori su registri e FIR, e la trasmissione diretta a RENTRI già attiva.",
+  "price_too_cheap": 200,
+  "price_cheap": 500,
+  "price_expensive": 900,
+  "price_too_expensive": 1200
+}

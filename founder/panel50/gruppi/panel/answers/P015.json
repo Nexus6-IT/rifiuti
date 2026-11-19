@@ -1,0 +1,13 @@
+{
+  "id": "P015",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il portale RENTRI lo uso gia' gratis e la cosa che mi serve di piu', la trasmissione diretta, qui non e' ancora attiva: quindi WasteFlow non mi toglie il lavoro che ho oggi. Un fornitore nuovo, senza clienti, referenze ne' conservazione a norma, non lo metto tra me e un FIR che firmo io.",
+  "objection": "Chi mi garantisce che un software appena nato regga la conservazione a norma e non mi lasci con registri sbagliati quando arriva un controllo?",
+  "would_change_my_mind": "La trasmissione diretta a RENTRI attiva e due o tre gruppi simili che lo usano da almeno un anno e mi danno il loro nome.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

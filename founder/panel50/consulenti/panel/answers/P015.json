@@ -1,0 +1,13 @@
+{
+  "id": "P015",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Uso gia' un software multi-azienda che fa registri e FIR, e con RENTRI Suite la conservazione e' inclusa. Cambiare significa rifare tutto il lavoro di importazione per una trasmissione che WasteFlow non puo' ancora fare direttamente.",
+  "objection": "La trasmissione a RENTRI non e' ancora attiva: devo comunque andare sul portale RENTRI, quindi non vedo quale fatica mi tolga.",
+  "would_change_my_mind": "Accreditamento RENTRI ottenuto con la trasmissione diretta attiva, e la prova che l'importazione dei miei clienti non mi costa giorni di lavoro.",
+  "price_too_cheap": 15,
+  "price_cheap": 30,
+  "price_expensive": 55,
+  "price_too_expensive": 80
+}

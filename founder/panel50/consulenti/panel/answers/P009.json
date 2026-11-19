@@ -1,0 +1,13 @@
+{
+  "id": "P009",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Siete nuovi e senza referenze. Non mi fido di un software che tiene registri e FIR dei miei clienti se non so chi c'e' dietro e se i dati restano a norma. Il portale RENTRI lo uso gia' e, anche se e' lento, e' ufficiale e gratuito.",
+  "objection": "Siete nuovi, senza referenze né conservazione a norma: se sbagliate un registro o perdete un FIR, la responsabilità resta mia, non vostra.",
+  "would_change_my_mind": "Referenze di consulenti ambientali che lo usano da mesi, e la trasmissione diretta a RENTRI attiva con prova di funzionamento.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 80
+}

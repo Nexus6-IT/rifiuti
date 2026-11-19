@@ -1,0 +1,13 @@
+{
+  "id": "P005",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "La confederazione ha già una convenzione con un fornitore nazionale e la sede la usa senza discutere. Non ho motivo di aprire un secondo software per i registri solo perché il primo mese è gratis.",
+  "objection": "Se passo a WasteFlow devo rifare il lavoro su decine di imprese e poi spiegare alla confederazione perché abbiamo un fornitore in più. Il costo non è il problema, lo è la fatica di cambiare.",
+  "would_change_my_mind": "Una richiesta ufficiale della confederazione che ci autorizzi a usare WasteFlow in convenzione, oppure un'integrazione con il fornitore nazionale che già usiamo.",
+  "price_too_cheap": 10,
+  "price_cheap": 25,
+  "price_expensive": 59,
+  "price_too_expensive": 120
+}

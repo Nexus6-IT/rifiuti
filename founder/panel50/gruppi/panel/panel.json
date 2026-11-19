@@ -1,0 +1,88 @@
+{
+ "n": 15,
+ "seed": 583280,
+ "customer": {
+  "business": "WasteFlow per gruppi societari: registri, FIR e scadenze di più società e unità locali con vista unica della capogruppo (trasmissione diretta a RENTRI non ancora attiva, software in attesa di accreditamento)",
+  "target": "Responsabile ambiente/HSE o amministrativo della capogruppo di un gruppo italiano con 2-20 società o unità locali obbligate a RENTRI e FIR digitale",
+  "where": "Italia, gruppi con almeno due società che producono rifiuti speciali",
+  "age": [
+   32,
+   62
+  ],
+  "segments": [
+   {
+    "name": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+    "share": 0.5,
+    "income": [
+     300,
+     2500
+    ]
+   },
+   {
+    "name": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+    "share": 0.35,
+    "income": [
+     1500,
+     10000
+    ]
+   },
+   {
+    "name": "Gruppo di servizi/multiutility locale con impianti e mezzi propri (budget annuo per software ambientali in euro)",
+    "share": 0.15,
+    "income": [
+     5000,
+     30000
+    ]
+   }
+  ],
+  "behaviours": [
+   {
+    "name": "Usa già un gestionale rifiuti",
+    "share": 0.25,
+    "how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili per ogni società e cambia solo se il vecchio crea problemi seri."
+   },
+   {
+    "name": "Si appoggia al portale gratuito",
+    "share": 0.2,
+    "how": "Ogni società fa registri e FIR sul portale RENTRI, con fatica ma a costo zero."
+   },
+   {
+    "name": "Delega al consulente",
+    "share": 0.2,
+    "how": "Il consulente ambientale segue tutte le società; il software lo sceglie lui."
+   },
+   {
+    "name": "Vuole tutto nell'ERP",
+    "share": 0.2,
+    "how": "Preferisce il modulo rifiuti del gestionale aziendale (TeamSystem, Zucchetti, Mexal) per evitare doppi inserimenti."
+   },
+   {
+    "name": "Teme le sanzioni",
+    "share": 0.1,
+    "how": "Ha avuto un controllo o una contestazione in una delle società e cerca controllo e prove."
+   },
+   {
+    "name": "Spinto dal report di sostenibilità",
+    "share": 0.05,
+    "how": "La direzione chiede i dati rifiuti consolidati per il bilancio di sostenibilità o per un cliente grande."
+   }
+  ],
+  "objections": [
+   "Se non trasmette a RENTRI ogni società deve comunque lavorare sul portale: è un secondo sistema",
+   "1.200 euro l'anno per 5 società, quando un software per una azienda costa 69-430 euro",
+   "Il mio ERP ha già il modulo rifiuti, non voglio un doppio inserimento",
+   "Ogni società ha il suo legale rappresentante: il controllo della capogruppo è reale o solo una vista?",
+   "Rifiutoo dichiara già multi ragione sociale e pannello multi-azienda",
+   "Siete nuovi, senza clienti né referenze né conservazione a norma",
+   "La scadenza è passata e ce la caviamo come facciamo adesso"
+  ],
+  "habits": [
+   "ogni mese raccogli i registri delle diverse società via email",
+   "hai avuto un FIR respinto dal destinatario per un dato sbagliato",
+   "il consulente ti manda una fattura per ogni società del gruppo",
+   "il direttore ti chiede un riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità",
+   "segui l'ambiente insieme a sicurezza e qualità"
+  ]
+ },
+ "pitch": "WasteFlow, software online per la gestione dei rifiuti dei gruppi societari.\nLa capogruppo vede in un'unica schermata registri, FIR e scadenze (autorizzazioni, iscrizioni, contributi) di tutte le società e unità locali; ogni società resta titolare dei propri adempimenti. Permessi separati per chi lavora in ciascuna sede e riepilogo dei rifiuti del gruppo esportabile.\nWasteFlow prepara e controlla registri e FIR. La trasmissione diretta a RENTRI non è ancora attiva: il software è in attesa di accreditamento, e fino ad allora ogni società trasmette dal portale RENTRI.\n1.200 € l'anno IVA esclusa per un gruppo fino a 5 società, 150 € per ogni società in più. Si attiva online.\nOfferta di apertura: primo mese gratuito, e importiamo noi i dati dai fogli o dal software che usi oggi."
+}

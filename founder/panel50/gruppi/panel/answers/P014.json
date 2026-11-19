@@ -1,0 +1,13 @@
+{
+  "id": "P014",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Il portale RENTRI lo uso gia' e costa zero, e WasteFlow non trasmette ancora a RENTRI: in attesa di accreditamento, quindi per il momento mi toglie solo un passaggio di controllo, non lo sostituisce. Non compro un software che aspetta un'autorizzazione che non so quando arriva.",
+  "objection": "Ogni società ha il suo legale rappresentante: il controllo della capogruppo è reale o solo una vista? Se la capogruppo vede soltanto una schermata riassuntiva, le responsabilità restano nelle singole società e io non ho nulla in mano in più.",
+  "would_change_my_mind": "Accreditamento RENTRI attivo con trasmissione diretta funzionante, e una prova concreta su un gruppo reale che mostri come la capogruppo vede e controlla davvero gli adempimenti di ogni società.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

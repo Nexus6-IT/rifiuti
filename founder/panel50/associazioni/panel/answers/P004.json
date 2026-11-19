@@ -1,0 +1,13 @@
+{
+  "id": "P004",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "Il servizio rifiuti agli associati deve stare in piedi a prezzo basso e io non posso pagare più di 20-40 euro per impresa. Con 59 euro l'anno per ogni impresa, più IVA, sforo il budget, e la sede ha già la convenzione con il fornitore nazionale che usa senza discutere.",
+  "objection": "Il software non trasmette a RENTRI: è in attesa di accreditamento, quindi dovrei comunque fare la trasmissione dal portale, pagando per il resto.",
+  "would_change_my_mind": "Il software ottiene l'accreditamento RENTRI e la trasmissione diretta funziona, e il prezzo scende entro i 20-40 euro per impresa o la confederazione lo inserisce nella convenzione.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 35,
+  "price_too_expensive": 45
+}

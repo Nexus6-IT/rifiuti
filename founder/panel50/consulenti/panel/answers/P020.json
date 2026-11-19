@@ -1,0 +1,13 @@
+{
+  "id": "P020",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "need",
+  "reason": "Se WasteFlow non trasmette a RENTRI devo comunque ribattere tutto sul portale, quindi il lavoro di doppia scrittura resta. Non vedo il risparmio di tempo che mi serve per riversarlo sulle parcelle dei clienti.",
+  "objection": "Il risparmio non c'e': la trasmissione si fa ancora dal portale RENTRI, e io devo controllare i registri di ogni cliente uno per uno sul portale a fine mese.",
+  "would_change_my_mind": "La trasmissione diretta a RENTRI attiva e funzionante, con il controllo dei registri che mi tolga davvero il passaggio sul portale.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 60
+}

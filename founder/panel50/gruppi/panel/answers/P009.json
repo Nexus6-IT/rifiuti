@@ -1,0 +1,13 @@
+{
+  "id": "P009",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "price",
+  "reason": "1.200 euro l'anno per 5 società è troppo rispetto a un software che ne costa 69-430 per un'azienda. Il portale RENTRI è gratuito e lo uso già: quello che mi serve è il riepilogo per il bilancio, e posso farlo a mano con i registri che abbiamo.",
+  "objection": "Non è ancora collegato a RENTRI: trasmetto comunque dal portale, quindi pago un software che mi fa solo preparare i documenti, con il rischio che l'accreditamento tardi.",
+  "would_change_my_mind": "Un prezzo più basso per il gruppo, oppure la trasmissione diretta a RENTRI già attiva e funzionante, con i miei dati importati senza fatica.",
+  "price_too_cheap": 100,
+  "price_cheap": 250,
+  "price_expensive": 500,
+  "price_too_expensive": 800
+}

@@ -1,0 +1,167 @@
+[
+ {
+  "id": "P001",
+  "name": "Esme",
+  "age": 56,
+  "segment": "Gruppo di servizi/multiutility locale con impianti e mezzi propri (budget annuo per software ambientali in euro)",
+  "income": 16000,
+  "behaviour": "Vuole tutto nell'ERP",
+  "behaviour_how": "Preferisce il modulo rifiuti del gestionale aziendale (TeamSystem, Zucchetti, Mexal) per evitare doppi inserimenti.",
+  "objection": "La scadenza è passata e ce la caviamo come facciamo adesso",
+  "habit": "segui l'ambiente insieme a sicurezza e qualità"
+ },
+ {
+  "id": "P002",
+  "name": "Daniel",
+  "age": 45,
+  "segment": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+  "income": 9000,
+  "behaviour": "Vuole tutto nell'ERP",
+  "behaviour_how": "Preferisce il modulo rifiuti del gestionale aziendale (TeamSystem, Zucchetti, Mexal) per evitare doppi inserimenti.",
+  "objection": "Rifiutoo dichiara già multi ragione sociale e pannello multi-azienda",
+  "habit": "il consulente ti manda una fattura per ogni società del gruppo"
+ },
+ {
+  "id": "P003",
+  "name": "Marcus",
+  "age": 60,
+  "segment": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Vuole tutto nell'ERP",
+  "behaviour_how": "Preferisce il modulo rifiuti del gestionale aziendale (TeamSystem, Zucchetti, Mexal) per evitare doppi inserimenti.",
+  "objection": "Rifiutoo dichiara già multi ragione sociale e pannello multi-azienda",
+  "habit": "il direttore ti chiede un riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità"
+ },
+ {
+  "id": "P004",
+  "name": "Adrian",
+  "age": 57,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 0,
+  "behaviour": "Delega al consulente",
+  "behaviour_how": "Il consulente ambientale segue tutte le società; il software lo sceglie lui.",
+  "objection": "1.200 euro l'anno per 5 società, quando un software per una azienda costa 69-430 euro",
+  "habit": "il direttore ti chiede un riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità"
+ },
+ {
+  "id": "P005",
+  "name": "Nora",
+  "age": 32,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Delega al consulente",
+  "behaviour_how": "Il consulente ambientale segue tutte le società; il software lo sceglie lui.",
+  "objection": "Siete nuovi, senza clienti né referenze né conservazione a norma",
+  "habit": "hai avuto un FIR respinto dal destinatario per un dato sbagliato"
+ },
+ {
+  "id": "P006",
+  "name": "Noor",
+  "age": 44,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Usa già un gestionale rifiuti",
+  "behaviour_how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili per ogni società e cambia solo se il vecchio crea problemi seri.",
+  "objection": "1.200 euro l'anno per 5 società, quando un software per una azienda costa 69-430 euro",
+  "habit": "segui l'ambiente insieme a sicurezza e qualità"
+ },
+ {
+  "id": "P007",
+  "name": "Chloe",
+  "age": 45,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 1000,
+  "behaviour": "Usa già un gestionale rifiuti",
+  "behaviour_how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili per ogni società e cambia solo se il vecchio crea problemi seri.",
+  "objection": "1.200 euro l'anno per 5 società, quando un software per una azienda costa 69-430 euro",
+  "habit": "hai avuto un FIR respinto dal destinatario per un dato sbagliato"
+ },
+ {
+  "id": "P008",
+  "name": "Eli",
+  "age": 56,
+  "segment": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+  "income": 4000,
+  "behaviour": "Delega al consulente",
+  "behaviour_how": "Il consulente ambientale segue tutte le società; il software lo sceglie lui.",
+  "objection": "Il mio ERP ha già il modulo rifiuti, non voglio un doppio inserimento",
+  "habit": "hai avuto un FIR respinto dal destinatario per un dato sbagliato"
+ },
+ {
+  "id": "P009",
+  "name": "Pablo",
+  "age": 62,
+  "segment": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Si appoggia al portale gratuito",
+  "behaviour_how": "Ogni società fa registri e FIR sul portale RENTRI, con fatica ma a costo zero.",
+  "objection": "1.200 euro l'anno per 5 società, quando un software per una azienda costa 69-430 euro",
+  "habit": "il direttore ti chiede un riepilogo dei rifiuti di tutte le società per il bilancio di sostenibilità"
+ },
+ {
+  "id": "P010",
+  "name": "Aria",
+  "age": 44,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 1000,
+  "behaviour": "Teme le sanzioni",
+  "behaviour_how": "Ha avuto un controllo o una contestazione in una delle società e cerca controllo e prove.",
+  "objection": "La scadenza è passata e ce la caviamo come facciamo adesso",
+  "habit": "ogni mese raccogli i registri delle diverse società via email"
+ },
+ {
+  "id": "P011",
+  "name": "Yara",
+  "age": 51,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 0,
+  "behaviour": "Spinto dal report di sostenibilità",
+  "behaviour_how": "La direzione chiede i dati rifiuti consolidati per il bilancio di sostenibilità o per un cliente grande.",
+  "objection": "Il mio ERP ha già il modulo rifiuti, non voglio un doppio inserimento",
+  "habit": "il consulente ti manda una fattura per ogni società del gruppo"
+ },
+ {
+  "id": "P012",
+  "name": "Elle",
+  "age": 38,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Usa già un gestionale rifiuti",
+  "behaviour_how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili per ogni società e cambia solo se il vecchio crea problemi seri.",
+  "objection": "La scadenza è passata e ce la caviamo come facciamo adesso",
+  "habit": "il consulente ti manda una fattura per ogni società del gruppo"
+ },
+ {
+  "id": "P013",
+  "name": "Hamza",
+  "age": 60,
+  "segment": "Gruppo con 2-5 società, un responsabile ambiente part-time (budget annuo per software ambientali in euro)",
+  "income": 2000,
+  "behaviour": "Usa già un gestionale rifiuti",
+  "behaviour_how": "Ha Rifiutoo, Prometeo, QuiRifiutiPro o simili per ogni società e cambia solo se il vecchio crea problemi seri.",
+  "objection": "Siete nuovi, senza clienti né referenze né conservazione a norma",
+  "habit": "hai avuto un FIR respinto dal destinatario per un dato sbagliato"
+ },
+ {
+  "id": "P014",
+  "name": "Wes",
+  "age": 37,
+  "segment": "Gruppo di servizi/multiutility locale con impianti e mezzi propri (budget annuo per software ambientali in euro)",
+  "income": 9000,
+  "behaviour": "Si appoggia al portale gratuito",
+  "behaviour_how": "Ogni società fa registri e FIR sul portale RENTRI, con fatica ma a costo zero.",
+  "objection": "Ogni società ha il suo legale rappresentante: il controllo della capogruppo è reale o solo una vista?",
+  "habit": "segui l'ambiente insieme a sicurezza e qualità"
+ },
+ {
+  "id": "P015",
+  "name": "Felix",
+  "age": 38,
+  "segment": "Gruppo con 6-20 società o unità locali e ufficio HSE (budget annuo per software ambientali in euro)",
+  "income": 7000,
+  "behaviour": "Si appoggia al portale gratuito",
+  "behaviour_how": "Ogni società fa registri e FIR sul portale RENTRI, con fatica ma a costo zero.",
+  "objection": "Siete nuovi, senza clienti né referenze né conservazione a norma",
+  "habit": "hai avuto un FIR respinto dal destinatario per un dato sbagliato"
+ }
+]

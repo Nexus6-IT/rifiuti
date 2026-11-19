@@ -1,0 +1,13 @@
+{
+  "id": "P003",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Il software ci servirebbe, ma senza la trasmissione diretta a RENTRI i miei operatori dovrebbero comunque lavorare sul portale RENTRI, e allora non tolgo lavoro a nessuno. Non cambio strumenti in un mese in cui la priorita' e' non farci bloccare di nuovo dal portale.",
+  "objection": "Se non trasmette a RENTRI i nostri operatori devono comunque lavorare sul portale: rischio di pagare un secondo strumento che si aggiunge al lavoro invece di sostituirlo.",
+  "would_change_my_mind": "Trasmissione diretta a RENTRI attiva e verificata, con un esempio concreto su un paio di imprese seguite che dimostri che il lavoro sul portale si riduce davvero.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 80
+}

@@ -1,0 +1,13 @@
+{
+  "id": "P013",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Siamo un gruppo con più società e un FIR respinto mi ha già fatto perdere tempo: non cambio gestionale con uno che non ha clienti, referenze né conservazione a norma. Con RENTRI non ancora attivo, anche il vantaggio principale resta sulla carta.",
+  "objection": "Siete nuovi, senza clienti né referenze né conservazione a norma: se sbagliate un registro o un FIR, la responsabilità resta mia.",
+  "would_change_my_mind": "Referenze di gruppi simili al nostro e la trasmissione diretta a RENTRI già attiva e provata su un FIR reale.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

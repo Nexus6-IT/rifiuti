@@ -1,0 +1,13 @@
+{
+  "id": "P001",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il modulo rifiuti del nostro gestionale lo usiamo già e voglio tutto dentro un solo sistema per non fare doppi inserimenti. Un software esterno che non trasmette ancora a RENTRI mi obbliga a copiare comunque i dati nel portale.",
+  "objection": "Se WasteFlow non trasmette a RENTRI e fino ad allora devo andare sul portale per ogni società, non mi tocca meno lavoro di prima: aggiungo un passaggio in più.",
+  "would_change_my_mind": "Un'integrazione diretta con TeamSystem o Zucchetti che legga i registri dal gestionale, oppure l'accreditamento RENTRI già attivo.",
+  "price_too_cheap": 150,
+  "price_cheap": 600,
+  "price_expensive": 1000,
+  "price_too_expensive": 1500
+}

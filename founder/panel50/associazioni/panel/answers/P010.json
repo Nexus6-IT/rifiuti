@@ -1,0 +1,13 @@
+{
+  "id": "P010",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Non posso mettere i dati di centinaia di associati su un fornitore nuovo senza referenze. La confederazione ha già un accordo con un fornitore e la sede lo usa senza discutere.",
+  "objection": "Un fornitore appena arrivato, con la trasmissione a RENTRI ancora in attesa di accreditamento, su dati di centinaia di imprese associate: chi risponde se sbaglia un registro o un FIR?",
+  "would_change_my_mind": "Referenze di associazioni o sedi territoriali che lo usano già con dati veri, e la conferma che la confederazione lo approva o lo inserisce nella propria convenzione.",
+  "price_too_cheap": 15,
+  "price_cheap": 30,
+  "price_expensive": 59,
+  "price_too_expensive": 90
+}

@@ -1,0 +1,13 @@
+{
+  "id": "P011",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "habit",
+  "reason": "Il problema esiste, il report di sostenibilita' me lo chiede davvero. Pero' il modulo rifiuti ce l'ho gia' nell'ERP e non voglio rifare lo stesso inserimento in un altro programma; e finche' RENTRI non trasmette direttamente, devo comunque andare sul portale per ogni societa', quindi questo mi aggiungerebbe un passaggio invece di toglierlo.",
+  "objection": "Il mio ERP ha gia' il modulo rifiuti: perche' dovrei fare il doppio inserimento? E se la trasmissione a RENTRI non e' ancora attiva, tanto devo andare sul portale per ogni societa'.",
+  "would_change_my_mind": "Che il software legga i dati dal mio ERP senza doppio inserimento, oppure che trasmetta direttamente a RENTRI per tutte le societa' del gruppo.",
+  "price_too_cheap": 300,
+  "price_cheap": 600,
+  "price_expensive": 1500,
+  "price_too_expensive": 2000
+}

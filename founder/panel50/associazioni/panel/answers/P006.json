@@ -1,0 +1,13 @@
+{
+  "id": "P006",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Il primo mese gratuito non cambia nulla: ogni spesa nuova passa dalla giunta, serve un preventivo, un confronto e mesi di attesa. Il prezzo di 59 euro per impresa sta sopra il budget di 20-40 euro che ho in mente, e la trasmissione a RENTRI non e' ancora attiva.",
+  "objection": "Con la giunta non posso decidere in una settimana, e se il software non trasmette a RENTRI devo comunque fare tutto dal portale: a cosa mi serve pagarlo?",
+  "would_change_my_mind": "Accreditamento RENTRI completato con trasmissione diretta attiva, e un prezzo per impresa entro 20-40 euro l'anno.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 40,
+  "price_too_expensive": 60
+}

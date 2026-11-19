@@ -1,0 +1,83 @@
+{
+ "n": 10,
+ "seed": 169618,
+ "customer": {
+  "business": "WasteFlow per associazioni di categoria e loro società di servizi: registri, FIR e scadenze delle imprese associate da un solo accesso, con più operatori interni (trasmissione diretta a RENTRI non ancora attiva, software in attesa di accreditamento)",
+  "target": "Responsabile del servizio ambiente di una sede territoriale di associazione di categoria o della sua società di servizi, che tiene registri e FIR per conto delle imprese associate",
+  "where": "Italia, sedi provinciali e regionali di associazioni artigiane, del commercio, dell'industria e dell'agricoltura",
+  "age": [
+   35,
+   63
+  ],
+  "segments": [
+   {
+    "name": "Sede territoriale di associazione artigiana o PMI con servizio ambiente, 50-300 imprese seguite (budget annuo per software del servizio in euro)",
+    "share": 0.5,
+    "income": [
+     1000,
+     8000
+    ]
+   },
+   {
+    "name": "Associazione industriale territoriale con ufficio ambiente, 20-100 imprese seguite (budget annuo per software del servizio in euro)",
+    "share": 0.25,
+    "income": [
+     2000,
+     10000
+    ]
+   },
+   {
+    "name": "Società di servizi o consorzio di servizi dell'associazione, 100-1.000 imprese seguite (budget annuo per software del servizio in euro)",
+    "share": 0.25,
+    "income": [
+     5000,
+     30000
+    ]
+   }
+  ],
+  "behaviours": [
+   {
+    "name": "Ha una convenzione con un fornitore nazionale",
+    "share": 0.3,
+    "how": "La confederazione ha già un accordo con un fornitore (sconto iscritti) e la sede lo usa senza discutere."
+   },
+   {
+    "name": "Opera sul portale come delegato",
+    "share": 0.25,
+    "how": "Il personale interno lavora sul portale RENTRI per conto delle imprese, impresa per impresa."
+   },
+   {
+    "name": "Decide il livello nazionale",
+    "share": 0.2,
+    "how": "Il software lo sceglie la struttura nazionale o regionale; la sede può solo segnalare."
+   },
+   {
+    "name": "Rivende il servizio con margine",
+    "share": 0.15,
+    "how": "Compra licenze all'ingrosso e le include in un pacchetto a pagamento per gli associati."
+   },
+   {
+    "name": "Decide la giunta, tempi lunghi",
+    "share": 0.1,
+    "how": "Ogni spesa nuova passa dalla giunta o dal consiglio: servono preventivo, confronto e mesi."
+   }
+  ],
+  "objections": [
+   "Abbiamo già una convenzione nazionale con un fornitore noto",
+   "Se non trasmette a RENTRI i nostri operatori devono comunque lavorare sul portale",
+   "Non posso mettere i dati di centinaia di associati su un fornitore nuovo senza referenze",
+   "La decisione non è mia: la prende la struttura nazionale o la giunta",
+   "Il servizio rifiuti agli associati deve stare in piedi a prezzo basso, non posso pagare più di 20-40 euro per impresa",
+   "Chi ci assiste in pieno periodo di scadenze, se siete un fornitore piccolo?",
+   "Senza conservazione a norma non posso offrirlo come servizio completo"
+  ],
+  "habits": [
+   "il tuo ufficio tiene registri e FIR per decine di piccole imprese associate",
+   "a febbraio 2026 il portale RENTRI ha bloccato il lavoro di tutto l'ufficio per giorni",
+   "il servizio ambiente è una voce del pacchetto servizi che vendi agli associati",
+   "partecipi alle riunioni regionali dove si confrontano i fornitori software",
+   "molti associati sono micro imprese che non vogliono toccare un software"
+  ]
+ },
+ "pitch": "WasteFlow, software online per l'ufficio ambiente di un'associazione di categoria che tiene registri e FIR per le imprese associate.\nDa un solo accesso i tuoi operatori vedono registri, FIR e scadenze di tutte le imprese seguite, con permessi separati per operatore e un avviso quando qualcosa manca o sta per scadere.\nWasteFlow prepara e controlla registri e FIR. La trasmissione diretta a RENTRI non è ancora attiva: il software è in attesa di accreditamento, e fino ad allora la trasmissione si fa dal portale RENTRI.\nLe prime 5 imprese sono gratuite, poi 59 € l'anno IVA esclusa per ogni impresa seguita. Si attiva online, con fattura all'associazione.\nOfferta di apertura: primo mese gratuito, e importiamo noi i dati delle imprese dai fogli o dal software che usate oggi."
+}

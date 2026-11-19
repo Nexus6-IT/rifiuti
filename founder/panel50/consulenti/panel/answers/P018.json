@@ -1,0 +1,13 @@
+{
+  "id": "P018",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Ho una trentina di aziende da migrare a metà anno e non posso permettermi di sbagliare le scadenze mentre lo faccio. Il software non trasmette ancora a RENTRI, quindi devo comunque passare dal portale, e questo raddoppia il lavoro invece di ridurlo.",
+  "objection": "Se i dati importati sono sbagliati o mancano scadenze, la responsabilità resta mia con il cliente, e non ho modo di verificarlo prima di fidarmi.",
+  "would_change_my_mind": "Una trasmissione diretta a RENTRI già attiva e un periodo di affiancamento in cui posso continuare a lavorare anche sui miei fogli.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 45,
+  "price_too_expensive": 70
+}

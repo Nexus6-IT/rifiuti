@@ -1,0 +1,13 @@
+{
+  "id": "P007",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "timing",
+  "reason": "Il FIR respinto mi ha fatto paura, ma WasteFlow non trasmette a RENTRI: dovrei comunque entrare nel portale ogni volta, quindi il lavoro doppio resta. Con un gestionale che gia' uso, non cambio per una promessa in attesa di accreditamento.",
+  "objection": "Pagare 1.200 euro l'anno piu' il portale RENTRI non mi toglie nessun passaggio, e per 5 societa' il prezzo e' quasi tre volte il gestionale che uso adesso.",
+  "would_change_my_mind": "Accreditamento RENTRI attivo con trasmissione diretta, e una prova con i miei dati che mi mostra gli errori prima dell'invio come quello del FIR respinto.",
+  "price_too_cheap": 40,
+  "price_cheap": 150,
+  "price_expensive": 400,
+  "price_too_expensive": 700
+}

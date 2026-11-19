@@ -1,0 +1,13 @@
+{
+  "id": "P002",
+  "buys": false,
+  "purchases_first_month": 0,
+  "reason_code": "trust",
+  "reason": "Il portale RENTRI lo uso già e costa zero, e non vedo perché dovrei pagare 59 euro a azienda per un software che ancora non trasmette niente a RENTRI: la trasmissione la devo fare comunque a mano dal portale. Il controllo delle scadenze mi interesserebbe, ma non so se i dati che importate sono affidabili.",
+  "objection": "Se non trasmettete a RENTRI e devo rifare la trasmissione dal portale, cosa mi state vendendo esattamente? E se importate voi i dati dei clienti, chi risponde se un registro risulta sbagliato davanti a un controllo?",
+  "would_change_my_mind": "Una trasmissione diretta a RENTRI già attiva e verificata, con un prezzo che non superi quello che pago oggi per i registri su più aziende.",
+  "price_too_cheap": 5,
+  "price_cheap": 20,
+  "price_expensive": 40,
+  "price_too_expensive": 55
+}
