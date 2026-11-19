@@ -13,6 +13,9 @@ import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriRegistriClient } from './rentri-registri.client'
 import { RentriVidimazioneClient } from './rentri-vidimazione.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import { RentriXfirClient } from './xfir/rentri-xfir.client'
+import { RentriCopieClient } from './rentri-copie.client'
+import { RentriTrasmissioniClient } from './rentri-trasmissioni.client'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
@@ -57,6 +60,30 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriRateLimiterService)).toBeDefined()
     expect(moduleRef.get(GetRentriDiagnosticaUseCase)).toBeDefined()
     expect(moduleRef.get(RentriDiagnosticaController)).toBeDefined()
+
+    await moduleRef.close()
+  })
+
+  // Piano FIR in viaggio, P0 T5: i tre client erano corretti e provati contro
+  // la fake ma non registrati in alcun modulo (inerti). Ora sono provider
+  // esportati, ancora senza use case.
+  it('registra e esporta i client di xFIR, copie e trasmissioni, col limitatore per tenant', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        RuoloEffettivoModule,
+        RentriModule,
+      ],
+    }).compile()
+
+    const limitatore = moduleRef.get(RentriRateLimiterService)
+    for (const classe of [RentriXfirClient, RentriCopieClient, RentriTrasmissioniClient]) {
+      const client = moduleRef.get(classe)
+      expect(client).toBeInstanceOf(classe)
+      // Il limitatore e' un parametro opzionale del costruttore: in produzione
+      // deve arrivare dal container, non restare `undefined`.
+      expect((client as unknown as { rateLimiter?: unknown }).rateLimiter).toBe(limitatore)
+    }
 
     await moduleRef.close()
   })

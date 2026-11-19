@@ -247,7 +247,7 @@ describe('RENTRIApiClient/GetAzioniDisponibiliUseCase — stato e azioni contro 
     expect(azioniAccettazione.azioni).not.toEqual(azioniIniziale.azioni)
   })
 
-  it('leggiAzioniDisponibili: un formulario in stato terminale non propone alcuna operazione di scrittura', async () => {
+  it('leggiAzioniDisponibili: un formulario Accettato non propone firme ne nuove scritture, solo l’annotazione (contratto, annotazione)', async () => {
     const client = creaClient()
     const cf = 'RSSMRA80A01H501U'
     await seminaFormulario({
@@ -258,7 +258,9 @@ describe('RENTRIApiClient/GetAzioniDisponibiliUseCase — stato e azioni contro 
 
     const risultato = await client.leggiAzioniDisponibili('', 'BCDFGH00010ZD', cf)
 
-    expect(risultato.azioni).toEqual([])
+    // Il contratto ammette `Annotazione` anche su un FIR Accettato
+    // (formulari.yaml, POST /{numero_fir}/annotazione): niente altro.
+    expect(risultato.azioni).toEqual(['Annotazione'])
   })
 
   it('leggiAzioniDisponibili: senza identificativo_soggetto l’ente rifiuta con 400 (parametro obbligatorio)', async () => {

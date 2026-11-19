@@ -39,115 +39,163 @@ export type Operazione =
   | 'Modifica'
 
 /**
- * Macchina a stati MINIMA (v. Step 1, task-2-brief.md): non replica l'intera
- * macchina reale dell'ente — che non è documentata in dettaglio dal
- * contratto e non serve a questo scopo — ma basta a dimostrare che WasteFlow
- * (a) consulta `/azioni` prima di proporre un'operazione, (b) riceve liste
- * OSSERVABILMENTE diverse a seconda dello stato, non lo stesso elenco
- * sempre.
+ * Macchina degli stati della fake, ricavata dal CONTRATTO dove il contratto
+ * parla e dedotta dai nomi degli stati dove tace.
  *
- * Tre gruppi, scelti per rappresentare i tre momenti macroscopici del ciclo:
- * - **iniziale**: prima che il destinatario abbia accettato — nessuna
- *   `Accettazione` disponibile, ha senso ancora modificare trasporto/quantità.
- * - **accettazione**: il destinatario sta decidendo l'esito — `Accettazione`
- *   compare, insieme alle firme di quella fase.
- * - **terminale** (`Accettato`/`RespintoAccettatoParzialmente`/`Annullato`):
- *   nessuna operazione di scrittura ha più senso — lista vuota.
- * - **annullamento** e **indeterminato**: gruppi minori, non decisivi per il
- *   test ma coerenti col resto della tabella.
+ * - **Dal contratto** (`docs/contracts/rentri/formulari.yaml`, sezione "Stati
+ *   del formulario ammessi" nella descrizione di ogni operazione): modifica,
+ *   quantita', trasporto, accettazione, annotazione, annullamento, hash,
+ *   firma, reset, sosta tecnica, trasbordi, nuovo destinatario, note di
+ *   annullamento.
+ * - **Dedotto** (il contratto non lo dice, FEDELTA.md §7): quale delle due
+ *   voci `DatiQuantita`/`DatiQuantitaUpdate` e `Trasporto`/`TrasportoUpdate`
+ *   spetta a ciascuno stato (la prima inserisce, la seconda corregge un dato
+ *   gia' presente), `Allegato` (senza vincoli di stato nel contratto),
+ *   `RollbackFirma` (il contratto elenca le condizioni, non gli stati: qui
+ *   si propone quando la fake ha memorizzato una firma reversibile).
+ * - **Esiti**: `Accettato` ammette solo l'annotazione; `RespintoAccettatoParzialmente`
+ *   NON e' terminale, ammette `NuovoDestinatario` (riga 1393); `Annullato`
+ *   ammette `NoteAnnullamento` finche' il formulario e' privo di note.
+ * - Stato sconosciuto o `Indeterminato`: lista vuota (scelta conservativa: un
+ *   dato incoerente non giustifica proporre scritture).
+ *
+ * Le transizioni fra stati restano un'ipotesi plausibile da verificare sulla
+ * demo (checklist del piano `docs/superpowers/plans/2026-11-18-rentri-fir-viaggio.md`,
+ * rischio 1).
  */
-const OPERAZIONI_STATO_INIZIALE: Operazione[] = [
-  'Trasporto',
-  'TrasportoUpdate',
-  'DatiQuantita',
-  'DatiQuantitaUpdate',
-  'Allegato',
-  'Annotazione',
-  'Hash',
-  'TrasbordoTotale',
-  'TrasbordoParziale',
-  'SostaTecnica',
-  'NuovoDestinatario',
-  'AcquisizioneFirma',
-  'AcquisizioneFirmaTrasportatore',
-  'AcquisizioneFirmaProduttore',
-  'AcquisizioneFirmaProduttoreTrasportatore',
-  'AcquisizioneFirmaAnnotazione',
-  'AcquisizioneFirmaTrasbordoTotale',
-  'AcquisizioneFirmaSostaTecnica',
-  'AcquisizioneFirmaTrasbordoParziale',
-  'Reset',
-  'Annulla',
-  'NoteAnnullamento',
-  'Modifica',
-]
+const STATI_INSERIMENTO_INIZIALE = [
+  'InserimentoQuantitaTrasportoIniziale',
+  'InserimentoTrasportoIniziale',
+  'InserimentoQuantita',
+] as const
 
-const OPERAZIONI_STATO_ACCETTAZIONE: Operazione[] = [
-  'Accettazione',
-  'AcquisizioneFirmaDestinatario',
-  'AcquisizioneFirmaDestinatarioSuccessivo',
-  'AcquisizioneFirmaAccettazioneSuccessiva',
-  'Allegato',
-  'Annotazione',
-  'Annulla',
-  'NoteAnnullamento',
-  'Reset',
-  'Modifica',
-]
-
-const OPERAZIONI_STATO_ANNULLAMENTO: Operazione[] = [
-  'AcquisizioneFirmaAnnullamento',
-  'NoteAnnullamento',
-  'RollbackFirma',
-]
-
-const STATI_ACCETTAZIONE = new Set([
-  'InserimentoAccettazione',
+/** Stati di firma che l'operazione `Hash` e `AcquisizioneFirma` ammettono (contratto, riga 531/1498). */
+const STATI_DI_FIRMA = [
+  'FirmaProduttoreTrasportatoreIniziale',
+  'FirmaProduttore',
+  'FirmaTrasportatoreIniziale',
+  'FirmaTrasportatoreSuccessivo',
   'FirmaAccettazione',
+  'FirmaAnnotazione',
+  'FirmaAnnullamento',
+  'FirmaTrasbordoParziale',
+  'FirmaTrasbordoTotale',
+  'FirmaSostaTecnica',
   'FirmaDestinatarioSuccessivo',
   'FirmaAccettazioneSuccessiva',
-])
+] as const
 
-const STATI_ANNULLAMENTO = new Set(['FirmaAnnullamento'])
+/** Stati da cui si puo' cancellare l'ultimo dato non firmato (contratto, riga 1888). */
+const STATI_RESET = [
+  'FirmaTrasportatoreIniziale',
+  'FirmaTrasportatoreSuccessivo',
+  'FirmaDestinatarioSuccessivo',
+  'FirmaAccettazione',
+  'FirmaAccettazioneSuccessiva',
+  'FirmaAnnotazione',
+  'FirmaAnnullamento',
+  'FirmaTrasbordoParziale',
+  'FirmaTrasbordoTotale',
+  'FirmaSostaTecnica',
+] as const
 
-// `Annullato` NON è più in questo set (R3 Task 5): a differenza di
-// `Accettato`/`RespintoAccettatoParzialmente` (esiti finali senza alcun
-// seguito), il contratto ammette esplicitamente `NoteAnnullamento` su un
-// formulario `Annullato` finché è "privo di note" (formulari.yaml, riga
-// 1656) — v. `operazioniPerStato` sotto.
-const STATI_TERMINALI_SENZA_SEGUITO = new Set(['Accettato', 'RespintoAccettatoParzialmente'])
+const STATI_ANNULLABILI = [
+  'InserimentoQuantita',
+  'InserimentoQuantitaTrasportoIniziale',
+  'InserimentoTrasportoIniziale',
+  'FirmaProduttoreTrasportatoreIniziale',
+  'FirmaProduttore',
+  'FirmaTrasportatoreIniziale',
+] as const
+
+const STATI_VIAGGIO = ['InserimentoAccettazione', 'InserimentoTrasportoSuccessivo'] as const
+
+/** Stati in cui l'operazione e' proposta, nell'ordine in cui compaiono in `azioni`. */
+const STATI_PER_OPERAZIONE: Readonly<Record<Operazione, readonly string[]>> = {
+  Trasporto: [
+    'InserimentoQuantitaTrasportoIniziale',
+    'InserimentoTrasportoIniziale',
+    'InserimentoTrasportoSuccessivo',
+  ],
+  TrasportoUpdate: [
+    'InserimentoQuantita',
+    'FirmaProduttoreTrasportatoreIniziale',
+    'FirmaTrasportatoreIniziale',
+    'FirmaTrasportatoreSuccessivo',
+    'FirmaTrasbordoTotale',
+  ],
+  DatiQuantita: ['InserimentoQuantitaTrasportoIniziale', 'InserimentoQuantita'],
+  DatiQuantitaUpdate: ['InserimentoTrasportoIniziale', 'FirmaProduttoreTrasportatoreIniziale'],
+  Accettazione: ['InserimentoAccettazione'],
+  Allegato: [
+    ...STATI_INSERIMENTO_INIZIALE,
+    'InserimentoAccettazione',
+    'InserimentoTrasportoSuccessivo',
+    'FirmaAccettazione',
+  ],
+  Annotazione: [...STATI_VIAGGIO, 'Accettato', 'RespintoAccettatoParzialmente'],
+  Reset: STATI_RESET,
+  Rilascia: [],
+  Annulla: STATI_ANNULLABILI,
+  // Solo da `Annullato` (gestito in `operazioniPerStato`): il contratto non la ammette altrove.
+  NoteAnnullamento: [],
+  Hash: STATI_DI_FIRMA,
+  TrasbordoTotale: STATI_VIAGGIO,
+  TrasbordoParziale: STATI_VIAGGIO,
+  SostaTecnica: STATI_VIAGGIO,
+  NuovoDestinatario: ['RespintoAccettatoParzialmente'],
+  AcquisizioneFirma: STATI_DI_FIRMA,
+  AcquisizioneFirmaAnnullamento: ['FirmaAnnullamento'],
+  AcquisizioneFirmaTrasportatore: ['FirmaTrasportatoreIniziale', 'FirmaTrasportatoreSuccessivo'],
+  AcquisizioneFirmaProduttore: ['FirmaProduttore'],
+  AcquisizioneFirmaProduttoreTrasportatore: ['FirmaProduttoreTrasportatoreIniziale'],
+  AcquisizioneFirmaDestinatario: ['FirmaAccettazione'],
+  AcquisizioneFirmaAnnotazione: ['FirmaAnnotazione'],
+  AcquisizioneFirmaTrasbordoTotale: ['FirmaTrasbordoTotale'],
+  AcquisizioneFirmaSostaTecnica: ['FirmaSostaTecnica'],
+  AcquisizioneFirmaTrasbordoParziale: ['FirmaTrasbordoParziale'],
+  AcquisizioneFirmaDestinatarioSuccessivo: ['FirmaDestinatarioSuccessivo'],
+  AcquisizioneFirmaAccettazioneSuccessiva: ['FirmaAccettazioneSuccessiva'],
+  // Il contratto non lega il rollback a degli stati (riga 2079) ma all'esistenza
+  // di una firma reversibile: si propone solo con `ultimaFirmaPresente`.
+  RollbackFirma: [],
+  Modifica: [
+    'InserimentoQuantita',
+    'InserimentoQuantitaTrasportoIniziale',
+    'InserimentoTrasportoIniziale',
+    'FirmaProduttoreTrasportatoreIniziale',
+    'FirmaTrasportatoreIniziale',
+  ],
+}
+
+const OPERAZIONI_NELL_ORDINE = Object.keys(STATI_PER_OPERAZIONE) as Operazione[]
 
 /**
  * Restituisce il sottoinsieme di {@link Operazione} plausibile per lo stato
- * corrente di un formulario. Stato sconosciuto/`Indeterminato` → lista vuota
- * (scelta conservativa: un'incoerenza dati non giustifica proporre scritture).
+ * corrente di un formulario (v. commento di testata del gruppo).
  *
  * `opzioni.noteAnnullamentoGiaPresenti` (R3 Task 5): per lo stato `Annullato`,
  * distingue "nota non ancora trasmessa" (`NoteAnnullamento` disponibile) da
- * "nota già registrata" (lista vuota, coerente col contratto: il formulario
- * annullato con nota non ha più adempimenti pendenti).
+ * "nota gia' registrata" (lista vuota: il formulario annullato con nota non ha
+ * piu' adempimenti pendenti).
  */
 export function operazioniPerStato(
   stato: string,
-  opzioni?: { noteAnnullamentoGiaPresenti?: boolean }
+  opzioni?: { noteAnnullamentoGiaPresenti?: boolean; ultimaFirmaPresente?: boolean }
 ): Operazione[] {
-  if (STATI_TERMINALI_SENZA_SEGUITO.has(stato)) {
-    return []
-  }
+  // `Annullato` NON e' terminale (R3 Task 5): il contratto ammette
+  // `NoteAnnullamento` finche' il formulario e' "privo di note" (riga 1656).
   if (stato === 'Annullato') {
     return opzioni?.noteAnnullamentoGiaPresenti ? [] : ['NoteAnnullamento']
   }
-  if (STATI_ANNULLAMENTO.has(stato)) {
-    return [...OPERAZIONI_STATO_ANNULLAMENTO]
-  }
-  if (STATI_ACCETTAZIONE.has(stato)) {
-    return [...OPERAZIONI_STATO_ACCETTAZIONE]
-  }
-  if (stato === 'Indeterminato') {
-    return []
-  }
-  // Tutti gli altri 15 stati "di lavorazione iniziale" (dall'inserimento
-  // quantità/trasporto alla firma produttore/trasportatore) — v. commento di
-  // testata.
-  return [...OPERAZIONI_STATO_INIZIALE]
+  // `RollbackFirma`: vale per "l'ultima firma apposta (tranne quella di
+  // annullamento)" in qualunque stato la fake ne abbia memorizzata una
+  // (`Formulario.ultimaFirma`), quindi dipende da `ultimaFirmaPresente`.
+  return OPERAZIONI_NELL_ORDINE.filter(
+    operazione =>
+      STATI_PER_OPERAZIONE[operazione].includes(stato) ||
+      (operazione === 'RollbackFirma' &&
+        opzioni?.ultimaFirmaPresente === true &&
+        stato !== 'FirmaAnnullamento')
+  )
 }

@@ -7,6 +7,8 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
+import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import { conRateLimiterPerTenant } from './rentri-rate-limiter.util'
 import { RentriApiError, gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
 
 /**
@@ -60,7 +62,10 @@ export class RentriCopieClient {
     private readonly metrics: MetricsService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly auth: RentriAuthService,
-    private readonly signature: RentriSignatureService
+    private readonly signature: RentriSignatureService,
+    // P0 T4: limitatore preventivo per tenant, OPZIONALE come in `RENTRIApiClient`
+    // (le costruzioni dirette nei test non lo passano); il modulo lo inietta sempre.
+    private readonly rateLimiter?: RentriRateLimiterService
   ) {
     this.logger.setContext('RentriCopieClient')
   }
@@ -425,13 +430,15 @@ export class RentriCopieClient {
 
     for (let tentativo = 1; tentativo <= RentriCopieClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          timeout: this.timeout,
-          maxRedirects: 0,
-          validateStatus: () => true,
-        })
+      const response = await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+        firstValueFrom(
+          this.httpService.get(url, {
+            headers,
+            timeout: this.timeout,
+            maxRedirects: 0,
+            validateStatus: () => true,
+          })
+        )
       )
 
       if (response.status === 200) return { pronto: false }
@@ -469,8 +476,10 @@ export class RentriCopieClient {
 
     for (let tentativo = 1; tentativo <= RentriCopieClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
+      const response = await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+        firstValueFrom(
+          this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
+        )
       )
 
       if (response.status === 400) return null
@@ -559,8 +568,8 @@ export class RentriCopieClient {
       }
 
       try {
-        const response = await firstValueFrom(
-          this.httpService.post(url, corpo, { headers, timeout: this.timeout })
+        const response = await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+          firstValueFrom(this.httpService.post(url, corpo, { headers, timeout: this.timeout }))
         )
         const urlStato = (response.headers?.location ?? response.headers?.Location) as
           | string
@@ -607,7 +616,9 @@ export class RentriCopieClient {
       const headers = { ...(await this.buildAuthHeaders(tenantId)), ...extraHeaders }
 
       try {
-        return await firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+        return await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+          firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+        )
       } catch (error: any) {
         const risposta = error?.response
         if (!risposta || typeof risposta.status !== 'number') throw error
@@ -642,7 +653,9 @@ export class RentriCopieClient {
       const headers = await this.buildAuthHeaders(tenantId)
 
       try {
-        await firstValueFrom(this.httpService.delete(url, { headers, timeout: this.timeout }))
+        await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+          firstValueFrom(this.httpService.delete(url, { headers, timeout: this.timeout }))
+        )
         return
       } catch (error: any) {
         const risposta = error?.response
@@ -698,7 +711,9 @@ export class RentriCopieClient {
       }
 
       try {
-        await firstValueFrom(this.httpService.put(url, corpo, { headers, timeout: this.timeout }))
+        await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+          firstValueFrom(this.httpService.put(url, corpo, { headers, timeout: this.timeout }))
+        )
         return
       } catch (error: any) {
         const risposta = error?.response
@@ -730,6 +745,10 @@ export class RentriCopieClient {
     return {
       Authorization: await this.auth.creaAuthorizationHeader(tenantId ?? this.tenantIdCorrente()),
     }
+  }
+
+  private conRateLimiter<T>(tenantId: string, azione: () => Promise<T>): Promise<T> {
+    return conRateLimiterPerTenant(this.rateLimiter, this.metrics, tenantId, azione)
   }
 
   private tenantIdCorrente(): string {
