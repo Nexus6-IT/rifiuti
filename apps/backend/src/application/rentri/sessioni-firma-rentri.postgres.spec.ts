@@ -92,6 +92,7 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
       handle,
       tokenAcquisizione: 'token-segreto-1',
       digestToSign: 'digest-1',
+      scadenza: new Date(Date.now() + 120_000),
     })
     return (await repo.trovaPerId(a.t, s.id))!
   }

@@ -13,6 +13,9 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       tenantId: TENANT,
       rifiuto: { cerCode: '150101', quantita: 10 },
     })
+    fir.emetti('FIR-GS-000001', { firmatario: 'X', timestamp: new Date(), certificato: 'c' })
+    fir.markRENTRISynced('BCDFGH00050ZH')
+    fir.applyRentriStato('FirmaAccettazione')
     const sessioni = new SessioniFirmaRentriInMemoria()
     const completa = { execute: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA' }) }
     const logger: any = { setContext: jest.fn(), info: jest.fn(), debug: jest.fn() }
@@ -31,7 +34,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       digestToSign: 'd',
       scadenza: new Date(Date.now() + 60_000),
     })
-    return { useCase, sessioni, completa, sessione }
+    return { useCase, sessioni, completa, sessione, fir }
   }
 
   it('inAttesa espone id, operazione e scadenza, MAI token, digest o handle', async () => {
@@ -139,5 +142,15 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       })
     ).rejects.toMatchObject({ metadata: { rule: 'SESSIONE_FIRMA_NON_ATTIVA' } })
     expect(completa.execute).not.toHaveBeenCalled()
+  })
+
+  it('R1: dopo un reset (FIR fuori da Firma*) una sessione SCADUTA/RIFIUTATA non tiene piu il banner', async () => {
+    const { useCase, sessioni, sessione, fir } = await ambiente()
+    await sessioni.chiudi(TENANT, sessione.id, 'SCADUTA')
+    expect(await useCase.inAttesa('fir-1', TENANT)).not.toBeNull()
+
+    fir.applyRentriStato('InserimentoAccettazione')
+
+    expect(await useCase.inAttesa('fir-1', TENANT)).toBeNull()
   })
 })

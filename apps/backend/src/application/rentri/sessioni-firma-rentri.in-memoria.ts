@@ -66,6 +66,7 @@ export class SessioniFirmaRentriInMemoria extends ISessioniFirmaRentriRepository
     riga.tokenAcquisizione = dati.tokenAcquisizione
     riga.tokenHash = createHash('sha256').update(dati.tokenAcquisizione).digest('hex')
     riga.digestToSign = dati.digestToSign
+    riga.scadenza = dati.scadenza
     return true
   }
 
@@ -100,6 +101,7 @@ export class SessioniFirmaRentriInMemoria extends ISessioniFirmaRentriRepository
       handle: dati.handle ?? 'handle-test',
       tokenAcquisizione: dati.tokenAcquisizione ?? 'token-test',
       digestToSign: dati.digestToSign ?? 'digest-test',
+      scadenza: dati.scadenza,
     })
     return riga
   }

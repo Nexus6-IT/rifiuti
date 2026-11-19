@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -59,7 +60,7 @@ export class GestisciSessioneFirmaRentriUseCase {
    * Una sessione COMPLETATA o ANNULLATA piu' recente la fa sparire.
    */
   async inAttesa(firId: string, tenantId: string): Promise<SessioneFirmaInAttesa | null> {
-    await this.verificaFir(firId, tenantId)
+    const fir = await this.verificaFir(firId, tenantId)
     const ultima = await this.sessioni.ultima(tenantId, firId)
     if (!ultima) return null
     if (STATI_SESSIONE_APERTA.includes(ultima.stato)) {
@@ -72,6 +73,10 @@ export class GestisciSessioneFirmaRentriUseCase {
       }
     }
     if (ultima.stato === 'SCADUTA' || ultima.stato === 'RIFIUTATA') {
+      // Una richiesta chiusa resta visibile solo finche' il formulario e' ancora in attesa di firma
+      // (`Firma*`): dopo un reset, un rollback o una firma fatta altrove non c'e' piu' nulla da
+      // richiedere di nuovo ne' da annullare.
+      if (!fir.rentriStatoFormulario?.startsWith('Firma')) return null
       return {
         id: ultima.id,
         tipoOperazione: ultima.tipoOperazione,
@@ -143,11 +148,12 @@ export class GestisciSessioneFirmaRentriUseCase {
     })
   }
 
-  private async verificaFir(firId: string, tenantId: string): Promise<void> {
+  private async verificaFir(firId: string, tenantId: string): Promise<FIR> {
     const fir = await this.firRepository.findById(firId)
     if (!fir) throw DomainException.notFound('FIR', firId)
     if (fir.tenantId !== tenantId) {
       throw new DomainException('Unauthorized access to FIR', 'UNAUTHORIZED')
     }
+    return fir
   }
 }

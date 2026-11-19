@@ -302,4 +302,32 @@ describe('CompletaOperazioneConFirmaUseCase — sessione di firma riprendibile',
     })
     expect(sessioni.righe[0].stato).toBe('RIFIUTATA')
   })
+
+  it('R3: la prenotazione ha la scadenza lunga di recupero, poi l attesa dell utente riparte da 120 s', async () => {
+    let scadenzaPrenotata = 0
+    const { useCase, sessioni } = ambiente({
+      autorizzaFirmaRemota: jest.fn().mockImplementation(async () => {
+        scadenzaPrenotata = sessioni.righe[0].scadenza.getTime() - Date.now()
+        return { handle: 'handle-1' }
+      }),
+    })
+    await useCase.execute(comando)
+    expect(scadenzaPrenotata).toBeGreaterThan(10 * 60 * 1000)
+    const attesa = sessioni.righe[0].scadenza.getTime() - Date.now()
+    expect(attesa).toBeLessThanOrEqual(120_000)
+    expect(attesa).toBeGreaterThan(100_000)
+  })
+
+  it('R2: la presa IN_FIRMA ha la scadenza lunga di recupero', async () => {
+    const { useCase, client, sessioni } = ambiente()
+    await useCase.execute(comando)
+    client.verificaAutorizzazioneFirma.mockResolvedValue({ stato: 'AUTORIZZATA', sad: 's' })
+    let durante = 0
+    client.firmaHashRemoto.mockImplementation(async () => {
+      durante = sessioni.righe[0].scadenza.getTime() - Date.now()
+      return 'firma'
+    })
+    await useCase.execute(comando)
+    expect(durante).toBeGreaterThan(10 * 60 * 1000)
+  })
 })

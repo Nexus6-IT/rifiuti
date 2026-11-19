@@ -55,8 +55,22 @@ export const ATTESA_MASSIMA_INVOCAZIONE_MS = 20000
  */
 export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
 
-/** Durata (ms) della presa esclusiva di una sessione per `sign-hash` + `acquisizione-firma`; poi la sessione e' ripresa o chiusa. */
-export const DURATA_PRESA_FIRMA_MS = 120_000
+/**
+ * Durata (ms) massima di una fase che parla con l'ente, derivata dai timeout del client: una chiamata
+ * sincrona + un'operazione asincrona (POST + polling) + una chiamata sincrona. Vale per
+ * - la presa `IN_FIRMA`: `sign-hash` + `acquisizione-firma` + rilettura di `/stato`;
+ * - la prenotazione `IN_AVVIO`: certificato + `/hash` + `authorize`.
+ * Una scadenza superata implica quindi un processo morto, non un'operazione lenta: solo allora un'altra
+ * richiesta puo' recuperare la sessione.
+ */
+export const DURATA_MASSIMA_FASE_ENTE_MS =
+  2 * RENTRIApiClient.DURATA_MASSIMA_CHIAMATA_MS + RENTRIApiClient.DURATA_MASSIMA_ASINCRONA_MS
+
+/** Scadenza della presa esclusiva `IN_FIRMA`. */
+export const DURATA_PRESA_FIRMA_MS = DURATA_MASSIMA_FASE_ENTE_MS
+
+/** Scadenza di recupero della prenotazione `IN_AVVIO`. */
+export const DURATA_AVVIO_SESSIONE_MS = DURATA_MASSIMA_FASE_ENTE_MS
 
 /** Esito interno dell'attesa; il sad esiste solo se AUTORIZZATA. */
 type EsitoAttesa =
@@ -338,7 +352,7 @@ export class CompletaOperazioneConFirmaUseCase {
           tenantId,
           firId,
           tipoOperazione,
-          scadenza: new Date(Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000),
+          scadenza: new Date(Date.now() + DURATA_AVVIO_SESSIONE_MS),
           utenteId: comando.utenteId ?? null,
         })
       } catch (errore) {
@@ -354,6 +368,7 @@ export class CompletaOperazioneConFirmaUseCase {
       const prenotata = sessione
 
       let sadImmediato: string | undefined
+      let scadenzaAttesa = prenotata.scadenza
       try {
         // --- 2. Certificato della credenziale di firma remota ---
         certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(
@@ -392,10 +407,13 @@ export class CompletaOperazioneConFirmaUseCase {
           correlationId,
         })
 
+        // Da qui parte l'attesa dell'UTENTE: 120 s dalla concessione dell'handle.
+        scadenzaAttesa = new Date(Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000)
         const avviata = await this.sessioni.completaAvvio(tenantId, prenotata.id, {
           handle,
           tokenAcquisizione: token,
           digestToSign,
+          scadenza: scadenzaAttesa,
         })
         if (!avviata) {
           throw DomainException.businessRuleViolation(
@@ -424,7 +442,7 @@ export class CompletaOperazioneConFirmaUseCase {
               tenantId,
               { handle },
               comando,
-              prenotata.scadenza.getTime()
+              scadenzaAttesa.getTime()
             )
     }
 

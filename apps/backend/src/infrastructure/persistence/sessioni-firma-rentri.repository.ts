@@ -96,6 +96,7 @@ export class SessioniFirmaRentriRepository extends ISessioniFirmaRentriRepositor
         tokenAcquisizione: dati.tokenAcquisizione,
         tokenHash: createHash('sha256').update(dati.tokenAcquisizione).digest('hex'),
         digestToSign: dati.digestToSign,
+        scadenza: dati.scadenza,
       },
     })
     return count === 1

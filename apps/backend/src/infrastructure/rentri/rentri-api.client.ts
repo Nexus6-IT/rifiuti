@@ -45,7 +45,9 @@ const erroriChiamataHttp = new WeakSet<object>()
 
 @Injectable()
 export class RENTRIApiClient {
-  private readonly timeout = 30000 // 30s
+  /** Timeout (ms) di ogni singola richiesta HTTP verso l'ente. */
+  static readonly TIMEOUT_HTTP_MS = 30000
+  private readonly timeout = RENTRIApiClient.TIMEOUT_HTTP_MS
 
   /**
    * Path base del servizio `formulari` v1.0, confermato da
@@ -1203,10 +1205,10 @@ export class RENTRIApiClient {
   }
 
   /** Intervallo di default (ms) tra un tentativo e l'altro del polling NONBLOCK_PULL. */
-  private static readonly INTERVALLO_POLLING_DEFAULT_MS = 2000
+  static readonly INTERVALLO_POLLING_DEFAULT_MS = 2000
 
   /** Numero massimo di default di tentativi prima di sollevare un errore esplicito. */
-  private static readonly MAX_TENTATIVI_POLLING_DEFAULT = 30
+  static readonly MAX_TENTATIVI_POLLING_DEFAULT = 30
 
   /**
    * Attende l'esito di una transazione creata con {@link creaFormulario},
@@ -1385,13 +1387,13 @@ export class RENTRIApiClient {
   }
 
   /** Numero massimo di tentativi per gli errori transitori (429/423/5xx). */
-  private static readonly MAX_TENTATIVI_RESILIENZA = 5
+  static readonly MAX_TENTATIVI_RESILIENZA = 5
 
   /** Base (ms) del backoff esponenziale quando l'ente non indica `Retry-After`. */
-  private static readonly BACKOFF_BASE_MS = 1000
+  static readonly BACKOFF_BASE_MS = 1000
 
   /** Tetto (ms) del backoff esponenziale, per non attendere indefinitamente. */
-  private static readonly BACKOFF_MAX_MS = 30000
+  static readonly BACKOFF_MAX_MS = 30000
 
   /**
    * Classifica una risposta di errore RENTRI e, se transitoria, attende
@@ -1594,6 +1596,27 @@ export class RENTRIApiClient {
   private tenantIdCorrente(): string {
     return TenantContext.getTenantId() ?? ''
   }
+
+  /**
+   * Durata MASSIMA (ms) di una singola chiamata all'ente con la resilienza: `MAX_TENTATIVI_RESILIENZA`
+   * richieste, ciascuna fino a `TIMEOUT_HTTP_MS`, piu' i backoff esponenziali fra i tentativi (tetto
+   * `BACKOFF_MAX_MS`). Non conta l'attesa del rate limiter.
+   */
+  static readonly DURATA_MASSIMA_CHIAMATA_MS: number =
+    RENTRIApiClient.MAX_TENTATIVI_RESILIENZA * RENTRIApiClient.TIMEOUT_HTTP_MS +
+    Array.from({ length: RENTRIApiClient.MAX_TENTATIVI_RESILIENZA - 1 }, (_, i) =>
+      Math.min(RENTRIApiClient.BACKOFF_BASE_MS * 2 ** i, RENTRIApiClient.BACKOFF_MAX_MS)
+    ).reduce((a, b) => a + b, 0)
+
+  /**
+   * Durata MASSIMA (ms) di un'operazione asincrona NONBLOCK_PULL: la POST con resilienza piu'
+   * `MAX_TENTATIVI_POLLING_DEFAULT` giri di polling (ciascuno una richiesta fino a `TIMEOUT_HTTP_MS`
+   * piu' l'intervallo; si assume che i tentativi di resilienza dentro il polling siano l'eccezione).
+   */
+  static readonly DURATA_MASSIMA_ASINCRONA_MS: number =
+    RENTRIApiClient.DURATA_MASSIMA_CHIAMATA_MS +
+    RENTRIApiClient.MAX_TENTATIVI_POLLING_DEFAULT *
+      (RENTRIApiClient.TIMEOUT_HTTP_MS + RENTRIApiClient.INTERVALLO_POLLING_DEFAULT_MS)
 }
 
 /**

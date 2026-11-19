@@ -60,6 +60,8 @@ export interface DatiAutorizzazioneFirma {
   handle: string
   tokenAcquisizione: string
   digestToSign: string
+  /** Nuova scadenza: da qui parte l'attesa dell'utente (la prenotazione ne aveva una di recupero, piu' lunga). */
+  scadenza: Date
 }
 
 /** Esiste gia' una sessione aperta per questo FIR (indice unico parziale). */

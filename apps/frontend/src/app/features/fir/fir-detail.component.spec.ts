@@ -1787,6 +1787,28 @@ describe('FirDetailComponent', () => {
       expect(el.querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeFalsy()
     })
 
+    it('R1: dopo «Annulla la richiesta» su una richiesta scaduta il banner sparisce al reload', () => {
+      setup({ role: 'OPERATOR', autoConfirm: true })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      const scaduta = { ...sessione, stato: 'SCADUTA' as const, scaduta: true }
+      rentriFirLifecycleService.firmaInAttesa.and.returnValues(
+        of({ sessione: scaduta }),
+        of({ sessione: null })
+      )
+      rentriFirLifecycleService.resetStato.and.returnValue(
+        of({ operazione: 'Reset', statoFormulario: 'InserimentoAccettazione' })
+      )
+      fixture.detectChanges()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-firma-in-attesa"]')).toBeTruthy()
+
+      component.annullaRichiestaFirma(firLegato)
+      fixture.detectChanges()
+
+      expect(rentriFirLifecycleService.resetStato).toHaveBeenCalledTimes(1)
+      expect(el.querySelector('[data-testid="fir-detail-firma-in-attesa"]')).toBeFalsy()
+    })
+
     it('I3: una firma RIFIUTATA mostra il messaggio dedicato e i due pulsanti', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegato))
