@@ -240,6 +240,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
       produttore: { registroId: p.ruoloId, sedeId: p.sedeId },
       destinatario: { registroId: d.ruoloId, sedeId: d.sedeId },
       trasportatore: { registroId: t },
+      trasportatoriAggiuntivi: [],
       rifiuto: { cerCode: '150106', statoFisico: 'Solido', descrizione: 'Imballaggi misti' },
     }) as never
 
