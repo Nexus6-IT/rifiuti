@@ -172,19 +172,12 @@ jobs:
         run: npm run build
 
       # ----------------------------------------------------------------------
-      # App campo (Angular 22), stesso job per non occupare un altro runner
-      # (capacity 1). NON e' un workspace npm della radice: ha il lock proprio
-      # (apps/campo/package-lock.json) per non mescolare Angular 22 con il
-      # frontend su Angular 17. Angular 22 richiede Node >= 22.22.3, quindi da
-      # qui in poi Node 22; i test girano con Vitest/jsdom, senza Chrome.
+      # App campo (Angular 21 LTS), stesso job per non occupare un altro runner
+      # (capacity 1) e stesso Node 20 (Angular 21 richiede Node >= 20.19). NON e'
+      # un workspace npm della radice: ha il lock proprio (apps/campo/
+      # package-lock.json) per non mescolare Angular 21 con il frontend su
+      # Angular 17. I test girano con Vitest/jsdom, senza Chrome.
       # ----------------------------------------------------------------------
-      - name: Setup Node 22 (app campo)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/campo/package-lock.json
-
       - name: Campo - install dipendenze
         working-directory: ${{ github.workspace }}/apps/campo
         run: npm ci
