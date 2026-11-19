@@ -12,6 +12,12 @@ import { RentriCredentialService } from '../../infrastructure/rentri/rentri-cred
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { verificaFirmaLocale } from '../../infrastructure/rentri/rentri-firma-verifica.util'
 import { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
+import {
+  ISessioniFirmaRentriRepository,
+  SessioneFirmaGiaApertaError,
+  SessioneFirmaRentri,
+  StatoSessioneChiusa,
+} from './sessioni-firma-rentri.port'
 
 /**
  * Intervallo (ms) fra due interrogazioni di `authorize-check`.
@@ -49,6 +55,23 @@ export const ATTESA_MASSIMA_INVOCAZIONE_MS = 20000
  */
 export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
 
+/**
+ * Durata (ms) massima di una fase che parla con l'ente, derivata dai timeout del client: una chiamata
+ * sincrona + un'operazione asincrona (POST + polling) + una chiamata sincrona. Vale per
+ * - la presa `IN_FIRMA`: `sign-hash` + `acquisizione-firma` + rilettura di `/stato`;
+ * - la prenotazione `IN_AVVIO`: certificato + `/hash` + `authorize`.
+ * Una scadenza superata implica quindi un processo morto, non un'operazione lenta: solo allora un'altra
+ * richiesta puo' recuperare la sessione.
+ */
+export const DURATA_MASSIMA_FASE_ENTE_MS =
+  2 * RENTRIApiClient.DURATA_MASSIMA_CHIAMATA_MS + RENTRIApiClient.DURATA_MASSIMA_ASINCRONA_MS
+
+/** Scadenza della presa esclusiva `IN_FIRMA`. */
+export const DURATA_PRESA_FIRMA_MS = DURATA_MASSIMA_FASE_ENTE_MS
+
+/** Scadenza di recupero della prenotazione `IN_AVVIO`. */
+export const DURATA_AVVIO_SESSIONE_MS = DURATA_MASSIMA_FASE_ENTE_MS
+
 /** Esito interno dell'attesa; il sad esiste solo se AUTORIZZATA. */
 type EsitoAttesa =
   | { esito: 'AUTORIZZATA'; sad: string }
@@ -76,6 +99,8 @@ export type EsitoCompletamentoFirma =
        */
       esito: 'IN_ATTESA'
       handle: string
+      /** Sessione di firma da riprendere (`POST .../firme/:sessioneId/riprendi`). */
+      sessioneId?: string
       /**
        * Limite di attesa calcolato da WasteFlow (120 s dalla richiesta), NON
        * una scadenza comunicata dall'ente: l'ente non ne dichiara una.
@@ -89,6 +114,8 @@ export type EsitoCompletamentoFirma =
        */
       esito: 'SCADUTA'
       handle: string
+      /** Sessione chiusa come SCADUTA. */
+      sessioneId?: string
       /**
        * Chi ha rilevato la scadenza — distinzione che il chiamante deve poter
        * fare a livello di tipo, senza ispezionare stringhe:
@@ -112,6 +139,8 @@ export type EsitoCompletamentoFirma =
        */
       esito: 'RIFIUTATA'
       handle: string
+      /** Sessione chiusa come RIFIUTATA. */
+      sessioneId?: string
       /** Causa comunicata dall'ente nel ProblemDetails (title/detail/model_state), se presente. */
       dettaglioEnte?: string
     }
@@ -133,6 +162,14 @@ export interface ComandoCompletaOperazioneConFirma {
   attesaMassimaMs?: number
   /** V. {@link INTERVALLO_POLLING_AUTORIZZAZIONE_MS}. Sovrascrivibile dai test. */
   intervalloPollingMs?: number
+  /** Utente che ha chiesto la firma: finisce sulla sessione, per la tracciabilita'. */
+  utenteId?: string
+  /**
+   * Richiesta ESPLICITA di una nuova sessione. Senza, una sessione aperta ma scaduta chiude la
+   * sessione come SCADUTA e restituisce `SCADUTA` senza mandare all'utente una nuova richiesta sul
+   * telefono: la nuova sessione la decide la persona (pulsante del banner), non il codice.
+   */
+  nuovaSessione?: boolean
 }
 
 /**
@@ -182,32 +219,16 @@ export interface ComandoCompletaOperazioneConFirma {
  * («dopo un'accettazione dev'essere Accettato»): viene riletto dall'ente,
  * come già fa `GetAzioniDisponibiliUseCase`.
  *
- * ## ⚠️ LIMITE NOTO — non c'è ripresa di una sessione già avviata
+ * ## Sessione di firma riprendibile (FIR in viaggio, P1)
  *
- * `execute()` **ricomincia sempre da `/hash`** e crea una NUOVA
- * autorizzazione: non accetta oggi alcun parametro per riprendere una
- * sessione già in corso (`handle`/`sad`/`token`/`digest`).
- *
- * Perché è un problema reale e non teorico: coi valori di default il tetto di
- * invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}, 20 s) è quasi sempre
- * **più corto** del limite di attesa della conferma (120 s), quindi l'esito `IN_ATTESA` è il
- * caso NORMALE, non l'eccezione. Se il chiamante reagisce a `IN_ATTESA`
- * reinvocando `execute()`, la seconda invocazione **abbandona
- * l'autorizzazione che l'utente sta in quel momento per confermare sul
- * telefono** e gliene manda una seconda: l'utente vede due richieste, ne
- * conferma una che il nostro polling non sta più seguendo, e l'operazione non
- * si chiude. È anche traffico sprecato verso un ente che banna (423) chi
- * insiste.
- *
- * `IN_ATTESA` espone già `handle` e `scadenzaAutorizzazione` proprio perché
- * quei due valori sono ciò che serve a riprendere.
- *
- * **Vincolo per i Task 4-7**: prima di esporre questo flusso all'utente
- * finale, `execute()` deve poter accettare una sessione di autorizzazione già
- * in corso e riagganciarsi al suo polling invece di ripartire da `/hash`
- * (oppure il chiamante deve garantire di non reinvocare mai su `IN_ATTESA`).
- * Finché non è fatto, `IN_ATTESA` va trattato come «mostra lo stato e
- * FERMATI», mai come «riprova».
+ * Il vecchio limite («`execute()` ricomincia sempre da `/hash` e manda una NUOVA autorizzazione») e'
+ * chiuso: dopo `authorize` la sessione (handle, digest, token di `/hash`, scadenza) e' salvata in
+ * `fir_sessioni_firma_rentri`, una sola `IN_ATTESA` per FIR. Una seconda invocazione sullo stesso FIR e
+ * stessa operazione **riprende il polling dello stesso `handle`** con digest e token salvati: l'utente
+ * vede una sola richiesta sul telefono, mai due. Se l'ente dice 400 o il limite dei 120 s e' passato
+ * la sessione diventa SCADUTA e una nuova parte solo su richiesta esplicita (`nuovaSessione`).
+ * Una sessione aperta per un'ALTRA operazione blocca con `SESSIONE_FIRMA_IN_CORSO` (409): prima va
+ * ripresa o annullata (reset).
  */
 @Injectable()
 export class CompletaOperazioneConFirmaUseCase {
@@ -216,6 +237,7 @@ export class CompletaOperazioneConFirmaUseCase {
     private readonly credentialService: RentriCredentialService,
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly rateLimiter: RentriRateLimiterService,
+    private readonly sessioni: ISessioniFirmaRentriRepository,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('CompletaOperazioneConFirmaUseCase')
@@ -255,52 +277,174 @@ export class CompletaOperazioneConFirmaUseCase {
 
     const numeroFir = fir.rentriNumeroFir
 
-    // --- 2. Certificato della credenziale di firma remota ---
-
-    const certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(
-      tenantId,
-      credentialsId
-    )
-
-    // --- 3. Digest da firmare ---
-
-    const { digestToSign, token } = await this.rentriApiClient.richiediHashPerFirma(
-      tenantId,
-      numeroFir,
-      certificato
-    )
-
-    // --- 4. Autorizzazione (l'utente riceve la notifica sul dispositivo) ---
-
-    const autorizzazione = await this.rentriApiClient.autorizzaFirmaRemota(tenantId, {
-      credentialsId,
-      digestToSign,
-      // È l'unico testo che l'utente vede prima di confermare: deve dirgli
-      // COSA sta firmando, in italiano, non un identificativo tecnico. I
-      // caratteri che il contratto non ammette (es. `_` del numero FIR) sono
-      // già sostituiti dalla funzione.
-      description: descrizioneAutorizzazioneFirma(numeroFir, tipoOperazione),
-    })
-
-    this.logger.debug('Autorizzazione alla firma remota richiesta', {
-      firId,
-      tenantId,
-      numeroFir,
-      tipoOperazione,
-      handle: autorizzazione.handle,
-      correlationId,
-    })
-
-    // --- 5. Attesa della conferma dell'utente ---
+    // --- 1b. Sessione di firma gia' aperta su questo FIR? ---
     //
-    // Se `authorize` ha già concesso (porta il `sad`) non c'è nulla da
-    // attendere; altrimenti il `sad` arriva dall'esito AUTORIZZATA di
-    // `authorize-check`.
+    // IN_ATTESA e valida: si RIPRENDE (nessuna seconda autorizzazione sul telefono). IN_AVVIO o
+    // IN_FIRMA valide: un'altra richiesta sta lavorando su questo FIR, si rifiuta (409) senza toccare
+    // l'ente. Scadute: IN_ATTESA -> SCADUTA (poi nuova sessione solo su richiesta esplicita); le altre
+    // sono richieste morte a meta' (processo caduto) e si chiudono ANNULLATA.
 
-    const statoAutorizzazione: EsitoAttesa =
-      autorizzazione.sad !== undefined
-        ? { esito: 'AUTORIZZATA', sad: autorizzazione.sad }
-        : await this.attendiAutorizzazione(tenantId, autorizzazione, comando)
+    let sessione: SessioneFirmaRentri | null = await this.sessioni.trovaAperta(tenantId, firId)
+    if (sessione && sessione.scadenza.getTime() <= Date.now()) {
+      const eraInAttesa = sessione.stato === 'IN_ATTESA'
+      await this.chiudiSessione(
+        sessione,
+        eraInAttesa ? 'SCADUTA' : 'ANNULLATA',
+        eraInAttesa ? undefined : "Sessione rimasta a meta': scaduta senza completarsi"
+      )
+      if (eraInAttesa && sessione.tipoOperazione === tipoOperazione && !comando.nuovaSessione) {
+        // Stessa operazione e nessuna richiesta esplicita: non si riparte da soli.
+        return {
+          esito: 'SCADUTA',
+          handle: sessione.handle ?? '',
+          sessioneId: sessione.id,
+          rilevataDa: 'orologio-locale',
+        }
+      }
+      sessione = null
+    }
+    if (
+      sessione &&
+      (sessione.tipoOperazione !== tipoOperazione || sessione.stato !== 'IN_ATTESA')
+    ) {
+      throw DomainException.businessRuleViolation(
+        'SESSIONE_FIRMA_IN_CORSO',
+        sessione.tipoOperazione !== tipoOperazione
+          ? `Su questo formulario c'e' gia' una firma in attesa di conferma (${sessione.tipoOperazione}): ` +
+              "riprendila oppure annulla la richiesta prima di avviare un'altra firma."
+          : "Un'altra richiesta di firma su questo formulario e' appena partita o sta firmando: " +
+              'attendi qualche secondo e controlla di nuovo.'
+      )
+    }
+
+    let certificato: string
+    let digestToSign: string
+    let token: string
+    let handle: string
+    let statoAutorizzazione: EsitoAttesa
+
+    if (sessione) {
+      // --- Ripresa: stessi digest, token e handle della sessione salvata. Nessuna chiamata a `/hash`
+      // ne' ad `authorize`.
+      certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(tenantId, credentialsId)
+      digestToSign = sessione.digestToSign ?? ''
+      token = sessione.tokenAcquisizione ?? ''
+      handle = sessione.handle ?? ''
+      this.logger.info('Firma remota RENTRI: ripresa della sessione in attesa', {
+        firId,
+        tenantId,
+        numeroFir,
+        tipoOperazione,
+        sessioneId: sessione.id,
+        correlationId,
+      })
+      statoAutorizzazione = await this.attendiAutorizzazione(
+        tenantId,
+        { handle },
+        comando,
+        sessione.scadenza.getTime()
+      )
+    } else {
+      // --- Nuova sessione. La riga si PRENOTA prima di toccare l'ente: vince sempre l'INSERT (indice
+      // unico parziale), chi perde la corsa riceve 409 senza aver mandato nulla al telefono.
+      try {
+        sessione = await this.sessioni.prenota({
+          tenantId,
+          firId,
+          tipoOperazione,
+          scadenza: new Date(Date.now() + DURATA_AVVIO_SESSIONE_MS),
+          utenteId: comando.utenteId ?? null,
+        })
+      } catch (errore) {
+        if (errore instanceof SessioneFirmaGiaApertaError) {
+          throw DomainException.businessRuleViolation(
+            'SESSIONE_FIRMA_IN_CORSO',
+            "Un'altra richiesta di firma su questo formulario e' appena partita: riprendila " +
+              'invece di avviarne una nuova.'
+          )
+        }
+        throw errore
+      }
+      const prenotata = sessione
+
+      let sadImmediato: string | undefined
+      let scadenzaAttesa = prenotata.scadenza
+      try {
+        // --- 2. Certificato della credenziale di firma remota ---
+        certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(
+          tenantId,
+          credentialsId
+        )
+
+        // --- 3. Digest da firmare ---
+        const hash = await this.rentriApiClient.richiediHashPerFirma(
+          tenantId,
+          numeroFir,
+          certificato
+        )
+        digestToSign = hash.digestToSign
+        token = hash.token
+
+        // --- 4. Autorizzazione (l'utente riceve la notifica sul dispositivo) ---
+        const autorizzazione = await this.rentriApiClient.autorizzaFirmaRemota(tenantId, {
+          credentialsId,
+          digestToSign,
+          // È l'unico testo che l'utente vede prima di confermare: deve dirgli
+          // COSA sta firmando, in italiano, non un identificativo tecnico. I
+          // caratteri che il contratto non ammette (es. `_` del numero FIR) sono
+          // già sostituiti dalla funzione.
+          description: descrizioneAutorizzazioneFirma(numeroFir, tipoOperazione),
+        })
+        handle = autorizzazione.handle
+        sadImmediato = autorizzazione.sad
+
+        this.logger.debug('Autorizzazione alla firma remota richiesta', {
+          firId,
+          tenantId,
+          numeroFir,
+          tipoOperazione,
+          handle,
+          correlationId,
+        })
+
+        // Da qui parte l'attesa dell'UTENTE: 120 s dalla concessione dell'handle.
+        scadenzaAttesa = new Date(Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000)
+        const avviata = await this.sessioni.completaAvvio(tenantId, prenotata.id, {
+          handle,
+          tokenAcquisizione: token,
+          digestToSign,
+          scadenza: scadenzaAttesa,
+        })
+        if (!avviata) {
+          throw DomainException.businessRuleViolation(
+            'SESSIONE_FIRMA_NON_ATTIVA',
+            "La richiesta di firma e' stata annullata mentre partiva: avviala di nuovo."
+          )
+        }
+      } catch (errore) {
+        // Prima del telefono o subito dopo: la riga prenotata non deve bloccare il FIR.
+        await this.chiudiSessione(
+          prenotata,
+          'ANNULLATA',
+          errore instanceof Error ? errore.message : String(errore)
+        )
+        throw errore
+      }
+
+      // --- 5. Attesa della conferma dell'utente ---
+      //
+      // Se `authorize` ha già concesso (porta il `sad`) non c'è nulla da attendere; altrimenti il `sad`
+      // arriva dall'esito AUTORIZZATA di `authorize-check`.
+      statoAutorizzazione =
+        sadImmediato !== undefined
+          ? { esito: 'AUTORIZZATA', sad: sadImmediato }
+          : await this.attendiAutorizzazione(
+              tenantId,
+              { handle },
+              comando,
+              scadenzaAttesa.getTime()
+            )
+    }
 
     if (statoAutorizzazione.esito !== 'AUTORIZZATA') {
       // Né errore né successo: nessuna scrittura di stato, in NESSUNO di
@@ -319,99 +463,170 @@ export class CompletaOperazioneConFirmaUseCase {
         }
       )
 
-      const handle = autorizzazione.handle
+      const sessioneId = sessione?.id
       switch (statoAutorizzazione.esito) {
         case 'SCADUTA':
+          await this.chiudiSessione(sessione, 'SCADUTA', statoAutorizzazione.dettaglioEnte)
           return {
             esito: 'SCADUTA',
             handle,
+            ...(sessioneId && { sessioneId }),
             rilevataDa: statoAutorizzazione.rilevataDa,
             ...(statoAutorizzazione.dettaglioEnte && {
               dettaglioEnte: statoAutorizzazione.dettaglioEnte,
             }),
           }
         case 'RIFIUTATA':
+          await this.chiudiSessione(sessione, 'RIFIUTATA', statoAutorizzazione.dettaglioEnte)
           return {
             esito: 'RIFIUTATA',
             handle,
+            ...(sessioneId && { sessioneId }),
             ...(statoAutorizzazione.dettaglioEnte && {
               dettaglioEnte: statoAutorizzazione.dettaglioEnte,
             }),
           }
         default:
+          // IN_ATTESA: la sessione RESTA aperta, e' proprio quella che si riprende.
           return {
             esito: 'IN_ATTESA',
             handle,
+            ...(sessioneId && { sessioneId }),
             scadenzaAutorizzazione: statoAutorizzazione.scadenza,
           }
       }
     }
 
-    // --- 6. Firma vera e propria, lato HSM RENTRI ---
-
-    const firma = await this.rentriApiClient.firmaHashRemoto(tenantId, {
-      credentialsId,
-      sad: statoAutorizzazione.sad,
-      digestToSign,
-    })
-
-    // --- 7. Verifica locale: SEMPRE eseguita, MAI bloccante ---
+    // --- Presa esclusiva della sessione prima di firmare ---
     //
-    // V. il commento di `verificaFirmaLocale` per il motivo per cui un esito
-    // negativo non ferma l'operazione: il controllo è indicativo (l'API di
-    // Node ri-hasha il digest, mentre l'ente firma in prehash) e l'autorità
-    // sull'esito resta l'ente. Silenziarlo però sarebbe peggio: se un giorno
-    // fallisse sistematicamente, questo warning è l'unica traccia.
-    const firmaVerificata = verificaFirmaLocale(certificato, digestToSign, firma)
-    if (firmaVerificata) {
-      this.logger.debug('Verifica locale della firma remota: esito positivo', {
-        firId,
+    // Due riprese concorrenti arrivano entrambe ad AUTORIZZATA con lo stesso `sad`: una sola puo'
+    // chiamare `sign-hash` e `acquisizione-firma`. Chi perde restituisce IN_ATTESA (il banner si
+    // aggiorna da solo alla rilettura) senza firmare. La presa ha una scadenza di sicurezza.
+    if (
+      sessione &&
+      !(await this.sessioni.prendiPerFirma(
+        tenantId,
+        sessione.id,
+        new Date(Date.now() + DURATA_PRESA_FIRMA_MS)
+      ))
+    ) {
+      return {
+        esito: 'IN_ATTESA',
+        handle,
+        sessioneId: sessione.id,
+        scadenzaAutorizzazione: sessione.scadenza,
+      }
+    }
+
+    // Da qui l'autorizzazione e' concessa: se un passo lancia (sign-hash, rete...) la sessione NON deve
+    // restare aperta a bloccare il FIR per sempre; si chiude ANNULLATA e l'errore risale.
+    const sadAutorizzato = statoAutorizzazione.sad
+    try {
+      // --- 6. Firma vera e propria, lato HSM RENTRI ---
+
+      const firma = await this.rentriApiClient.firmaHashRemoto(tenantId, {
+        credentialsId,
+        sad: sadAutorizzato,
+        digestToSign,
+      })
+
+      // --- 7. Verifica locale: SEMPRE eseguita, MAI bloccante ---
+      //
+      // V. il commento di `verificaFirmaLocale` per il motivo per cui un esito
+      // negativo non ferma l'operazione: il controllo è indicativo (l'API di
+      // Node ri-hasha il digest, mentre l'ente firma in prehash) e l'autorità
+      // sull'esito resta l'ente. Silenziarlo però sarebbe peggio: se un giorno
+      // fallisse sistematicamente, questo warning è l'unica traccia.
+      const firmaVerificata = verificaFirmaLocale(certificato, digestToSign, firma)
+      if (firmaVerificata) {
+        this.logger.debug('Verifica locale della firma remota: esito positivo', {
+          firId,
+          numeroFir,
+          correlationId,
+        })
+      } else {
+        this.logger.warn(
+          'Verifica locale della firma remota NON riuscita (controllo indicativo, non bloccante): ' +
+            "l'esito dell'operazione resta determinato dall'ente.",
+          { firId, tenantId, numeroFir, tipoOperazione, correlationId }
+        )
+      }
+
+      // --- 8. Trasmissione della firma all'ente ---
+
+      const esitoAcquisizione = await this.rentriApiClient.inviaAcquisizioneFirma(
+        tenantId,
         numeroFir,
+        { certificato, token, firma }
+      )
+
+      if (esitoAcquisizione.errore) {
+        // L'ente ha rifiutato la firma: nessuno stato scritto, messaggio
+        // leggibile invece di un successo apparente.
+        await this.chiudiSessione(
+          sessione,
+          'RIFIUTATA',
+          JSON.stringify(esitoAcquisizione.validazione)
+        )
+        throw DomainException.businessRuleViolation(
+          'FIRMA_RENTRI_RIFIUTATA',
+          "L'ente ha rifiutato la firma del formulario " +
+            `${numeroFir}: l'operazione ${tipoOperazione} NON è stata completata. ` +
+            `Dettaglio della validazione RENTRI: ${JSON.stringify(esitoAcquisizione.validazione)}`
+        )
+      }
+
+      // L'ente ha acquisito la firma: la sessione e' COMPLETATA anche se la rilettura che segue fallisse
+      // (il FIR si riallinea alla prossima lettura di /azioni).
+      await this.chiudiSessione(sessione, 'COMPLETATA')
+
+      // --- 9. Stato finale: LETTO dall'ente, mai dedotto ---
+
+      const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
+      fir.applyRentriStato(statoEnte.stato_formulario, correlationId)
+      await this.firRepository.save(fir)
+
+      this.logger.info('Operazione RENTRI completata con firma remota', {
+        firId,
+        tenantId,
+        numeroFir,
+        tipoOperazione,
+        statoFormulario: statoEnte.stato_formulario,
         correlationId,
       })
-    } else {
-      this.logger.warn(
-        'Verifica locale della firma remota NON riuscita (controllo indicativo, non bloccante): ' +
-          "l'esito dell'operazione resta determinato dall'ente.",
-        { firId, tenantId, numeroFir, tipoOperazione, correlationId }
+
+      return { esito: 'COMPLETATA', statoFormulario: statoEnte.stato_formulario }
+    } catch (errore) {
+      await this.chiudiSessione(
+        sessione,
+        'ANNULLATA',
+        errore instanceof Error ? errore.message : String(errore)
       )
+      throw errore
     }
+  }
 
-    // --- 8. Trasmissione della firma all'ente ---
-
-    const esitoAcquisizione = await this.rentriApiClient.inviaAcquisizioneFirma(
-      tenantId,
-      numeroFir,
-      { certificato, token, firma }
-    )
-
-    if (esitoAcquisizione.errore) {
-      // L'ente ha rifiutato la firma: nessuno stato scritto, messaggio
-      // leggibile invece di un successo apparente.
-      throw DomainException.businessRuleViolation(
-        'FIRMA_RENTRI_RIFIUTATA',
-        "L'ente ha rifiutato la firma del formulario " +
-          `${numeroFir}: l'operazione ${tipoOperazione} NON è stata completata. ` +
-          `Dettaglio della validazione RENTRI: ${JSON.stringify(esitoAcquisizione.validazione)}`
+  /** Chiude la sessione (se c'e' e se e' ancora aperta). Un errore di database qui non deve mai far perdere l'esito dell'ente. */
+  private async chiudiSessione(
+    sessione: SessioneFirmaRentri | null,
+    stato: StatoSessioneChiusa,
+    dettaglioEnte?: string
+  ): Promise<void> {
+    if (!sessione) return
+    try {
+      await this.sessioni.chiudi(
+        sessione.tenantId,
+        sessione.id,
+        stato,
+        dettaglioEnte?.slice(0, 2000)
       )
+    } catch (errore) {
+      this.logger.warn('Chiusura della sessione di firma RENTRI non riuscita', {
+        sessioneId: sessione.id,
+        stato,
+        errore: errore instanceof Error ? errore.message : String(errore),
+      })
     }
-
-    // --- 9. Stato finale: LETTO dall'ente, mai dedotto ---
-
-    const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
-    fir.applyRentriStato(statoEnte.stato_formulario, correlationId)
-    await this.firRepository.save(fir)
-
-    this.logger.info('Operazione RENTRI completata con firma remota', {
-      firId,
-      tenantId,
-      numeroFir,
-      tipoOperazione,
-      statoFormulario: statoEnte.stato_formulario,
-      correlationId,
-    })
-
-    return { esito: 'COMPLETATA', statoFormulario: statoEnte.stato_formulario }
   }
 
   /**
@@ -442,12 +657,12 @@ export class CompletaOperazioneConFirmaUseCase {
   private async attendiAutorizzazione(
     tenantId: string,
     autorizzazione: { handle: string },
-    comando: ComandoCompletaOperazioneConFirma
+    comando: ComandoCompletaOperazioneConFirma,
+    scadenzaEnteMs: number
   ): Promise<EsitoAttesa> {
     const intervalloMs = comando.intervalloPollingMs ?? INTERVALLO_POLLING_AUTORIZZAZIONE_MS
     const attesaMassimaMs = comando.attesaMassimaMs ?? ATTESA_MASSIMA_INVOCAZIONE_MS
 
-    const scadenzaEnteMs = Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000
     const scadenzaInvocazioneMs = Date.now() + attesaMassimaMs
 
     for (;;) {

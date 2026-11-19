@@ -1,3 +1,4 @@
+import { SessioniFirmaRentriInMemoria } from '../../application/rentri/sessioni-firma-rentri.in-memoria'
 import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
@@ -244,6 +245,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       credentialService as any,
       client,
       rateLimiter.servizio,
+      new SessioniFirmaRentriInMemoria(),
       creaLogger()
     )
     return new AnnullaFIRRentriUseCase(

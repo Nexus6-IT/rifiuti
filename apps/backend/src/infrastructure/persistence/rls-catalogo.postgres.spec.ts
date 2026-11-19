@@ -83,7 +83,9 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // 92 dalla 4.5a: `configurazioni_sdi`, `trasmissioni_sdi`, `notifiche_sdi` e `eventi_sdi_ricevuti`,
     // provate per nome in `application/sdi/sdi.schema.postgres.spec.ts`.
     // 93 dall'app campo (P1): `autisti`, provata in `application/campo/autisti.postgres.spec.ts`.
-    expect(righe.length).toBe(93)
+    // 94 dal FIR in viaggio (P1): `fir_sessioni_firma_rentri`, provata in
+    // `application/rentri/sessioni-firma-rentri.postgres.spec.ts`.
+    expect(righe.length).toBe(94)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,
