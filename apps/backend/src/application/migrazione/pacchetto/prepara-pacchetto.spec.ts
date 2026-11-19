@@ -107,6 +107,24 @@ describe('migrazione:prepara (staging + mappa -> pacchetto)', () => {
       expect(r.scarti).toEqual({ DITTA_DUPLICATA: 1 })
     })
 
+    it('stessa identita come P.IVA in A e come CF in B (11 cifre): una sola ditta, duplicato con le chiavi CLIFOR', async () => {
+      const cartella = await scriviStagingClifor(await mkdtemp(join(radice, 'cl-')), [
+        ['C', '000001', 'UNO', null, null, prova.pivaUno],
+        ['F', '000002', 'UNO COME FORNITORE', null, prova.pivaUno, null],
+      ])
+      const dest = join(await mkdtemp(join(radice, 'pd-')), 'WW00012026')
+      const rapporto = await preparaPacchetto(
+        await apriStaging(cartella),
+        validaMappa(mappa({ agganci: [] })),
+        dest
+      )
+      const p = await apriPacchetto(dest)
+      let n = 0
+      for await (const _ of p.leggi('ANAGRAFICHE', 'ditte')) n++
+      expect(n).toBe(1)
+      expect(rapporto.duplicati).toEqual([{ scartata: '0001|F|000002', tenuta: '0001|C|000001' }])
+    })
+
     it('A {X, CF} e B {Z, stesso CF}: entra solo A', async () => {
       const r = await ditteScritte([
         ['C', '000001', 'UNO', null, CF, prova.pivaUno],

@@ -220,6 +220,8 @@ describe('Pezzo I2 T5/T6: carica pacchetto — Postgres reale, ruolo wasteflow_a
         await owner.ditta.count({ where: { tenantId: t } }),
         await owner.lottoImport.count({ where: { tenantId: t } }),
       ]
+      // M-10: nessuna scrittura raw fuori dalla transazione.
+      const fuori = [jest.spyOn(app, '$executeRaw'), jest.spyOn(app, '$executeRawUnsafe')]
       const u = uscita()
       try {
         expect(
@@ -232,6 +234,8 @@ describe('Pezzo I2 T5/T6: carica pacchetto — Postgres reale, ruolo wasteflow_a
       } finally {
         spia.mockRestore()
       }
+      for (const f of fuori) expect(f).not.toHaveBeenCalled()
+      fuori.forEach(f => f.mockRestore())
       expect(u.out.join('\n')).toContain('righe.ditte: 2')
       expect(u.out.join('\n')).toContain('verifica: nessun bloccante')
       expect(istruzioni[0]).toContain('SET LOCAL transaction_read_only = on')

@@ -34,6 +34,8 @@ export interface RapportoPrepara {
   }>
   /** Ditte gia' presenti in WasteFlow (agganci della mappa): non vanno nel pacchetto. */
   readonly agganciate: number
+  /** Righe CLIFOR scartate come duplicate, con quella tenuta: chiavi `ditta|PRECOD|COD`, mai valori. */
+  readonly duplicati: ReadonlyArray<{ scartata: string; tenuta: string }>
 }
 
 function ragioneSociale(c: Readonly<Record<string, string | null>>): string {
@@ -48,12 +50,14 @@ async function* ditte(
   staging: StagingAperto,
   mappa: MappaImport,
   conta: (codice: CodiceScartoPrepara) => void,
-  agganciata: () => void
+  agganciata: () => void,
+  duplicata: (scartata: string, tenuta: string) => void
 ): AsyncGenerator<RecordDitta> {
   // Un soggetto puo' comparire piu' volte (cliente e fornitore) con P.IVA e/o CF diversi: la ditta
   // e' la stessa se coincide UNA delle due identita' fiscali.
-  const pivaViste = new Set<string>()
-  const cfVisti = new Set<string>()
+  // Un solo spazio per P.IVA e CF: un'identita' fiscale usata come P.IVA in una riga e come CF
+  // (numerico, 11 cifre) in un'altra e' la stessa ditta. Valore = chiave CLIFOR della riga tenuta.
+  const viste = new Map<string, string>()
   const agganci = new Set(mappa.agganci.map(a => a.partitaIva))
   for await (const el of staging.leggi('CLIFOR') as AsyncGenerator<ElementoLettura>) {
     if (el.tipo === 'scarto') {
@@ -82,12 +86,16 @@ async function* ditte(
     }
     const fiscale = piva !== '' ? piva : cf
     const chiave = chiaveDitta(mappa.ditta, fiscale)
-    if ((piva !== '' && pivaViste.has(piva)) || (cf !== '' && cfVisti.has(cf))) {
+    const chiaveRiga = `${mappa.ditta}|${(c.PRECOD ?? '').trim()}|${(c.COD ?? '').trim()}`
+    const tenuta =
+      (piva !== '' ? viste.get(piva) : undefined) ?? (cf !== '' ? viste.get(cf) : undefined)
+    if (tenuta !== undefined) {
       conta('DITTA_DUPLICATA')
+      duplicata(chiaveRiga, tenuta)
       continue
     }
-    if (piva !== '') pivaViste.add(piva)
-    if (cf !== '') cfVisti.add(cf)
+    if (piva !== '') viste.set(piva, chiaveRiga)
+    if (cf !== '') viste.set(cf, chiaveRiga)
     if (piva !== '' && agganci.has(piva)) {
       agganciata()
       continue
@@ -120,6 +128,7 @@ export async function preparaPacchetto(
     throw new PacchettoError('FILE_ASSENTE', 'lo staging non contiene CLIFOR')
   const conteggi = new Map<CodiceScartoPrepara, number>()
   let agganciate = 0
+  const duplicati: Array<{ scartata: string; tenuta: string }> = []
   const manifest = await scriviPacchetto({
     cartella: cartellaPacchetto,
     archivio: staging.archivio,
@@ -133,7 +142,8 @@ export async function preparaPacchetto(
           staging,
           mappa,
           codice => conteggi.set(codice, (conteggi.get(codice) ?? 0) + 1),
-          () => agganciate++
+          () => agganciate++,
+          (scartata, tenuta) => duplicati.push({ scartata, tenuta })
         ),
       },
     ],
@@ -141,6 +151,7 @@ export async function preparaPacchetto(
   return {
     manifest,
     agganciate,
+    duplicati,
     scarti: [...conteggi.entries()].map(([codice, conteggio]) => ({
       tabella: 'CLIFOR',
       codice,
