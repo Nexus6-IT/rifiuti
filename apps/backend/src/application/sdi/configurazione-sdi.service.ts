@@ -221,6 +221,29 @@ export class ConfigurazioneSdiService {
   }
 
   /**
+   * Segreto del webhook in chiaro, per verificare la firma di una chiamata (4.5c). Null se non
+   * impostato o se l'azienda non ha configurazione. Mai esposto dall'API e mai loggato. Se la chiave
+   * di cifratura e' cambiata lancia `SDI_CREDENZIALI_NON_DECIFRABILI`.
+   */
+  async leggiSegretoWebhook(tenantId: string): Promise<string | null> {
+    return nelContestoTenant(tenantId, async () => {
+      const righe = await this.prisma.$queryRaw<{ cifrato: string | null }[]>`
+        SELECT webhook_segreto_cifrato AS cifrato FROM "configurazioni_sdi"
+        WHERE tenant_id = ${tenantId}::uuid`
+      const cifrato = righe[0]?.cifrato ?? null
+      if (cifrato === null) return null
+      try {
+        return decifraSegreto(cifrato, this.chiaveObbligatoria(), VARIABILE_CHIAVE_CIFRATURA_SDI)
+      } catch {
+        throw new ConflictException({
+          error: 'SDI_CREDENZIALI_NON_DECIFRABILI',
+          message: 'Il segreto del webhook salvato non e leggibile.',
+        })
+      }
+    })
+  }
+
+  /**
    * Crea (versione 0) o aggiorna la configurazione. Cambiare provider, ambiente, credenziali o id
    * di configurazione invalida la verifica e spegne `invio_attivo`: bisogna verificare di nuovo.
    * Alla creazione restituisce `webhookToken` in chiaro (una sola volta).
