@@ -6,6 +6,7 @@
  * Importi e quantità sono stringhe decimali col punto, mai `number`; le date `AAAA-MM-GG`
  * (i timestamp ISO sono solo `createdAt` ed `emessoIl`).
  */
+import type { EsitoFiscaleSdi, StatoTrasmissioneSdi } from '../sdi/sdi.model'
 
 export const STATI_ELABORAZIONE = [
   'IN_CODA',
@@ -151,6 +152,9 @@ export interface DocumentoRiga {
   annullabile: boolean
   motivoNonAnnullabile: MotivoNonAnnullabile | null
   stornabile: boolean
+  /** Stato dell'ultima trasmissione SDI; null = mai accodato (4.5b). */
+  statoSdi: StatoTrasmissioneSdi | null
+  esitoFiscale: EsitoFiscaleSdi | null
 }
 
 export interface RigaDocumentoVista {
@@ -297,6 +301,8 @@ export const CHIAVI_DOCUMENTO_RIGA: Record<keyof DocumentoRiga, true> = {
   annullabile: true,
   motivoNonAnnullabile: true,
   stornabile: true,
+  statoSdi: true,
+  esitoFiscale: true,
 }
 
 export const CHIAVI_DOCUMENTO_DETTAGLIO: Record<keyof DocumentoDettaglio, true> = {

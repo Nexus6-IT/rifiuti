@@ -132,7 +132,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            apps/campo/package-lock.json
 
       - name: Install dipendenze (monorepo)
         working-directory: ${{ github.workspace }}
@@ -169,6 +171,29 @@ jobs:
 
       # Build di produzione Angular (configuration "production" e' il default).
       - name: Build (ng build)
+        run: npm run build
+
+      # ----------------------------------------------------------------------
+      # App campo (Angular 21 LTS), stesso job per non occupare un altro runner
+      # (capacity 1) e stesso Node 20 (Angular 21 richiede Node >= 20.19). NON e'
+      # un workspace npm della radice: ha il lock proprio (apps/campo/
+      # package-lock.json) per non mescolare Angular 21 con il frontend su
+      # Angular 17. I test girano con Vitest/jsdom, senza Chrome.
+      # ----------------------------------------------------------------------
+      - name: Campo - install dipendenze
+        working-directory: ${{ github.workspace }}/apps/campo
+        run: npm ci
+
+      - name: Campo - formattazione (prettier)
+        working-directory: ${{ github.workspace }}/apps/campo
+        run: npx prettier --check src
+
+      - name: Campo - test
+        working-directory: ${{ github.workspace }}/apps/campo
+        run: npm test -- --watch=false
+
+      - name: Campo - build
+        working-directory: ${{ github.workspace }}/apps/campo
         run: npm run build
 
   # ==========================================================================
@@ -670,6 +695,9 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
+          # Invio allo SDI (4.5b): l'interruttore globale e' SPENTO di default; solo questo backend
+          # di collaudo (provider `fake` in-process) lo accende, per l'e2e tests/sdi. Mai in produzione.
+          SDI_INVII_ATTIVI: "true"
         run: |
           # Porta scelta a runtime da porta-libera.sh (non fissa: run parallele).
           export PORT="${E2E_BACKEND_PORT:?E2E_BACKEND_PORT non impostata}"

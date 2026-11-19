@@ -9,3 +9,4 @@ coverage/
 apps/backend/prisma/migrations/
 apps/frontend/src/environments/
 **/*.d.ts
+apps/campo/
