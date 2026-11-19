@@ -191,4 +191,29 @@ describe('leggiEregi', () => {
       expect(leggiEregi(xmlEregi({ dopoRadice: riempimento })).identificativo).toBe('R1234ABCDE0')
     })
   })
+
+  describe('BOM iniziale', () => {
+    const BOM = '\uFEFF'
+    it('un solo BOM iniziale e ignorato', () => {
+      expect(leggiEregi(BOM + xmlEregi()).identificativo).toBe('R1234ABCDE0')
+      expect(leggiEregi(BOM + xmlEregi({ prologo: '' })).identificativo).toBe('R1234ABCDE0')
+    })
+    it('due BOM sono rifiutati', () => {
+      expect(() => leggiEregi(BOM + BOM + xmlEregi())).toThrow(EregiNonValidoError)
+    })
+    it('BOM non iniziale e rifiutato', () => {
+      expect(() => leggiEregi(xmlEregi().replace('?>', `?>${BOM}`))).toThrow(EregiNonValidoError)
+    })
+    it('BOM + DOCTYPE e rifiutato', () => {
+      expect(() =>
+        leggiEregi(BOM + xmlEregi({ prologo: '<?xml version="1.0"?><!DOCTYPE a>' }))
+      ).toThrow(/DOCTYPE/)
+    })
+    it('il tetto vale sul testo senza BOM', () => {
+      const base = xmlEregi()
+      const pieno = xmlEregi({ dopoRadice: ' '.repeat(LUNGHEZZA_MASSIMA_EREGI - base.length) })
+      expect(leggiEregi(BOM + pieno).identificativo).toBe('R1234ABCDE0')
+      expect(() => leggiEregi(BOM + pieno + ' ')).toThrow(/lunghezza/)
+    })
+  })
 })

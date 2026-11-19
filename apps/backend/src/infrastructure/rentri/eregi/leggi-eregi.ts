@@ -80,6 +80,11 @@ export function leggiEregi(xml: string): DatiEregi {
   if (typeof xml !== 'string' || xml.trim() === '') {
     throw new EregiNonValidoError('XML vuoto')
   }
+  // Un solo BOM UTF-8 iniziale e' legittimo (la vidimazione dell'ente puo' averlo, e il
+  // client lo conserva byte per byte) ma xmldom 0.9 lo rifiuta: lo si toglie PRIMA di
+  // tetto, DOCTYPE e parse. Un secondo BOM resta e fa fallire il parse.
+  if (xml.charCodeAt(0) === 0xfeff) xml = xml.slice(1)
+  if (xml.trim() === '') throw new EregiNonValidoError('XML vuoto')
   if (xml.length > LUNGHEZZA_MASSIMA_EREGI) {
     throw new EregiNonValidoError('lunghezza oltre il tetto ammesso')
   }
