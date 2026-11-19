@@ -8,7 +8,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, MaxLength } fro
 export class InvioSdiDto {
   @ApiProperty({ type: [String], description: 'Documenti da inviare (al massimo 500)' })
   @IsArray()
-  @ArrayMaxSize(5000)
+  @ArrayMaxSize(501)
   @IsString({ each: true })
   @MaxLength(40, { each: true })
   ids: string[]

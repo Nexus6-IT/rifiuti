@@ -157,8 +157,11 @@ export class ElaboraInvioSdiService {
     const incerte = await nelContestoTenant(
       tenantId,
       async () =>
-        this.prisma.$queryRaw<{ id: string; nomeFile: string }[]>`
-        SELECT id::text AS id, nome_file AS "nomeFile" FROM "trasmissioni_sdi"
+        this.prisma.$queryRaw<
+          { id: string; nomeFile: string; documentoId: string; tentativi: number }[]
+        >`
+        SELECT id::text AS id, nome_file AS "nomeFile", documento_id::text AS "documentoId",
+               tentativi::int AS tentativi FROM "trasmissioni_sdi"
         WHERE tenant_id = ${tenantId}::uuid AND stato = 'INCERTA'
           AND updated_at < ${soglia}::timestamptz
         ORDER BY updated_at, id LIMIT ${LIMITE_RICONCILIAZIONI_PER_GIRO}::int`
@@ -170,6 +173,13 @@ export class ElaboraInvioSdiService {
           chiaveIdempotenza: t.id,
           nomeFile: t.nomeFile,
         })
+        if (!trovato && t.tentativi >= MAX_TENTATIVI_INVIO_SDI) {
+          // Tetto dei tentativi raggiunto anche per il ramo INCERTO: niente altro invio.
+          // INCERTA -> DA_INVIARE -> IN_INVIO -> ERRORE_INVIO (le sole transizioni ammesse).
+          const chiusa = await this.chiudiIncertaEsaurita(tenantId, t, ora)
+          n += chiusa
+          continue
+        }
         const spostate = await nelContestoTenant(tenantId, async () =>
           trovato
             ? this.prisma.$executeRaw`
@@ -181,7 +191,8 @@ export class ElaboraInvioSdiService {
                 WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid AND stato = 'INCERTA'`
             : this.prisma.$executeRaw`
                 UPDATE "trasmissioni_sdi"
-                SET stato = 'DA_INVIARE', prossimo_tentativo_il = ${ora}::timestamptz,
+                SET stato = 'DA_INVIARE',
+                    prossimo_tentativo_il = ${new Date(ora.getTime() + attesaDopoTentativoMs(t.tentativi))}::timestamptz,
                     versione = versione + 1, updated_at = ${ora}::timestamptz
                 WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid AND stato = 'INCERTA'`
         )
@@ -197,6 +208,35 @@ export class ElaboraInvioSdiService {
       }
     }
     return n
+  }
+
+  private async chiudiIncertaEsaurita(
+    tenantId: string,
+    t: { id: string; nomeFile: string; documentoId: string; tentativi: number },
+    ora: Date
+  ): Promise<number> {
+    const passati = await nelContestoTenant(tenantId, async () =>
+      this.prisma.$transaction(async tx => {
+        const a = await tx.$executeRaw`
+          UPDATE "trasmissioni_sdi" SET stato = 'DA_INVIARE', versione = versione + 1,
+                 updated_at = ${ora}::timestamptz
+          WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid AND stato = 'INCERTA'`
+        if (a === 0) return 0
+        return tx.$executeRaw`
+          UPDATE "trasmissioni_sdi" SET stato = 'IN_INVIO', versione = versione + 1,
+                 updated_at = ${ora}::timestamptz
+          WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid AND stato = 'DA_INVIARE'`
+      }, OPZIONI_TRANSAZIONE_SCRITTURA)
+    )
+    if (passati === 0) return 0
+    await this.chiudiInErrore(
+      tenantId,
+      { ...t, provider: '', ambiente: '', xmlSha256: '', haPrecedente: false },
+      ora,
+      'TENTATIVI_ESAURITI',
+      'Invio incerto ripetuto: il provider non conferma la ricezione'
+    )
+    return 1
   }
 
   /** Prenota la prossima `DA_INVIARE` scaduta: il commit di `IN_INVIO` precede la chiamata al provider. */

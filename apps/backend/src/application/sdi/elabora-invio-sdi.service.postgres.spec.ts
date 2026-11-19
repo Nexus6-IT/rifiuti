@@ -281,18 +281,44 @@ describe('ElaboraInvioSdiService — Postgres reale, ruolo wasteflow_app', () =>
     expect(provider.chiamate).toHaveLength(1)
   }, 90_000)
 
-  it('INCERTO e cerca() non trova: DA_INVIARE e il giro dopo rimanda con la stessa chiave', async () => {
+  it('INCERTO e cerca() non trova: DA_INVIARE con backoff e poi si rimanda con la stessa chiave', async () => {
     const az = await aziendaSdi()
     const [id] = await accodati(az)
     provider.esiti.push({ tipo: 'INCERTO' })
     await giro(az, T0)
     await giro(az, dopo(3 * MIN))
-    // Riconciliata (assente) e, nello stesso giro, rimandata.
+    // Riconciliata (assente) ma con backoff di 1 minuto: non ancora rimandata.
     expect(provider.ricerche).toHaveLength(1)
+    expect(provider.chiamate).toHaveLength(1)
+    expect((await riga(id)).stato).toBe('DA_INVIARE')
+    await giro(az, dopo(5 * MIN))
     expect(provider.chiamate).toHaveLength(2)
     expect(new Set(provider.chiamate.map(c => c.chiaveIdempotenza))).toEqual(new Set([id]))
     expect(await riga(id)).toMatchObject({ stato: 'INVIATA', tentativi: 2 })
   }, 90_000)
+
+  it('INCERTO ripetuto: al quinto tentativo ERRORE_INVIO TENTATIVI_ESAURITI, 5 invia() e nessun invio dopo', async () => {
+    const az = await aziendaSdi()
+    const [id] = await accodati(az)
+    for (let i = 0; i < 5; i++) provider.esiti.push({ tipo: 'INCERTO' })
+    let ora = T0.getTime()
+    for (let i = 0; i < 12; i++) {
+      await giro(az, new Date(ora))
+      ora += 300 * MIN // 5 ore: oltre ogni backoff
+    }
+    expect(provider.chiamate).toHaveLength(5)
+    const r = await riga(id)
+    expect(r).toMatchObject({
+      stato: 'ERRORE_INVIO',
+      tentativi: 5,
+      ultimo_errore_codice: 'TENTATIVI_ESAURITI',
+    })
+    expect(r.chiusa_il).not.toBeNull()
+    const avvisi = await owner.notification.count({
+      where: { tenantId: az.tenantId, relatedEntityId: r.documento_id },
+    })
+    expect(avvisi).toBe(1)
+  }, 120_000)
 
   it('cerca() che fallisce (provider giu): la trasmissione resta INCERTA, l errore si conta, nessun invio', async () => {
     const az = await aziendaSdi()
