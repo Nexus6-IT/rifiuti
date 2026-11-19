@@ -53,6 +53,7 @@ import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../billing/contratto-gruppo.service'
+import { giornoItaliano } from '../../core/time/anno-italiano'
 
 jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -133,8 +134,27 @@ function utenteFixture(overrides: Record<string, unknown> = {}) {
   }
 }
 
+/**
+ * Data di calendario (mezzanotte UTC, come una colonna @db.Date) che cade `giorni`
+ * giorni dopo il giorno di Roma dell'istante corrente (quello simulato dai fake timer).
+ */
+function dataDiCalendarioRoma(giorni: number): Date {
+  const [a, m, g] = giornoItaliano(new Date()).split('-').map(Number)
+  return new Date(Date.UTC(a, m - 1, g + giorni))
+}
+
+// Istante fisso per tutti i test di questo file che usano `new Date()`: a mezzogiorno UTC
+// il giorno di Roma e quello UTC coincidono, quindi l'esito non dipende dall'ora in cui
+// gira la CI (fra le 23:00 e le 24:00 UTC Roma e' gia' al giorno dopo). Niente cambio d'ora
+// legale entro i 30 giorni successivi.
+const ISTANTE_FISSO = new Date('2026-06-10T12:00:00.000Z')
+
 describe('DeadlineCheckerService', () => {
   let service: DeadlineCheckerService
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
 
   beforeEach(async () => {
     jest.clearAllMocks()
@@ -167,9 +187,35 @@ describe('DeadlineCheckerService', () => {
     }).compile()
 
     service = module.get<DeadlineCheckerService>(DeadlineCheckerService)
+    jest.useFakeTimers().setSystemTime(ISTANTE_FISSO)
   })
 
   describe('checkAuthorizationExpirations', () => {
+    describe('a cavallo della mezzanotte di Roma', () => {
+      afterEach(() => {
+        jest.useRealTimers()
+      })
+
+      // Alle 23:30 UTC di giugno a Roma e' gia' il giorno dopo (00:30, UTC+2).
+      // Il servizio ragiona sul giorno di Roma: la scadenza (colonna @db.Date,
+      // mezzanotte UTC di un giorno di calendario) va costruita sullo stesso calendario.
+      it('avvisa per una scadenza a 30 giorni anche alle 23:30 UTC', async () => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-06-10T23:30:00.000Z'))
+        const fra30 = dataDiCalendarioRoma(30)
+        ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+          { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: fra30 },
+        ])
+
+        await service.checkAuthorizationExpirations()
+
+        expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ type: 'AUTORIZZAZIONE_IN_SCADENZA' }),
+          })
+        )
+      })
+    })
+
     it('avvisa quando un autorizzazione scade fra 30 giorni', async () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
