@@ -31,7 +31,18 @@ WW00012026/
   registri-rifiuti.jsonl
   versis.jsonl
   renregistrazioni.jsonl
+  clifor.jsonl  sedi-legali.jsonl  unita-locali.jsonl  autorizzazioni.jsonl  (dal pezzo I1)
+  automezzi.jsonl  autisti.jsonl  magazzini-rifiuti.jsonl  numerazioni.jsonl
+  renrelazioniiniziali.jsonl  renesportazioni.jsonl  xrentriformulari.jsonl
+  xrentrifirtrasmessi.jsonl  contratti.jsonl  elenchiaddeb.jsonl  addebcon.jsonl
+  addebiti.jsonl  condizioni-di-pagamento.jsonl
 ```
+
+Le prime sette sono il catalogo del blocco 1; le altre 17 sono state aggiunte dal pezzo I1
+(stesso formato `winwaste-staging/1`, un file per tabella). `RENesportazioni` si estrae **senza**
+la colonna `DOCUMENTO` (il file XML inviato a RENTRI). `MUDAZ` e `MUDTERZI` sono nel catalogo
+ma stanno nel database MUD (`ww<azienda>MU<aa>`): l'estrazione di `WW<ditta><anno>` le salta,
+le estrarra' il pezzo I11.
 
 Le tabelle sono quelle del catalogo in `colonne-documentate.ts`. Una tabella assente e'
 ammessa (l'analizzatore lo dice nel rapporto); una tabella in piu' produce l'avviso
@@ -47,6 +58,11 @@ ammessa (l'analizzatore lo dice nel rapporto); una tabella in piu' produce l'avv
   "databaseOrigine": "WW00012026",
   "estrattoIl": "2026-11-14T00:00:00.000Z",
   "estrattore": { "nome": "import-winwaste", "versione": "1" },
+  "origine": {
+    "versioneSqlServer": "16.0.4135.4",
+    "collation": "Latin1_General_CI_AS",
+    "improntaSchema": "<64 cifre esadecimali minuscole>"
+  },
   "tabelle": {
     "MOVIMENTI": {
       "file": "movimenti.jsonl",
@@ -66,6 +82,12 @@ ammessa (l'analizzatore lo dice nel rapporto); una tabella in piu' produce l'avv
   usare lo stesso file.
 - `righe`: righe non vuote del file. `sha256`: impronta dei byte del file.
 - `colonne`: nomi nell'ordine dei valori in ogni riga.
+- `origine` (facoltativo, dal pezzo I1; assente negli staging del blocco 1): versione di SQL Server
+  (`SERVERPROPERTY('ProductVersion')`), collation del database e `improntaSchema`, lo SHA-256 delle
+  righe `tabella|colonna|tipo` effettivamente estratte nell'ordine del catalogo. Due archivi con lo
+  stesso schema hanno la stessa impronta; una versione di WinWaste con colonne diverse la cambia.
+  La versione di WinWaste NON si legge dal database (`VER` e' il lock ottimistico di riga): l'impronta
+  dello schema la sostituisce, in attesa del primo `.bak` reale.
 - L'**impronta del manifest** (SHA-256 di `manifest.json`) e' il `hash_staging` che finira' in
   `lotti_import`.
 

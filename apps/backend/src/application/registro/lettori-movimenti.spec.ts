@@ -117,6 +117,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'accodamento manuale e dichiarazione: ogni annotazione, anche una correzione, e una registrazione RENTRI',
   },
+  'application/rentri/registro/scadenza-trasmissione-rentri.ts': {
+    scelta: 'tutte',
+    motivo:
+      'data di annotazione piu vecchia ancora da trasmettere per registro (termine mensile): ogni annotazione e una registrazione RENTRI, anche una correzione; nessun conteggio di giacenze',
+  },
   'application/rentri/registro/impostazioni-rentri-registro.service.ts': {
     scelta: 'tutte',
     motivo:

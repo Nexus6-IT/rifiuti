@@ -10,6 +10,7 @@ import {
   eScrittura,
   espressioneColonna,
   estraiStaging,
+  improntaSchema,
   EstrazioneError,
   redigiRiga,
   SorgenteSql,
@@ -29,6 +30,17 @@ function colonneDi(tabella: string): ColonnaSql[] {
   return t.colonne.map(c => ({ nome: c.nome, tipo: tipoBase(c.tipoSql) }))
 }
 
+/** Tabelle presenti nella fixture del blocco 1: le altre del catalogo risultano assenti dal database. */
+const TABELLE_FIXTURE = [
+  'MOVIMENTI',
+  'FORMULARI',
+  'GIACENZE RIFIUTI',
+  'CAUSALI RIFIUTI',
+  'REGISTRI RIFIUTI',
+  'VERSIS',
+  'RENregistrazioni',
+]
+
 /** Sorgente finta che serve le righe della fixture, come se arrivassero da SQL Server. */
 async function sorgenteDaFixture(
   permessi: string[] = ['SELECT', 'CONNECT'],
@@ -40,7 +52,8 @@ async function sorgenteDaFixture(
     database: 'WW00012026',
     select,
     permessiEffettivi: async () => permessi,
-    elencaColonne: async t => (tabelleAssenti.includes(t) ? [] : colonneDi(t)),
+    elencaColonne: async t =>
+      tabelleAssenti.includes(t) || !TABELLE_FIXTURE.includes(t) ? [] : colonneDi(t),
     leggiRighe: sql => {
       select.push(sql)
       const tabella = /FROM \[dbo\]\.\[([^\]]+)\]/.exec(sql)![1]
@@ -157,6 +170,86 @@ describe('costruisciSelect', () => {
   })
 })
 
+describe('costruisciSelect: tabelle del catalogo esteso', () => {
+  it('RENesportazioni: DOCUMENTO non e mai letto, anche se il database lo ha', () => {
+    const sql = costruisciSelect('RENesportazioni', [
+      { nome: 'ID', tipo: 'varchar' },
+      { nome: 'DOCUMENTO', tipo: 'text' },
+      { nome: 'HASH', tipo: 'varchar' },
+    ])
+    expect(sql).not.toContain('DOCUMENTO')
+    expect(sql).toContain('[t].[HASH]')
+    expect(sql).toContain('ORDER BY [t].[ID]')
+  })
+
+  it.each([
+    ['CLIFOR', 'ORDER BY [t].[PRECOD], [t].[COD]'],
+    ['AUTOMEZZI', 'ORDER BY [t].[PRECOD], [t].[COD]'],
+    ['XRENTRIFORMULARI', 'ORDER BY [t].[CODICEFISCALE], [t].[NUMEROFIR]'],
+    ['XRENTRIFIRTRASMESSI', 'ORDER BY [t].[IDRENTRI]'],
+    ['ADDEBCON', 'ORDER BY [t].[COD]'],
+  ])('%s e ordinata per chiave (estrazione ripetibile)', (tabella, atteso) => {
+    expect(costruisciSelect(tabella, colonneDi(tabella))).toContain(atteso)
+  })
+
+  it('ogni tabella del catalogo ha un ordinamento', () => {
+    for (const t of TABELLE_DOCUMENTATE) {
+      expect(costruisciSelect(t.nome, colonneDi(t.nome))).toContain('ORDER BY')
+    }
+  })
+})
+
+describe('estraiStaging: catalogo esteso', () => {
+  let radice: string
+  beforeEach(async () => {
+    radice = await mkdtemp(join(tmpdir(), 'estrazione-test-'))
+  })
+  afterEach(async () => {
+    await rm(radice, { recursive: true, force: true })
+  })
+
+  /** Sorgente sintetica con TUTTE le tabelle del database principale, una riga ciascuna. */
+  function sorgenteSintetica(): SorgenteSql & { select: string[] } {
+    const select: string[] = []
+    const colonneReali = (t: string): ColonnaSql[] => {
+      const base = colonneDi(t)
+      return t === 'RENesportazioni' ? [...base, { nome: 'DOCUMENTO', tipo: 'text' }] : base
+    }
+    return {
+      database: 'WW00012026',
+      select,
+      permessiEffettivi: async () => ['SELECT'],
+      elencaColonne: async t => colonneReali(t),
+      leggiRighe: sql => {
+        select.push(sql)
+        const n = (sql.split(' FROM ')[0].match(/ AS \[/g) ?? []).length
+        return (async function* () {
+          yield Array.from({ length: n }, (_, i) => `v${i}`)
+        })()
+      },
+    }
+  }
+
+  it('estrae le 17 tabelle nuove, salta MUDAZ/MUDTERZI e non legge DOCUMENTO', async () => {
+    const sorgente = sorgenteSintetica()
+    const { manifest, tabelleAssenti } = await estraiStaging(sorgente, radice)
+    expect(tabelleAssenti).toEqual([])
+    expect(Object.keys(manifest.tabelle)).toHaveLength(7 + 17)
+    expect(Object.keys(manifest.tabelle)).not.toContain('MUDAZ')
+    expect(Object.keys(manifest.tabelle)).not.toContain('MUDTERZI')
+    expect(manifest.tabelle.RENesportazioni.colonne).not.toContain('DOCUMENTO')
+    expect(sorgente.select.filter(s => s.includes('DOCUMENTO'))).toEqual([])
+    for (const sql of sorgente.select) {
+      expect(sql.startsWith('SELECT ')).toBe(true)
+      expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC|TRUNCATE)\b/i)
+    }
+    const staging = await apriStaging(
+      manifest.databaseOrigine ? join(radice, manifest.databaseOrigine) : radice
+    )
+    expect(staging.avvisi).toEqual([])
+  })
+})
+
 describe('redigiRiga', () => {
   const colonne = colonneDi('VERSIS')
   const riga = (cod: string) => [cod, 'id', '1', '1', 'host', 'utente', 'pwd', 'licenza', '1']
@@ -193,7 +286,11 @@ describe('estraiStaging', () => {
     const { cartella, manifest, tabelleAssenti } = await estraiStaging(sorgente, radice, {
       estrattoIl: '2026-11-14T00:00:00.000Z',
     })
-    expect(tabelleAssenti).toEqual([])
+    expect(tabelleAssenti).toEqual(
+      TABELLE_DOCUMENTATE.filter(
+        t => t.database !== 'MUD' && !TABELLE_FIXTURE.includes(t.nome)
+      ).map(t => t.nome)
+    )
     expect(manifest.estrattore).toEqual({ nome: 'import-winwaste', versione: '1' })
     for (const file of [
       'movimenti',
@@ -236,6 +333,35 @@ describe('estraiStaging', () => {
     expect(await readdir(cartella)).not.toContain('avanzo.jsonl')
   })
 
+  it("l'origine nel manifest: versione, collation e impronta dello schema", async () => {
+    const base = await sorgenteDaFixture()
+    const sorgente: SorgenteSql = {
+      ...base,
+      infoOrigine: async () => ({
+        versioneSqlServer: '16.0.4135.4',
+        collation: 'Latin1_General_CI_AS',
+      }),
+    }
+    const { manifest } = await estraiStaging(sorgente, radice)
+    expect(manifest.origine).toMatchObject({
+      versioneSqlServer: '16.0.4135.4',
+      collation: 'Latin1_General_CI_AS',
+    })
+    expect(manifest.origine?.improntaSchema).toMatch(/^[0-9a-f]{64}$/)
+    // Senza infoOrigine resta l'impronta; con lo stesso schema e' identica.
+    const { manifest: m2 } = await estraiStaging(await sorgenteDaFixture(), join(radice, 'b'))
+    expect(m2.origine?.versioneSqlServer).toBeUndefined()
+    expect(m2.origine?.improntaSchema).toBe(manifest.origine?.improntaSchema)
+    // Una colonna in piu' o un tipo diverso cambia l'impronta.
+    const colonne = colonneDi('VERSIS')
+    const piu = [...colonne, { nome: 'NUOVA', tipo: 'varchar' }]
+    const tipoDiverso = colonne.map((c, i) => (i === 0 ? { ...c, tipo: 'int' } : c))
+    const imp = (cc: ColonnaSql[]): string => improntaSchema([{ tabella: 'VERSIS', colonne: cc }])
+    expect(imp(piu)).not.toBe(imp(colonne))
+    expect(imp(tipoDiverso)).not.toBe(imp(colonne))
+    expect(imp(colonne)).toBe(imp([...colonne]))
+  })
+
   it('legge solo con SELECT (nessuna scrittura nelle query inviate)', async () => {
     const sorgente = await sorgenteDaFixture()
     await estraiStaging(sorgente, radice)
@@ -265,7 +391,7 @@ describe('estraiStaging', () => {
   it('salta le tabelle assenti e le riporta; senza alcuna tabella fallisce', async () => {
     const parziale = await sorgenteDaFixture(['SELECT'], ['VERSIS', 'RENregistrazioni'])
     const { manifest, tabelleAssenti } = await estraiStaging(parziale, radice)
-    expect(tabelleAssenti).toEqual(['VERSIS', 'RENregistrazioni'])
+    expect(tabelleAssenti.slice(0, 2)).toEqual(['VERSIS', 'RENregistrazioni'])
     expect(Object.keys(manifest.tabelle)).not.toContain('VERSIS')
     const nessuna = { ...(await sorgenteDaFixture()), elencaColonne: async () => [] }
     await expect(estraiStaging(nessuna, join(radice, 'x'))).rejects.toMatchObject({

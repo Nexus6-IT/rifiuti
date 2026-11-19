@@ -114,4 +114,31 @@ describe('validaManifest', () => {
       codice(() => validaManifest({ ...valido(), tabelle: { A: tab, B: tab } }, 'WW00012026'))
     ).toBe('MANIFEST_NON_VALIDO')
   })
+
+  describe('origine (campo facoltativo)', () => {
+    it('un manifest del blocco 1, senza origine, resta valido', () => {
+      expect(validaManifest(valido(), 'WW00012026').origine).toBeUndefined()
+    })
+
+    it('legge versione di SQL Server, collation e impronta dello schema', () => {
+      const origine = {
+        versioneSqlServer: '16.0.4135.4',
+        collation: 'Latin1_General_CI_AS',
+        improntaSchema: SHA,
+      }
+      expect(validaManifest({ ...valido(), origine }, 'WW00012026').origine).toEqual(origine)
+    })
+
+    it.each([
+      ['non un oggetto', 'x'],
+      ['versione non testo', { versioneSqlServer: 16 }],
+      ['collation vuota', { collation: '' }],
+      ['impronta non SHA-256', { improntaSchema: 'abc' }],
+      ['versione troppo lunga', { versioneSqlServer: 'x'.repeat(41) }],
+    ])("rifiuta un'origine %s", (_nome, origine) => {
+      expect(codice(() => validaManifest({ ...valido(), origine }, 'WW00012026'))).toBe(
+        'MANIFEST_NON_VALIDO'
+      )
+    })
+  })
 })

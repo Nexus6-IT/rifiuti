@@ -18,6 +18,11 @@ import { PrismaService } from '../../../infrastructure/persistence/prisma.servic
 import { RentriRegistriClient } from '../../../infrastructure/rentri/rentri-registri.client'
 import { RegistroNonTrovatoError } from '../../registro/registri.service'
 import {
+  annotazioniPiuVecchieDaTrasmettere,
+  scadenzaTrasmissione,
+  type ScadenzaTrasmissione,
+} from './scadenza-trasmissione-rentri'
+import {
   IdentificativoGiaUsatoError,
   IdentificativoRegistroNonValidoError,
   RichiestaTrasmissioneNonValidaError,
@@ -50,6 +55,13 @@ export interface ImpostazioniRegistro {
   escluse: number
   /** L'azienda ha una credenziale RENTRI configurata. */
   haCertificato: boolean
+  /**
+   * Termine indicativo della trasmissione mensile (E0): fine del mese successivo a quello della
+   * piu' vecchia annotazione non ancora confermata da RENTRI. `null` se il registro non ha
+   * l'identificativo RENTRI o non ha annotazioni da trasmettere. Fonte normativa secondaria:
+   * vedi `scadenza-trasmissione-rentri.ts`.
+   */
+  scadenzaTrasmissione: ScadenzaTrasmissione | null
 }
 
 export interface Allineamento {
@@ -72,6 +84,16 @@ export class ImpostazioniRentriRegistroService {
 
   private nelTenant<R>(tenantId: string, fn: (tx: Tx) => Promise<R>): Promise<R> {
     return TenantContext.run({ tenantId }, async () => await this.prisma.$transaction(fn))
+  }
+
+  private termine(
+    identificativoRentri: string | null,
+    piuVecchia: Date | undefined,
+    adesso: Date
+  ): ScadenzaTrasmissione | null {
+    // Senza identificativo il registro non e' collegato a RENTRI: nessun obbligo da mostrare.
+    if (identificativoRentri === null || piuVecchia === undefined) return null
+    return scadenzaTrasmissione([piuVecchia], adesso)
   }
 
   async leggi(tenantId: string): Promise<ImpostazioniRegistro[]> {
@@ -105,6 +127,8 @@ export class ImpostazioniRentriRegistroService {
         where: { tenantId },
         select: { id: true },
       })
+      const piuVecchie = await annotazioniPiuVecchieDaTrasmettere(tx, tenantId)
+      const adesso = new Date()
       return registri.map(r => {
         const perStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
         for (const g of gruppi.filter(x => x.registroId === r.id)) perStato[g.stato] = g._count._all
@@ -118,6 +142,7 @@ export class ImpostazioniRentriRegistroService {
           nonTrasmessi: nonTrasmessi.find(x => x.registroId === r.id)?._count._all ?? 0,
           escluse: escluse.find(x => x.registroId === r.id)?._count._all ?? 0,
           haCertificato: credenziale !== null,
+          scadenzaTrasmissione: this.termine(r.identificativoRentri, piuVecchie.get(r.id), adesso),
         }
       })
     })

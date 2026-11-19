@@ -17,6 +17,21 @@ export interface ImpostazioniRegistroRentri {
   /** Righe in coda escluse dall'invio automatico (comprese in `perStato.DA_TRASMETTERE`). */
   escluse: number
   haCertificato: boolean
+  /**
+   * Termine della trasmissione mensile (fine del mese successivo all'annotazione non confermata
+   * più vecchia); `null` se non c'è nulla da trasmettere. Indicativo: fonte normativa secondaria.
+   */
+  scadenzaTrasmissione: ScadenzaTrasmissioneRentri | null
+}
+
+export interface ScadenzaTrasmissioneRentri {
+  /** Mese dell'annotazione più vecchia, 'AAAA-MM'. */
+  mese: string
+  /** Ultimo giorno utile, 'AAAA-MM-GG'. */
+  entro: string
+  scaduta: boolean
+  /** Giorni da oggi al termine: 0 = oggi, negativo = scaduto da N giorni. */
+  giorniRimanenti: number
 }
 
 /** I due permessi li decide il backend sul ruolo effettivo nell'azienda: la UI non li deduce. */

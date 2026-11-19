@@ -156,3 +156,16 @@ export interface RecordRenRegistrazione {
   readonly inviata: boolean
   readonly idRentri: string
 }
+
+/**
+ * Riga di una tabella del catalogo esteso (I1): solo la chiave e i valori ripuliti, nessuna
+ * decodifica. I trasformatori dei pezzi successivi (I4-I12) la interpretano.
+ */
+export interface RecordTabellaEstesa {
+  readonly tabella: string
+  readonly riga: number
+  /** Colonne chiave ripulite, unite da `|`. */
+  readonly chiave: string
+  /** Tutte le colonne estratte, ripulite dagli spazi; `NULL` = stringa vuota. */
+  readonly campi: Readonly<Record<string, string>>
+}
