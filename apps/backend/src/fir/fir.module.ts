@@ -13,6 +13,7 @@ import { EmettiFIRUseCase } from '../application/fir/use-cases/emetti-fir.use-ca
 import { PresaInCaricoFIRUseCase } from '../application/fir/use-cases/presa-in-carico-fir.use-case'
 import { ConfermaConsegnaFIRUseCase } from '../application/fir/use-cases/conferma-consegna-fir.use-case'
 import { AnnullaFIRUseCase } from '../application/fir/use-cases/annulla-fir.use-case'
+import { IDatiViaggioFirRepository } from '../application/rentri/dati-viaggio-fir.port'
 import { ModificaFIRUseCase } from '../application/fir/use-cases/modifica-fir.use-case'
 import { ListFIRsQueryHandler } from '../application/fir/queries/list-firs.handler'
 import { GetFIRByIdQueryHandler } from '../application/fir/queries/get-fir-by-id.handler'
@@ -66,14 +67,16 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         cerRepo: CERPrismaRepository,
         produttoreRepo: ProduttorePrismaRepository,
         trasportatoreRepo: TrasportatorePrismaRepository,
-        destinatarioRepo: DestinatarioPrismaRepository
+        destinatarioRepo: DestinatarioPrismaRepository,
+        datiViaggioRepo: IDatiViaggioFirRepository
       ) => {
         return new CreateFIRUseCase(
           firRepo,
           cerRepo,
           produttoreRepo,
           trasportatoreRepo,
-          destinatarioRepo
+          destinatarioRepo,
+          datiViaggioRepo
         )
       },
       inject: [
@@ -82,6 +85,7 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         ProduttorePrismaRepository,
         TrasportatorePrismaRepository,
         DestinatarioPrismaRepository,
+        IDatiViaggioFirRepository,
       ],
     },
     {
@@ -148,7 +152,8 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         produttoreRepo: ProduttorePrismaRepository,
         trasportatoreRepo: TrasportatorePrismaRepository,
         destinatarioRepo: DestinatarioPrismaRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        datiViaggioRepo: IDatiViaggioFirRepository
       ) => {
         return new ModificaFIRUseCase(
           firRepo,
@@ -156,7 +161,8 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
           produttoreRepo,
           trasportatoreRepo,
           destinatarioRepo,
-          logger
+          logger,
+          datiViaggioRepo
         )
       },
       inject: [
@@ -166,6 +172,7 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         TrasportatorePrismaRepository,
         DestinatarioPrismaRepository,
         LoggerService,
+        IDatiViaggioFirRepository,
       ],
     },
 

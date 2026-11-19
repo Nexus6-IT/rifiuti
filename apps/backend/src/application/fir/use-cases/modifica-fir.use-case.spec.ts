@@ -582,4 +582,77 @@ describe('ModificaFIRUseCase', () => {
       expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
     })
   })
+
+  describe('dati di viaggio (FIR in viaggio P2)', () => {
+    const dati = {
+      salvaDatiPartenza: jest.fn().mockResolvedValue(undefined),
+      leggi: jest.fn(),
+      aggiornaQuantitaDopoEnte: jest.fn(),
+      aggiornaTrasportoDopoEnte: jest.fn(),
+    }
+    let conDati: ModificaFIRUseCase
+
+    beforeEach(() => {
+      dati.salvaDatiPartenza.mockClear()
+      conDati = new ModificaFIRUseCase(
+        repo,
+        cer as never,
+        produttori as never,
+        trasportatori as never,
+        destinatari as never,
+        logger as never,
+        dati as never
+      )
+    })
+
+    it("anche senza altri cambiamenti i dati di viaggio si salvano, senza versione ne' audit dell'aggregate", async () => {
+      const fir = bozza()
+      repo.findById.mockResolvedValue(fir)
+      const r = await conDati.execute({
+        ...comando(fir),
+        datiViaggio: { conducenteNome: 'Mario', conducenteCognome: 'Rossi', percorso: '' },
+      })
+      expect(r.isSuccess).toBe(true)
+      expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+      expect(dati.salvaDatiPartenza).toHaveBeenCalledWith(TENANT, fir.id, {
+        verificatoInPartenza: undefined,
+        rinfusa: undefined,
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaRimorchio: undefined,
+        percorso: null,
+      })
+      expect(r.value.datiViaggio).toMatchObject({ conducenteNome: 'Mario', percorso: null })
+    })
+
+    it("la targa dell'automezzo cambia lo snapshot del trasportatore e conta come modifica", async () => {
+      const fir = bozza()
+      repo.findById.mockResolvedValue(fir)
+      const r = await conDati.execute({
+        ...comando(fir),
+        datiViaggio: { targaAutomezzo: 'ab123cd' },
+      })
+      expect(r.isSuccess).toBe(true)
+      expect(repo.salvaModificaBozza).toHaveBeenCalledTimes(1)
+      expect(r.value.trasportatore?.targaVeicolo).toBe('AB123CD')
+      expect(dati.salvaDatiPartenza).toHaveBeenCalledTimes(1)
+    })
+
+    it('dati di viaggio assenti: nessuna scrittura delle colonne dedicate', async () => {
+      const fir = bozza()
+      repo.findById.mockResolvedValue(fir)
+      await conDati.execute(comando(fir))
+      expect(dati.salvaDatiPartenza).not.toHaveBeenCalled()
+    })
+
+    it("se la bozza non si puo' modificare i dati di viaggio non si toccano", async () => {
+      const fir = bozza()
+      repo.findById.mockResolvedValue(fir)
+      repo.salvaModificaBozza.mockRejectedValueOnce(new FirNonModificabileError('NON_BOZZA'))
+      await expect(
+        conDati.execute({ ...comando(fir), datiViaggio: { targaAutomezzo: 'ab123cd' } })
+      ).rejects.toBeInstanceOf(FirNonModificabileError)
+      expect(dati.salvaDatiPartenza).not.toHaveBeenCalled()
+    })
+  })
 })

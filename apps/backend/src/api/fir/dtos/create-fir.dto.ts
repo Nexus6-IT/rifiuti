@@ -3,6 +3,8 @@
  */
 
 import {
+  IsBoolean,
+  MaxLength,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -95,6 +97,20 @@ export class RifiutoDto {
   numeroColli?: number
 
   /**
+   * Il rifiuto non e' partizionato in colli (contratto RENTRI: `rinfusa`). Con `rinfusa` i colli non si
+   * inviano all'ente.
+   */
+  @ApiPropertyOptional({ description: 'Rifiuto alla rinfusa: non e partizionato in colli' })
+  @IsBoolean()
+  @IsOptional()
+  rinfusa?: boolean
+
+  @ApiPropertyOptional({ description: 'Quantita verificata in partenza (contratto RENTRI)' })
+  @IsBoolean()
+  @IsOptional()
+  verificatoInPartenza?: boolean
+
+  /**
    * Campo 3 FIR: codice operazione di recupero (R1–R13) o smaltimento
    * (D1–D15) effettuata dal destinatario (Allegati B e C D.Lgs 152/2006).
    */
@@ -105,6 +121,43 @@ export class RifiutoDto {
   @IsString()
   @IsOptional()
   codiceOperazione?: string
+}
+
+/**
+ * Dati del trasporto terrestre noti alla creazione (FIR in viaggio, P2). Tutti facoltativi: con conducente
+ * (nome E cognome) e almeno una targa il formulario nasce su RENTRI col trasporto di partenza. Limiti =
+ * contratto RENTRI.
+ */
+export class DatiTrasportoFirDto {
+  @ApiPropertyOptional({ example: 'AB123CD', maxLength: 10 })
+  @IsString()
+  @MaxLength(10, { message: "La targa dell'automezzo può avere al massimo 10 caratteri." })
+  @IsOptional()
+  targaAutomezzo?: string
+
+  @ApiPropertyOptional({ example: 'Mario', maxLength: 50 })
+  @IsString()
+  @MaxLength(50, { message: 'Il nome del conducente può avere al massimo 50 caratteri.' })
+  @IsOptional()
+  conducenteNome?: string
+
+  @ApiPropertyOptional({ example: 'De Rossi', maxLength: 50 })
+  @IsString()
+  @MaxLength(50, { message: 'Il cognome del conducente può avere al massimo 50 caratteri.' })
+  @IsOptional()
+  conducenteCognome?: string
+
+  @ApiPropertyOptional({ example: 'XY987ZW', maxLength: 10 })
+  @IsString()
+  @MaxLength(10, { message: 'La targa del rimorchio può avere al massimo 10 caratteri.' })
+  @IsOptional()
+  targaRimorchio?: string
+
+  @ApiPropertyOptional({ maxLength: 250, description: 'Percorso, se diverso dal più breve' })
+  @IsString()
+  @MaxLength(250, { message: 'Il percorso può avere al massimo 250 caratteri.' })
+  @IsOptional()
+  percorso?: string
 }
 
 export class TrasportatoreAggiuntivoDto {
@@ -232,4 +285,11 @@ export class CreateFIRDto {
   })
   @IsEnum(TipoTratta)
   tipoTrattaPrincipale: TipoTratta
+
+  /** FIR in viaggio P2: conducente, targhe e percorso noti alla creazione (facoltativi). */
+  @ApiPropertyOptional({ type: DatiTrasportoFirDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DatiTrasportoFirDto)
+  datiTrasporto?: DatiTrasportoFirDto
 }

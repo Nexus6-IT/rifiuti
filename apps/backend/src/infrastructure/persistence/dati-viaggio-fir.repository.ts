@@ -10,8 +10,9 @@ import { PrismaService } from './prisma.service'
 
 /**
  * Persistenza Prisma dei dati di viaggio (colonne dedicate di `firs` e `fir_transporters`). Ogni query
- * filtra anche per tenant (oltre alla RLS). Le scritture incrementano `versione`: il lock ottimistico
- * degli altri salvataggi del FIR deve accorgersi che la riga e' cambiata.
+ * filtra anche per tenant (oltre alla RLS). Le scritture DOPO l'esito dell'ente incrementano `versione`
+ * (la quantita' e la targa sono anche nell'aggregate: il lock ottimistico degli altri salvataggi deve
+ * accorgersi che la riga e' cambiata); il salvataggio dei dati di partenza no.
  */
 @Injectable()
 export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
@@ -86,7 +87,8 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
         conducenteCognome: dati.conducenteCognome,
         targaRimorchio: dati.targaRimorchio,
         percorso: dati.percorso,
-        versione: { increment: 1 },
+        // Niente `versione`: sono colonne fuori dall'aggregate, che il suo `save` non riscrive mai, e
+        // chi ha appena modificato la bozza deve poter rimandare la versione che ha in mano.
       },
     })
   }

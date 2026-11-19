@@ -98,6 +98,20 @@ export class FIRResponseDto {
   })
   tipoTrattaPrincipale: TipoTratta | null
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Dati di viaggio della tratta principale: rinfusa e verifica in partenza, conducente, rimorchio e percorso',
+  })
+  datiViaggio: {
+    verificatoInPartenza: boolean | null
+    rinfusa: boolean | null
+    conducenteNome: string | null
+    conducenteCognome: string | null
+    targaRimorchio: string | null
+    percorso: string | null
+  } | null
+
   @ApiProperty({ example: 'tenant-uuid-producer', description: 'ID produttore' })
   produttoreId: string
 
@@ -307,6 +321,7 @@ export class FIRResponseDto {
       motivoNonModificabile,
       provenienza: fir.provenienza,
       tipoTrattaPrincipale: fir.tipoTrattaPrincipale,
+      datiViaggio: fir.datiViaggio,
       produttoreId: fir.produttoreId,
       rifiuto: {
         cerCode: fir.rifiuto.cerCode,

@@ -35,6 +35,7 @@ import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
 import { PaginatedFIRResponseDto } from './dtos/paginated-fir-response.dto'
 import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use-case'
+import { datiViaggioDaDto } from './dtos/dati-viaggio-da-dto'
 import { ModificaFIRUseCase } from '../../application/fir/use-cases/modifica-fir.use-case'
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { PresaInCaricoFIRUseCase } from '../../application/fir/use-cases/presa-in-carico-fir.use-case'
@@ -171,7 +172,9 @@ export class FIRControllerV2 {
       dto.trasportatoriAggiuntivi ?? [],
       dto.annotazioni,
       dto.produttoreSedeId,
-      dto.destinatarioSedeId
+      dto.destinatarioSedeId,
+      undefined,
+      datiViaggioDaDto(dto)
     )
 
     const result = await this.createFIRUseCase.execute(command)
@@ -236,6 +239,7 @@ export class FIRControllerV2 {
       tipoTrattaPrincipale: dto.tipoTrattaPrincipale,
       trasportatoriAggiuntivi: dto.trasportatoriAggiuntivi ?? [],
       annotazioni: dto.annotazioni,
+      datiViaggio: datiViaggioDaDto(dto),
     })
 
     if (result.isFailure) {
