@@ -29,6 +29,7 @@ import {
   partitaIvaUnica,
 } from '../../../test-support/anagrafiche-di-test'
 import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
+import { DatiViaggioFirInMemoria } from '../dati-viaggio-fir.in-memoria'
 import { DatoMancantePerRentriError } from './mappa-parti'
 
 // Comune di prova: la tabella `istat_comuni` e' condivisa e puo' essere vuota nel database di test
@@ -65,7 +66,13 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
   beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
     app = creaPrismaServiceApplicativo()
-    servizio = new CostruisciPayloadRentri(app, unitaLocale as never, logger as never)
+    servizio = new CostruisciPayloadRentri(
+      app,
+      unitaLocale as never,
+      logger as never,
+      // Il FIR di questo spec non e' persistito (id non UUID): i dati di viaggio hanno il loro spec.
+      new DatiViaggioFirInMemoria()
+    )
     const t = await owner.tenant.create({
       data: {
         partitaIva: partitaIvaUnica(),
@@ -109,6 +116,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
       produttore: { registroId: p },
       destinatario: { registroId: d },
       trasportatore: { registroId: t },
+      trasportatoriAggiuntivi: [],
       rifiuto: { cerCode: '150106', statoFisico: 'Solido', descrizione: 'Imballaggi misti' },
     }) as never
 

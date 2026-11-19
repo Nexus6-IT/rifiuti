@@ -26,7 +26,9 @@ describe('RentriFirLifecycleController — sessione di firma, rollback, reset', 
       { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
       ruolo as any,
       rollbackReset as any,
-      sessione as any
+      sessione as any,
+      {} as any, // InviaDatiViaggioFirRentriUseCase
+      {} as any // ElencaEventiFirRentriUseCase
     )
   })
 

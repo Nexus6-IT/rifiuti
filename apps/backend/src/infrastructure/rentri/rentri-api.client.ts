@@ -674,6 +674,70 @@ export class RENTRIApiClient {
     return this.postDiDominioSenzaCorpo(tenantId, numeroFir, 'reset', opzioni)
   }
 
+  /**
+   * Indica o corregge la quantita' del rifiuto (`POST /{numero_fir}/quantita` — formulari.yaml, `Operazione`
+   * `DatiQuantita`/`DatiQuantitaUpdate`). Corpo: `QuantitaRifiutoModel`, gia' mappato dal chiamante
+   * (`mappaQuantitaRifiuto`): `additionalProperties: false`, nessun campo `undefined`.
+   *
+   * **ASYNC (NONBLOCK_PULL)**; esito restituito COSI' COM'E' (`esito.errore` e' una risposta valida
+   * dell'ente: la decisione e' del chiamante, `InviaDatiViaggioFirRentriUseCase`). Nessuna firma qui:
+   * dopo quantita' e trasporto il formulario passa allo stato di firma (FIR in viaggio P3).
+   */
+  async inviaQuantita(
+    tenantId: string,
+    numeroFir: string,
+    corpo: Record<string, unknown>,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'quantita', corpo, opzioni)
+  }
+
+  /**
+   * Indica o corregge i dati del trasporto terrestre (`POST /{numero_fir}/trasporto`, `Operazione`
+   * `Trasporto`/`TrasportoUpdate`). Corpo: `DatiTrasportoTerrestreModel` (`mappaDatiTrasportoTerrestre`).
+   * Stesso ciclo e stesse regole di {@link inviaQuantita}.
+   */
+  async inviaTrasporto(
+    tenantId: string,
+    numeroFir: string,
+    corpo: Record<string, unknown>,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'trasporto', corpo, opzioni)
+  }
+
+  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`). */
+  private async postAsincronaConCorpo(
+    tenantId: string,
+    numeroFir: string,
+    operazione: 'quantita' | 'trasporto',
+    corpo: Record<string, unknown>,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/${operazione}`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/${operazione}`,
+          corpo,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    // La transazione resta nell'esito: finisce nello storico (`fir_eventi_rentri.transazione_id`).
+    const esito = await this.attendiEsito(tenantId, transazioneId, opzioni)
+    return { ...esito, transazioneId }
+  }
+
   /** POST asincrona senza corpo di dominio + attesa dell'esito (`rollback-firma`, `reset`). */
   private async postDiDominioSenzaCorpo(
     tenantId: string,
@@ -1793,6 +1857,8 @@ export interface EsitoNuovoFormularioModel {
 export interface EsitoFormulario {
   errore: boolean
   validazione: unknown[]
+  /** Identificativo della transazione asincrona che ha prodotto l'esito (solo dove il client lo riporta). */
+  transazioneId?: string
   esito?: EsitoNuovoFormularioModel | Record<string, unknown> | null
   [key: string]: unknown
 }

@@ -26,6 +26,9 @@ const SCRITTURE = [
   // FIR in viaggio P1: annullamento dell'ultima firma e reset dei dati non firmati.
   'rollbackFirma',
   'resetStato',
+  // FIR in viaggio P2: quantita' e dati di trasporto.
+  'inviaQuantita',
+  'inviaTrasporto',
   'caricaAllegato',
   'eliminaAllegato',
   'rilasciaVisibilita',
@@ -69,6 +72,7 @@ const ATTESI = [
   'application/rentri/annulla-fir-rentri.use-case.ts',
   'application/rentri/completa-operazione-con-firma.use-case.ts',
   'application/rentri/gestisci-allegati-fir.use-case.ts',
+  'application/rentri/invia-dati-viaggio-fir-rentri.use-case.ts',
   'application/rentri/rilascia-formulario-rentri.use-case.ts',
   'application/rentri/rollback-e-reset-fir-rentri.use-case.ts',
   'application/rentri/sync-fir-to-rentri.use-case.ts',

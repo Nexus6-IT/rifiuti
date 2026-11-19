@@ -39,6 +39,12 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
 import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
+import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
+import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
+import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
+import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
+import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
+import { EventiFirRentriRepository } from '../../infrastructure/persistence/eventi-fir-rentri.repository'
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
 import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
 import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
@@ -193,6 +199,9 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
   ],
   providers: [
     FIRPrismaRepository,
+    // FIR in viaggio P2: dati di viaggio (colonne dedicate) e storico delle operazioni inviate all'ente.
+    { provide: IDatiViaggioFirRepository, useClass: DatiViaggioFirRepository },
+    { provide: IEventiFirRentriRepository, useClass: EventiFirRentriRepository },
     // Costruisce il corpo di POST /formulari dal FIR: legge le anagrafiche
     // dai registri, l'unita' locale del tenant e risolve il codice comune.
     CostruisciPayloadRentri,
@@ -441,16 +450,59 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         getAzioni: GetAzioniDisponibiliUseCase,
         rentriApiClient: RENTRIApiClient,
         sessioni: ISessioniFirmaRentriRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        eventi: IEventiFirRentriRepository
       ) =>
-        new RollbackEResetFirRentriUseCase(firRepo, getAzioni, rentriApiClient, sessioni, logger),
+        new RollbackEResetFirRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          sessioni,
+          logger,
+          eventi
+        ),
       inject: [
         FIRPrismaRepository,
         GetAzioniDisponibiliUseCase,
         RENTRIApiClient,
         ISessioniFirmaRentriRepository,
         LoggerService,
+        IEventiFirRentriRepository,
       ],
+    },
+    // FIR in viaggio P2: quantita' e dati di trasporto (`/quantita`, `/trasporto`) e storico delle operazioni.
+    {
+      provide: InviaDatiViaggioFirRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        datiViaggio: IDatiViaggioFirRepository,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService
+      ) =>
+        new InviaDatiViaggioFirRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          datiViaggio,
+          eventi,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        IDatiViaggioFirRepository,
+        IEventiFirRentriRepository,
+        LoggerService,
+      ],
+    },
+    {
+      provide: ElencaEventiFirRentriUseCase,
+      useFactory: (firRepo: FIRPrismaRepository, eventi: IEventiFirRentriRepository) =>
+        new ElencaEventiFirRentriUseCase(firRepo, eventi),
+      inject: [FIRPrismaRepository, IEventiFirRentriRepository],
     },
     {
       provide: GestisciSessioneFirmaRentriUseCase,
@@ -609,6 +661,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     AnnullaFIRRentriUseCase,
     GestisciAllegatiFIRUseCase,
     ScaricaPdfFirUseCase,
+    // FIR in viaggio P2: la creazione del FIR salva i dati noti del viaggio (modulo `fir`).
+    IDatiViaggioFirRepository,
     RentriRifornimentoScortaJob,
     RentriScortaRepository,
     ConsumaNumeroVidimatoUseCase,
