@@ -18,6 +18,11 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     escluse: 0,
     haCertificato: true,
     scadenzaTrasmissione: null,
+    numIscrSito: 'OP0001XX000001-MI0001',
+    rentriAttivita: [],
+    rentriAttivitaRecSmalt: [],
+    aperturaInCorso: false,
+    rentriChiusoIl: null,
     ...p,
   }
 }
