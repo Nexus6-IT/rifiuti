@@ -137,6 +137,10 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           await tx.$executeRawUnsafe(
             `ALTER TABLE "fir_sessioni_firma_rentri" DROP CONSTRAINT "fir_sessioni_firma_rentri_fir_fkey"`
           )
+          // Anche lo storico delle operazioni del viaggio RENTRI (FIR in viaggio P2).
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "fir_eventi_rentri" DROP CONSTRAINT "fir_eventi_rentri_fir_fkey"`
+          )
           await tx.$executeRawUnsafe(`DROP INDEX "firs_id_tenant_id_key"`)
           await tx.$executeRawUnsafe(`DROP INDEX "autorizzazioni_impianto_id_tenant_id_key"`)
 
