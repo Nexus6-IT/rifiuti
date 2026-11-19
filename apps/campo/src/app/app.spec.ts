@@ -1,20 +1,31 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
+import { routes } from './app.routes';
 
 describe('App campo', () => {
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [App] }).compileComponents();
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
   });
 
   it("crea l'app", () => {
-    const fixture = TestBed.createComponent(App);
-    expect(fixture.componentInstance).toBeTruthy();
+    expect(TestBed.createComponent(App).componentInstance).toBeTruthy();
   });
 
-  it('mostra il titolo «WasteFlow campo»', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const html = fixture.nativeElement as HTMLElement;
-    expect(html.querySelector('h1')?.textContent).toContain('WasteFlow campo');
+  it('senza sessione la rotta del giro porta al login con il link SPID/CIE per il canale campo', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/');
+    const el = harness.routeNativeElement as HTMLElement;
+    expect(el.querySelector('h1')?.textContent).toContain('WasteFlow campo');
+    expect(el.querySelector('a[data-test="accedi"]')?.getAttribute('href')).toBe(
+      '/api/v1/auth/spid/login?RelayState=campo',
+    );
   });
 });
