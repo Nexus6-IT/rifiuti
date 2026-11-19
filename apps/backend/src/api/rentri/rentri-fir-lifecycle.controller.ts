@@ -7,6 +7,7 @@ import {
   Body,
   Res,
   Req,
+  Query,
   UseGuards,
   NotFoundException,
   BadRequestException,
@@ -55,6 +56,8 @@ import {
 } from '../../application/rentri/invia-dati-viaggio-fir-rentri.use-case'
 import { ElencaEventiFirRentriUseCase } from '../../application/rentri/elenca-eventi-fir-rentri.use-case'
 import { EventoFirRentri } from '../../application/rentri/eventi-fir-rentri.port'
+import { TrovaUltimoTrasportoAutomezzoUseCase } from '../../application/rentri/trova-ultimo-trasporto-automezzo.use-case'
+import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
 import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
 import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
 import { RiprendiFirmaRentriDto } from './dto/riprendi-firma-rentri.dto'
@@ -144,9 +147,27 @@ export class RentriFirLifecycleController {
     private readonly rollbackEResetUseCase: RollbackEResetFirRentriUseCase,
     private readonly sessioneFirmaUseCase: GestisciSessioneFirmaRentriUseCase,
     private readonly inviaDatiViaggioUseCase: InviaDatiViaggioFirRentriUseCase,
-    private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase
+    private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase,
+    private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
+  }
+
+  /**
+   * Conducente e rimorchio dell'ultimo trasporto fatto con una targa: precompila il form del FIR
+   * (decisione D3). Rotta fissa, prima delle `:id/...`: nessuna ambiguita' con un id.
+   */
+  @Get('ultimo-trasporto')
+  @ApiOperation({
+    summary: "Conducente dell'ultimo trasporto con una targa",
+    description: 'Cerca fra i FIR dell’azienda l’ultimo con quella targa e un conducente indicato.',
+  })
+  @ApiResponse({ status: 200, description: 'Conducente e rimorchio, oppure null' })
+  async ultimoTrasporto(
+    @Query('targa') targa: string,
+    @TenantId() tenantId: string
+  ): Promise<{ trasporto: UltimoTrasportoAutomezzo | null }> {
+    return { trasporto: await this.ultimoTrasportoUseCase.execute(tenantId, targa ?? '') }
   }
 
   /**

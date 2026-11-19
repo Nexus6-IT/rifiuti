@@ -4,13 +4,22 @@ import {
   IDatiViaggioFirRepository,
   QuantitaInviata,
   TrasportoInviato,
+  UltimoTrasportoAutomezzo,
 } from './dati-viaggio-fir.port'
 
 /** Implementazione in memoria per i test unitari: i FIR si seminano in `righe`. */
 export class DatiViaggioFirInMemoria extends IDatiViaggioFirRepository {
   readonly righe = new Map<string, DatiViaggioFir>()
+  readonly ultimiPerTarga = new Map<string, UltimoTrasportoAutomezzo>()
   /** Registro delle scritture, nell'ordine (per verificare "solo dopo l'esito positivo"). */
   readonly scritture: string[] = []
+
+  async ultimoTrasportoPerTarga(
+    _tenantId: string,
+    targa: string
+  ): Promise<UltimoTrasportoAutomezzo | null> {
+    return this.ultimiPerTarga.get(targa) ?? null
+  }
 
   async leggi(_tenantId: string, firId: string): Promise<DatiViaggioFir | null> {
     return this.righe.get(firId) ?? null

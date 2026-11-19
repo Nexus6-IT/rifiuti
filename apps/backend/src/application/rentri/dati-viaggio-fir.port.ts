@@ -70,7 +70,19 @@ export interface TrasportoInviato {
   percorso: string | null
 }
 
+/** Conducente e rimorchio dell'ultimo trasporto di un automezzo, per precompilare il form (decisione D3). */
+export interface UltimoTrasportoAutomezzo {
+  conducenteNome: string
+  conducenteCognome: string
+  targaRimorchio: string | null
+}
+
 export abstract class IDatiViaggioFirRepository {
+  /** L'ultimo FIR dell'azienda con quella targa e un conducente completo, se c'e'. */
+  abstract ultimoTrasportoPerTarga(
+    tenantId: string,
+    targa: string
+  ): Promise<UltimoTrasportoAutomezzo | null>
   abstract leggi(tenantId: string, firId: string): Promise<DatiViaggioFir | null>
   /** Alla creazione o alla modifica di una bozza: salva i dati noti del viaggio. */
   abstract salvaDatiPartenza(

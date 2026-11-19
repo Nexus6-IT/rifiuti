@@ -5,6 +5,7 @@ import {
   IDatiViaggioFirRepository,
   QuantitaInviata,
   TrasportoInviato,
+  UltimoTrasportoAutomezzo,
 } from '../../application/rentri/dati-viaggio-fir.port'
 import { PrismaService } from './prisma.service'
 
@@ -18,6 +19,28 @@ import { PrismaService } from './prisma.service'
 export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
   constructor(private readonly prisma: PrismaService) {
     super()
+  }
+
+  async ultimoTrasportoPerTarga(
+    tenantId: string,
+    targa: string
+  ): Promise<UltimoTrasportoAutomezzo | null> {
+    const r = await this.prisma.fIR.findFirst({
+      where: {
+        tenantId,
+        carrierVehiclePlate: targa,
+        conducenteNome: { not: null },
+        conducenteCognome: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { conducenteNome: true, conducenteCognome: true, targaRimorchio: true },
+    })
+    if (!r?.conducenteNome || !r.conducenteCognome) return null
+    return {
+      conducenteNome: r.conducenteNome,
+      conducenteCognome: r.conducenteCognome,
+      targaRimorchio: r.targaRimorchio,
+    }
   }
 
   async leggi(tenantId: string, firId: string): Promise<DatiViaggioFir | null> {

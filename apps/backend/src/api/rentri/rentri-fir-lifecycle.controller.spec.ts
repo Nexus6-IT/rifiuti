@@ -59,7 +59,8 @@ describe('RentriFirLifecycleController — scaricaPdf', () => {
       {} as any, // RollbackEResetFirRentriUseCase
       {} as any, // GestisciSessioneFirmaRentriUseCase
       {} as any, // InviaDatiViaggioFirRentriUseCase
-      {} as any // ElencaEventiFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any // TrovaUltimoTrasportoAutomezzoUseCase
     )
   })
 
@@ -212,7 +213,8 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
       {} as any, // RollbackEResetFirRentriUseCase
       {} as any, // GestisciSessioneFirmaRentriUseCase
       {} as any, // InviaDatiViaggioFirRentriUseCase
-      {} as any // ElencaEventiFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any // TrovaUltimoTrasportoAutomezzoUseCase
     )
   })
 
@@ -391,7 +393,8 @@ describe('RentriFirLifecycleController: @TenantId è l’azienda selezionata', (
       {} as any, // RollbackEResetFirRentriUseCase
       {} as any, // GestisciSessioneFirmaRentriUseCase
       {} as any, // InviaDatiViaggioFirRentriUseCase
-      {} as any // ElencaEventiFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any // TrovaUltimoTrasportoAutomezzoUseCase
     )
     const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
     const arg = argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
@@ -436,7 +439,8 @@ describe('RentriFirLifecycleController: ruolo effettivo nell azienda selezionata
       {} as any, // RollbackEResetFirRentriUseCase
       {} as any, // GestisciSessioneFirmaRentriUseCase
       {} as any, // InviaDatiViaggioFirRentriUseCase
-      {} as any // ElencaEventiFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any // TrovaUltimoTrasportoAutomezzoUseCase
     )
   })
 

@@ -254,6 +254,29 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
     expect(d?.tratteAggiuntive[0].dataOraInizioTrasporto).toEqual(new Date('2026-11-22T06:00:00Z'))
   })
 
+  it('ultimoTrasportoPerTarga: l\'ultimo FIR dell\'azienda con quella targa e un conducente completo', async () => {
+    const a = await azienda()
+    const b = await azienda()
+    await nelTenant(a.t, () =>
+      repo.aggiornaTrasportoDopoEnte(a.t, a.fir, {
+        targaAutomezzo: 'ZZ123ZZ',
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaRimorchio: 'XY987ZW',
+        percorso: null,
+      })
+    )
+    expect(await nelTenant(a.t, () => repo.ultimoTrasportoPerTarga(a.t, 'ZZ123ZZ'))).toEqual({
+      conducenteNome: 'Mario',
+      conducenteCognome: 'Rossi',
+      targaRimorchio: 'XY987ZW',
+    })
+    expect(await nelTenant(a.t, () => repo.ultimoTrasportoPerTarga(a.t, 'AA000AA'))).toBeNull()
+    // Un'altra azienda non vede il conducente di questa, nemmeno con la stessa targa.
+    expect(await nelTenant(b.t, () => repo.ultimoTrasportoPerTarga(b.t, 'ZZ123ZZ'))).toBeNull()
+    expect(await nelTenant(b.t, () => repo.ultimoTrasportoPerTarga(a.t, 'ZZ123ZZ'))).toBeNull()
+  })
+
   it('i limiti del contratto sono anche limiti delle colonne (conducente 50, targa 10, percorso 250)', async () => {
     const a = await azienda()
     for (const dati of [

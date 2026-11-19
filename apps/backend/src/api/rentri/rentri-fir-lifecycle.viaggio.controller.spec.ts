@@ -15,6 +15,7 @@ describe('RentriFirLifecycleController — quantita, trasporto, eventi', () => {
   const ruolo = { ruoloEffettivo: jest.fn() }
   const viaggio = { inviaQuantita: jest.fn(), inviaTrasporto: jest.fn() }
   const eventi = { execute: jest.fn() }
+  const ultimo = { execute: jest.fn() }
   let controller: RentriFirLifecycleController
 
   beforeEach(() => {
@@ -31,7 +32,8 @@ describe('RentriFirLifecycleController — quantita, trasporto, eventi', () => {
       {} as any,
       {} as any,
       viaggio as any,
-      eventi as any
+      eventi as any,
+      ultimo as any
     )
   })
 
@@ -134,6 +136,16 @@ describe('RentriFirLifecycleController — quantita, trasporto, eventi', () => {
     expect(r).toEqual({ eventi: [{ id: 'e1' }] })
     expect(eventi.execute).toHaveBeenCalledWith('f1', 'B')
     expect(ruolo.ruoloEffettivo).not.toHaveBeenCalled()
+  })
+
+  it("ultimo-trasporto: cerca per targa nell'azienda selezionata", async () => {
+    ultimo.execute.mockResolvedValue({ conducenteNome: 'Mario' })
+    const r = await controller.ultimoTrasporto('ab123cd', 'B')
+    expect(r).toEqual({ trasporto: { conducenteNome: 'Mario' } })
+    expect(ultimo.execute).toHaveBeenCalledWith('B', 'ab123cd')
+    ultimo.execute.mockClear()
+    await controller.ultimoTrasporto(undefined as any, 'B')
+    expect(ultimo.execute).toHaveBeenCalledWith('B', '')
   })
 
   describe('validazione dei DTO', () => {

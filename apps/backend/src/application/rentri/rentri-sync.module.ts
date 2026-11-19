@@ -43,6 +43,7 @@ import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
 import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
 import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
 import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
+import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-automezzo.use-case'
 import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
 import { EventiFirRentriRepository } from '../../infrastructure/persistence/eventi-fir-rentri.repository'
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
@@ -497,6 +498,12 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         IEventiFirRentriRepository,
         LoggerService,
       ],
+    },
+    {
+      provide: TrovaUltimoTrasportoAutomezzoUseCase,
+      useFactory: (datiViaggio: IDatiViaggioFirRepository) =>
+        new TrovaUltimoTrasportoAutomezzoUseCase(datiViaggio),
+      inject: [IDatiViaggioFirRepository],
     },
     {
       provide: ElencaEventiFirRentriUseCase,
