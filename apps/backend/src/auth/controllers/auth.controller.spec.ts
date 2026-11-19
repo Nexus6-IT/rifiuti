@@ -225,7 +225,8 @@ describe('AuthController', () => {
         expect(jwtTokensService.generateRefreshToken).toHaveBeenCalledWith(
           'user-123',
           'tenant-123',
-          '30d'
+          '30d',
+          'campo'
         )
         expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
           'user-123',
@@ -409,6 +410,62 @@ describe('AuthController', () => {
 
       expect(tenantVisto).toBeNull()
       expect(Reflect.getMetadata('design:paramtypes', AuthController)[2]).toBe(PrismaSistemaService)
+    })
+
+    describe('refresh del canale campo (refresh lungo ricontrollato sul ruolo)', () => {
+      const payloadCampo = {
+        sub: 'user-123',
+        tenantId: 'tenant-123',
+        type: 'refresh',
+        canale: 'campo',
+      } as any
+
+      it('utente ancora AUTISTA: rinnova (e il refresh token non viene toccato)', async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue(payloadCampo)
+        redisService.isRefreshTokenValid.mockResolvedValue(true)
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'AUTISTA' }) as any
+        )
+        jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+
+        const r = await controller.refresh({ refreshToken: 'rt-30' })
+
+        expect(r.accessToken).toBe('nuovo')
+        expect(redisService.revokeRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).not.toHaveBeenCalled()
+      })
+
+      it.each(['ADMIN', 'OPERATOR', 'VIEWER'])(
+        'utente diventato %s: revoca il refresh token e risponde 401',
+        async ruolo => {
+          jwtTokensService.verifyRefreshToken.mockReturnValue(payloadCampo)
+          redisService.isRefreshTokenValid.mockResolvedValue(true)
+          prismaService.user.findUnique.mockResolvedValue(
+            createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: ruolo }) as any
+          )
+
+          await expect(controller.refresh({ refreshToken: 'rt-30' })).rejects.toThrow(
+            UnauthorizedException
+          )
+          expect(redisService.revokeRefreshToken).toHaveBeenCalledWith('user-123', 'rt-30')
+          expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
+        }
+      )
+
+      it("refresh senza claim canale (login d'ufficio): nessun vincolo sul ruolo", async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          type: 'refresh',
+        } as any)
+        redisService.isRefreshTokenValid.mockResolvedValue(true)
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'ADMIN' }) as any
+        )
+        jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+
+        await expect(controller.refresh({ refreshToken: 'rt' })).resolves.toBeDefined()
+        expect(redisService.revokeRefreshToken).not.toHaveBeenCalled()
+      })
     })
 
     describe('azienda selezionata con lo switch (portata dal refresh token)', () => {

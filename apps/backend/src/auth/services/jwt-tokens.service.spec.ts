@@ -99,6 +99,17 @@ describe('JwtTokensService', () => {
       )
     })
 
+    it('con canale porta il claim canale nel refresh token', () => {
+      jwtService.sign.mockReturnValue('token')
+
+      service.generateRefreshToken('user-123', 'tenant-1', '30d', 'campo')
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        { sub: 'user-123', tenantId: 'tenant-1', type: 'refresh', canale: 'campo' },
+        { expiresIn: '30d' }
+      )
+    })
+
     it('should include type field as "refresh"', () => {
       jwtService.sign.mockReturnValue('token')
 

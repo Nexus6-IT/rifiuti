@@ -33,6 +33,7 @@ import {
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 import { ConsentitoAutista } from '../../core/decorators/consentito-autista.decorator'
 import {
+  DESTINAZIONI_ACCESSO,
   PERCORSO_ACCESSO_PREDEFINITO,
   REFRESH_GIORNI_PREDEFINITO,
   risolviDestinazioneAccesso,
@@ -111,7 +112,8 @@ export class AuthController {
       tokens.refreshToken = this.jwtTokensService.generateRefreshToken(
         spidUser.id,
         tenantId,
-        `${refreshGiorni}d`
+        `${refreshGiorni}d`,
+        'campo'
       )
     }
 
@@ -174,6 +176,14 @@ export class AuthController {
     }
 
     const role = user.role || 'VIEWER'
+
+    // Refresh lungo del canale campo: vale solo finche' l'utente (letto dal DB, non dal token) e'
+    // ancora AUTISTA. Se il ruolo e' cambiato si revoca il token e si rifiuta: il telefono (o uno
+    // perso) non rinnova per 30 giorni con un ruolo d'ufficio.
+    if (payload.canale === 'campo' && role !== DESTINAZIONI_ACCESSO.campo.ruoloRefreshLungo) {
+      await this.redisService.revokeRefreshToken(payload.sub, dto.refreshToken)
+      throw new UnauthorizedException('Sessione del canale campo non piu valida per il ruolo')
+    }
     // azienda primaria: record utente letto dal DB, base per ricontrollare l'accesso all'azienda del refresh
     const tenantPrimario = user.tenantId || ''
     // Azienda del token che si rinnova: quella scelta con lo switch, se il refresh token la

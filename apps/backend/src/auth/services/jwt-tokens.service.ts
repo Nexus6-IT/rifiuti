@@ -15,6 +15,8 @@ export interface JwtPayload {
   role?: string
   /** Id del SUPER_ADMIN che sta impersonando questo utente (solo token di impersonificazione). */
   impersonatorId?: string
+  /** Solo nel refresh token lungo dell'app campo: al rinnovo il ruolo va ricontrollato. */
+  canale?: 'campo'
   type: 'access' | 'refresh'
   iat?: number
   exp?: number
@@ -67,11 +69,17 @@ export class JwtTokensService {
    * azienda il refresh deve rinnovare l'accesso su quella, ricontrollandolo, e mai ricadere in
    * silenzio sull'azienda primaria dell'utente.
    */
-  generateRefreshToken(userId: string, tenantId?: string, durata?: string): string {
+  generateRefreshToken(
+    userId: string,
+    tenantId?: string,
+    durata?: string,
+    canale?: 'campo'
+  ): string {
     const payload: JwtPayload = {
       sub: userId,
       ...(tenantId ? { tenantId } : {}),
       type: 'refresh',
+      ...(canale ? { canale } : {}),
     }
 
     return this.jwtService.sign(payload, {
