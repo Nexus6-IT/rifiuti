@@ -30,7 +30,8 @@ import { EsitoRentriMalformatoError } from './rentri-registri.client'
  * connessione chiusa si solleva {@link TrasmissioneRentriIncertaError} e il
  * chiamante verifica per lettura (elenco o dettaglio) prima di fare altro.
  * Si ritentano solo 429/423, dove RENTRI non ha elaborato nulla. `PUT` (stessi
- * valori, stesso risultato) segue la politica di resilienza completa. Le
+ * valori, stesso risultato) ritenta 429/423/5xx; su timeout o connessione chiusa
+ * solleva invece {@link TrasmissioneRentriIncertaError}, come le altre scritture. Le
  * scritture con corpo portano la firma di integrità `Agid-JWT-Signature` e
  * richiedono il tenant esplicito: mai il contesto della richiesta. Il corpo
  * inviato non viene mai loggato.
@@ -61,6 +62,20 @@ import { EsitoRentriMalformatoError } from './rentri-registri.client'
  * realmente iscritte solo perché il loro formato non coincide con quello
  * atteso da un contratto diverso.
  */
+/** Identificativo del registro (contratto e XSD): `R` + 10 caratteri `[0-9A-Z]`. */
+const PATTERN_IDENTIFICATIVO_REGISTRO = /^R[0-9A-Z]{10}$/
+
+/**
+ * Prima di costruire un path con l'identificativo: una DELETE irreversibile non
+ * deve poter raggiungere un'altra risorsa con `/../` o `?`. Errore tecnico, RENTRI
+ * non viene contattato.
+ */
+function verificaIdentificativoRegistro(identificativo: string): void {
+  if (!PATTERN_IDENTIFICATIVO_REGISTRO.test(identificativo)) {
+    throw new Error('Identificativo del registro RENTRI non valido')
+  }
+}
+
 @Injectable()
 export class RentriAnagraficheClient {
   private readonly timeout = 30000 // 30s
@@ -202,7 +217,7 @@ export class RentriAnagraficheClient {
     if (filtri?.chiuso !== undefined) query.set('chiuso', String(filtri.chiuso))
     const querystring = query.toString()
 
-    const contesto = `/operatore/${numIscrOperatore}/siti/${numIscrSito}/registri`
+    const contesto = `/operatore/${encodeURIComponent(numIscrOperatore)}/siti/${encodeURIComponent(numIscrSito)}/registri`
     const response = await this.get(
       `${RentriAnagraficheClient.ANAGRAFICHE_PATH}${contesto}${querystring ? `?${querystring}` : ''}`,
       tenantId,
@@ -233,6 +248,7 @@ export class RentriAnagraficheClient {
     identificativo: string,
     tenantId?: string
   ): Promise<RegistroAnagraficoModel> {
+    verificaIdentificativoRegistro(identificativo)
     const contesto = `/operatore/registri/${identificativo}`
     const response = await this.get(
       `${RentriAnagraficheClient.ANAGRAFICHE_PATH}${contesto}`,
@@ -274,7 +290,10 @@ export class RentriAnagraficheClient {
       { nonIdempotente: true, messaggio404: 'Sito non trovato a registro' }
     )
     const identificativo = response.data?.identificativo
-    if (typeof identificativo !== 'string' || identificativo.trim() === '') {
+    if (
+      typeof identificativo !== 'string' ||
+      !PATTERN_IDENTIFICATIVO_REGISTRO.test(identificativo)
+    ) {
       throw new TrasmissioneRentriIncertaError('RISPOSTA_SENZA_TRANSAZIONE')
     }
     return { identificativo }
@@ -284,8 +303,9 @@ export class RentriAnagraficheClient {
    * `PUT /operatore/registri/{identificativo}` (righe 616-): modifica
    * descrizione e/o codici di recupero/smaltimento. `forza` (=
    * `forza_salvataggio_attivita_rec_smalt`) salta il controllo dei codici
-   * sulle autorizzazioni dell'unità locale. Politica di resilienza completa
-   * (stessi valori, stesso risultato).
+   * sulle autorizzazioni dell'unità locale. 429/423/5xx ritentati (stessi valori,
+   * stesso risultato); su timeout o connessione chiusa
+   * {@link TrasmissioneRentriIncertaError}.
    */
   async modificaRegistro(
     identificativo: string,
@@ -298,6 +318,7 @@ export class RentriAnagraficheClient {
       corpo.attivita_rec_smalt = modifica.attivitaRecSmalt
     if (modifica.forza !== undefined) corpo.forza_salvataggio_attivita_rec_smalt = modifica.forza
 
+    verificaIdentificativoRegistro(identificativo)
     const contesto = `/operatore/registri/${identificativo}`
     const response = await this.scrivi(
       'PUT',
@@ -322,6 +343,7 @@ export class RentriAnagraficheClient {
    * (`data_chiusura`). Non esiste alcuna chiusura automatica: la decide un utente.
    */
   async chiudiRegistro(identificativo: string, tenantId: string): Promise<void> {
+    verificaIdentificativoRegistro(identificativo)
     const contesto = `/operatore/registri/${identificativo}`
     await this.scrivi(
       'DELETE',
@@ -344,6 +366,7 @@ export class RentriAnagraficheClient {
     identificativo: string,
     tenantId?: string
   ): Promise<{ nomeFile: string | null; mime: string | null; xml: string }> {
+    verificaIdentificativoRegistro(identificativo)
     const contesto = `/operatore/registri/${identificativo}/xml`
     const response = await this.get(
       `${RentriAnagraficheClient.ANAGRAFICHE_PATH}${contesto}`,
@@ -363,11 +386,14 @@ export class RentriAnagraficheClient {
     ) {
       throw new EsitoRentriMalformatoError('vidimazione registro senza contenuto base64 valido')
     }
-    return {
-      nomeFile: dati?.nome_file ?? null,
-      mime: dati?.mime ?? null,
-      xml: Buffer.from(contenuto, 'base64').toString('utf8'),
+    const byte = Buffer.from(contenuto, 'base64')
+    const xml = byte.toString('utf8')
+    // Byte non UTF-8 diventerebbero U+FFFD in silenzio: l'XML che E6 copia sotto la
+    // firma dell'ente deve restare identico, quindi fail-closed.
+    if (!Buffer.from(xml, 'utf8').equals(byte)) {
+      throw new EsitoRentriMalformatoError('vidimazione registro non in UTF-8')
     }
+    return { nomeFile: dati?.nome_file ?? null, mime: dati?.mime ?? null, xml }
   }
 
   /**

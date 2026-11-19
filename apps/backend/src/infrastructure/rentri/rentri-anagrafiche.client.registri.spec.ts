@@ -358,4 +358,70 @@ describe('RentriAnagraficheClient — registri (HttpService finto)', () => {
       )
     })
   })
+
+  describe('difesa in profondita sui parametri e sulle risposte', () => {
+    it.each([
+      '',
+      'r1234abcdef',
+      'R123',
+      '../R1234ABCDEF',
+      'R1234ABCDEF/xml',
+      'R1234ABCDEF?x=1',
+      'R1234ABCDEFG',
+    ])(
+      'identificativo registro %j: rifiutato prima di qualunque chiamata (DELETE irreversibile compresa)',
+      async id => {
+        await expect(client.chiudiRegistro(id, TENANT)).rejects.toThrow(/identificativo/i)
+        await expect(client.modificaRegistro(id, { descrizione: 'x' }, TENANT)).rejects.toThrow(
+          /identificativo/i
+        )
+        await expect(client.dettaglioRegistro(id, TENANT)).rejects.toThrow(/identificativo/i)
+        await expect(client.scaricaVidimazioneXml(id, TENANT)).rejects.toThrow(/identificativo/i)
+        expect(http.delete).not.toHaveBeenCalled()
+        expect(http.put).not.toHaveBeenCalled()
+        expect(http.get).not.toHaveBeenCalled()
+      }
+    )
+
+    it('elencaRegistriSito codifica i segmenti di path', async () => {
+      http.get.mockReturnValue(of({ status: 200, data: [], headers: {} }))
+      await client.elencaRegistriSito('MI/1', 'OP 1/../x', undefined, TENANT)
+      expect(http.get.mock.calls[0][0]).toBe(
+        'https://demoapi.rentri.gov.it/anagrafiche/v1.0/operatore/MI%2F1/siti/OP%201%2F..%2Fx/registri'
+      )
+    })
+
+    it.each(['X', 'r1234abcdef', 'R123', '../R1234ABCDEF'])(
+      'apriRegistro: identificativo %j nel 201 -> esito incerto (il registro potrebbe esistere)',
+      async id => {
+        http.post.mockReturnValue(of({ status: 201, data: { identificativo: id }, headers: {} }))
+        const errore = await apri().catch(e => e)
+        expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+        expect(errore.causa).toBe('RISPOSTA_SENZA_TRANSAZIONE')
+        expect(http.post).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it('scaricaVidimazioneXml: contenuto non UTF-8 -> EsitoRentriMalformatoError (niente U+FFFD in silenzio)', async () => {
+      const nonUtf8 = Buffer.from([0x3c, 0x61, 0x3e, 0xe8, 0x3c, 0x2f, 0x61, 0x3e]) // <a>\xe8</a> in latin1
+      http.get.mockReturnValue(
+        of({ status: 200, data: { content: nonUtf8.toString('base64') }, headers: {} })
+      )
+      await expect(client.scaricaVidimazioneXml(REGISTRO, TENANT)).rejects.toBeInstanceOf(
+        EsitoRentriMalformatoError
+      )
+    })
+
+    it('scaricaVidimazioneXml: BOM UTF-8 conservato byte per byte', async () => {
+      const originale = Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from('<a>è</a>', 'utf8'),
+      ])
+      http.get.mockReturnValue(
+        of({ status: 200, data: { content: originale.toString('base64') }, headers: {} })
+      )
+      const { xml } = await client.scaricaVidimazioneXml(REGISTRO, TENANT)
+      expect(Buffer.from(xml, 'utf8').equals(originale)).toBe(true)
+    })
+  })
 })

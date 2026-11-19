@@ -29,7 +29,16 @@ const NS_DS = 'http://www.w3.org/2000/09/xmldsig#'
 const ID_EREGI = 'eREGI-CS-0'
 const PATTERN_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
 const PATTERN_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
-const PATTERN_DATA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+const PATTERN_DATA = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/
+const DIGEST_SHA256 = 'http://www.w3.org/2001/04/xmlenc#sha256'
+const BYTE_DIGEST_SHA256 = 32
+
+/**
+ * Tetto di lunghezza dell'input (caratteri). Un eREGI pesa pochi KB: il tetto
+ * esiste contro l'input patologico (parsing e ricerche con costo non lineare),
+ * non come limite di dominio.
+ */
+export const LUNGHEZZA_MASSIMA_EREGI = 5 * 1024 * 1024
 const select = xpath.useNamespaces({ reg: NS_REG, ds: NS_DS })
 
 /**
@@ -50,24 +59,50 @@ const select = xpath.useNamespaces({ reg: NS_REG, ds: NS_DS })
  *
  * Non verifica la firma (è dell'ente e si usa VERBATIM): ne estrae solo il digest.
  */
+/** `true` se `testo` è una data/ora ISO 8601 esistente (31 febbraio e ora 25 non passano il rollover di `Date`). */
+function dataIsoEsistente(testo: string): boolean {
+  const m = PATTERN_DATA.exec(testo)
+  if (!m) return false
+  const [anno, mese, giorno, ora, minuti, secondi] = m.slice(1, 7).map(Number)
+  if (ora > 23 || minuti > 59 || secondi > 59) return false
+  const d = new Date(Date.UTC(anno, mese - 1, giorno))
+  return d.getUTCFullYear() === anno && d.getUTCMonth() === mese - 1 && d.getUTCDate() === giorno
+}
+
+/** SHA-256 in base64 canonico: 32 byte che ricodificati danno lo stesso testo. */
+function digestSha256Valido(testo: string): boolean {
+  if (!PATTERN_BASE64.test(testo) || testo.length % 4 !== 0) return false
+  const byte = Buffer.from(testo, 'base64')
+  return byte.length === BYTE_DIGEST_SHA256 && byte.toString('base64') === testo
+}
+
 export function leggiEregi(xml: string): DatiEregi {
   if (typeof xml !== 'string' || xml.trim() === '') {
     throw new EregiNonValidoError('XML vuoto')
+  }
+  if (xml.length > LUNGHEZZA_MASSIMA_EREGI) {
+    throw new EregiNonValidoError('lunghezza oltre il tetto ammesso')
   }
   if (/<!\s*(DOCTYPE|ENTITY)/i.test(xml)) {
     throw new EregiNonValidoError('DOCTYPE o definizione di entità non ammessi')
   }
 
-  const problemi: string[] = []
-  const segnala = (): void => {
-    problemi.push('XML non ben formato')
+  // Fail-closed su QUALUNQUE segnalazione del parser (warning, error, fatalError):
+  // con xmldom 0.9 `onError` le riceve tutte, e i fatali lanciano anche `ParseError`.
+  let problemi = 0
+  let documento: ReturnType<DOMParser['parseFromString']>
+  try {
+    documento = new DOMParser({
+      onError: () => {
+        problemi++
+      },
+    }).parseFromString(xml, 'text/xml')
+  } catch {
+    throw new EregiNonValidoError('XML non ben formato')
   }
-  const documento = new DOMParser({
-    errorHandler: { warning: segnala, error: segnala, fatalError: segnala },
-  }).parseFromString(xml, 'text/xml')
 
   const radice = documento?.documentElement
-  if (problemi.length > 0 || !radice) {
+  if (problemi > 0 || !radice) {
     throw new EregiNonValidoError('XML non ben formato')
   }
   if (radice.localName !== 'eREGI' || radice.namespaceURI !== NS_REG) {
@@ -91,25 +126,41 @@ export function leggiEregi(xml: string): DatiEregi {
     throw new EregiNonValidoError('Identificativo malformato')
   }
   const dataRichiesta = testoUnico('DataRichiesta')
-  if (!PATTERN_DATA.test(dataRichiesta) || Number.isNaN(Date.parse(dataRichiesta))) {
+  if (!dataIsoEsistente(dataRichiesta)) {
     throw new EregiNonValidoError('DataRichiesta non è una data ISO 8601')
   }
   const numIscrSito = testoUnico('NumIscrSito')
 
-  if (nodi('./ds:Signature').length !== 1) {
-    throw new EregiNonValidoError('attesa esattamente una ds:Signature figlia della radice')
+  // Un solo elemento con Id="eREGI-CS-0" in tutto il documento: la radice. Un secondo
+  // (signature wrapping) renderebbe ambiguo a chi punta il Reference.
+  if (nodi(`//*[@Id="${ID_EREGI}"]`).length !== 1) {
+    throw new EregiNonValidoError(`attesa esattamente un elemento con Id="${ID_EREGI}"`)
   }
-  const riferimenti = nodi('./ds:Signature/ds:SignedInfo/ds:Reference')
-  if (riferimenti.length !== 1) {
-    throw new EregiNonValidoError('attesa esattamente un ds:Reference nella firma')
+
+  // Struttura univoca, ricerca RELATIVA da ogni nodo trovato: una firma, una SignedInfo,
+  // un Reference. XMLDSig considera la prima SignedInfo: con due, il digest potrebbe
+  // venire da una che non è quella firmata.
+  const relativi = (da: Element, espressione: string): Element[] =>
+    select(espressione, da as unknown as Node) as unknown as Element[]
+  const unico = (elementi: Element[], descrizione: string): Element => {
+    if (elementi.length !== 1) throw new EregiNonValidoError(`attesa esattamente ${descrizione}`)
+    return elementi[0]
   }
-  if (riferimenti[0].getAttribute('URI') !== `#${ID_EREGI}`) {
+
+  const firma = unico(nodi('./ds:Signature'), 'una ds:Signature figlia della radice')
+  const signedInfo = unico(relativi(firma, './ds:SignedInfo'), 'una ds:SignedInfo nella firma')
+  const riferimento = unico(relativi(signedInfo, './ds:Reference'), 'un ds:Reference nella firma')
+  if (riferimento.getAttribute('URI') !== `#${ID_EREGI}`) {
     throw new EregiNonValidoError(`ds:Reference diverso da URI="#${ID_EREGI}"`)
   }
-  const digestNodi = nodi('./ds:Signature/ds:SignedInfo/ds:Reference/ds:DigestValue')
-  const digest = digestNodi.length === 1 ? (digestNodi[0].textContent ?? '').trim() : ''
-  if (!PATTERN_BASE64.test(digest)) {
-    throw new EregiNonValidoError('DigestValue assente o non base64')
+  const metodo = unico(relativi(riferimento, './ds:DigestMethod'), 'un ds:DigestMethod')
+  if (metodo.getAttribute('Algorithm') !== DIGEST_SHA256) {
+    throw new EregiNonValidoError('ds:DigestMethod diverso da SHA-256')
+  }
+  const digestNodo = unico(relativi(riferimento, './ds:DigestValue'), 'un ds:DigestValue')
+  const digest = (digestNodo.textContent ?? '').trim()
+  if (!digestSha256Valido(digest)) {
+    throw new EregiNonValidoError('DigestValue assente o non è un SHA-256 in base64')
   }
 
   return { digest, dataRichiesta, identificativo, numIscrSito }
