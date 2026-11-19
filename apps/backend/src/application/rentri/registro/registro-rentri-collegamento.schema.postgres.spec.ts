@@ -53,8 +53,10 @@ describe('Registro: colonne di collegamento a RENTRI (M1) — Postgres reale', (
     expect(r.rentriAttivita).toEqual(['Produzione', 'Recupero'])
   })
 
-  it('rifiuta un\'attivita fuori dall\'elenco del contratto', async () => {
-    await expect(registro({ rentriAttivita: ['Pirotecnica'] })).rejects.toThrow(/registri_rifiuti_rentri_attivita_check/)
+  it("rifiuta un'attivita fuori dall'elenco del contratto", async () => {
+    await expect(registro({ rentriAttivita: ['Pirotecnica'] })).rejects.toThrow(
+      /registri_rifiuti_rentri_attivita_check/
+    )
   })
 
   it('rifiuta un codice di recupero o smaltimento inesistente', async () => {
@@ -66,7 +68,7 @@ describe('Registro: colonne di collegamento a RENTRI (M1) — Postgres reale', (
     ).rejects.toThrow(/registri_rifiuti_rentri_attivita_rec_smalt_check/)
   })
 
-  it('Recupero o Smaltimento senza codici e\' rifiutato', async () => {
+  it("Recupero o Smaltimento senza codici e' rifiutato", async () => {
     await expect(registro({ rentriAttivita: ['Recupero'] })).rejects.toThrow(
       /registri_rifiuti_rentri_rec_smalt_richiesti_check/
     )
@@ -79,7 +81,7 @@ describe('Registro: colonne di collegamento a RENTRI (M1) — Postgres reale', (
     await expect(registro({ rentriAttivita: ['Trasporto'] })).resolves.toBeDefined()
   })
 
-  it('un registro chiuso su RENTRI deve avere l\'identificativo', async () => {
+  it("un registro chiuso su RENTRI deve avere l'identificativo", async () => {
     await expect(registro({ rentriChiusoIl: new Date() })).rejects.toThrow(
       /registri_rifiuti_chiuso_con_identificativo_check/
     )
@@ -88,7 +90,7 @@ describe('Registro: colonne di collegamento a RENTRI (M1) — Postgres reale', (
     ).resolves.toBeDefined()
   })
 
-  it('la descrizione di apertura e\' limitata a 250 caratteri', async () => {
+  it("la descrizione di apertura e' limitata a 250 caratteri", async () => {
     await expect(registro({ rentriAperturaDescrizione: 'x'.repeat(251) })).rejects.toThrow()
   })
 })
