@@ -6,6 +6,7 @@ import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { RegistriService } from './registri.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Progressivo iniziale del registro contro un Postgres reale: la tabella creata dalla
  * migration, il numero preso dal primo movimento e la serializzazione con la numerazione
@@ -69,7 +70,7 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
     await prisma.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
     if (userId) await prisma.user.deleteMany({ where: { id: userId } })
-    await prisma.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(prisma, tenantCreati)
     if (cerCreato) await prisma.cERCode.deleteMany({ where: { code: CER } })
     await prisma.$disconnect()
   })

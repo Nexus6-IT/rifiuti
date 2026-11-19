@@ -36,6 +36,7 @@ import {
 } from './errori-campo'
 import { GiroService } from './giro.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('App campo P1 — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -135,7 +136,7 @@ describe('App campo P1 — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     for (const t of tenantCreati) {
       try {
-        await owner.tenant.delete({ where: { id: t } })
+        await cancellaAziendeDiProva(owner, t)
       } catch (e) {
         console.error(`pulizia campo: azienda ${t} non cancellata`, e)
       }

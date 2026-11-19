@@ -9,6 +9,7 @@ import type { PrismaSistemaService } from '../../../infrastructure/persistence/p
 import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
 import { RisoluzioneAgenteService } from './risoluzione-agente.service'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('RisoluzioneAgenteService (Postgres reale, ruolo di sistema)', () => {
   const owner = new PrismaClient()
   const sistema = clientComeRuolo(
@@ -59,7 +60,7 @@ describe('RisoluzioneAgenteService (Postgres reale, ruolo di sistema)', () => {
   }
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), sistema.$disconnect(), app.$disconnect()])
   })
 

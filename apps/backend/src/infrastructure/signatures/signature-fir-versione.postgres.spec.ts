@@ -37,6 +37,7 @@ import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signat
 import { FirModificatoNelFrattempoError } from '../../core/domain/errors'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const CF_FIRMATARIO = 'RSSMRA80A01H501U'
 
 describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow_app)', () => {
@@ -93,7 +94,7 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
     if (tenantId) {
       await owner.fIR.deleteMany({ where: { tenantId } }) // le firme seguono in cascata
       await owner.user.deleteMany({ where: { tenantId } })
-      await owner.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(owner, tenantId)
     }
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })

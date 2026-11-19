@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client'
 import { eDatabaseDiTestLocale } from './database-di-test'
 import { creaDittaConRuolo, partitaIvaUnica } from './anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from './cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55438/wasteflow_ci?schema=public'
@@ -19,7 +20,7 @@ describe('creaDittaConRuolo — CLIENTE e AGENTE (Postgres)', () => {
       const in_ = { in: tenantCreati }
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
   })

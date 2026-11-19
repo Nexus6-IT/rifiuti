@@ -42,6 +42,7 @@ import {
 } from '../../../test-support/anagrafiche-di-test'
 import { DatiRisoluzioneRuolo, DitteService } from './ditte.service'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const INDIRIZZO = { via: 'Via Roma', civico: '1', cap: '00100', citta: 'Roma', provincia: 'RM' }
 
 describe('DitteService — Postgres reale, ruolo wasteflow_app', () => {
@@ -101,7 +102,7 @@ describe('DitteService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.sedeDitta.deleteMany({ where: { tenantId } })
       await owner.ditta.deleteMany({ where: { tenantId } })
     }
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
     await app2.$disconnect()

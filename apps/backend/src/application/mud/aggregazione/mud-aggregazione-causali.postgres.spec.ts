@@ -28,6 +28,7 @@ import {
 import { MudAggregazioneService } from './mud-aggregazione.service'
 import { hashAggregato } from './mud-regole'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 // ORACOLO: la vecchia implementazione, copiata VERBATIM da mud-regole.ts:28-57 di master
 // 5b6f661. NON va modificata.
 type Ruolo = 'PRODOTTO' | 'AVVIATO' | 'RICEVUTO_DA_TERZI' | 'ESCLUSO'
@@ -145,7 +146,7 @@ describe('MudAggregazioneService con il catalogo — Postgres reale, ruolo waste
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.causaleRegistroAzienda.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })

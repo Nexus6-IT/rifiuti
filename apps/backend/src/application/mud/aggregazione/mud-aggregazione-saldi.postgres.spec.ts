@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { MudAggregazioneService } from './mud-aggregazione.service'
 import { limitiAnnoMud } from './mud-regole'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 /**
  * Saldo del registro al 31/12 per l'avviso delle giacenze, contro un Postgres reale:
  * il confine dell'anno italiano e le somme Decimal stanno nella query, quindi solo il
@@ -51,9 +52,7 @@ describe('MudAggregazioneService.saldiAl31DicembrePerRegistro — Postgres reale
     await prisma.registroRifiuti.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
-    await prisma.tenant.deleteMany({
-      where: { id: { in: [tenantId, altroTenantId].filter(Boolean) } },
-    })
+    await cancellaAziendeDiProva(prisma, [tenantId, altroTenantId].filter(Boolean))
     await prisma.$disconnect()
   })
 

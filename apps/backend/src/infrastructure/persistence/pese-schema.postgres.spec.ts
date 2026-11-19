@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const HASH = 'a'.repeat(64)
 
 type Valore = string | number | boolean | null
@@ -223,7 +224,7 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
     })
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), app.$disconnect(), sistema.$disconnect()])
   })
 
@@ -639,7 +640,7 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
         creato_da: a.user,
         updated_at: new Date().toISOString(),
       })
-      await owner.tenant.delete({ where: { id: a.t } })
+      await cancellaAziendeDiProva(owner, a.t)
       for (const t of [
         'strumenti_pesa',
         'automezzi',

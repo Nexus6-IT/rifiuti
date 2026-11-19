@@ -35,6 +35,7 @@ import {
 import { RitiriService } from './ritiri.service'
 import type { NuovoRitiro } from './ritiri.tipi'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Servizio ritiri — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -163,7 +164,7 @@ describe('Servizio ritiri — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     for (const t of tenantCreati) {
       try {
-        await owner.tenant.delete({ where: { id: t } })
+        await cancellaAziendeDiProva(owner, t)
       } catch (e) {
         console.error(`pulizia ritiri.service: azienda ${t} non cancellata`, e)
       }

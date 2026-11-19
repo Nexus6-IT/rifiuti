@@ -30,6 +30,7 @@ import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { TenantContext } from '../../core/context/tenant-context'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   PrismaService,
   creaPrismaServiceApplicativo,
@@ -110,7 +111,7 @@ describe('DitteController — HTTP su Postgres reale, ruolo wasteflow_app', () =
       await owner.activityLog.deleteMany({ where })
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await prisma.$disconnect()

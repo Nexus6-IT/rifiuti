@@ -37,6 +37,7 @@ import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { BadRequestException } from '@nestjs/common'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
@@ -200,7 +201,7 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
     if (userId) await owner.user.deleteMany({ where: { id: userId } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await app.onModuleDestroy()
     await owner.$disconnect()

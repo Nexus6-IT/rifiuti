@@ -15,6 +15,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { PrismaPermissionRepository } from './permission.repository'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -93,7 +94,7 @@ describe('RLS: role_permissions tramite il ruolo (Postgres reale)', () => {
   afterAll(async () => {
     await owner.role.deleteMany({ where: { tenantId: { in: tenantIds } } })
     await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+    await cancellaAziendeDiProva(owner, tenantIds)
     await owner.permission.deleteMany({ where: { id: { in: permessiCreati } } })
     await Promise.all([owner.$disconnect(), app.$disconnect()])
   })

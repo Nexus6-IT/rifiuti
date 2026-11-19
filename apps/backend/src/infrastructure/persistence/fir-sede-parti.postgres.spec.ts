@@ -43,6 +43,7 @@ import { ModificaFIRUseCase } from '../../application/fir/use-cases/modifica-fir
 import { ModificaFIRCommand } from '../../application/fir/commands/modifica-fir.command'
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { EmettiFIRCommand } from '../../application/fir/commands/emetti-fir.command'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   CF_PERSONA_ALTRO,
   CF_PERSONA_VALIDO,
@@ -243,7 +244,7 @@ describe('FIR: sede e codice fiscale delle parti (Postgres reale, ruolo wasteflo
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
       await owner.user.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await Promise.all([owner.$disconnect(), app?.onModuleDestroy(), sistema?.onModuleDestroy()])
   })

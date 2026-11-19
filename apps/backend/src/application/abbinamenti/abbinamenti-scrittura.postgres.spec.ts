@@ -28,6 +28,7 @@ import { RegistriService } from '../registro/registri.service'
 import { RegistraMovimentoUseCase } from '../registro/use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../registro/commands/registra-movimento.command'
 import { CorreggiMovimentoUseCase } from '../registro/use-cases/correggi-movimento.use-case'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   abbinaNuovoScarico,
   bloccaAmbiti,
@@ -190,7 +191,7 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
       await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       if (userId) await owner.user.deleteMany({ where: { id: userId } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()

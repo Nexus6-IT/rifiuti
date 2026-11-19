@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -63,7 +64,7 @@ describe('RLS: sola lettura per i controlli (wasteflow_lettura)', () => {
     await lettore?.$disconnect()
     await owner.role.deleteMany({ where: { tenantId: { in: tenantIds } } })
     await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+    await cancellaAziendeDiProva(owner, tenantIds)
     await owner.$executeRawUnsafe(`DROP OWNED BY ${nomeRuolo}`)
     await owner.$executeRawUnsafe(`DROP ROLE ${nomeRuolo}`)
     await owner.$disconnect()

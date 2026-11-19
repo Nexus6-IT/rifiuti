@@ -23,6 +23,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { WHERE_VIGENTE, sqlVigente } from './vigenza'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Vigenza e vincoli delle correzioni — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -125,7 +126,7 @@ describe('Vigenza e vincoli delle correzioni — Postgres reale, ruolo wasteflow
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })
@@ -258,7 +259,7 @@ describe('Vigenza e vincoli delle correzioni — Postgres reale, ruolo wasteflow
       const { az } = await costruisciCatene()
       expect(await owner.wasteMovement.count({ where: { tenantId: az.tenantId } })).toBe(9)
       // Nessuna cancellazione preventiva di registri o movimenti: solo il tenant.
-      await owner.tenant.delete({ where: { id: az.tenantId } })
+      await cancellaAziendeDiProva(owner, az.tenantId)
       expect(await owner.wasteMovement.count({ where: { tenantId: az.tenantId } })).toBe(0)
     })
 

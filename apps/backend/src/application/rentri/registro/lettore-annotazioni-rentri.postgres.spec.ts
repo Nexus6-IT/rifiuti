@@ -24,6 +24,7 @@ import { creaDittaConRuolo, partitaIvaUnica } from '../../../test-support/anagra
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { traduciAnnotazione } from './mappa-registrazione-rentri'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('LettoreAnnotazioniRentri — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -184,7 +185,7 @@ describe('LettoreAnnotazioniRentri — Postgres reale, ruolo wasteflow_app', () 
       await owner.user.deleteMany({ where: filtro })
       await owner.registroRifiuti.deleteMany({ where: filtro })
       await owner.rentriUnitaLocale.deleteMany({ where: filtro })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (comuneCreato) await owner.istatComune.deleteMany({ where: { code: '058091' } })
     await app.onModuleDestroy()

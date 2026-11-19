@@ -31,6 +31,7 @@ import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { FirModificatoNelFrattempoError, FirNonTrovatoError } from '../../core/domain/errors'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('FIR: versione e scritture condizionate (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -76,7 +77,7 @@ describe('FIR: versione e scritture condizionate (Postgres reale, ruolo wasteflo
     if (tenantId) {
       await owner.fIR.deleteMany({ where: { tenantId } })
       await owner.user.deleteMany({ where: { tenantId } })
-      await owner.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(owner, tenantId)
     }
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })

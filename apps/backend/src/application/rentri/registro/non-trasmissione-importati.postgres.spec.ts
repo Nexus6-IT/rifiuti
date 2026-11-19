@@ -37,6 +37,7 @@ import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-case'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('Fase 3 (3.1): adozione e coda del registro saltano gli importati — Postgres reale', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -167,7 +168,7 @@ describe('Fase 3 (3.1): adozione e coda del registro saltano gli importati — P
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

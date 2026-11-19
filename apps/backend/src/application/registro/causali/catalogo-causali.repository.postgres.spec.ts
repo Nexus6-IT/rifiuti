@@ -29,6 +29,7 @@ import {
 } from '../../../infrastructure/persistence/prisma.service'
 import { caricaCatalogoCausali, confermaVersioneAzienda } from './catalogo-causali.repository'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('Catalogo causali — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -94,7 +95,7 @@ describe('Catalogo causali — Postgres reale, ruolo wasteflow_app', () => {
 
   afterAll(async () => {
     await owner.causaleRegistroAzienda.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })

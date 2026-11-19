@@ -23,6 +23,7 @@ import {
 } from '../../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo wasteflow_app', () => {
   const CER = '99 99 08'
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -123,7 +124,7 @@ describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo w
   afterAll(async () => {
     // Pulizia per id esatti: la cascata dell'azienda toglie registri, movimenti e righe di trasmissione.
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()
@@ -345,7 +346,7 @@ describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo w
     const az = await azienda()
     const t = await riga(az, 'TRASMESSA')
     const g = await riga(az, 'GIA_SU_RENTRI')
-    await owner.tenant.delete({ where: { id: az.tenantId } })
+    await cancellaAziendeDiProva(owner, az.tenantId)
     expect(
       await owner.movimentoTrasmissioneRentri.count({ where: { id: { in: [t.id, g.id] } } })
     ).toBe(0)

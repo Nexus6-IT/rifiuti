@@ -31,6 +31,7 @@ import { inserisciABlocchi } from './inserisci-a-blocchi'
 import { LottiImportService } from './lotti-import.service'
 import type { InserisciBlocco } from './tipi'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('Fase 3 (3.1): motore di caricamento a blocchi — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -93,7 +94,7 @@ describe('Fase 3 (3.1): motore di caricamento a blocchi — Postgres reale, ruol
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()
