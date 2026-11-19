@@ -1,5 +1,10 @@
 # WasteFlow · Piano di marketing a budget 0 €
 
+> **Decisioni di Graziano del 19/11/2026 (valgono su questo piano):**
+> - Ore: fino a fine dicembre restano attivi ROADS (lancio 23/11) e Fast Selling (12/12); WasteFlow slitta a gennaio.
+> - Prezzi sul sito: si pubblicano solo dove il test lo richiede (Neat 169/199 €/mese, WasteFlow 59 €/anno per azienda); gli altri prodotti seguono il proprio piano (Fast Selling dopo il giorno 30, ROADS dopo la scheda del 05/03/2027, MultiStore entro il 12/01/2027, Grumbo mai prima dell'esito).
+> - **WasteFlow rinviato:** calendario spostato di 5 settimane (primi messaggi dall'11/01/2027, lancio lun 18/01/2027, gate ven 26/02/2027).
+
 Data: 18/11/2026. Budget di cassa: **0 €**. Il costo è il tempo del fondatore (una persona, sei prodotti).
 
 ## 0. Il perimetro: cosa è questo piano
@@ -231,3 +236,14 @@ Quarto controllo, di salvaguardia: **ore spese a settimana**. Oltre 6 per due se
 5. **Tempo di risposta** che si può promettere nel gancio 8.
 6. **Chi corregge il sito** (3 correzioni della sezione 6): serve prima del 07/12.
 7. **Data di "lancio"**: ho assunto il 07/12/2026. Se il tempo è altrove (MultiStore), il calendario scorre in blocco.
+
+## marketing-AI (decisione del 19/11/2026)
+
+Graziano decide che il motore `~/Progetti/marketing-AI` entra nel piano **da subito solo per liste e bozze, mentre gli invii restano manuali**.
+
+- **Liste.** Il motore prepara e pulisce la lista dei contatti del primo pubblico: fonti dichiarate (OSM, Overture, CSV/JSON), esclude PEC e indirizzi personali. Per WasteFlow i consulenti ambientali sono studi piccoli e poco presenti in OSM e Overture: la scelta dei 40 nominativi resta in gran parte a mano, il motore li arricchisce e li pulisce. I gruppi societari non hanno una fonte (si passa dai consulenti); le associazioni si scelgono a mano.
+- **Bozze.** Il motore scrive le bozze dei primi messaggi e i copioni per il telefono, sempre in APPROVAL. Ogni bozza dichiara il limite RENTRI nella prima o seconda riga.
+- **Invii.** Email, PEC e telefonate partono dal fondatore. Nessun invio automatico finché non ci sono i 3 mesi di dati del go-live MultiStore (sequenza decisa il 17/11).
+- **Nel countdown** (`launch.md`): onboarding del verticale `wasteflow` in SHADOW (circa 4 ore, ipotesi, owner Graziano), lista pronta, bozze approvate. Risparmio stimato di contatto diretto: circa 4-5 ore su 60 contatti nelle 8 settimane, contro circa 5,5 ore di onboarding e revisione: saldo vicino a zero nel gate.
+
+Questo sostituisce la riga "marketing-AI (outreach automatico)" della sezione 3 solo per liste e bozze. Il resto della sezione 3 resta.
