@@ -22,8 +22,7 @@ import { avvisiInvio } from '../../domain/fatturazione/sdi/avvisi'
 import type { AvvisoTrasmissioneSdi } from '../../domain/fatturazione/sdi/codici'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
-import { XmlDocumentoService } from '../fatturazione/xml-documento.service'
-import { TETTO_DOCUMENTI_XML_ZIP } from '../fatturazione/xml-documento.service'
+import { TETTO_DOCUMENTI_XML_ZIP, XmlDocumentoService } from '../fatturazione/xml-documento.service'
 import {
   ProviderSdiNonDisponibileError,
   RegistroProviderSdi,
