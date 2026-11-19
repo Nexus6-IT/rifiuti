@@ -20,7 +20,7 @@ describe('traduciQuantita (conversioni verso kg e litri del contratto)', () => {
     expect(traduciQuantita(valore, unita)).toEqual(atteso)
   })
 
-  it('arrotonda a 4 decimali in modo esplicito (meta\' verso l\'alto)', () => {
+  it("arrotonda a 4 decimali in modo esplicito (meta' verso l'alto)", () => {
     expect(traduciQuantita(1.23456, 'kg').valore).toBe(1.2346)
     expect(traduciQuantita(1.23454, 'kg').valore).toBe(1.2345)
     expect(traduciQuantita(0.00005, 'kg').valore).toBe(0.0001)
@@ -32,31 +32,31 @@ describe('traduciQuantita (conversioni verso kg e litri del contratto)', () => {
     expect(traduciQuantita(4.35, 't').valore).toBe(4350)
   })
 
-  it('rifiuta quantita\' non positive, non finite o che diventano zero dopo l\'arrotondamento', () => {
+  it("rifiuta quantita' non positive, non finite o che diventano zero dopo l'arrotondamento", () => {
     for (const v of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 0.00001]) {
       expect(() => traduciQuantita(v, 'kg')).toThrow(ValoreNonTraducibilePerRentriError)
     }
   })
 
-  it('rifiuta le quantita\' oltre il massimo del contratto (9999999999.9999)', () => {
+  it("rifiuta le quantita' oltre il massimo del contratto (9999999999.9999)", () => {
     expect(traduciQuantita(9999999999.9999, 'kg').valore).toBe(9999999999.9999)
     expect(() => traduciQuantita(10000000000, 'kg')).toThrow(ValoreNonTraducibilePerRentriError)
     // 10 milioni di tonnellate = 1e10 kg: fuori limite dopo la conversione
     expect(() => traduciQuantita(10000000, 't')).toThrow(ValoreNonTraducibilePerRentriError)
   })
 
-  it('rifiuta un\'unita\' sconosciuta invece di indovinarla', () => {
+  it("rifiuta un'unita' sconosciuta invece di indovinarla", () => {
     expect(() => traduciQuantita(1, 'barili')).toThrow(/unita_misura/)
   })
 })
 
 describe('normalizzaCaratteristichePericolo', () => {
-  it('porta HP4,HP14 al formato HPnn del contratto, senza duplicati e nell\'ordine dato', () => {
+  it("porta HP4,HP14 al formato HPnn del contratto, senza duplicati e nell'ordine dato", () => {
     expect(normalizzaCaratteristichePericolo('HP4,HP14')).toEqual(['HP04', 'HP14'])
     expect(normalizzaCaratteristichePericolo(' hp 4 ; HP04 , hp15 ')).toEqual(['HP04', 'HP15'])
   })
 
-  it('restituisce undefined se non c\'e\' nessuna classe', () => {
+  it("restituisce undefined se non c'e' nessuna classe", () => {
     expect(normalizzaCaratteristichePericolo(undefined)).toBeUndefined()
     expect(normalizzaCaratteristichePericolo('  ')).toBeUndefined()
     expect(normalizzaCaratteristichePericolo(null)).toBeUndefined()
