@@ -190,6 +190,33 @@ export class TemplateService {
   }
 
   /**
+   * Render dell'avviso del termine di trasmissione mensile del registro a RENTRI (eREGI E0).
+   * Il termine e' indicativo (fonte normativa secondaria): il testo lo dice.
+   */
+  async renderTermineTrasmissioneRegistro(data: {
+    recipientName: string
+    companyName: string
+    registroDescrizione: string
+    /** Mese dell'annotazione piu' vecchia ancora da trasmettere, 'MM/AAAA'. */
+    meseAnnotazioni: string
+    /** Termine, 'GG/MM/AAAA'. */
+    termine: string
+    isExpired: boolean
+    /** Giorni al termine (solo se non scaduto). */
+    daysRemaining?: number
+    /** Giorni dalla scadenza (solo se scaduto). */
+    daysOverdue?: number
+    pannelloUrl: string
+  }): Promise<string> {
+    return this.render('termine-trasmissione-registro', {
+      subject: data.isExpired
+        ? 'Attenzione: termine di trasmissione del registro RENTRI superato'
+        : 'Promemoria: termine di trasmissione del registro RENTRI',
+      ...data,
+    })
+  }
+
+  /**
    * Clear template cache (useful for development)
    */
   clearCache() {

@@ -49,6 +49,7 @@ import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-si
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
@@ -183,6 +184,7 @@ describe('DeadlineCheckerService', () => {
         { provide: TemplateService, useValue: mockTemplateService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: LoggerService, useValue: mockLogger },
+        { provide: ModuliAttiviService, useValue: {} },
       ],
     }).compile()
 

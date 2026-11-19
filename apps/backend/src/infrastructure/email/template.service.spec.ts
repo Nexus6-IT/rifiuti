@@ -87,4 +87,37 @@ describe('TemplateService', () => {
       expect(html).toContain('href="https://wasteflow.app/trasportatori"')
     })
   })
+  describe('renderTermineTrasmissioneRegistro', () => {
+    const base = {
+      recipientName: 'Mario Rossi',
+      companyName: 'Alfa Srl',
+      registroDescrizione: 'Sede Milano',
+      meseAnnotazioni: '01/2026',
+      termine: '28/02/2026',
+      isExpired: false,
+      daysRemaining: 4,
+      pannelloUrl: 'https://wasteflow.app/registro',
+    }
+
+    it('in tempo: giorni rimanenti, termine indicativo, nessun «superato»', async () => {
+      const html = await service.renderTermineTrasmissioneRegistro(base)
+      expect(html).toContain('28/02/2026')
+      expect(html).toContain('Giorni rimanenti')
+      expect(html).toMatch(/indicativo/i)
+      expect(html).not.toMatch(/superato/i)
+      expect(html).toContain('href="https://wasteflow.app/registro"')
+    })
+
+    it('scaduto: dice che il termine è superato e i giorni di ritardo', async () => {
+      const html = await service.renderTermineTrasmissioneRegistro({
+        ...base,
+        isExpired: true,
+        daysRemaining: undefined,
+        daysOverdue: 3,
+      })
+      expect(html).toMatch(/superato/i)
+      expect(html).toContain('Giorni dalla scadenza')
+      expect(html).not.toContain('Giorni rimanenti')
+    })
+  })
 })

@@ -1,0 +1,48 @@
+<div class="alert {{#if isExpired}}alert-danger{{else}}alert-warning{{/if}}">
+  <strong>{{#if isExpired}}⚠️ Termine di trasmissione superato{{else}}🔔 Termine di trasmissione in arrivo{{/if}}</strong>
+</div>
+
+<p>Gentile {{recipientName}},</p>
+
+<p>
+  {{#if isExpired}}
+  il registro RENTRI «{{registroDescrizione}}» ha annotazioni di {{meseAnnotazioni}} non ancora confermate da RENTRI e il termine mensile di trasmissione è passato.
+  {{else}}
+  il registro RENTRI «{{registroDescrizione}}» ha annotazioni di {{meseAnnotazioni}} non ancora confermate da RENTRI: il termine mensile di trasmissione si avvicina.
+  {{/if}}
+</p>
+
+<div class="details">
+  <div class="details-item">
+    <span class="details-label">Azienda:</span> {{companyName}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Registro:</span> {{registroDescrizione}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Termine indicativo:</span> {{termine}}
+  </div>
+  {{#if isExpired}}
+  <div class="details-item">
+    <span class="details-label">Giorni dalla scadenza:</span> {{daysOverdue}}
+  </div>
+  {{else}}
+  <div class="details-item">
+    <span class="details-label">Giorni rimanenti:</span> {{daysRemaining}}
+  </div>
+  {{/if}}
+</div>
+
+<p>
+  <a href="{{pannelloUrl}}" class="button">Apri il registro</a>
+</p>
+
+<p><strong>Cosa fare:</strong></p>
+<ol>
+  <li>Apri il registro e controlla il pannello «Trasmissione a RENTRI»</li>
+  <li>Trasmetti le annotazioni in coda o rifiutate, oppure risolvi quelle con esito incerto</li>
+</ol>
+
+<p><strong>Nota:</strong> il termine è la fine del mese successivo a quello dell'annotazione ed è indicativo: ricavato da fonti secondarie sul DM 59/2023, da verificare sulla norma. L'obbligo di trasmettere dipende dalla categoria dell'azienda.</p>
+
+<p>Per assistenza, contatta il supporto tecnico WasteFlow.</p>

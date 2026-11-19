@@ -25,6 +25,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     nonTrasmessi: 7,
     escluse: 0,
     haCertificato: true,
+    scadenzaTrasmissione: null,
     ...p,
   }
 }
@@ -128,6 +129,44 @@ describe('RentriRegistroPannelloComponent', () => {
     fixture.destroy()
     apri(elenco({ perStato: { DA_TRASMETTERE: 3 }, escluse: 0 }))
     expect(q('rentri-conteggio-escluse')).toBeNull()
+  })
+
+  describe('termine della trasmissione mensile (E0)', () => {
+    const dal = (entro: string, scaduta: boolean, giorni: number) => ({
+      mese: '2026-01',
+      entro,
+      scaduta,
+      giorniRimanenti: giorni,
+    })
+
+    it('in tempo: «Da trasmettere entro il …», severità warning, termine indicativo', () => {
+      apri(elenco({ scadenzaTrasmissione: dal('2026-02-28', false, 12) }))
+      const el = q('rentri-termine')!
+      expect(el.textContent).toContain('Da trasmettere entro il 28/02/2026')
+      expect(el.textContent).toContain('termine indicativo')
+      expect(el.querySelector('.p-tag-warning')).not.toBeNull()
+      expect(el.querySelector('.p-tag-danger')).toBeNull()
+    })
+
+    it('scaduto: «Termine superato», severità danger, con il termine mancato', () => {
+      apri(elenco({ scadenzaTrasmissione: dal('2026-02-28', true, -3) }))
+      const el = q('rentri-termine')!
+      expect(el.textContent).toContain('Termine superato')
+      expect(el.textContent).toContain('28/02/2026')
+      expect(el.querySelector('.p-tag-danger')).not.toBeNull()
+    })
+
+    it('nessun termine (nulla da trasmettere): niente tag', () => {
+      apri(elenco({ scadenzaTrasmissione: null }))
+      expect(q('rentri-termine')).toBeNull()
+    })
+
+    it('registro non collegato: niente tag anche se il backend ne mandasse uno', () => {
+      apri(
+        elenco({ identificativoRentri: null, scadenzaTrasmissione: dal('2026-02-28', true, -3) })
+      )
+      expect(q('rentri-termine')).toBeNull()
+    })
   })
 
   it('manca il certificato: lo dice, e le annotazioni restano in coda', () => {

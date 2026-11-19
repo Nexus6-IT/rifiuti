@@ -17,6 +17,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     nonTrasmessi: 0,
     escluse: 0,
     haCertificato: true,
+    scadenzaTrasmissione: null,
     ...p,
   }
 }
