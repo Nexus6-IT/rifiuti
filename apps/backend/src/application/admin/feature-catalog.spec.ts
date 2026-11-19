@@ -138,3 +138,18 @@ describe('feature-catalog: campo', () => {
     ).toContain('campo')
   })
 })
+
+describe('feature-catalog: sdi', () => {
+  it('il modulo sdi e solo in ENTERPRISE e si aggiunge ai piani via featureFlags', () => {
+    expect(FEATURE_KEYS).toContain('sdi')
+    expect(PLAN_FEATURES[SubscriptionTier.ENTERPRISE]).toContain('sdi')
+    expect(PLAN_FEATURES[SubscriptionTier.PROFESSIONAL]).not.toContain('sdi')
+    expect(PLAN_FEATURES[SubscriptionTier.TRIAL]).not.toContain('sdi')
+    expect(
+      effectiveFeatures({
+        subscriptionTier: SubscriptionTier.PROFESSIONAL,
+        featureFlags: ['sdi'],
+      })
+    ).toContain('sdi')
+  })
+})

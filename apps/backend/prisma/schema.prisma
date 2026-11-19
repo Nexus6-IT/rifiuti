@@ -178,6 +178,11 @@ model Tenant {
   impostazioniFatturazione ImpostazioneFatturazione[]
   // Fase 4 pezzo 4a
   cedentiFatturazione         CedenteFatturazione[]
+  // Fase 4 pezzo 4.5a (SDI)
+  configurazioniSdi           ConfigurazioneSdi[]
+  trasmissioniSdi             TrasmissioneSdi[]
+  notificheSdi                NotificaSdi[]
+  eventiSdiRicevuti           EventoSdiRicevuto[]
   numerazioniFattura          NumerazioneFattura[]
   elaborazioniFatturazione    ElaborazioneFatturazione[]
   documentiFattura            DocumentoFattura[]
@@ -4389,6 +4394,8 @@ model DocumentoFattura {
   rate       RataDocumentoFattura[]
   marcatori  MarcatoreAddebitoFatturato[]
   legami     LegameMovimento[]
+  /// Stato SDI in tabella separata (4.5a): nessuna colonna sulla testata, il trigger di immutabilita' la vieterebbe sul DEFINITIVO.
+  trasmissioniSdi TrasmissioneSdi[]
 
   @@unique([id, tenantId], map: "documenti_fattura_id_tenant_id_key")
   @@unique([tenantId, progressivoFile], map: "documenti_fattura_tenant_id_progressivo_file_key")
@@ -4399,6 +4406,150 @@ model DocumentoFattura {
   @@index([tenantId, contrattoId], map: "documenti_fattura_tenant_id_contratto_id_idx")
   @@index([tenantId, clienteId], map: "documenti_fattura_tenant_id_cliente_id_idx")
   @@map("documenti_fattura")
+}
+
+// ============================================================================
+// Fase 4 pezzo 4.5a: emissione SDI tramite provider (piano docs/superpowers/plans/2026-11-18-sdi-provider.md, §4.2)
+// ============================================================================
+
+/// Stato di una trasmissione SDI (4.5a, §4.3). CALCOLATO dall'insieme delle notifiche (dominio `domain/fatturazione/sdi`); il trigger `trasmissioni_sdi_transizioni` rifiuta le transizioni fuori dalla macchina a stati.
+enum StatoTrasmissioneSdi {
+  DA_INVIARE
+  IN_INVIO
+  INVIATA
+  INCERTA
+  ERRORE_INVIO
+  CONSEGNATA
+  NON_CONSEGNATA
+  SCARTATA
+  ACCETTATA
+  RIFIUTATA
+  DECORSI_TERMINI
+  NON_RECAPITABILE
+
+  @@map("stato_trasmissione_sdi")
+}
+
+/// Direzione della trasmissione. `RICEVUTA` e' riservata alle passive (dopo il pilota).
+enum DirezioneTrasmissioneSdi {
+  EMESSA
+  RICEVUTA
+
+  @@map("direzione_trasmissione_sdi")
+}
+
+/// Configurazione SDI dell'azienda (4.5a): una per azienda. Le credenziali non escono mai dall'API (si possono solo sostituire). `invio_attivo` e' spento di default e il CHECK `configurazioni_sdi_invio_se_verificata` lo lega a una verifica riuscita. Insiemi chiusi `provider` e `ambiente` nei CHECK, ripetuti nel dominio.
+model ConfigurazioneSdi {
+  id                       String    @id(map: "configurazioni_sdi_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String    @map("tenant_id") @db.Uuid
+  provider                 String    @db.VarChar(20)
+  ambiente                 String    @default("SANDBOX") @db.VarChar(12)
+  /// Formato `iv:tag:ct` (AES-256-GCM, `SDI_CREDENTIAL_ENC_KEY`). Null = account di piattaforma.
+  credenzialiCifrate       String?   @map("credenziali_cifrate")
+  idConfigurazioneProvider String?   @map("id_configurazione_provider") @db.VarChar(100)
+  /// SHA-256 esadecimale del token nell'URL del webhook (il token in chiaro si mostra una volta sola).
+  webhookTokenSha256       String    @map("webhook_token_sha256") @db.Char(64)
+  webhookSegretoCifrato    String?   @map("webhook_segreto_cifrato")
+  firmaDalProvider         Boolean   @default(false) @map("firma_dal_provider")
+  invioAttivo              Boolean   @default(false) @map("invio_attivo")
+  /// Passi di onboarding spuntati, con data e utente.
+  onboarding               Json      @default("{}")
+  verificataIl             DateTime? @map("verificata_il")
+  ultimoEsitoVerifica      String?   @map("ultimo_esito_verifica") @db.VarChar(300)
+  versione                 Int       @default(1)
+  modificatoDa             String?   @map("modificato_da") @db.Uuid
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "configurazioni_sdi_tenant_id_fkey")
+
+  @@unique([tenantId], map: "configurazioni_sdi_tenant_id_key")
+  @@unique([webhookTokenSha256], map: "configurazioni_sdi_webhook_token_sha256_key")
+  @@map("configurazioni_sdi")
+}
+
+/// Un tentativo di invio di un documento allo SDI (4.5a). Indice unico PARZIALE `trasmissioni_sdi_una_viva` (una sola trasmissione non `ERRORE_INVIO`/`SCARTATA` per documento) solo in SQL: Prisma non conosce il WHERE.
+model TrasmissioneSdi {
+  id                    String                   @id(map: "trasmissioni_sdi_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                   @map("tenant_id") @db.Uuid
+  documentoId           String                   @map("documento_id") @db.Uuid
+  direzione             DirezioneTrasmissioneSdi @default(EMESSA)
+  provider              String                   @db.VarChar(20)
+  ambiente              String                   @db.VarChar(12)
+  nomeFile              String                   @map("nome_file") @db.VarChar(60)
+  /// Copia dell'impronta dell'XML del documento al momento dell'accodamento (controllo prima dell'invio).
+  xmlSha256             String                   @map("xml_sha256") @db.Char(64)
+  stato                 StatoTrasmissioneSdi     @default(DA_INVIARE)
+  idProvider            String?                  @map("id_provider") @db.VarChar(100)
+  idSdi                 String?                  @map("id_sdi") @db.VarChar(50)
+  fileFirmato           Bytes?                   @map("file_firmato")
+  fileFirmatoSha256     String?                  @map("file_firmato_sha256") @db.Char(64)
+  tentativi             Int                      @default(0)
+  prossimoTentativoIl   DateTime?                @map("prossimo_tentativo_il")
+  ultimoErroreCodice    String?                  @map("ultimo_errore_codice") @db.VarChar(50)
+  /// Testo del provider troncato, senza dati personali.
+  ultimoErroreMessaggio String?                  @map("ultimo_errore_messaggio") @db.VarChar(500)
+  richiestaDa           String?                  @map("richiesta_da") @db.Uuid
+  inviataIl             DateTime?                @map("inviata_il")
+  chiusaIl              DateTime?                @map("chiusa_il")
+  versione              Int                      @default(1)
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "trasmissioni_sdi_tenant_id_fkey")
+  documento DocumentoFattura @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasmissioni_sdi_documento_fkey")
+  notifiche NotificaSdi[]
+
+  @@unique([id, tenantId], map: "trasmissioni_sdi_id_tenant_id_key")
+  @@index([tenantId, stato, prossimoTentativoIl], map: "trasmissioni_sdi_tenant_id_stato_prossimo_tentativo_il_idx")
+  @@index([tenantId, documentoId], map: "trasmissioni_sdi_tenant_id_documento_id_idx")
+  @@map("trasmissioni_sdi")
+}
+
+/// Ricevuta o notifica SDI (4.5a), SOLO INSERIMENTO (REVOKE di UPDATE/DELETE/TRUNCATE ai ruoli applicativi). Insiemi chiusi `tipo` e `fonte` nei CHECK, ripetuti nel dominio.
+model NotificaSdi {
+  id               String    @id(map: "notifiche_sdi_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  trasmissioneId   String    @map("trasmissione_id") @db.Uuid
+  tipo             String    @db.VarChar(20)
+  /// `EC01`/`EC02`, solo per `NE`.
+  esitoCommittente String?   @map("esito_committente") @db.VarChar(4)
+  codiciErrore     String[]  @default([]) @map("codici_errore")
+  dataRicezioneSdi DateTime? @map("data_ricezione_sdi")
+  ricevutaIl       DateTime  @default(now()) @map("ricevuta_il")
+  /// XML della ricevuta, quando il provider lo da.
+  file             Bytes?
+  fileSha256       String?   @map("file_sha256") @db.Char(64)
+  fonte            String    @db.VarChar(10)
+  /// Idempotenza: id SDI della notifica, oppure sha del file, oppure tipo + data.
+  chiaveDedup      String    @map("chiave_dedup") @db.VarChar(200)
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "notifiche_sdi_tenant_id_fkey")
+  trasmissione TrasmissioneSdi @relation(fields: [trasmissioneId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "notifiche_sdi_trasmissione_fkey")
+
+  @@unique([tenantId, trasmissioneId, chiaveDedup], map: "notifiche_sdi_tenant_id_trasmissione_id_chiave_dedup_key")
+  @@index([tenantId, trasmissioneId], map: "notifiche_sdi_tenant_id_trasmissione_id_idx")
+  @@map("notifiche_sdi")
+}
+
+/// Inbox del webhook SDI (4.5a): consegna "almeno una volta", idempotente per `(tenant, provider, id_evento_provider)`. Dopo l'inserimento si aggiornano solo `elaborato_il` e `esito_elaborazione` (trigger). Conservazione 90 giorni.
+model EventoSdiRicevuto {
+  id                String    @id(map: "eventi_sdi_ricevuti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  provider          String    @db.VarChar(20)
+  idEventoProvider  String    @map("id_evento_provider") @db.VarChar(100)
+  /// Grezzo, gia' verificato (firma e timestamp).
+  corpo             Json
+  ricevutoIl        DateTime  @default(now()) @map("ricevuto_il")
+  elaboratoIl       DateTime? @map("elaborato_il")
+  esitoElaborazione String?   @map("esito_elaborazione") @db.VarChar(200)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "eventi_sdi_ricevuti_tenant_id_fkey")
+
+  @@unique([tenantId, provider, idEventoProvider], map: "eventi_sdi_ricevuti_tenant_id_provider_id_evento_provider_key")
+  @@index([tenantId, elaboratoIl], map: "eventi_sdi_ricevuti_tenant_id_elaborato_il_idx")
+  @@map("eventi_sdi_ricevuti")
 }
 
 /// Riga del documento, `DettaglioLinee` (4.4a, §4.4): porta l'importo (dato fiscale emesso, non un derivato). Cade con la testata solo se e' in bozza (trigger `figlie_documento_immutabili`). Le FK `NoAction` verso legame, riga del legame, riga di listino e codice IVA rendono "in uso" quegli oggetti.

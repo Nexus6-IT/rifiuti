@@ -157,8 +157,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
  * (classe con membri privati); la forma a runtime e' un soprainsieme dei membri
  * pubblici della classe. Il cast sta qui, nessun consumatore ne ha bisogno.
  */
-export function creaPrismaServiceApplicativo(): PrismaService {
-  const base = new PrismaService()
+export function creaPrismaServiceApplicativo(
+  opzioni: { transactionOptions?: { timeout?: number; maxWait?: number } } = {}
+): PrismaService {
+  // `opzioni` serve ai test su Postgres reale, che girano su un runner condiviso e lento: le
+  // transazioni interattive aperte dai service (senza opzioni proprie) avrebbero i 5000 ms di
+  // default. Senza argomenti (produzione, PrismaModule) il comportamento non cambia.
+  const base = new PrismaService(
+    opzioni.transactionOptions ? { transactionOptions: opzioni.transactionOptions } : undefined
+  )
   const rlsBase = buildRlsClient(base)
   const db = rlsBase.$extends(estensioneTenantTransazione(rlsBase))
   return base.$extends(estensioneTenantTransazione(base)).$extends({

@@ -51,6 +51,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'ritiri', label: 'Ritiri programmati' },
   { key: 'comunicazioni', label: 'Comunicazioni a consorzi e osservatori' },
   { key: 'campo', label: 'App campo per gli autisti' },
+  { key: 'sdi', label: 'Emissione fatture allo SDI' },
 ]
 
 /** Feature del piano: allineate a `PLAN_FEATURES` del backend (feature-catalog.ts). */

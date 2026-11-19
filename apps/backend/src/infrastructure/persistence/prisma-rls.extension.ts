@@ -164,6 +164,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'FIRTransporter',
   'FIRAllegatoRentri',
   'AutorizzazioneImpiantoDiscarica',
+  // Emissione SDI tramite provider (4.5a).
+  'ConfigurazioneSdi',
+  'TrasmissioneSdi',
+  'NotificaSdi',
+  'EventoSdiRicevuto',
 ])
 
 /** Operazioni il cui filtro avviene tramite `where`. */

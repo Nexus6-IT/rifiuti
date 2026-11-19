@@ -17,6 +17,9 @@ import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriRegistriClient } from './rentri-registri.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import { RentriXfirClient } from './xfir/rentri-xfir.client'
+import { RentriCopieClient } from './rentri-copie.client'
+import { RentriTrasmissioniClient } from './rentri-trasmissioni.client'
 import { RedisConfig } from '../cache/redis.config'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
@@ -65,6 +68,11 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
     RentriAnagraficheClient,
     // F2-9: registro cronologico (dati-registri); la POST dei movimenti non si ritenta mai.
     RentriRegistriClient,
+    // FIR in viaggio (P0 T5): client di xFIR, copie e trasmissioni, passano dal
+    // limitatore per tenant; ancora senza use case.
+    RentriXfirClient,
+    RentriCopieClient,
+    RentriTrasmissioniClient,
     SincronizzaSitiUseCase,
     // Terzo strato di resilienza (R5, task 1): rate limiter preventivo
     // per tenant. `RedisConfig` non ha un modulo dedicato che lo esporti
@@ -83,6 +91,9 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
     RentriCodificheClient,
     RentriAnagraficheClient,
     RentriRegistriClient,
+    RentriXfirClient,
+    RentriCopieClient,
+    RentriTrasmissioniClient,
     RentriAuthService,
     RentriSignatureService,
     RentriCredentialService,

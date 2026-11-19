@@ -117,6 +117,8 @@ const NON_PASSATE: Record<string, string> = {
   STRIPE_WEBHOOK_SECRET: 'billing non attivo in produzione',
   STRIPE_PRICE_ID_PROFESSIONAL: 'billing non attivo in produzione',
   STRIPE_PRICE_ID_ENTERPRISE: 'billing non attivo in produzione',
+  SDI_CREDENTIAL_ENC_KEY:
+    'nessun provider SDI reale in produzione (il fake e rifiutato): da passare con :? alla 4.5f, prima del pilota',
   RENTRI_API_URL: RENTRI_DEMO,
   RENTRI_AUDIENCE: RENTRI_DEMO,
   RENTRI_CERTIFICATE_PEM: RENTRI_DEMO,
@@ -153,6 +155,10 @@ describe('docker-compose.prod.yml: variabili del backend', () => {
       .filter(nome => env.has(nome) && env.get(nome) === `\${${nome}}`)
       .sort()
     expect(nude).toEqual([])
+  })
+
+  it('la chiave di cifratura SDI e letta dal codice: se sparisce, NON_PASSATE e da aggiornare', () => {
+    expect(variabiliLetteDalCodice().has('SDI_CREDENTIAL_ENC_KEY')).toBe(true)
   })
 
   it('passa SENTRY_DSN e APP_VERSION', () => {

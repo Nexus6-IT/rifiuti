@@ -30,7 +30,7 @@
 -- `autisti` (app campo, P1): un autista si disattiva, non si cancella.
 -- `lotti_import` (Fase 3, 3.1): un lotto non si cancella, si annulla: sta in `v_senza_cancellazione`.
 -- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a; `letture_pesa` dal pezzo 8b): `v_solo_inserimento`
--- (`pesate`, `rettifiche_peso`, `allegati_pesa`, `letture_pesa`) ricevono solo SELECT e INSERT, con una REVOKE esplicita di
+-- (`pesate`, `rettifiche_peso`, `allegati_pesa`, `letture_pesa`, `notifiche_sdi` dalla 4.5a) ricevono solo SELECT e INSERT, con una REVOKE esplicita di
 -- UPDATE/DELETE/TRUNCATE a ogni esecuzione (sono documentazione del registro e del FIR: i trigger
 -- dei loro modelli le proteggono anche dal proprietario). `v_senza_cancellazione` (`accessi_pesa`,
 -- `collegamenti_accesso`, `automezzi`, `strumenti_pesa`) ricevono SELECT, INSERT, UPDATE e una REVOKE
@@ -49,7 +49,7 @@ DECLARE
   v_pwd     text;
   v_tabella text;
   v_sola_lettura text[] := ARRAY['causali_registro'];
-  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa'];
+  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa', 'notifiche_sdi'];
   v_senza_cancellazione text[] :=
     ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti'];
 BEGIN

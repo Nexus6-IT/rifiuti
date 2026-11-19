@@ -20,7 +20,15 @@
     "genera-schema:efir": "node scripts/genera-schema.js EfirModel src/dominio/schema-efir.ts EFIR vidimazione-formulari.yaml schema-vidimazione-allineato-al-contratto.test.ts",
     "genera-schema:blocco": "node scripts/genera-schema.js BloccoModel src/dominio/schema-blocco.ts BLOCCO vidimazione-formulari.yaml schema-vidimazione-allineato-al-contratto.test.ts",
     "genera-schema:ca-rentri-authorize": "node scripts/genera-schema.js CredentialsAuthorizeRequest src/dominio/schema-ca-rentri-authorize.ts CA_RENTRI_AUTHORIZE ca-rentri.yaml schema-ca-rentri-allineato-al-contratto.test.ts",
-    "genera-schema:ca-rentri-sign-hash": "node scripts/genera-schema.js SignatureRequest src/dominio/schema-ca-rentri-sign-hash.ts CA_RENTRI_SIGN_HASH ca-rentri.yaml schema-ca-rentri-allineato-al-contratto.test.ts"
+    "genera-schema:ca-rentri-sign-hash": "node scripts/genera-schema.js SignatureRequest src/dominio/schema-ca-rentri-sign-hash.ts CA_RENTRI_SIGN_HASH ca-rentri.yaml schema-ca-rentri-allineato-al-contratto.test.ts",
+    "genera-schema:quantita": "node scripts/genera-schema.js QuantitaRifiutoModel src/dominio/schema-quantita.ts QUANTITA formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:trasporto-terrestre": "node scripts/genera-schema.js DatiTrasportoTerrestreModel src/dominio/schema-trasporto-terrestre.ts TRASPORTO_TERRESTRE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:annotazione": "node scripts/genera-schema.js DatiAnnotazioneModel src/dominio/schema-annotazione.ts ANNOTAZIONE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:sosta-tecnica": "node scripts/genera-schema.js DatiSostaTecnicaModel src/dominio/schema-sosta-tecnica.ts SOSTA_TECNICA formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:trasbordo-totale": "node scripts/genera-schema.js DatiTrasbordoTotaleModel src/dominio/schema-trasbordo-totale.ts TRASBORDO_TOTALE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:trasbordo-parziale": "node scripts/genera-schema.js DatiTrasbordoParzialeModel src/dominio/schema-trasbordo-parziale.ts TRASBORDO_PARZIALE formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:destinatario": "node scripts/genera-schema.js DatiDestinatarioFormularioModel src/dominio/schema-destinatario.ts DESTINATARIO formulari.yaml schema-viaggio-allineato-al-contratto.test.ts",
+    "genera-schema:destinatario-sito": "node scripts/genera-schema.js DatiDestinatarioFormularioSitoModel src/dominio/schema-destinatario-sito.ts DESTINATARIO_SITO formulari.yaml schema-viaggio-allineato-al-contratto.test.ts"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",

@@ -258,6 +258,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // Emissione SDI (4.5a): backend @RichiedeModulo('sdi').
+        path: 'sdi/configurazione',
+        canActivate: [moduloGuard],
+        data: { modulo: 'sdi' },
+        loadComponent: () =>
+          import('./features/sdi/configurazione-sdi.component').then(
+            m => m.ConfigurazioneSdiComponent
+          ),
+      },
+      {
         // Ritiri programmati (4.7): backend @RichiedeModulo('ritiri').
         path: 'ritiri',
         canActivate: [moduloGuard],

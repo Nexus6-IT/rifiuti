@@ -184,6 +184,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/legami-movimento/impostazioni-fatturazione.controller.ts': CONTRATTI(
     'Impostazioni di fatturazione e legami'
   ),
+  'api/sdi/configurazione-sdi.controller.ts': {
+    chiavi: ['sdi'],
+    motivo: 'Configurazione dell’emissione SDI (4.5a)',
+  },
   'api/legami-movimento/legami-movimento.controller.ts': CONTRATTI(
     'Legami movimento-cliente-prezzo'
   ),

@@ -23,6 +23,7 @@ export type FeatureFlag =
   | 'ritiri'
   | 'comunicazioni'
   | 'campo'
+  | 'sdi'
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string

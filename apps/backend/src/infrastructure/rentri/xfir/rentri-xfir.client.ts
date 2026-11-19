@@ -8,6 +8,8 @@ import { TenantContext } from '../../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from '../rentri-config'
 import { RentriAuthService } from '../rentri-auth.service'
 import { RentriSignatureService } from '../rentri-signature.service'
+import { RentriRateLimiterService } from '../rentri-rate-limiter.service'
+import { conRateLimiterPerTenant } from '../rentri-rate-limiter.util'
 import { gestisciRispostaErroreRentri, attendiMs } from '../rentri-http-resilienza'
 
 /**
@@ -66,7 +68,10 @@ export class RentriXfirClient {
     private readonly metrics: MetricsService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly auth: RentriAuthService,
-    private readonly signature: RentriSignatureService
+    private readonly signature: RentriSignatureService,
+    // P0 T4: limitatore preventivo per tenant, OPZIONALE come in `RENTRIApiClient`
+    // (le costruzioni dirette nei test non lo passano); il modulo lo inietta sempre.
+    private readonly rateLimiter?: RentriRateLimiterService
   ) {
     this.logger.setContext('RentriXfirClient')
   }
@@ -222,13 +227,15 @@ export class RentriXfirClient {
 
     for (let tentativo = 1; tentativo <= RentriXfirClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          timeout: this.timeout,
-          maxRedirects: 0,
-          validateStatus: () => true,
-        })
+      const response = await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+        firstValueFrom(
+          this.httpService.get(url, {
+            headers,
+            timeout: this.timeout,
+            maxRedirects: 0,
+            validateStatus: () => true,
+          })
+        )
       )
 
       if (response.status === 200) {
@@ -264,8 +271,10 @@ export class RentriXfirClient {
 
     for (let tentativo = 1; tentativo <= RentriXfirClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
+      const response = await this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+        firstValueFrom(
+          this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
+        )
       )
 
       if (response.status === 400) {
@@ -342,20 +351,28 @@ export class RentriXfirClient {
       ...integrityHeaders,
     }
 
-    return firstValueFrom(this.httpService.post(url, body, { headers, timeout: this.timeout }))
+    return this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+      firstValueFrom(this.httpService.post(url, body, { headers, timeout: this.timeout }))
+    )
   }
 
   /** GET con Bearer self-issued — stesso schema di `RentriAnagraficheClient.get`. */
   private async get(path: string, tenantId?: string): Promise<AxiosResponse> {
     const url = `${this.config.baseUrl}${path}`
     const headers = await this.buildAuthHeaders(tenantId)
-    return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+    return this.conRateLimiter(tenantId ?? this.tenantIdCorrente(), () =>
+      firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+    )
   }
 
   private async buildAuthHeaders(tenantId?: string): Promise<Record<string, string>> {
     return {
       Authorization: await this.auth.creaAuthorizationHeader(tenantId ?? this.tenantIdCorrente()),
     }
+  }
+
+  private conRateLimiter<T>(tenantId: string, azione: () => Promise<T>): Promise<T> {
+    return conRateLimiterPerTenant(this.rateLimiter, this.metrics, tenantId, azione)
   }
 
   private tenantIdCorrente(): string {
