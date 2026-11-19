@@ -44,7 +44,6 @@ import {
 import { ActivatedRoute, Router } from '@angular/router'
 import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
-import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { AuthService } from '../../core/services/auth.service'

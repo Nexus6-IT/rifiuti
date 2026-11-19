@@ -95,7 +95,14 @@ describe('FirDetailComponent', () => {
       'caricaAllegato',
       'eliminaAllegato',
       'scaricaPdf',
+      'inviaQuantita',
+      'inviaTrasporto',
+      'eventi',
+      'ultimoTrasporto',
     ])
+    // FIR in viaggio P2: default senza storico.
+    rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [] }))
+    rentriFirLifecycleService.ultimoTrasporto.and.returnValue(of({ trasporto: null }))
     rentriFirLifecycleService.elencaAllegati.and.returnValue(of([]))
     // FIR in viaggio P1: default senza firma in attesa (nessun banner).
     rentriFirLifecycleService.firmaInAttesa.and.returnValue(of({ sessione: null }))
@@ -1879,6 +1886,267 @@ describe('FirDetailComponent', () => {
       component.annullaRichiestaFirma(firLegato)
 
       expect(rentriFirLifecycleService.resetStato).toHaveBeenCalledOnceWith('fir-1')
+    })
+  })
+
+  describe('Quantità e dati di trasporto (FIR in viaggio P2)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000777',
+      tipoTrattaPrincipale: 'TERRESTRE',
+      rifiuto: { cerCode: '150101', quantita: 42, unitaMisura: 'kg', numeroColli: 3 },
+    }
+
+    const azioni = (...operazioni: string[]) =>
+      of({
+        stato: 'InserimentoQuantitaTrasportoIniziale',
+        versione: 1,
+        azioni: operazioni.map(operazione => ({ operazione, verbo: operazione })),
+      })
+
+    const el = (): HTMLElement => fixture.nativeElement
+
+    it("i pulsanti nascono SOLO dalle azioni dell'ente", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        azioni('DatiQuantita', 'Trasporto')
+      )
+      fixture.detectChanges()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-quantita"]')).toBeTruthy()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-trasporto"]')).toBeTruthy()
+      expect(component.etichettaQuantita()).toBe('Indica la quantità')
+      expect(component.etichettaTrasporto()).toBe('Indica i dati del trasporto')
+    })
+
+    it('le operazioni di correzione cambiano il verbo', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        azioni('DatiQuantitaUpdate', 'TrasportoUpdate')
+      )
+      fixture.detectChanges()
+      expect(component.etichettaQuantita()).toBe('Correggi la quantità')
+      expect(component.etichettaTrasporto()).toBe('Correggi i dati del trasporto')
+    })
+
+    it("senza quantità o trasporto fra le azioni dell'ente i pulsanti non compaiono", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('Annulla'))
+      fixture.detectChanges()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-quantita"]')).toBeFalsy()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-trasporto"]')).toBeFalsy()
+    })
+
+    it('un FIR non terrestre non offre i dati di trasporto (WasteFlow modella solo il terrestre)', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(
+        of({ ...firLegato, tipoTrattaPrincipale: 'FERROVIARIA' })
+      )
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        azioni('DatiQuantita', 'Trasporto')
+      )
+      fixture.detectChanges()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-quantita"]')).toBeTruthy()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-trasporto"]')).toBeFalsy()
+    })
+
+    it('un VIEWER non vede i pulsanti', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        azioni('DatiQuantita', 'Trasporto')
+      )
+      fixture.detectChanges()
+      expect(el().querySelector('[data-testid="fir-detail-rentri-indica-quantita"]')).toBeFalsy()
+    })
+
+    it('il dialog della quantità si precompila dal FIR e non invia senza colli né rinfusa', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('DatiQuantita'))
+      fixture.detectChanges()
+
+      component.apriDialogQuantita(firLegato)
+      expect(component['qtaValore']).toBe(42)
+      expect(component['qtaColli']).toBe(3)
+      expect(component.quantitaValida()).toBeTrue()
+
+      component['qtaColli'] = null
+      expect(component.quantitaValida()).toBeFalse()
+      component['qtaRinfusa'] = true
+      expect(component.quantitaValida()).toBeTrue()
+      component['qtaValore'] = 0
+      expect(component.quantitaValida()).toBeFalse()
+    })
+
+    it('conferma la quantità: invia, avvisa e ricarica; alla rinfusa i colli non partono', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('DatiQuantita'))
+      rentriFirLifecycleService.inviaQuantita.and.returnValue(
+        of({ operazione: 'DatiQuantita', statoFormulario: 'InserimentoTrasportoIniziale' })
+      )
+      fixture.detectChanges()
+
+      component.apriDialogQuantita(firLegato)
+      component['qtaRinfusa'] = true
+      component['qtaVerificato'] = true
+      component.confermaQuantita()
+
+      expect(rentriFirLifecycleService.inviaQuantita).toHaveBeenCalledOnceWith('fir-1', {
+        quantita: 42,
+        unitaMisura: 'kg',
+        numeroColli: undefined,
+        rinfusa: true,
+        verificatoInPartenza: true,
+      })
+      expect(component['quantitaDialogVisible']()).toBeFalse()
+      // ricaricato: il FIR e le azioni si rileggono dopo l'invio
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it("rifiuto dell'ente sulla quantità: il messaggio resta nel dialog, che non si chiude", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('DatiQuantita'))
+      rentriFirLifecycleService.inviaQuantita.and.returnValue(
+        throwError(() => ({ error: { message: "L'ente ha rifiutato la quantità." } }))
+      )
+      fixture.detectChanges()
+
+      component.apriDialogQuantita(firLegato)
+      component.confermaQuantita()
+
+      expect(component['quantitaErrore']()).toBe("L'ente ha rifiutato la quantità.")
+      expect(component['quantitaDialogVisible']()).toBeTrue()
+      expect(component['quantitaInCorso']()).toBeFalse()
+    })
+
+    it('trasporto: conducente (nome e cognome) e almeno una targa, altrimenti niente invio', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('Trasporto'))
+      fixture.detectChanges()
+
+      component.apriDialogTrasporto(firLegato)
+      expect(component.trasportoValido()).toBeFalse()
+      component['trpNome'] = 'Mario'
+      component['trpCognome'] = 'De Rossi'
+      expect(component.trasportoValido()).toBeFalse()
+      component['trpTargaRimorchio'] = 'XY987ZW'
+      expect(component.trasportoValido()).toBeTrue()
+      component['trpCognome'] = '  '
+      expect(component.trasportoValido()).toBeFalse()
+    })
+
+    it('conferma il trasporto: campi ripuliti, vuoti omessi, inizio in ISO UTC solo se indicato', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('Trasporto'))
+      rentriFirLifecycleService.inviaTrasporto.and.returnValue(
+        of({ operazione: 'Trasporto', statoFormulario: 'FirmaProduttoreTrasportatoreIniziale' })
+      )
+      fixture.detectChanges()
+
+      component.apriDialogTrasporto(firLegato)
+      component['trpNome'] = ' Mario '
+      component['trpCognome'] = 'De Rossi'
+      component['trpTargaAutomezzo'] = 'AB123CD'
+      component.confermaTrasporto()
+
+      expect(rentriFirLifecycleService.inviaTrasporto).toHaveBeenCalledOnceWith('fir-1', {
+        conducenteNome: 'Mario',
+        conducenteCognome: 'De Rossi',
+        targaAutomezzo: 'AB123CD',
+        targaRimorchio: undefined,
+        percorso: undefined,
+        dataOraInizioTrasporto: undefined,
+      })
+      expect(component['trasportoDialogVisible']()).toBeFalse()
+    })
+
+    it("la targa precompila conducente e rimorchio dall'ultimo trasporto, solo a campi vuoti", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('Trasporto'))
+      rentriFirLifecycleService.ultimoTrasporto.and.returnValue(
+        of({
+          trasporto: {
+            conducenteNome: 'Luigi',
+            conducenteCognome: 'Verdi',
+            targaRimorchio: 'ZZ111ZZ',
+          },
+        })
+      )
+      fixture.detectChanges()
+
+      component.apriDialogTrasporto(firLegato)
+      component['trpTargaAutomezzo'] = 'AB123CD'
+      component.precompilaTrasportoDaTarga()
+      expect(component['trpNome']).toBe('Luigi')
+      expect(component['trpCognome']).toBe('Verdi')
+      expect(component['trpTargaRimorchio']).toBe('ZZ111ZZ')
+
+      // Cio' che l'utente ha scritto non si sovrascrive mai.
+      rentriFirLifecycleService.ultimoTrasporto.calls.reset()
+      component['trpNome'] = 'Mario'
+      component.precompilaTrasportoDaTarga()
+      expect(rentriFirLifecycleService.ultimoTrasporto).not.toHaveBeenCalled()
+    })
+
+    it('lo storico mostra le operazioni inviate, con esito e stato', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.eventi.and.returnValue(
+        of({
+          eventi: [
+            {
+              id: 'e1',
+              operazione: 'DatiQuantita',
+              esito: 'ACCETTATA',
+              dettaglioEnte: null,
+              statoFormularioDopo: 'InserimentoTrasportoIniziale',
+              utenteId: 'u1',
+              createdAt: '2026-11-21T10:00:00Z',
+            },
+            {
+              id: 'e2',
+              operazione: 'Trasporto',
+              esito: 'RIFIUTATA',
+              dettaglioEnte: '[]',
+              statoFormularioDopo: null,
+              utenteId: 'u1',
+              createdAt: '2026-11-21T10:05:00Z',
+            },
+          ],
+        })
+      )
+      fixture.detectChanges()
+
+      const storico = el().querySelector('[data-testid="fir-detail-storico-viaggio"]')
+      expect(storico?.textContent).toContain('Quantità indicata')
+      expect(storico?.textContent).toContain("Accettata dall'ente")
+      expect(storico?.textContent).toContain('Dati di trasporto indicati')
+      expect(storico?.textContent).toContain("Rifiutata dall'ente")
+      expect(storico?.textContent).toContain('Stato: InserimentoTrasportoIniziale')
+    })
+
+    it('uno storico vuoto lo dice', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      fixture.detectChanges()
+      expect(el().querySelector('[data-testid="fir-detail-storico-vuoto"]')).toBeTruthy()
+    })
+
+    it('per un FIR non legato lo storico non si carica', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, rentriNumeroFir: null }))
+      fixture.detectChanges()
+      expect(rentriFirLifecycleService.eventi).not.toHaveBeenCalled()
+      expect(el().querySelector('[data-testid="fir-detail-storico-viaggio"]')).toBeFalsy()
     })
   })
 })
