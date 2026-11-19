@@ -12,6 +12,7 @@ import {
 } from '../../utils/azienda-di-test'
 import { conPrefisso } from '../../utils/run-id'
 import { eseguiAzioneRiga } from '../../utils/azioni-riga'
+import { ibanCasualeValido } from '../../utils/iban-di-test'
 
 /**
  * E2E — Tabelle di fatturazione (pezzo 4.1a, R10): dalla pagina `/clienti/tabelle`
@@ -61,30 +62,11 @@ function codiceCasuale(n: number, prefisso = ''): string {
   return c
 }
 
-/**
- * IBAN italiano valido (27 caratteri) con numero di conto casuale: BBAN = CIN + ABI + CAB +
- * 12 cifre, cifre di controllo = 98 - (BBAN + "IT00") mod 97 (lettere A=10 ... Z=35).
- */
-function ibanCasualeValido(): string {
-  const cifre = (n: number) =>
-    Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('')
-  const bban = `X${cifre(5)}${cifre(5)}${cifre(12)}`
-  const numerico = (bban + 'IT00')
-    .split('')
-    .map(ch => (/[A-Z]/.test(ch) ? String(ch.charCodeAt(0) - 55) : ch))
-    .join('')
-  const resto = Number(BigInt(numerico) % 97n)
-  const controllo = String(98 - resto).padStart(2, '0')
-  return `IT${controllo}${bban}`
-}
-
 const codici = {
   condizione: codiceCasuale(8, 'E'),
-  conto: codiceCasuale(8, 'E'),
   spesa: codiceCasuale(8, 'E'),
   testo: codiceCasuale(3),
 }
-const iban = ibanCasualeValido()
 const descrizioni = {
   condizione: conPrefisso('Cond 30-60 FM'),
   conto: conPrefisso('Conto di prova'),
@@ -200,17 +182,30 @@ test.describe('Tabelle di fatturazione — operatore', () => {
   })
 
   test('conto corrente con IBAN mascherato in elenco', async ({ page }) => {
+    // Codice e IBAN si generano ad ogni esecuzione del test (non a livello di modulo): un retry
+    // dopo un fallimento a meta' non riusa valori gia' scritti (l'IBAN e' unico per azienda).
+    const codice = codiceCasuale(8, 'E')
+    const iban = ibanCasualeValido()
     await apriTabelle(page, 'Conti correnti')
     await contenuto(page).getByRole('button', { name: 'Nuovo conto' }).click()
     const dlg = dialogo(page)
-    await dlg.getByLabel('Codice').fill(codici.conto)
-    creati.push({ tabella: 'conti-correnti', codice: codici.conto })
-    await dlg.getByLabel('Descrizione').fill(descrizioni.conto)
-    await dlg.getByLabel('Banca').fill('Banca di prova')
-    await dlg.getByLabel('IBAN').fill(iban)
+    creati.push({ tabella: 'conti-correnti', codice })
+    // Il dialog reinizializza il form all'apertura: su un runner lento il reset arriva DOPO i
+    // fill e svuota i campi, lasciando `Salva` spento per sempre (il form chiede solo che i campi
+    // obbligatori siano pieni: l'IBAN non c'entra, il generatore e' provato in
+    // tests/utils/iban-di-test.spec.ts). Come nei test vicini si ricompila finche' i valori restano.
+    await expect(async () => {
+      await dlg.getByLabel('Codice').fill(codice)
+      await dlg.getByLabel('Descrizione').fill(descrizioni.conto)
+      await dlg.getByLabel('Banca').fill('Banca di prova')
+      await dlg.getByLabel('IBAN').fill(iban)
+      await expect(dlg.getByLabel('Codice')).toHaveValue(codice, { timeout: 1_000 })
+      await expect(dlg.getByLabel('IBAN')).toHaveValue(iban, { timeout: 1_000 })
+      await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
+    }).toPass({ timeout: 20_000 })
     await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
-    const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.conto) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(codice) })
     await expect(riga).toContainText(`${iban.slice(0, 4)} **** **** ${iban.slice(-4)}`)
     // L'IBAN completo non compare mai nell'elenco.
     await expect(riga).not.toContainText(iban)
