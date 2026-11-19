@@ -60,6 +60,53 @@ export interface EsitoRollbackOReset {
   sessioneAnnullataId?: string
 }
 
+/** Payload di `POST /rentri/fir/:id/quantita` (v. backend `InviaQuantitaFirRentriDto`). */
+export interface InviaQuantitaFirRentriPayload {
+  quantita: number
+  unitaMisura: string
+  numeroColli?: number
+  rinfusa?: boolean
+  verificatoInPartenza?: boolean
+  correlationId?: string
+}
+
+/** Payload di `POST /rentri/fir/:id/trasporto` (v. backend `InviaTrasportoFirRentriDto`). */
+export interface InviaTrasportoFirRentriPayload {
+  conducenteNome: string
+  conducenteCognome: string
+  targaAutomezzo?: string
+  targaRimorchio?: string
+  percorso?: string
+  /** ISO 8601; se assente vale la data indicata sul FIR. */
+  dataOraInizioTrasporto?: string
+  annotazioni?: string
+  correlationId?: string
+}
+
+/** Esito di `quantita` e `trasporto`: operazione usata e stato riletto dall'ente (null se la rilettura e' fallita). */
+export interface EsitoInviaDatiViaggio {
+  operazione: string
+  statoFormulario: string | null
+}
+
+/** Una riga dello storico delle operazioni inviate all'ente (v. backend `EventoFirRentri`). */
+export interface EventoFirRentri {
+  id: string
+  operazione: string
+  esito: 'INVIATA' | 'ACCETTATA' | 'RIFIUTATA' | 'INCERTA'
+  dettaglioEnte: string | null
+  statoFormularioDopo: string | null
+  utenteId: string | null
+  createdAt: string
+}
+
+/** Conducente e rimorchio dell'ultimo trasporto con una targa (precompila il form). */
+export interface UltimoTrasportoAutomezzo {
+  conducenteNome: string
+  conducenteCognome: string
+  targaRimorchio: string | null
+}
+
 export interface EsitoAccettaFirRentri {
   tipoAccettazione: 'A' | 'P' | 'R'
   esitoFirma: EsitoFirmaRemota
@@ -124,6 +171,35 @@ export class RentriFirLifecycleService {
 
   annullaFIR(firId: string, payload: AnnullaFirRentriPayload): Observable<EsitoAnnullaFirRentri> {
     return this.http.post<EsitoAnnullaFirRentri>(`${this.API_URL}/${firId}/annullamento`, payload)
+  }
+
+  /** Indica o correggi la quantita' (FIR in viaggio, P2): la copia locale segue l'ente solo a esito positivo. */
+  inviaQuantita(
+    firId: string,
+    payload: InviaQuantitaFirRentriPayload
+  ): Observable<EsitoInviaDatiViaggio> {
+    return this.http.post<EsitoInviaDatiViaggio>(`${this.API_URL}/${firId}/quantita`, payload)
+  }
+
+  /** Indica o correggi i dati del trasporto terrestre (FIR in viaggio, P2). */
+  inviaTrasporto(
+    firId: string,
+    payload: InviaTrasportoFirRentriPayload
+  ): Observable<EsitoInviaDatiViaggio> {
+    return this.http.post<EsitoInviaDatiViaggio>(`${this.API_URL}/${firId}/trasporto`, payload)
+  }
+
+  /** Storico delle operazioni inviate all'ente, dal piu' recente (sola lettura). */
+  eventi(firId: string): Observable<{ eventi: EventoFirRentri[] }> {
+    return this.http.get<{ eventi: EventoFirRentri[] }>(`${this.API_URL}/${firId}/eventi`)
+  }
+
+  /** Conducente e rimorchio dell'ultimo trasporto fatto con quella targa (null se non c'e'). */
+  ultimoTrasporto(targa: string): Observable<{ trasporto: UltimoTrasportoAutomezzo | null }> {
+    return this.http.get<{ trasporto: UltimoTrasportoAutomezzo | null }>(
+      `${this.API_URL}/ultimo-trasporto`,
+      { params: { targa } }
+    )
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

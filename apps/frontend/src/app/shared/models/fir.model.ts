@@ -61,6 +61,16 @@ export interface TrasportatoreAggiuntivoFIR {
   ordine: number
 }
 
+/** Dati di viaggio della tratta principale (colonne dedicate del backend, `DatiViaggioFIR`). */
+export interface DatiViaggioFIR {
+  verificatoInPartenza: boolean | null
+  rinfusa: boolean | null
+  conducenteNome: string | null
+  conducenteCognome: string | null
+  targaRimorchio: string | null
+  percorso: string | null
+}
+
 export interface FIR {
   id: string
   /** Versione per il controllo ottimistico: va rinviata tale e quale nella modifica. */
@@ -75,6 +85,8 @@ export interface FIR {
   tipoTrattaPrincipale?: 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA' | null
   /** Trasportatori aggiuntivi (tratte intermodali), ordinati per `ordine`. */
   trasportatoriAggiuntivi?: TrasportatoreAggiuntivoFIR[]
+  /** FIR in viaggio P2: rinfusa e verifica in partenza, conducente, rimorchio e percorso della tratta principale. */
+  datiViaggio?: DatiViaggioFIR | null
   numeroProgressivo?: string | null
   /** Anno di riferimento (campo client; non restituito dalla risposta backend). */
   anno: number

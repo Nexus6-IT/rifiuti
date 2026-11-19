@@ -43,9 +43,27 @@ export interface CreateFIRDto {
     numeroColli?: number
     /** Campo 3 FIR: codice operazione R/D specifico (es. "R13", "D1"). */
     codiceOperazione?: string
+    /** Rifiuto alla rinfusa (non partizionato in colli): i colli non si inviano a RENTRI. */
+    rinfusa?: boolean
+    /** Quantita' verificata in partenza (contratto RENTRI). */
+    verificatoInPartenza?: boolean
   }
+  /**
+   * Dati del trasporto terrestre noti alla creazione (FIR in viaggio, P2). Con conducente (nome e cognome)
+   * e almeno una targa il formulario nasce su RENTRI col trasporto di partenza. In modifica, se presente
+   * (anche con campi vuoti) sostituisce i dati di trasporto.
+   */
+  datiTrasporto?: DatiTrasportoDto
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
   annotazioni?: string
+}
+
+export interface DatiTrasportoDto {
+  targaAutomezzo?: string
+  conducenteNome?: string
+  conducenteCognome?: string
+  targaRimorchio?: string
+  percorso?: string
 }
 
 /**
