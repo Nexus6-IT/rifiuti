@@ -8,6 +8,7 @@ import { RentriSignatureService } from './rentri-signature.service'
 import { RentriConfig } from './rentri-config'
 import { TrasmissioneRentriIncertaError } from './rentri-api.client'
 import { EsitoRentriMalformatoError } from './rentri-registri.client'
+import { leggiEregi } from './eregi/leggi-eregi'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -411,5 +412,19 @@ describe('RentriAnagraficheClient (registri) — contro la fake RENTRI (in-proce
     expect(await client.scaricaVidimazioneXml('R1234ABCDEF', TENANT).catch(e => e)).toBeInstanceOf(
       EsitoRentriMalformatoError
     )
+  })
+
+  it('leggiEregi legge l eREGI scaricato dalla fake: identificativo, sito, data e DigestValue della Reference', async () => {
+    const client = creaClient()
+    const { identificativo } = await client.apriRegistro(richiesta, TENANT)
+    const { xml } = await client.scaricaVidimazioneXml(identificativo, TENANT)
+
+    const dati = leggiEregi(xml)
+
+    expect(dati).toMatchObject({ identificativo, numIscrSito: SITO })
+    expect(dati.dataRichiesta).toBe(
+      (await client.dettaglioRegistro(identificativo, TENANT)).data_creazione
+    )
+    expect(xml).toContain(`<ds:DigestValue>${dati.digest}</ds:DigestValue>`)
   })
 })
