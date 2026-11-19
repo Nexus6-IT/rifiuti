@@ -46,7 +46,9 @@ describe('migrazione: solo il client applicativo', () => {
       ...sorgenti(join(SRC, 'test-support', 'migrazione')),
     ]
     expect(file.length).toBeGreaterThan(10)
-    const colpevoli = file.filter(f => ACCESSO_AL_SISTEMA.test(senzaCommenti(readFileSync(f, 'utf8'))))
+    const colpevoli = file.filter(f =>
+      ACCESSO_AL_SISTEMA.test(senzaCommenti(readFileSync(f, 'utf8')))
+    )
     expect(colpevoli).toEqual([])
   })
 })

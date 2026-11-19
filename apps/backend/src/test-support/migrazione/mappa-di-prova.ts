@@ -16,4 +16,3 @@ export function mappaValida(): Record<string, unknown> {
     agganci: [{ partitaIva: '00000000000', dittaId: U2 }],
   }
 }
-

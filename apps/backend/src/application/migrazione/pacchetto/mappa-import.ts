@@ -94,9 +94,12 @@ function stringa(v: unknown, dove: string, pattern: RegExp): string {
 }
 
 function nessunDatoPersonale(valore: string, dove: string): void {
-  if (SOMIGLIA_CF.test(valore)) errore(dove, 'somiglia a un codice fiscale: dato personale non ammesso')
-  if (SOMIGLIA_EMAIL.test(valore)) errore(dove, 'somiglia a un indirizzo e-mail: dato personale non ammesso')
-  if (SOMIGLIA_TELEFONO.test(valore)) errore(dove, 'somiglia a un numero di telefono: dato personale non ammesso')
+  if (SOMIGLIA_CF.test(valore))
+    errore(dove, 'somiglia a un codice fiscale: dato personale non ammesso')
+  if (SOMIGLIA_EMAIL.test(valore))
+    errore(dove, 'somiglia a un indirizzo e-mail: dato personale non ammesso')
+  if (SOMIGLIA_TELEFONO.test(valore))
+    errore(dove, 'somiglia a un numero di telefono: dato personale non ammesso')
 }
 
 /** Controllo di Luhn della partita IVA italiana (11 cifre). */
@@ -138,7 +141,10 @@ export function validaMappa(json: unknown): MappaImport {
     errore('anno', 'atteso un intero fra 1990 e 2100')
   }
   const dataTaglio = stringa(m.dataTaglio, 'dataTaglio', DATA)
-  if (Number.isNaN(Date.parse(`${dataTaglio}T00:00:00Z`)) || !new Date(`${dataTaglio}T00:00:00Z`).toISOString().startsWith(dataTaglio)) {
+  if (
+    Number.isNaN(Date.parse(`${dataTaglio}T00:00:00Z`)) ||
+    !new Date(`${dataTaglio}T00:00:00Z`).toISOString().startsWith(dataTaglio)
+  ) {
     errore('dataTaglio', 'data inesistente')
   }
 
@@ -149,7 +155,10 @@ export function validaMappa(json: unknown): MappaImport {
       registroId: stringa(o.registroId, `registri[${i}].registroId`, UUID).toLowerCase(),
     }
   })
-  senzaDuplicati(registri.map(r => r.legacy), 'registri')
+  senzaDuplicati(
+    registri.map(r => r.legacy),
+    'registri'
+  )
 
   const unitaLocali = lista(m.unitaLocali, 'unitaLocali').map((r, i) => {
     const o = oggetto(r, `unitaLocali[${i}]`, ['legacy', 'sedeId', 'unitaLocaleId'])
@@ -162,11 +171,15 @@ export function validaMappa(json: unknown): MappaImport {
           : stringa(o.unitaLocaleId, `unitaLocali[${i}].unitaLocaleId`, UUID).toLowerCase(),
     }
   })
-  senzaDuplicati(unitaLocali.map(r => r.legacy), 'unitaLocali')
+  senzaDuplicati(
+    unitaLocali.map(r => r.legacy),
+    'unitaLocali'
+  )
 
   const causali = lista(m.causali, 'causali').map((r, i) => {
     const o = oggetto(r, `causali[${i}]`, ['oper', 'causale', 'verso', 'confermata'])
-    if (o.verso !== 'CARICO' && o.verso !== 'SCARICO') errore(`causali[${i}].verso`, 'CARICO o SCARICO')
+    if (o.verso !== 'CARICO' && o.verso !== 'SCARICO')
+      errore(`causali[${i}].verso`, 'CARICO o SCARICO')
     if (typeof o.confermata !== 'boolean') errore(`causali[${i}].confermata`, 'atteso true o false')
     return {
       oper: stringa(o.oper, `causali[${i}].oper`, OPER),
@@ -175,15 +188,22 @@ export function validaMappa(json: unknown): MappaImport {
       confermata: o.confermata,
     }
   })
-  senzaDuplicati(causali.map(c => c.oper), 'causali')
+  senzaDuplicati(
+    causali.map(c => c.oper),
+    'causali'
+  )
 
   const agganci = lista(m.agganci, 'agganci').map((r, i) => {
     const o = oggetto(r, `agganci[${i}]`, ['partitaIva', 'dittaId'])
     const partitaIva = stringa(o.partitaIva, `agganci[${i}].partitaIva`, /^[0-9]{11}$/)
-    if (!partitaIvaItalianaValida(partitaIva)) errore(`agganci[${i}].partitaIva`, 'cifra di controllo errata')
+    if (!partitaIvaItalianaValida(partitaIva))
+      errore(`agganci[${i}].partitaIva`, 'cifra di controllo errata')
     return { partitaIva, dittaId: stringa(o.dittaId, `agganci[${i}].dittaId`, UUID).toLowerCase() }
   })
-  senzaDuplicati(agganci.map(a => a.partitaIva), 'agganci')
+  senzaDuplicati(
+    agganci.map(a => a.partitaIva),
+    'agganci'
+  )
 
   // Difesa in profondita': nessuna stringa della mappa (salvo la P.IVA degli agganci, gia' validata
   // per intero) puo' somigliare a un dato personale.
@@ -193,7 +213,16 @@ export function validaMappa(json: unknown): MappaImport {
   causali.forEach((c, i) => daControllare.push([`causali[${i}].causale`, c.causale]))
   for (const [dove, valore] of daControllare) nessunDatoPersonale(valore, dove)
 
-  return { formato: FORMATO_MAPPA, ditta, anno: m.anno as number, dataTaglio, registri, unitaLocali, causali, agganci }
+  return {
+    formato: FORMATO_MAPPA,
+    ditta,
+    anno: m.anno as number,
+    dataTaglio,
+    registri,
+    unitaLocali,
+    causali,
+    agganci,
+  }
 }
 
 /** JSON canonico: chiavi ordinate, nessuno spazio. Stesso contenuto, stessi byte. */
@@ -202,7 +231,11 @@ export function serializzaCanonico(valore: unknown): string {
     if (Array.isArray(v)) return v.map(ordina)
     if (v !== null && typeof v === 'object') {
       const o = v as Record<string, unknown>
-      return Object.fromEntries(Object.keys(o).sort().map(k => [k, ordina(o[k])]))
+      return Object.fromEntries(
+        Object.keys(o)
+          .sort()
+          .map(k => [k, ordina(o[k])])
+      )
     }
     return v
   }

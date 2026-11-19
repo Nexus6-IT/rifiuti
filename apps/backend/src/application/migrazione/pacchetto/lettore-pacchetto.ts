@@ -22,7 +22,10 @@ export interface PacchettoAperto {
   readonly hashManifest: string
   fasi(ambito: AmbitoPacchetto): readonly FilePacchetto[]
   /** Legge i record di una fase in streaming (memoria costante). */
-  leggi(ambito: AmbitoPacchetto, fase: string): AsyncGenerator<{ numeroRiga: number; record: unknown }>
+  leggi(
+    ambito: AmbitoPacchetto,
+    fase: string
+  ): AsyncGenerator<{ numeroRiga: number; record: unknown }>
 }
 
 export interface OpzioniApertura {
@@ -45,7 +48,10 @@ async function verificaFile(percorso: string): Promise<{ sha256: string; righe: 
  * SHA-256, righe dichiarate) e mappa (valida, e con l'impronta dichiarata dal manifest). Un pacchetto
  * manomesso o troncato non arriva mai al caricamento.
  */
-export async function apriPacchetto(cartella: string, opzioni: OpzioniApertura = {}): Promise<PacchettoAperto> {
+export async function apriPacchetto(
+  cartella: string,
+  opzioni: OpzioniApertura = {}
+): Promise<PacchettoAperto> {
   const radice = resolve(cartella)
   try {
     if (!(await stat(radice)).isDirectory()) throw new Error()
@@ -66,7 +72,10 @@ export async function apriPacchetto(cartella: string, opzioni: OpzioniApertura =
   }
   const manifest = validaManifestPacchetto(json)
   if (basename(radice) !== manifest.archivio) {
-    throw new PacchettoError('MANIFEST_NON_VALIDO', `la cartella si chiama ${basename(radice)}, il manifest dichiara ${manifest.archivio}`)
+    throw new PacchettoError(
+      'MANIFEST_NON_VALIDO',
+      `la cartella si chiama ${basename(radice)}, il manifest dichiara ${manifest.archivio}`
+    )
   }
 
   let mappaGrezza: Buffer
@@ -84,13 +93,19 @@ export async function apriPacchetto(cartella: string, opzioni: OpzioniApertura =
   const mappa = validaMappa(mappaJson)
   const impronta = improntaMappa(mappa)
   if (impronta !== manifest.hashMappa) {
-    throw new PacchettoError('MAPPA_DIVERSA', 'la mappa del pacchetto non e quella dichiarata dal manifest')
+    throw new PacchettoError(
+      'MAPPA_DIVERSA',
+      'la mappa del pacchetto non e quella dichiarata dal manifest'
+    )
   }
   if (opzioni.hashMappaAttesa !== undefined && opzioni.hashMappaAttesa !== impronta) {
     throw new PacchettoError('MAPPA_DIVERSA', 'la mappa del pacchetto non e quella attesa')
   }
   if (`WW${mappa.ditta}${mappa.anno}` !== manifest.archivio) {
-    throw new PacchettoError('MAPPA_DIVERSA', 'ditta e anno della mappa non coincidono con quelli del pacchetto')
+    throw new PacchettoError(
+      'MAPPA_DIVERSA',
+      'ditta e anno della mappa non coincidono con quelli del pacchetto'
+    )
   }
 
   for (const f of manifest.file) {
@@ -102,14 +117,20 @@ export async function apriPacchetto(cartella: string, opzioni: OpzioniApertura =
     const v = await verificaFile(join(radice, f.file))
     if (v.sha256 !== f.sha256) throw new PacchettoError('HASH_NON_CORRISPONDE', f.file)
     if (v.righe !== f.righe) {
-      throw new PacchettoError('RIGHE_NON_CORRISPONDENTI', `${f.file}: dichiarate ${f.righe}, lette ${v.righe}`)
+      throw new PacchettoError(
+        'RIGHE_NON_CORRISPONDENTI',
+        `${f.file}: dichiarate ${f.righe}, lette ${v.righe}`
+      )
     }
   }
 
   async function* leggi(ambito: AmbitoPacchetto, fase: string) {
     const f = manifest.file.find(x => x.ambito === ambito && x.fase === fase)
     if (!f) throw new PacchettoError('FILE_ASSENTE', `fase ${ambito}/${fase} non presente`)
-    const rl = createInterface({ input: createReadStream(join(radice, f.file)), crlfDelay: Infinity })
+    const rl = createInterface({
+      input: createReadStream(join(radice, f.file)),
+      crlfDelay: Infinity,
+    })
     let numeroRiga = 0
     for await (const linea of rl) {
       numeroRiga++

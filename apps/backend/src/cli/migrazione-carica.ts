@@ -24,7 +24,10 @@ import {
 } from '../application/migrazione/caricamento/carica-pacchetto.service'
 import { apriPacchetto } from '../application/migrazione/pacchetto/lettore-pacchetto'
 import { PacchettoError } from '../application/migrazione/pacchetto/errori-pacchetto'
-import { AMBITI_PACCHETTO, AmbitoPacchetto } from '../application/migrazione/pacchetto/manifest-pacchetto'
+import {
+  AMBITI_PACCHETTO,
+  AmbitoPacchetto,
+} from '../application/migrazione/pacchetto/manifest-pacchetto'
 import { MigrazioneModule } from '../application/migrazione/migrazione.module'
 
 export interface UscitaCli {
@@ -32,7 +35,10 @@ export interface UscitaCli {
   errore(messaggio: string): void
 }
 
-export type ServizioCarica = Pick<CaricaPacchettoService, 'verifica' | 'carica' | 'verificaRuoloApplicativo'>
+export type ServizioCarica = Pick<
+  CaricaPacchettoService,
+  'verifica' | 'carica' | 'verificaRuoloApplicativo'
+>
 
 const USO =
   'uso: migrazione:carica --tenant <uuid> --pacchetto <cartella> --ambito <' +
@@ -48,7 +54,7 @@ interface Argomenti {
   dimensioneBlocco?: number
 }
 
-function leggiArgomenti(argv: readonly string[]): Argomenti | null {
+export function leggiArgomenti(argv: readonly string[]): Argomenti | null {
   const valori: Record<string, string> = {}
   let verifica = false
   for (let i = 0; i < argv.length; i++) {
@@ -68,9 +74,16 @@ function leggiArgomenti(argv: readonly string[]): Argomenti | null {
   let dimensioneBlocco: number | undefined
   if ('--dimensione-blocco' in valori) {
     dimensioneBlocco = Number(valori['--dimensione-blocco'])
-    if (!Number.isInteger(dimensioneBlocco) || dimensioneBlocco < 1 || dimensioneBlocco > 5000) return null
+    if (!Number.isInteger(dimensioneBlocco) || dimensioneBlocco < 1 || dimensioneBlocco > 5000)
+      return null
   }
-  return { tenant: tenant.toLowerCase(), pacchetto, ambito: ambito as AmbitoPacchetto, verifica, dimensioneBlocco }
+  return {
+    tenant: tenant.toLowerCase(),
+    pacchetto,
+    ambito: ambito as AmbitoPacchetto,
+    verifica,
+    dimensioneBlocco,
+  }
 }
 
 export async function eseguiCli(
@@ -103,7 +116,9 @@ export async function eseguiCli(
     const esito = await servizio.carica(richiesta)
     const c = esito.conteggi
     uscita.scrivi(`lotto ${esito.lottoId} completato`)
-    uscita.scrivi(`lette: ${c.lette}; inserite: ${c.inserite}; saltate: ${c.saltate}; blocchi: ${c.blocchi}`)
+    uscita.scrivi(
+      `lette: ${c.lette}; inserite: ${c.inserite}; saltate: ${c.saltate}; blocchi: ${c.blocchi}`
+    )
     return 0
   } catch (e) {
     if (e instanceof PacchettoError) {
@@ -133,7 +148,16 @@ export async function eseguiCli(
 }
 
 async function principale(): Promise<number> {
-  const app = await NestFactory.createApplicationContext(MigrazioneModule, { logger: ['error', 'warn'] })
+  // Uso errato: si risponde prima di aprire il contesto (e quindi il database).
+  if (!leggiArgomenti(process.argv.slice(2))) {
+    process.stderr.write(`${USO}\n`)
+    return 64
+  }
+  // Logger di Nest spento e niente abort: un errore di avvio arriva qui e si stampa solo per nome.
+  const app = await NestFactory.createApplicationContext(MigrazioneModule, {
+    logger: false,
+    abortOnError: false,
+  })
   try {
     return await eseguiCli(
       process.argv.slice(2),

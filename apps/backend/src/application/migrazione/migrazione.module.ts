@@ -5,7 +5,10 @@
  */
 import { Module } from '@nestjs/common'
 import { LoggerModule } from '../../core/logger/logger.module'
-import { PrismaService, creaPrismaServiceApplicativo } from '../../infrastructure/persistence/prisma.service'
+import {
+  PrismaService,
+  creaPrismaServiceApplicativo,
+} from '../../infrastructure/persistence/prisma.service'
 import { CaricaPacchettoService } from './caricamento/carica-pacchetto.service'
 import { LottiImportService } from './caricamento/lotti-import.service'
 

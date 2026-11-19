@@ -38,7 +38,10 @@ export function serializzaRecord(record: object): string {
     .replace(/\u2029/g, '\\u2029')
 }
 
-async function scriviFase(percorso: string, record: FaseDaScrivere['record']): Promise<{ righe: number; sha256: string }> {
+async function scriviFase(
+  percorso: string,
+  record: FaseDaScrivere['record']
+): Promise<{ righe: number; sha256: string }> {
   const hash = createHash('sha256')
   const out = createWriteStream(percorso, { mode: 0o600 })
   let righe = 0
@@ -76,6 +79,8 @@ export async function scriviPacchetto(r: RichiestaScrittura): Promise<ManifestPa
     creatoIl: r.creatoIl ?? new Date().toISOString(),
     file,
   }
-  await writeFile(join(r.cartella, NOME_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(join(r.cartella, NOME_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`, {
+    mode: 0o600,
+  })
   return manifest
 }

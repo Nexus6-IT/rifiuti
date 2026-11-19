@@ -22,7 +22,11 @@ export interface DefinizioneFase<R = unknown> {
    * Solo LETTURE nella transazione `tx` (read-only, nel contesto dell'azienda): collisioni che
    * farebbero fallire il caricamento. Restituisce solo conteggi.
    */
-  readonly collisioni: (tx: Tx, tenantId: string, righe: readonly R[]) => Promise<{ collisioni: Collisione[]; giaCaricate: number }>
+  readonly collisioni: (
+    tx: Tx,
+    tenantId: string,
+    righe: readonly R[]
+  ) => Promise<{ collisioni: Collisione[]; giaCaricate: number }>
 }
 
 async function collisioniDitte(tx: Tx, tenantId: string, righe: readonly RecordDitta[]) {
@@ -41,8 +45,10 @@ async function collisioniDitte(tx: Tx, tenantId: string, righe: readonly RecordD
     WHERE "tenant_id" = ${tenantId}::uuid AND "codice_fiscale" = ANY(${cf}::text[])
       AND ("import_source" IS DISTINCT FROM 'WINWASTE' OR "legacy_key" <> ALL(${chiavi}::text[]))`
   const out: Collisione[] = []
-  if (Number(p.n) > 0) out.push({ codice: 'PARTITA_IVA_GIA_PRESENTE_NON_AGGANCIATA', conteggio: Number(p.n) })
-  if (Number(c.n) > 0) out.push({ codice: 'CODICE_FISCALE_GIA_PRESENTE_NON_AGGANCIATO', conteggio: Number(c.n) })
+  if (Number(p.n) > 0)
+    out.push({ codice: 'PARTITA_IVA_GIA_PRESENTE_NON_AGGANCIATA', conteggio: Number(p.n) })
+  if (Number(c.n) > 0)
+    out.push({ codice: 'CODICE_FISCALE_GIA_PRESENTE_NON_AGGANCIATO', conteggio: Number(c.n) })
   return { collisioni: out, giaCaricate: Number(carico.n) }
 }
 

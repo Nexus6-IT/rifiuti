@@ -52,7 +52,11 @@ describe('Pezzo I2 T4: caricaAmbito — Postgres reale, ruolo wasteflow_app', ()
   const righe = (quante: number, da: number): RigaDittaImportata[] =>
     Array.from({ length: quante }, (_, i) => {
       const piva = partitaIvaValida(seme * 1000 + da + i)
-      return { legacyKey: chiaveDitta('0001', piva), ragioneSociale: `PROVA ${da + i}`, partitaIva: piva }
+      return {
+        legacyKey: chiaveDitta('0001', piva),
+        ragioneSociale: `PROVA ${da + i}`,
+        partitaIva: piva,
+      }
     })
   const lottoDa = () => ({
     importSource: 'WINWASTE',
@@ -93,19 +97,27 @@ describe('Pezzo I2 T4: caricaAmbito — Postgres reale, ruolo wasteflow_app', ()
     expect(esito.conteggi).toEqual({ lette: 6, inserite: 6, saltate: 0, scartate: 0, blocchi: 3 })
     const l = await lotti.leggi(t, esito.lottoId)
     expect(l!.stato).toBe('COMPLETATO')
-    expect(await owner.ditta.count({ where: { tenantId: t, lottoImportId: esito.lottoId } })).toBe(6)
+    expect(await owner.ditta.count({ where: { tenantId: t, lottoImportId: esito.lottoId } })).toBe(
+      6
+    )
   })
 
   it('prima fase fallita: lotto FALLITO, la seconda fase non viene nemmeno letta', async () => {
     const t = await azienda()
     const pivaOccupata = partitaIvaValida(seme * 1000 + 500)
-    await owner.ditta.create({ data: { tenantId: t, ragioneSociale: 'ESISTENTE', partitaIva: pivaOccupata } })
+    await owner.ditta.create({
+      data: { tenantId: t, ragioneSociale: 'ESISTENTE', partitaIva: pivaOccupata },
+    })
     const seconda = jest.fn(async () => righe(1, 600))
     const prova = caricaAmbito(dip(), t, lottoDa(), [
       {
         nome: 'uno',
         righe: async () => [
-          { legacyKey: chiaveDitta('0001', pivaOccupata), ragioneSociale: 'X', partitaIva: pivaOccupata },
+          {
+            legacyKey: chiaveDitta('0001', pivaOccupata),
+            ragioneSociale: 'X',
+            partitaIva: pivaOccupata,
+          },
         ],
         opzioni: { inserisciBlocco: inserisciDitteImportate },
       },

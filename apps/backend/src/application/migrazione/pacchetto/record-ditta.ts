@@ -36,17 +36,26 @@ export function validaRecordDitta(valore: unknown, dittaWinWaste: string): Recor
   if (valore === null || typeof valore !== 'object' || Array.isArray(valore)) riga('FORMA')
   const o = valore as Record<string, unknown>
   const chiavi = Object.keys(o)
-  if (chiavi.length !== 4 || !['legacyKey', 'ragioneSociale', 'partitaIva', 'codiceFiscale'].every(k => k in o)) {
+  if (
+    chiavi.length !== 4 ||
+    !['legacyKey', 'ragioneSociale', 'partitaIva', 'codiceFiscale'].every(k => k in o)
+  ) {
     riga('FORMA')
   }
   const { legacyKey, ragioneSociale, partitaIva, codiceFiscale } = o
   if (typeof ragioneSociale !== 'string') riga('RAGIONE_SOCIALE')
   const rs = (ragioneSociale as string).trim()
   if (rs.length === 0 || rs.length > 255) riga('RAGIONE_SOCIALE')
-  if (partitaIva !== null && (typeof partitaIva !== 'string' || !partitaIvaItalianaValida(partitaIva))) {
+  if (
+    partitaIva !== null &&
+    (typeof partitaIva !== 'string' || !partitaIvaItalianaValida(partitaIva))
+  ) {
     riga('PARTITA_IVA')
   }
-  if (codiceFiscale !== null && (typeof codiceFiscale !== 'string' || !codiceFiscaleFormaValida(codiceFiscale))) {
+  if (
+    codiceFiscale !== null &&
+    (typeof codiceFiscale !== 'string' || !codiceFiscaleFormaValida(codiceFiscale))
+  ) {
     riga('CODICE_FISCALE')
   }
   const fiscale = (partitaIva ?? codiceFiscale) as string | null

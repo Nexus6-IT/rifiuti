@@ -27,7 +27,11 @@ export type CodiceScartoPrepara =
 
 export interface RapportoPrepara {
   readonly manifest: ManifestPacchetto
-  readonly scarti: ReadonlyArray<{ tabella: string; codice: CodiceScartoPrepara; conteggio: number }>
+  readonly scarti: ReadonlyArray<{
+    tabella: string
+    codice: CodiceScartoPrepara
+    conteggio: number
+  }>
   /** Ditte gia' presenti in WasteFlow (agganci della mappa): non vanno nel pacchetto. */
   readonly agganciate: number
 }
@@ -84,7 +88,12 @@ async function* ditte(
       agganciata()
       continue
     }
-    yield { legacyKey: chiave, ragioneSociale: rs, partitaIva: piva || null, codiceFiscale: cf || null }
+    yield {
+      legacyKey: chiave,
+      ragioneSociale: rs,
+      partitaIva: piva || null,
+      codiceFiscale: cf || null,
+    }
   }
 }
 
@@ -98,9 +107,13 @@ export async function preparaPacchetto(
   cartellaPacchetto: string
 ): Promise<RapportoPrepara> {
   if (staging.manifest.ditta !== mappa.ditta || staging.manifest.anno !== mappa.anno) {
-    throw new PacchettoError('MAPPA_DIVERSA', 'ditta o anno della mappa non coincidono con quelli dello staging')
+    throw new PacchettoError(
+      'MAPPA_DIVERSA',
+      'ditta o anno della mappa non coincidono con quelli dello staging'
+    )
   }
-  if (!staging.ha('CLIFOR')) throw new PacchettoError('FILE_ASSENTE', 'lo staging non contiene CLIFOR')
+  if (!staging.ha('CLIFOR'))
+    throw new PacchettoError('FILE_ASSENTE', 'lo staging non contiene CLIFOR')
   const conteggi = new Map<CodiceScartoPrepara, number>()
   let agganciate = 0
   const manifest = await scriviPacchetto({
@@ -124,6 +137,10 @@ export async function preparaPacchetto(
   return {
     manifest,
     agganciate,
-    scarti: [...conteggi.entries()].map(([codice, conteggio]) => ({ tabella: 'CLIFOR', codice, conteggio })),
+    scarti: [...conteggi.entries()].map(([codice, conteggio]) => ({
+      tabella: 'CLIFOR',
+      codice,
+      conteggio,
+    })),
   }
 }

@@ -20,7 +20,8 @@ export interface UscitaCli {
   errore(messaggio: string): void
 }
 
-const USO = 'uso: migrazione:prepara <cartella-staging> --mappa <file> --destinazione <cartella> [--forza]'
+const USO =
+  'uso: migrazione:prepara <cartella-staging> --mappa <file> --destinazione <cartella> [--forza]'
 
 async function esiste(p: string): Promise<boolean> {
   try {
@@ -39,7 +40,11 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--forza') forza = true
-    else if ((a === '--mappa' || a === '--destinazione') && i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+    else if (
+      (a === '--mappa' || a === '--destinazione') &&
+      i + 1 < argv.length &&
+      !argv[i + 1].startsWith('--')
+    ) {
       if (a === '--mappa') mappaFile = argv[++i]
       else destinazione = argv[++i]
     } else if (!a.startsWith('--') && staging === undefined) staging = a
@@ -74,7 +79,8 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
     uscita.scrivi(`impronta mappa: ${improntaMappa(mappa)}`)
     for (const f of rapporto.manifest.file) uscita.scrivi(`${f.ambito}/${f.fase}: ${f.righe} righe`)
     uscita.scrivi(`ditte agganciate a quelle gia presenti: ${rapporto.agganciate}`)
-    for (const s of rapporto.scarti) uscita.scrivi(`scarto ${s.tabella} ${s.codice}: ${s.conteggio}`)
+    for (const s of rapporto.scarti)
+      uscita.scrivi(`scarto ${s.tabella} ${s.codice}: ${s.conteggio}`)
     return 0
   } catch (e) {
     if (e instanceof PacchettoError || e instanceof StagingError) {

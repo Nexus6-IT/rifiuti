@@ -27,8 +27,18 @@ describe('pacchetto: scrittura e lettura', () => {
           ambito: 'ANAGRAFICHE',
           fase: 'ditte',
           record: [
-            { legacyKey: '0001|FISC|00000000000', ragioneSociale: 'Uno  SRL', partitaIva: null, codiceFiscale: null },
-            { legacyKey: '0001|FISC|00000000001', ragioneSociale: 'Due', partitaIva: null, codiceFiscale: null },
+            {
+              legacyKey: '0001|FISC|00000000000',
+              ragioneSociale: 'Uno\u2028 SRL',
+              partitaIva: null,
+              codiceFiscale: null,
+            },
+            {
+              legacyKey: '0001|FISC|00000000001',
+              ragioneSociale: 'Due',
+              partitaIva: null,
+              codiceFiscale: null,
+            },
           ],
         },
       ],
@@ -54,8 +64,9 @@ describe('pacchetto: scrittura e lettura', () => {
     expect(p.manifest.hashStaging).toBe(HASH)
     expect(p.fasi('ANAGRAFICHE')).toHaveLength(1)
     const letti: Array<{ ragioneSociale: string }> = []
-    for await (const { record } of p.leggi('ANAGRAFICHE', 'ditte')) letti.push(record as { ragioneSociale: string })
-    expect(letti.map(r => r.ragioneSociale)).toEqual(['Uno  SRL', 'Due'])
+    for await (const { record } of p.leggi('ANAGRAFICHE', 'ditte'))
+      letti.push(record as { ragioneSociale: string })
+    expect(letti.map(r => r.ragioneSociale)).toEqual(['Uno\u2028 SRL', 'Due'])
   })
 
   it('rifiuta un file con impronta diversa', async () => {
@@ -92,7 +103,12 @@ describe('pacchetto: scrittura e lettura', () => {
   })
 
   it('rifiuta una mappa che contiene un codice fiscale', async () => {
-    const altra = { ...mappaValida(), registri: [{ legacy: 'RSSMRA80A01H501U', registroId: '11111111-1111-4111-8111-111111111111' }] }
+    const altra = {
+      ...mappaValida(),
+      registri: [
+        { legacy: 'RSSMRA80A01H501U', registroId: '11111111-1111-4111-8111-111111111111' },
+      ],
+    }
     await writeFile(join(cartella, 'mappa-import.json'), JSON.stringify(altra))
     await rifiuta('MAPPA_NON_VALIDA')
   })

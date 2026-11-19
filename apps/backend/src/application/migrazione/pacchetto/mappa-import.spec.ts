@@ -1,6 +1,6 @@
 import { PacchettoError } from './errori-pacchetto'
 import { U1, U2, mappaValida } from '../../../test-support/migrazione/mappa-di-prova'
-import { FORMATO_MAPPA, improntaMappa, validaMappa } from './mappa-import'
+import { improntaMappa, validaMappa } from './mappa-import'
 
 function rifiutata(json: unknown, codice = 'MAPPA_NON_VALIDA'): void {
   try {

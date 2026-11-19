@@ -16,7 +16,10 @@ export interface StagingDitteProva {
 }
 
 /** 6 righe: due ditte nuove (una con P.IVA, una privata con CF), un duplicato, una agganciabile, due scarti. */
-export async function scriviStagingDitteProva(radice: string, seme: number): Promise<StagingDitteProva> {
+export async function scriviStagingDitteProva(
+  radice: string,
+  seme: number
+): Promise<StagingDitteProva> {
   const pivaUno = partitaIvaValida(seme)
   const pivaAgganciata = partitaIvaValida(seme + 1)
   const cfPrivato = 'ZZZZZZ00A00Z000Z'

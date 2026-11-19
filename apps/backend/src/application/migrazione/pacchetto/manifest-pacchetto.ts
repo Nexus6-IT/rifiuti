@@ -48,30 +48,41 @@ export function nomeFilePacchetto(ambito: AmbitoPacchetto, fase: string): string
 }
 
 export function validaManifestPacchetto(json: unknown): ManifestPacchetto {
-  if (json === null || typeof json !== 'object' || Array.isArray(json)) nonValido('atteso un oggetto')
+  if (json === null || typeof json !== 'object' || Array.isArray(json))
+    nonValido('atteso un oggetto')
   const m = json as Record<string, unknown>
   if (m.formato !== FORMATO_PACCHETTO) {
     throw new PacchettoError('FORMATO_SCONOSCIUTO', `formato diverso da ${FORMATO_PACCHETTO}`)
   }
   if (m.importSource !== IMPORT_SOURCE_WINWASTE) nonValido('importSource non ammesso')
-  if (typeof m.archivio !== 'string' || !/^WW\d{8}$/.test(m.archivio)) nonValido('archivio non valido')
-  if (typeof m.hashStaging !== 'string' || !PATTERN_SHA256.test(m.hashStaging)) nonValido('hashStaging non valido')
-  if (typeof m.hashMappa !== 'string' || !PATTERN_SHA256.test(m.hashMappa)) nonValido('hashMappa non valido')
-  if (typeof m.creatoIl !== 'string' || Number.isNaN(Date.parse(m.creatoIl))) nonValido('creatoIl non valido')
+  if (typeof m.archivio !== 'string' || !/^WW\d{8}$/.test(m.archivio))
+    nonValido('archivio non valido')
+  if (typeof m.hashStaging !== 'string' || !PATTERN_SHA256.test(m.hashStaging))
+    nonValido('hashStaging non valido')
+  if (typeof m.hashMappa !== 'string' || !PATTERN_SHA256.test(m.hashMappa))
+    nonValido('hashMappa non valido')
+  if (typeof m.creatoIl !== 'string' || Number.isNaN(Date.parse(m.creatoIl)))
+    nonValido('creatoIl non valido')
   if (!Array.isArray(m.file)) nonValido('file: atteso un elenco')
   const visti = new Set<string>()
   const file = (m.file as unknown[]).map((f, i): FilePacchetto => {
-    if (f === null || typeof f !== 'object' || Array.isArray(f)) nonValido(`file[${i}]: atteso un oggetto`)
+    if (f === null || typeof f !== 'object' || Array.isArray(f))
+      nonValido(`file[${i}]: atteso un oggetto`)
     const { ambito, fase, file: nome, righe, sha256 } = f as Record<string, unknown>
     if (typeof ambito !== 'string' || !(AMBITI_PACCHETTO as readonly string[]).includes(ambito)) {
       nonValido(`file[${i}].ambito non valido`)
     }
-    if (typeof fase !== 'string' || !PATTERN_FASE.test(fase)) nonValido(`file[${i}].fase non valida`)
-    if (typeof nome !== 'string' || !PATTERN_FILE.test(nome)) nonValido(`file[${i}].file non valido`)
-    if (typeof righe !== 'number' || !Number.isInteger(righe) || righe < 0) nonValido(`file[${i}].righe non valido`)
-    if (typeof sha256 !== 'string' || !PATTERN_SHA256.test(sha256)) nonValido(`file[${i}].sha256 non valido`)
+    if (typeof fase !== 'string' || !PATTERN_FASE.test(fase))
+      nonValido(`file[${i}].fase non valida`)
+    if (typeof nome !== 'string' || !PATTERN_FILE.test(nome))
+      nonValido(`file[${i}].file non valido`)
+    if (typeof righe !== 'number' || !Number.isInteger(righe) || righe < 0)
+      nonValido(`file[${i}].righe non valido`)
+    if (typeof sha256 !== 'string' || !PATTERN_SHA256.test(sha256))
+      nonValido(`file[${i}].sha256 non valido`)
     const chiave = `${ambito}/${fase as string}`
-    if (visti.has(chiave) || visti.has(`file:${nome as string}`)) nonValido(`file[${i}]: voce duplicata`)
+    if (visti.has(chiave) || visti.has(`file:${nome as string}`))
+      nonValido(`file[${i}]: voce duplicata`)
     visti.add(chiave)
     visti.add(`file:${nome as string}`)
     return {

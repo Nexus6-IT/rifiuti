@@ -13,7 +13,11 @@ import { LoggerService } from '../../../core/logger/logger.service'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { PacchettoError } from '../pacchetto/errori-pacchetto'
 import type { PacchettoAperto } from '../pacchetto/lettore-pacchetto'
-import { AmbitoPacchetto, FORMATO_PACCHETTO, IMPORT_SOURCE_WINWASTE } from '../pacchetto/manifest-pacchetto'
+import {
+  AmbitoPacchetto,
+  FORMATO_PACCHETTO,
+  IMPORT_SOURCE_WINWASTE,
+} from '../pacchetto/manifest-pacchetto'
 import { caricaAmbito, EsitoCaricamento, FaseCaricamento } from './carica-ambito'
 import { Collisione, DefinizioneFase, FASI_AMBITO } from './fasi-ambito'
 import { LottiImportService } from './lotti-import.service'
@@ -45,7 +49,9 @@ export class AmbitoNonCaricabileError extends Error {
 /** Il ruolo del database aggira la RLS (proprietario, superutente o ruolo di sistema). */
 export class RuoloNonApplicativoError extends Error {
   constructor() {
-    super('Il ruolo del database aggira la sicurezza per azienda: il caricamento richiede il ruolo applicativo')
+    super(
+      'Il ruolo del database aggira la sicurezza per azienda: il caricamento richiede il ruolo applicativo'
+    )
     this.name = 'RuoloNonApplicativoError'
   }
 }
@@ -71,26 +77,37 @@ export class CaricaPacchettoService {
     if (!ruolo || ruolo.bypass) throw new RuoloNonApplicativoError()
   }
 
-  private fasiDa(r: { pacchetto: PacchettoAperto; ambito: AmbitoPacchetto }): Array<DefinizioneFase<any>> {
+  private fasiDa(r: {
+    pacchetto: PacchettoAperto
+    ambito: AmbitoPacchetto
+  }): Array<DefinizioneFase<any>> {
     const presenti = new Set(r.pacchetto.fasi(r.ambito).map(f => f.fase))
     const fasi = FASI_AMBITO[r.ambito].filter(f => presenti.has(f.nome))
     // Una fase del pacchetto che il server non conosce non si salta in silenzio.
     for (const f of presenti) {
-      if (!FASI_AMBITO[r.ambito].some(d => d.nome === f)) throw new AmbitoNonCaricabileError(r.ambito)
+      if (!FASI_AMBITO[r.ambito].some(d => d.nome === f))
+        throw new AmbitoNonCaricabileError(r.ambito)
     }
     if (fasi.length === 0) throw new AmbitoNonCaricabileError(r.ambito)
     return fasi
   }
 
   /** Legge e rivalida TUTTI i record di una fase. @throws PacchettoError `RIGA_NON_VALIDA` (senza valori) */
-  private async leggiFase<R>(p: PacchettoAperto, ambito: AmbitoPacchetto, def: DefinizioneFase<R>): Promise<R[]> {
+  private async leggiFase<R>(
+    p: PacchettoAperto,
+    ambito: AmbitoPacchetto,
+    def: DefinizioneFase<R>
+  ): Promise<R[]> {
     const out: R[] = []
     for await (const { numeroRiga, record } of p.leggi(ambito, def.nome)) {
       try {
         out.push(def.valida(record, p.mappa))
       } catch (e) {
         if (e instanceof PacchettoError) {
-          throw new PacchettoError('RIGA_NON_VALIDA', `fase ${def.nome}, riga ${numeroRiga}: ${e.dettaglio}`)
+          throw new PacchettoError(
+            'RIGA_NON_VALIDA',
+            `fase ${def.nome}, riga ${numeroRiga}: ${e.dettaglio}`
+          )
         }
         throw e
       }
@@ -101,7 +118,8 @@ export class CaricaPacchettoService {
   private async leggiTutto(r: { pacchetto: PacchettoAperto; ambito: AmbitoPacchetto }) {
     const def = this.fasiDa(r)
     const lette: Array<{ def: DefinizioneFase<any>; righe: unknown[] }> = []
-    for (const d of def) lette.push({ def: d, righe: await this.leggiFase(r.pacchetto, r.ambito, d) })
+    for (const d of def)
+      lette.push({ def: d, righe: await this.leggiFase(r.pacchetto, r.ambito, d) })
     return lette
   }
 
@@ -124,7 +142,8 @@ export class CaricaPacchettoService {
           SELECT count(*)::bigint AS n FROM "lotti_import"
           WHERE "tenant_id" = ${r.tenantId}::uuid AND "archivio" = ${r.pacchetto.manifest.archivio}
             AND "ambito" = ${r.ambito}::"ambito_lotto_import" AND "stato" = 'IN_CORSO'`
-        if (Number(inCorso.n) > 0) bloccanti.push({ codice: 'LOTTO_GIA_IN_CORSO', conteggio: Number(inCorso.n) })
+        if (Number(inCorso.n) > 0)
+          bloccanti.push({ codice: 'LOTTO_GIA_IN_CORSO', conteggio: Number(inCorso.n) })
         for (const { def, righe } of lette) {
           informazioni[`righe.${def.nome}`] = righe.length
           const esito = await def.collisioni(tx, r.tenantId, righe)
@@ -144,22 +163,46 @@ export class CaricaPacchettoService {
     const aggiungi = (codice: string, conteggio: number) => {
       if (conteggio > 0) out.push({ codice, conteggio })
     }
-    const mancanti = async (tabella: 'registri_rifiuti' | 'sedi_ditte' | 'rentri_unita_locali', ids: string[]) => {
+    const mancanti = async (
+      tabella: 'registri_rifiuti' | 'sedi_ditte' | 'rentri_unita_locali',
+      ids: string[]
+    ) => {
       if (ids.length === 0) return 0
       const sql =
         tabella === 'registri_rifiuti'
-          ? tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*)::bigint AS n FROM "registri_rifiuti" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
+          ? tx.$queryRaw<
+              Array<{ n: bigint }>
+            >`SELECT count(*)::bigint AS n FROM "registri_rifiuti" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
           : tabella === 'sedi_ditte'
-            ? tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*)::bigint AS n FROM "sedi_ditte" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
-            : tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*)::bigint AS n FROM "rentri_unita_locali" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
+            ? tx.$queryRaw<
+                Array<{ n: bigint }>
+              >`SELECT count(*)::bigint AS n FROM "sedi_ditte" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
+            : tx.$queryRaw<
+                Array<{ n: bigint }>
+              >`SELECT count(*)::bigint AS n FROM "rentri_unita_locali" WHERE "tenant_id" = ${t}::uuid AND "id" = ANY(${ids}::uuid[])`
       const [{ n }] = await sql
       return new Set(ids).size - Number(n)
     }
-    aggiungi('REGISTRO_INESISTENTE', await mancanti('registri_rifiuti', m.registri.map(x => x.registroId)))
-    aggiungi('SEDE_INESISTENTE', await mancanti('sedi_ditte', m.unitaLocali.map(x => x.sedeId)))
+    aggiungi(
+      'REGISTRO_INESISTENTE',
+      await mancanti(
+        'registri_rifiuti',
+        m.registri.map(x => x.registroId)
+      )
+    )
+    aggiungi(
+      'SEDE_INESISTENTE',
+      await mancanti(
+        'sedi_ditte',
+        m.unitaLocali.map(x => x.sedeId)
+      )
+    )
     aggiungi(
       'UNITA_LOCALE_INESISTENTE',
-      await mancanti('rentri_unita_locali', m.unitaLocali.map(x => x.unitaLocaleId).filter((v): v is string => v !== null))
+      await mancanti(
+        'rentri_unita_locali',
+        m.unitaLocali.map(x => x.unitaLocaleId).filter((v): v is string => v !== null)
+      )
     )
     aggiungi('CAUSALE_NON_CONFERMATA', m.causali.filter(c => !c.confermata).length)
     let causaliMancanti = 0
