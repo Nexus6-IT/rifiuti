@@ -616,3 +616,46 @@ path generico. Il contratto, pero', marca quei tre path come **DEPRECATI** («ut
 di proposito. Adottarli renderebbe la fake meno fedele e porterebbe i client su endpoint
 in dismissione. Resta valido il punto della checklist demo: verificare cosa risponde
 l'ente al path generico per una transazione di copia o trasmissione.
+
+## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
+
+Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in
+`stato/registri-operatore.ts`): `GET .../siti/{sito}/registri`, `POST /operatore/registri`,
+`GET|PUT|DELETE /operatore/registri/{id}`, `GET .../{id}/xml`. I corpi di POST e PUT sono
+validati con gli schemi del contratto (`CreateRegistroRequest`, `UpdateRegistroOperatoreRequest`,
+generati con `npm run genera-schema:crea-registro` / `:modifica-registro` e guardati da
+`schema-registri-allineato-al-contratto.test.ts`). La guardia rotte <-> contratti
+(`rotte-allineate-ai-contratti.test.ts`) copre le nuove rotte senza voci in `SCOSTAMENTI_NOTI`.
+
+**Canali di controllo** (non esistono in RENTRI):
+- `POST /__controllo/registri/esito-perso` `{ operazione: apri|modifica|chiudi, tipo: 5xx|timeout,
+  stato?, volte? }`: l'operazione viene ESEGUITA e poi il chiamante riceve un 5xx o nessuna
+  risposta (connessione chiusa). Diverso da `/__controllo/guasto`, che fallisce prima di elaborare.
+  E' lo scenario della POST di apertura non idempotente.
+- `POST /__controllo/registri/registro`: crea un registro gia' esistente (come aperto dal portale),
+  anche chiuso e con identificativo scelto, senza regole di coerenza.
+
+**Divergenze dichiarate.**
+- Permissiva: `attivita` deve contenere almeno UN'attivita' dell'unita' locale (lettura letterale
+  del contratto); le altre non sono rifiutate. Non e' verificato lo stato dell'unita' locale
+  (Attivo/Sospeso...) ne' l'appartenenza del sito all'operatore autenticato (la fixture ne ha uno).
+- Restrittiva: `attivita_rec_smalt` valorizzato senza Recupero/Smaltimento e' rifiutato (400); il
+  contratto dice solo «richiesto solamente se». I codici si confrontano con l'unione delle
+  autorizzazioni del sito (`attivitaRecuperoSmaltimento`): un sito senza autorizzazioni non ne
+  ammette nessuno, a meno di `forza_salvataggio_attivita_rec_smalt` sul PUT. Nella fixture nessuna
+  unita' locale ha Recupero/Smaltimento con codici validi: per quegli scenari si usa il canale
+  `/__controllo/registri/registro`.
+- Restrittiva: PUT e DELETE su un registro gia' chiuso rispondono 400; il contratto non dice cosa
+  succede.
+- Permissiva: nessun 403 per registri di altri operatori; un solo operatore in fixture.
+- Il registro aperto qui NON diventa noto al servizio `dati-registri` (stato separato): per
+  trasmettere movimenti va registrato col canale `/__controllo/dati-registri/registro`.
+- eREGI (`GET .../xml`): struttura da `rentri-registri-1.0.xsd` (`VidimazioneRegistro`),
+  `Id="eREGI-CS-0"`, `ds:Signature` con `Reference URI="#eREGI-CS-0"`. Il `DigestValue` e' lo
+  SHA-256 dell'eREGI serializzato senza firma cosi' come scritto, NON della forma C14N; la
+  `SignatureValue` e' una vera firma RSA-SHA256 sui byte di `SignedInfo` non canonicalizzati, con la
+  chiave della credenziale di test e non quella della CA RENTRI. Il `num_iscr_sito` delle fixture
+  (`MI00001234-002`) non rispetta il pattern `NumIscrSito` dell'XSD (`OP...-XX0000`): l'eREGI riporta
+  il valore della fixture. Il significato di `Ref`/digest per la catena delle esportazioni resta
+  l'ipotesi R1 del piano, da provare sul demo.
+- Paginazione dell'elenco registri: applicata davvero (a differenza delle altre rotte `anagrafiche`).

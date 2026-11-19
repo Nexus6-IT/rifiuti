@@ -18,7 +18,7 @@ const PREFISSO = '/anagrafiche/v1.0'
  * (`security: - Bearer: []`) copre tutti i path — applichiamo lo stesso
  * comportamento ovunque, per coerenza col resto della fake.
  */
-async function autentica(
+export async function autentica(
   richiesta: FastifyRequest,
   risposta: FastifyReply,
   archivio: Archivio

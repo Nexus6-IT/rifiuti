@@ -4,6 +4,7 @@ import { emettiCertificatoAccreditato } from '../auth/ca-test'
 import * as codifiche from './fixture-codifiche'
 import { LookupItem } from './fixture-codifiche'
 import * as anagrafiche from './fixture-anagrafiche'
+import { RegistriOperatore } from './registri-operatore'
 
 export interface Formulario {
   numero_fir: string
@@ -296,6 +297,9 @@ export class Archivio {
    */
   readonly registroReplay = new RegistroReplayMemoria()
 
+  /** Registri aperti con l'API `anagrafiche` (`/operatore/registri`), azzerati con il resto dello stato. */
+  readonly registriOperatore = new RegistriOperatore()
+
   azzera(): void {
     this.formulari.clear()
     this.transazioni.clear()
@@ -304,6 +308,7 @@ export class Archivio {
     this.sessioniFirma.clear()
     this.trasmissioniDati.clear()
     this.registroReplay.azzera()
+    this.registriOperatore.azzera()
     // `materialeFirmaRemota` NON si azzera: v. il commento del campo.
   }
 
@@ -417,6 +422,19 @@ export class Archivio {
   firmaHash(digestBase64: string): string {
     const firmatore = createSign('sha256')
     firmatore.update(Buffer.from(digestBase64, 'base64'))
+    firmatore.end()
+    return firmatore.sign(this.materiale().chiavePrivataPem, 'base64')
+  }
+
+  /**
+   * Firma RSA-SHA256 di un testo con la chiave della credenziale di test
+   * (stessa di {@link firmaHash}). Serve a `SignatureValue` dell'eREGI di
+   * prova: la firma e' vera ma calcolata sui byte di `SignedInfo` cosi' come
+   * scritti, non su una canonicalizzazione C14N (v. `vidimazione-registro-xml.ts`).
+   */
+  firmaTesto(testo: string): string {
+    const firmatore = createSign('sha256')
+    firmatore.update(testo, 'utf8')
     firmatore.end()
     return firmatore.sign(this.materiale().chiavePrivataPem, 'base64')
   }
@@ -888,8 +906,8 @@ export class Archivio {
 
   // --- Servizio `anagrafiche` (docs/contracts/rentri/anagrafiche.yaml) ---
   //
-  // Solo i path di lettura su Operatore/Soggetto delegato: i `/registri`
-  // (apertura/modifica/chiusura registro) sono fuori dall'ambito di R4.
+  // Path di lettura su Operatore/Soggetto delegato. I registri dell'operatore
+  // (`/operatore/registri`) usano `registriOperatore` (pezzo E1 eREGI).
 
   elencaOperatori(numIscrAss?: string): anagrafiche.OperatoreFixture[] {
     if (!numIscrAss) return anagrafiche.operatori

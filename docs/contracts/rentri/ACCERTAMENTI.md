@@ -17,3 +17,14 @@ Nota: `grep -niE "digest|agid-jwt|signature|integrity" docs/contracts/rentri/*.y
 L'API dei registri non e' esposta su `/docs/{api}/v1.0/openapi.json`. Copertura limitata a formulari, anagrafiche, codifiche.
 
 Varianti testate (tutte 404): `registri`, `registro`, `registri-cronologici`, `vidimazione`.
+
+### Aggiornamento 2026-11-19 (registro eREGI, pezzo E1)
+
+`anagrafiche.yaml` (versione scaricata in `MANIFEST.md`) descrive invece i registri dell'operatore:
+`GET /operatore/{num_iscr}/siti/{num_iscr_sito}/registri`, `POST /operatore/registri`,
+`GET|PUT|DELETE /operatore/registri/{identificativo}` e `GET /operatore/registri/{identificativo}/xml`
+(vidimazione virtuale eREGI). Non sono pero' mai stati provati contro l'ambiente demo: la nota
+sopra riguarda `/docs/{api}/v1.0/openapi.json`, non questi path. Va confermato sul demo che
+rispondano davvero come da contratto (rischio R9 del piano `2026-11-18-registro-eregi.md`).
+La fake li espone (`tools/rentri-fake/src/routes/anagrafiche-registri.ts`) e il client li usa
+(`RentriAnagraficheClient`), ma finche' il demo non conferma restano ipotesi sul contratto.
