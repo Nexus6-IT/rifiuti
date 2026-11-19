@@ -103,6 +103,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async cleanDatabase() {
     // For testing: clean all tables
     if (process.env.NODE_ENV === 'test') {
+      // NB (I3): con aziende che hanno registro, FIR o lotti il trigger `tenants_registro_protetto`
+      // rifiuta questo DELETE (chiamanti solo legacy, fuori CI): serve il flag di transazione
+      // `app.consenti_cancellazione_azienda` (vedi test-support/cancella-azienda-di-prova.ts).
       // 1. Le aziende, foglie dopo foglie (`parent_tenant_id` e' RESTRICT): la cascata arriva a
       // profondita' di trigger >= 2 ed e' l'unica cancellazione ammessa per le tabelle delle pese.
       for (let giro = 0; giro < 10; giro++) {

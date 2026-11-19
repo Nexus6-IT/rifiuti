@@ -15,6 +15,8 @@
 -- la RLS) e conta le righe di qualunque azienda. search_path fissato.
 -- Messaggio senza dati: nessun id, nessun nome.
 
+SET LOCAL lock_timeout = '5s';
+
 CREATE OR REPLACE FUNCTION tenants_registro_protetto_fn() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
