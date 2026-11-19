@@ -103,3 +103,7 @@ ruvector.db
 # apps/backend/test/fixtures/winwaste (non coperte da questi pattern).
 **/staging-winwaste/**
 *.bak
+
+# consegna dati cliente: mai nel repository
+*.age
+SHA256SUMS

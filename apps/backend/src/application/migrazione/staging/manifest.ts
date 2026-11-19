@@ -26,6 +26,16 @@ export interface ManifestTabella {
   readonly colonne: readonly string[]
 }
 
+/** Dove e' stato letto lo staging: serve a riconoscere archivi di versioni diverse di WinWaste. */
+export interface OrigineStaging {
+  /** Versione di SQL Server (`SERVERPROPERTY('ProductVersion')`). */
+  readonly versioneSqlServer?: string
+  /** Collation del database d'origine. */
+  readonly collation?: string
+  /** SHA-256 dell'elenco `tabella|colonna|tipo` effettivamente estratto (64 esadecimali). */
+  readonly improntaSchema?: string
+}
+
 export interface ManifestStaging {
   readonly formato: typeof FORMATO_STAGING
   /** Ditta WinWaste, 4 cifre. */
@@ -36,6 +46,8 @@ export interface ManifestStaging {
   /** Istante dell'estrazione (ISO 8601). */
   readonly estrattoIl: string
   readonly estrattore?: { readonly nome: string; readonly versione: string }
+  /** Assente negli staging del blocco 1 (stesso formato `winwaste-staging/1`: campo facoltativo). */
+  readonly origine?: OrigineStaging
   /** Chiave = nome SQL Server esatto della tabella (puo' contenere spazi). */
   readonly tabelle: Readonly<Record<string, ManifestTabella>>
 }
@@ -111,7 +123,7 @@ export function validaManifest(json: unknown, nomeCartella: string): ManifestSta
   if (m.formato !== FORMATO_STAGING) {
     throw new StagingError('FORMATO_SCONOSCIUTO', `formato diverso da ${FORMATO_STAGING}`)
   }
-  const { ditta, anno, databaseOrigine, estrattoIl, tabelle, estrattore } = m
+  const { ditta, anno, databaseOrigine, estrattoIl, tabelle, estrattore, origine } = m
   if (typeof ditta !== 'string' || !/^\d{4}$/.test(ditta)) {
     throw new StagingError('MANIFEST_NON_VALIDO', 'ditta: attese 4 cifre')
   }
@@ -156,6 +168,29 @@ export function validaManifest(json: unknown, nomeCartella: string): ManifestSta
     }
     est = { nome: e.nome, versione: e.versione }
   }
+  let orig: OrigineStaging | undefined
+  if (origine !== undefined) {
+    const o = oggetto(origine, 'origine')
+    const testo = (k: string, max: number): string | undefined => {
+      const v = o[k]
+      if (v === undefined) return undefined
+      if (typeof v !== 'string' || v.length === 0 || v.length > max) {
+        throw new StagingError('MANIFEST_NON_VALIDO', `origine.${k}: attesa una stringa breve`)
+      }
+      return v
+    }
+    const versioneSqlServer = testo('versioneSqlServer', 40)
+    const collation = testo('collation', 80)
+    const improntaSchema = testo('improntaSchema', 64)
+    if (improntaSchema !== undefined && !PATTERN_SHA256.test(improntaSchema)) {
+      throw new StagingError('MANIFEST_NON_VALIDO', 'origine.improntaSchema: atteso uno SHA-256')
+    }
+    orig = {
+      ...(versioneSqlServer ? { versioneSqlServer } : {}),
+      ...(collation ? { collation } : {}),
+      ...(improntaSchema ? { improntaSchema } : {}),
+    }
+  }
   return {
     formato: FORMATO_STAGING,
     ditta,
@@ -163,6 +198,7 @@ export function validaManifest(json: unknown, nomeCartella: string): ManifestSta
     databaseOrigine,
     estrattoIl,
     ...(est ? { estrattore: est } : {}),
+    ...(orig ? { origine: orig } : {}),
     tabelle: risultato,
   }
 }

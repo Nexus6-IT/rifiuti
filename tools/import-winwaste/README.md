@@ -13,6 +13,14 @@ nel backend. **Non scrive mai nel database sorgente e non tocca il database di W
 - **Adattatore e CLI** (questa cartella): `src/adattatore-mssql.ts` e `src/estrai.ts`. Il driver
   `mssql` sta **solo qui**, fuori dall'immagine del backend (`package.json` proprio).
 
+## Consegna dei dati dal cliente
+
+Il `.bak` lo produce l'IT del cliente con `consegna/backup-copy-only.sql` (istruzioni in
+`consegna/LEGGIMI-cliente.md`), cifrato con age; `consegna/ripristina.sh` lo ripristina in un
+container usa e getta e lancia l'estrazione. Dettagli e prove in `docs/migrazione/consegna-dati-cliente.md`.
+L'estrazione copre le 7 tabelle del blocco 1 e le 17 del catalogo esteso (pezzo I1; `MUDAZ`/`MUDTERZI`
+stanno nel database MUD, pezzo I11).
+
 ## Garanzie
 
 - **Sola lettura**: prima di leggere il login viene controllato (`fn_my_permissions` su database,

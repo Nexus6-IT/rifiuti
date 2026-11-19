@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { tabellaDocumentata, TABELLE_DOCUMENTATE } from '../staging/colonne-documentate'
 import { ManifestStaging, PATTERN_ARCHIVIO } from '../staging/manifest'
 import { scriviStaging, TabellaDaScrivere } from '../staging/scrittore-staging'
@@ -48,6 +49,14 @@ export interface ColonnaSql {
   readonly tipo: string
 }
 
+/** Informazioni sul server e sul database d'origine, per il manifest dello staging. */
+export interface InfoOrigine {
+  /** `SERVERPROPERTY('ProductVersion')`, es. `16.0.4135.4`. */
+  readonly versioneSqlServer?: string
+  /** Collation del database, es. `Latin1_General_CI_AS`. */
+  readonly collation?: string
+}
+
 export interface SorgenteSql {
   /** Nome del database a cui il login e' connesso. */
   readonly database: string
@@ -57,6 +66,23 @@ export interface SorgenteSql {
   elencaColonne(tabella: string): Promise<ColonnaSql[]>
   /** Esegue una `SELECT` e restituisce righe di stringhe o `null`, nell'ordine delle colonne. */
   leggiRighe(select: string): AsyncIterable<(string | null)[]>
+  /** Versione di SQL Server e collation (facoltativo: assente nelle sorgenti finte). */
+  infoOrigine?(): Promise<InfoOrigine>
+}
+
+/**
+ * Impronta dello schema trovato: SHA-256 di `tabella|colonna|tipo` per ogni colonna estratta, nell'ordine
+ * del catalogo. Due archivi con lo stesso schema danno la stessa impronta; una versione di WinWaste che
+ * cambia le colonne la cambia.
+ */
+export function improntaSchema(
+  schema: ReadonlyArray<{ tabella: string; colonne: readonly ColonnaSql[] }>
+): string {
+  const h = createHash('sha256')
+  for (const { tabella, colonne } of schema) {
+    for (const c of colonne) h.update(`${tabella}|${c.nome}|${c.tipo.toLowerCase()}\n`, 'utf8')
+  }
+  return h.digest('hex')
 }
 
 /** Permessi che un login di estrazione NON deve avere. */
@@ -121,6 +147,25 @@ const ORDINAMENTO: Readonly<Record<string, readonly string[]>> = {
   'REGISTRI RIFIUTI': ['COD'],
   VERSIS: ['COD'],
   RENregistrazioni: ['REGISTRO', 'PROTOCOLLO'],
+  CLIFOR: ['PRECOD', 'COD'],
+  'SEDI LEGALI': ['PRECOD', 'COD'],
+  'UNITA LOCALI': ['PRECOD', 'COD'],
+  AUTORIZZAZIONI: ['PRECOD', 'COD'],
+  AUTOMEZZI: ['PRECOD', 'COD'],
+  AUTISTI: ['PRECOD', 'COD'],
+  'MAGAZZINI RIFIUTI': ['PRECOD', 'COD'],
+  NUMERAZIONI: ['COD'],
+  RENrelazioniIniziali: ['ID'],
+  RENesportazioni: ['ID'],
+  XRENTRIFORMULARI: ['CODICEFISCALE', 'NUMEROFIR'],
+  XRENTRIFIRTRASMESSI: ['IDRENTRI'],
+  CONTRATTI: ['PRECOD', 'COD'],
+  ELENCHIADDEB: ['PRECOD', 'COD'],
+  ADDEBCON: ['COD'],
+  ADDEBITI: ['COD'],
+  'CONDIZIONI DI PAGAMENTO': ['COD'],
+  MUDAZ: ['COD'],
+  MUDTERZI: ['COD'],
 }
 
 /**
@@ -133,8 +178,10 @@ export function costruisciSelect(tabella: string, colonne: readonly ColonnaSql[]
     throw new EstrazioneError('TABELLA_NON_AMMESSA', 'tabella fuori dal catalogo documentato')
   }
   const alias = 't'
-  const nomi = new Set(colonne.map(c => c.nome))
-  const elenco = colonne
+  const escluse = new Set(tabellaDocumentata(tabella)?.escluse ?? [])
+  const lette = colonne.filter(c => !escluse.has(c.nome))
+  const nomi = new Set(lette.map(c => c.nome))
+  const elenco = lette
     .map(c => {
       // C1..C5 di VERSIS non si leggono MAI (allowlist: il parser non li usa):
       // la colonna esce vuota gia' dal server, per qualsiasi prefisso del COD.
@@ -198,13 +245,19 @@ export async function estraiStaging(
 
   const tabelle: TabellaDaScrivere[] = []
   const assenti: string[] = []
+  const schema: { tabella: string; colonne: ColonnaSql[] }[] = []
   for (const t of TABELLE_DOCUMENTATE) {
-    const colonne = await sorgente.elencaColonne(t.nome)
-    if (colonne.length === 0) {
+    // MUDAZ/MUDTERZI stanno nel database MUD (ww<azienda>MU<aa>), non in WW<ditta><anno>.
+    if (t.database === 'MUD') continue
+    const tutte = await sorgente.elencaColonne(t.nome)
+    if (tutte.length === 0) {
       assenti.push(t.nome)
       continue
     }
-    const select = costruisciSelect(t.nome, colonne)
+    const escluse = new Set(t.escluse ?? [])
+    const colonne = tutte.filter(c => !escluse.has(c.nome))
+    schema.push({ tabella: t.nome, colonne })
+    const select = costruisciSelect(t.nome, tutte)
     tabelle.push({
       nome: t.nome,
       colonne: colonne.map(c => c.nome),
@@ -220,6 +273,7 @@ export async function estraiStaging(
       'nessuna tabella del catalogo trovata nel database'
     )
   }
+  const info = sorgente.infoOrigine ? await sorgente.infoOrigine() : {}
   const { cartella, manifest } = await scriviStaging(
     radiceOut,
     {
@@ -227,6 +281,7 @@ export async function estraiStaging(
       anno: Number(anno),
       estrattoIl: opzioni.estrattoIl ?? new Date().toISOString(),
       estrattore: opzioni.estrattore ?? { nome: 'import-winwaste', versione: '1' },
+      origine: { ...info, improntaSchema: improntaSchema(schema) },
     },
     tabelle,
     { svuota: opzioni.svuota }

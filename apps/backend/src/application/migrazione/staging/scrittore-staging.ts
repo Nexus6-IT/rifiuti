@@ -4,7 +4,7 @@ import { chmod, mkdir, readdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { once } from 'events'
 import { tabellaDocumentata } from './colonne-documentate'
-import { FORMATO_STAGING, ManifestStaging, ManifestTabella } from './manifest'
+import { FORMATO_STAGING, ManifestStaging, ManifestTabella, OrigineStaging } from './manifest'
 
 /**
  * Scrittore dello staging `winwaste-staging/1`: l'unico punto che sa come si
@@ -30,6 +30,7 @@ export interface MetaStaging {
   readonly anno: number
   readonly estrattoIl: string
   readonly estrattore?: { readonly nome: string; readonly versione: string }
+  readonly origine?: OrigineStaging
 }
 
 export function nomeFileTabella(nome: string): string {
@@ -138,6 +139,7 @@ export async function scriviStaging(
     databaseOrigine,
     estrattoIl: meta.estrattoIl,
     ...(meta.estrattore ? { estrattore: meta.estrattore } : {}),
+    ...(meta.origine ? { origine: meta.origine } : {}),
     tabelle: manifestTabelle,
   }
   await writeFile(join(cartella, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
