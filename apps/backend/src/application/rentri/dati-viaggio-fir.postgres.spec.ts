@@ -254,7 +254,7 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
     expect(d?.tratteAggiuntive[0].dataOraInizioTrasporto).toEqual(new Date('2026-11-22T06:00:00Z'))
   })
 
-  it('ultimoTrasportoPerTarga: l\'ultimo FIR dell\'azienda con quella targa e un conducente completo', async () => {
+  it("ultimoTrasportoPerTarga: l'ultimo FIR dell'azienda con quella targa e un conducente completo", async () => {
     const a = await azienda()
     const b = await azienda()
     await nelTenant(a.t, () =>
