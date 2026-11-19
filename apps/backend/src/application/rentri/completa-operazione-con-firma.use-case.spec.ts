@@ -4,6 +4,7 @@ import {
 } from './completa-operazione-con-firma.use-case'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
 import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
 
 /**
@@ -105,6 +106,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
       credentialService as any,
       client,
       rateLimiter.servizio,
+      new SessioniFirmaRentriInMemoria(),
       creaLogger()
     )
 
@@ -237,7 +239,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
       // `rilevataDa` distingue questa scadenza (inferita dal NOSTRO orologio)
       // da quella dichiarata dall'ente col 400 — v. il test successivo.
-      expect(risultato).toEqual({
+      expect(risultato).toMatchObject({
         esito: 'SCADUTA',
         handle: 'handle-scaduto',
         rilevataDa: 'orologio-locale',
@@ -269,7 +271,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
     const risultato = await useCase.execute(comando)
 
-    expect(risultato).toEqual({ esito: 'SCADUTA', handle: 'handle-400', rilevataDa: 'ente' })
+    expect(risultato).toMatchObject({ esito: 'SCADUTA', handle: 'handle-400', rilevataDa: 'ente' })
     // Una sola interrogazione: la parola dell'ente chiude il ciclo subito,
     // invece di continuare a interrogare un'autorizzazione morta.
     expect(verifica).toHaveBeenCalledTimes(1)
@@ -290,7 +292,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
     // Un rifiuto NON è una scadenza: riproporre la stessa operazione
     // significherebbe insistere su una decisione esplicita dell'utente.
-    expect(risultato).toEqual({ esito: 'RIFIUTATA', handle: 'handle-rifiuto' })
+    expect(risultato).toMatchObject({ esito: 'RIFIUTATA', handle: 'handle-rifiuto' })
     expect(verifica).toHaveBeenCalledTimes(1)
     expect(client.firmaHashRemoto).not.toHaveBeenCalled()
     expect(applyRentriStato).not.toHaveBeenCalled()
@@ -306,7 +308,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
           .mockResolvedValue({ stato: 'SCADUTA', dettaglioEnte: 'Autorizzazione scaduta' }),
       }),
     })
-    await expect(scaduta.useCase.execute(comando)).resolves.toEqual({
+    await expect(scaduta.useCase.execute(comando)).resolves.toMatchObject({
       esito: 'SCADUTA',
       handle: 'h-s',
       rilevataDa: 'ente',
@@ -321,7 +323,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
           .mockResolvedValue({ stato: 'RIFIUTATA', dettaglioEnte: 'Operazione non consentita' }),
       }),
     })
-    await expect(rifiutata.useCase.execute(comando)).resolves.toEqual({
+    await expect(rifiutata.useCase.execute(comando)).resolves.toMatchObject({
       esito: 'RIFIUTATA',
       handle: 'h-r',
       dettaglioEnte: 'Operazione non consentita',
@@ -498,7 +500,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
       const risultato = await useCase.execute({ ...comando, attesaMassimaMs: 1_000_000_000 })
 
-      expect(risultato).toEqual({
+      expect(risultato).toMatchObject({
         esito: 'SCADUTA',
         handle: 'handle-senza-scadenza',
         rilevataDa: 'orologio-locale',

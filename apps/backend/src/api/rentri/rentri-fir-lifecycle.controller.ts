@@ -11,6 +11,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { Response } from 'express'
@@ -39,6 +40,17 @@ import {
   AllegatoFIR,
 } from '../../application/rentri/gestisci-allegati-fir.use-case'
 import { ScaricaPdfFirUseCase } from '../../application/rentri/scarica-pdf-fir.use-case'
+import {
+  RollbackEResetFirRentriUseCase,
+  EsitoRollbackOReset,
+} from '../../application/rentri/rollback-e-reset-fir-rentri.use-case'
+import {
+  GestisciSessioneFirmaRentriUseCase,
+  SessioneFirmaInAttesa,
+} from '../../application/rentri/gestisci-sessione-firma-rentri.use-case'
+import { EsitoCompletamentoFirma } from '../../application/rentri/completa-operazione-con-firma.use-case'
+import { RiprendiFirmaRentriDto } from './dto/riprendi-firma-rentri.dto'
+import { RollbackOResetFirRentriDto } from './dto/rollback-o-reset-fir-rentri.dto'
 import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
 import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
 import { CaricaAllegatoFirRentriDto } from './dto/carica-allegato-fir-rentri.dto'
@@ -64,6 +76,17 @@ const RULE_TRADOTTE_TASK_9 = new Set([
   'FIRMA_RENTRI_RIFIUTATA',
   'FORMATO_ALLEGATO_NON_AMMESSO',
   'ALLEGATO_TROPPO_GRANDE',
+])
+
+/**
+ * `rule` che l'interfaccia deve poter distinguere come CONFLITTO di stato (409, non 400): l'operazione
+ * non e' disponibile ora (lo dice l'ente) oppure c'e' gia' una firma in corso. Il messaggio e' gia'
+ * scritto per l'utente; il `rule` viaggia nel corpo (`codice`) per il FE.
+ */
+const RULE_CONFLITTO = new Set([
+  'OPERAZIONE_NON_DISPONIBILE',
+  'SESSIONE_FIRMA_IN_CORSO',
+  'SESSIONE_FIRMA_NON_ATTIVA',
 ])
 
 /**
@@ -98,7 +121,9 @@ export class RentriFirLifecycleController {
     private readonly gestisciAllegatiFIRUseCase: GestisciAllegatiFIRUseCase,
     private readonly scaricaPdfFirUseCase: ScaricaPdfFirUseCase,
     private readonly logger: LoggerService,
-    private readonly ruoloEffettivo: RuoloEffettivoService
+    private readonly ruoloEffettivo: RuoloEffettivoService,
+    private readonly rollbackEResetUseCase: RollbackEResetFirRentriUseCase,
+    private readonly sessioneFirmaUseCase: GestisciSessioneFirmaRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -183,6 +208,7 @@ export class RentriFirLifecycleController {
         causaleRespingimento: dto.causaleRespingimento,
         motivoRespingimento: dto.motivoRespingimento,
         attesaVerificaAnalitica: dto.attesaVerificaAnalitica,
+        utenteId: userId,
         correlationId: dto.correlationId,
       })
     } catch (error: any) {
@@ -235,6 +261,7 @@ export class RentriFirLifecycleController {
         firId,
         tenantId,
         motivo: dto.motivo,
+        utenteId: userId,
         correlationId: dto.correlationId,
       })
     } catch (error: any) {
@@ -436,6 +463,146 @@ export class RentriFirLifecycleController {
   }
 
   /**
+   * Sessione di firma in attesa di conferma sul dispositivo (FIR in viaggio, P1): alimenta il banner.
+   * Sola lettura, nessuna chiamata all'ente; `sessione` e' `null` se non c'e' nulla in attesa.
+   */
+  @Get(':id/firme/in-attesa')
+  @ApiOperation({
+    summary: 'Sessione di firma in attesa sul formulario',
+    description: 'Restituisce la sessione di firma aperta (id, operazione, scadenza) o null.',
+  })
+  @ApiResponse({ status: 200, description: 'Sessione in attesa o null' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async firmaInAttesa(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string
+  ): Promise<{ sessione: SessioneFirmaInAttesa | null }> {
+    try {
+      return { sessione: await this.sessioneFirmaUseCase.inAttesa(firId, tenantId) }
+    } catch (error: any) {
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * «Ho confermato, controlla»: riprende il polling della firma in attesa (stesso handle, nessuna
+   * seconda richiesta sul telefono). Dopo una scadenza una nuova richiesta parte solo con
+   * `nuovaSessione: true`.
+   */
+  @Post(':id/firme/:sessioneId/riprendi')
+  @ApiOperation({
+    summary: 'Riprendi la firma in attesa di conferma',
+    description:
+      'Riaggancia il polling della sessione di firma aperta. Esiti: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 200, description: 'Esito della ripresa' })
+  @ApiResponse({ status: 404, description: 'FIR o sessione non trovati' })
+  @ApiResponse({
+    status: 409,
+    description: 'Sessione gia conclusa o firma di un altra operazione in corso',
+  })
+  async riprendiFirma(
+    @Param('id') firId: string,
+    @Param('sessioneId') sessioneId: string,
+    @Body() dto: RiprendiFirmaRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoCompletamentoFirma> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Ripresa firma RENTRI richiesta', { firId, sessioneId, tenantId, userId })
+
+    try {
+      return await this.sessioneFirmaUseCase.riprendi({
+        firId,
+        tenantId,
+        sessioneId,
+        utenteId: userId,
+        nuovaSessione: dto.nuovaSessione,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Ripresa firma RENTRI non riuscita', error, { firId, sessioneId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Annulla l'ultima firma apposta (`RollbackFirma`): riporta il formulario all'attesa di firma
+   * precedente. La disponibilita' la decide l'ente (`/azioni`); se manca, 409 senza chiamate.
+   */
+  @Post(':id/rollback-firma')
+  @ApiOperation({
+    summary: "Annulla l'ultima firma apposta",
+    description:
+      "Verifica /azioni (RollbackFirma), poi chiede all'ente il rollback e rilegge lo stato.",
+  })
+  @ApiResponse({ status: 200, description: "Rollback eseguito, stato riletto dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({ status: 409, description: 'OPERAZIONE_NON_DISPONIBILE' })
+  async rollbackFirma(
+    @Param('id') firId: string,
+    @Body() dto: RollbackOResetFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoRollbackOReset> {
+    return this.eseguiRollbackOReset('RollbackFirma', firId, dto, tenantId, userId, req)
+  }
+
+  /**
+   * Reset: cancella gli ultimi dati inseriti e non ancora firmati. E' anche il «Annulla la richiesta»
+   * del banner di firma in attesa: chiude la sessione aperta come ANNULLATA.
+   */
+  @Post(':id/reset')
+  @ApiOperation({
+    summary: "Annulla l'ultima richiesta non ancora firmata (reset)",
+    description:
+      "Verifica /azioni (Reset), poi chiede all'ente il reset e chiude la sessione di firma aperta.",
+  })
+  @ApiResponse({ status: 200, description: "Reset eseguito, stato riletto dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({ status: 409, description: 'OPERAZIONE_NON_DISPONIBILE' })
+  async reset(
+    @Param('id') firId: string,
+    @Body() dto: RollbackOResetFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoRollbackOReset> {
+    return this.eseguiRollbackOReset('Reset', firId, dto, tenantId, userId, req)
+  }
+
+  private async eseguiRollbackOReset(
+    operazione: 'RollbackFirma' | 'Reset',
+    firId: string,
+    dto: RollbackOResetFirRentriDto,
+    tenantId: string,
+    userId: string,
+    req: any
+  ): Promise<EsitoRollbackOReset> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Rollback/reset RENTRI richiesto', { firId, tenantId, userId, operazione })
+
+    try {
+      return await this.rollbackEResetUseCase.execute({
+        firId,
+        tenantId,
+        operazione,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Rollback/reset RENTRI non riuscito', error, {
+        firId,
+        tenantId,
+        operazione,
+      })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
    * Mappa una `DomainException` sull'eccezione HTTP corrispondente,
    * traducendo in italiano-utente i sei `errorCode` del Task 9 quando la
    * regola violata è una di quelle (R3 Task 9/10, debito chiuso qui: prima
@@ -467,6 +634,13 @@ export class RentriFirLifecycleController {
     }
     if (error.code === 'BUSINESS_RULE_VIOLATION') {
       const rule = error.metadata?.rule as string | undefined
+      if (rule && RULE_CONFLITTO.has(rule)) {
+        return new ConflictException({
+          statusCode: 409,
+          codice: rule,
+          message: error.metadata?.details ?? error.message,
+        })
+      }
       if (rule && RULE_TRADOTTE_TASK_9.has(rule)) {
         return new BadRequestException(
           traduciErroreRentri({ errorCode: rule, errorMessage: error.message }).messaggio

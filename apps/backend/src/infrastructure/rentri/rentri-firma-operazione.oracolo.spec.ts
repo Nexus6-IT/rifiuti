@@ -1,3 +1,4 @@
+import { SessioniFirmaRentriInMemoria } from '../../application/rentri/sessioni-firma-rentri.in-memoria'
 import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
@@ -239,6 +240,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       credentialService as any,
       client,
       rateLimiter.servizio,
+      new SessioniFirmaRentriInMemoria(),
       creaLogger()
     )
   }

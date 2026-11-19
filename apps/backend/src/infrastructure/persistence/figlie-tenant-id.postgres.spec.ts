@@ -133,6 +133,10 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           await tx.$executeRawUnsafe(
             `ALTER TABLE "collegamenti_accesso" DROP CONSTRAINT "collegamenti_accesso_fir_fkey"`
           )
+          // Anche le sessioni di firma RENTRI (FIR in viaggio P1) usano lo stesso indice unico.
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "fir_sessioni_firma_rentri" DROP CONSTRAINT "fir_sessioni_firma_rentri_fir_fkey"`
+          )
           await tx.$executeRawUnsafe(`DROP INDEX "firs_id_tenant_id_key"`)
           await tx.$executeRawUnsafe(`DROP INDEX "autorizzazioni_impianto_id_tenant_id_key"`)
 

@@ -54,6 +54,8 @@ export function documentoRiga(n: number, extra: Partial<DocumentoRiga> = {}): Do
     annullabile: false,
     motivoNonAnnullabile: null,
     stornabile: false,
+    statoSdi: null,
+    esitoFiscale: null,
     ...extra,
   }
 }

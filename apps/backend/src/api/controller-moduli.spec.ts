@@ -188,6 +188,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['sdi'],
     motivo: 'Configurazione dell’emissione SDI (4.5a)',
   },
+  'api/sdi/invio-sdi.controller.ts': {
+    chiavi: ['sdi'],
+    motivo: 'Invio dei documenti allo SDI e nuovo tentativo (4.5b)',
+  },
   'api/legami-movimento/legami-movimento.controller.ts': CONTRATTI(
     'Legami movimento-cliente-prezzo'
   ),
