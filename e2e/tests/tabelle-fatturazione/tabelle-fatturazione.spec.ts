@@ -190,10 +190,10 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await contenuto(page).getByRole('button', { name: 'Nuovo conto' }).click()
     const dlg = dialogo(page)
     creati.push({ tabella: 'conti-correnti', codice })
-    // Il dialog reinizializza il form all'apertura: su un runner lento il reset arriva DOPO i
-    // fill e svuota i campi, lasciando `Salva` spento per sempre (il form chiede solo che i campi
-    // obbligatori siano pieni: l'IBAN non c'entra, il generatore e' provato in
-    // tests/utils/iban-di-test.spec.ts). Come nei test vicini si ricompila finche' i valori restano.
+    // In CI (19/11, job 12658) `Salva` e' rimasto spento dopo i fill, in entrambi i tentativi.
+    // L'IBAN non c'entra (generatore provato in tests/utils/iban-di-test.spec.ts) e nel flusso
+    // «Nuovo» il form.reset() avviene prima del render: la causa vera NON e' identificata (serve
+    // una trace). Come nei test vicini si ricompila finche' i valori restano: e' un ripiego.
     await expect(async () => {
       await dlg.getByLabel('Codice').fill(codice)
       await dlg.getByLabel('Descrizione').fill(descrizioni.conto)
