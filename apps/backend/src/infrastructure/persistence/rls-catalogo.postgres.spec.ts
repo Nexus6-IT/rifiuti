@@ -80,7 +80,9 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // 88 dalla 4.9c-f (PR A): `dati_tracciato_movimento`, `anagrafica_comunicazioni_sede` e
     // `configurazione_comunicazione_sede`, provate in
     // `application/comunicazioni/tracciati.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(88)
+    // 92 dalla 4.5a: `configurazioni_sdi`, `trasmissioni_sdi`, `notifiche_sdi` e `eventi_sdi_ricevuti`,
+    // provate per nome in `application/sdi/sdi.schema.postgres.spec.ts`.
+    expect(righe.length).toBe(92)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,
