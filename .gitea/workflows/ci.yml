@@ -132,7 +132,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            apps/campo/package-lock.json
 
       - name: Install dipendenze (monorepo)
         working-directory: ${{ github.workspace }}
