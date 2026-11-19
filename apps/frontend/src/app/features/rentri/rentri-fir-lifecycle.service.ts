@@ -47,7 +47,9 @@ export interface SessioneFirmaInAttesa {
   id: string
   tipoOperazione: string
   scadenza: string
-  /** Il limite di attesa e' gia' passato: non si riprende, si chiede una nuova firma. */
+  /** IN_ATTESA = da confermare; SCADUTA/RIFIUTATA = chiusa ma ancora visibile per riprovare o annullare. */
+  stato: 'IN_ATTESA' | 'SCADUTA' | 'RIFIUTATA'
+  /** Non si puo' riprendere (chiusa o limite passato): si chiede una nuova firma. */
   scaduta: boolean
 }
 

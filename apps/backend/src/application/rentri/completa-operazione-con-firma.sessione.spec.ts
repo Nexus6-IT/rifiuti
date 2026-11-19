@@ -113,13 +113,94 @@ describe('CompletaOperazioneConFirmaUseCase — sessione di firma riprendibile',
     expect(r).toMatchObject({ esito: 'IN_ATTESA', sessioneId: sessioni.righe[0].id })
   })
 
-  it('con il sad gia nella risposta di authorize nessuna sessione viene salvata', async () => {
+  it('con il sad gia nella risposta di authorize la sessione si chiude COMPLETATA senza attese', async () => {
     const { useCase, sessioni } = ambiente({
       autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'h', sad: 'sad-subito' }),
     })
     const r = await useCase.execute(comando)
     expect(r.esito).toBe('COMPLETATA')
-    expect(sessioni.righe).toHaveLength(0)
+    expect(sessioni.righe.map(s => s.stato)).toEqual(['COMPLETATA'])
+  })
+
+  it('I1: due execute concorrenti con authorize lenta fanno UNA sola authorize; l altra riceve 409', async () => {
+    const { useCase, client, sessioni } = ambiente({
+      autorizzaFirmaRemota: jest
+        .fn()
+        .mockImplementation(
+          () => new Promise(resolve => setTimeout(() => resolve({ handle: 'handle-1' }), 50))
+        ),
+    })
+
+    const esiti = await Promise.allSettled([useCase.execute(comando), useCase.execute(comando)])
+
+    expect(client.autorizzaFirmaRemota).toHaveBeenCalledTimes(1)
+    expect(client.richiediHashPerFirma).toHaveBeenCalledTimes(1)
+    const rifiutata = esiti.filter(e => e.status === 'rejected') as PromiseRejectedResult[]
+    expect(rifiutata).toHaveLength(1)
+    expect(rifiutata[0].reason.metadata.rule).toBe('SESSIONE_FIRMA_IN_CORSO')
+    expect(sessioni.righe).toHaveLength(1)
+    expect(sessioni.righe[0].stato).toBe('IN_ATTESA')
+  })
+
+  it('I1: se /hash o authorize falliscono la riga prenotata si chiude ANNULLATA e il FIR non resta bloccato', async () => {
+    const { useCase, client, sessioni } = ambiente({
+      richiediHashPerFirma: jest.fn().mockRejectedValue(new Error('ente giu')),
+    })
+    await expect(useCase.execute(comando)).rejects.toThrow('ente giu')
+    expect(sessioni.righe.map(s => s.stato)).toEqual(['ANNULLATA'])
+    expect(client.autorizzaFirmaRemota).not.toHaveBeenCalled()
+    // Si puo riprovare subito.
+    client.richiediHashPerFirma.mockResolvedValue({ digestToSign: DIGEST, token: TOKEN })
+    expect((await useCase.execute(comando)).esito).toBe('IN_ATTESA')
+  })
+
+  it('I1: una sessione IN_AVVIO rimasta a meta e scaduta viene chiusa e si riparte', async () => {
+    const { useCase, sessioni, client } = ambiente()
+    const morta = await sessioni.prenota({
+      tenantId: TENANT,
+      firId: 'fir-1',
+      tipoOperazione: 'ACCETTAZIONE',
+      scadenza: new Date(Date.now() - 1000),
+    })
+    const r = await useCase.execute(comando)
+    expect(r.esito).toBe('IN_ATTESA')
+    expect(morta.stato).toBe('ANNULLATA')
+    expect(client.autorizzaFirmaRemota).toHaveBeenCalledTimes(1)
+  })
+
+  it('I2: due riprese concorrenti dopo la conferma firmano UNA sola volta', async () => {
+    const { useCase, client, sessioni } = ambiente()
+    await useCase.execute(comando)
+    client.verificaAutorizzazioneFirma.mockResolvedValue({ stato: 'AUTORIZZATA', sad: 'sad-1' })
+    client.firmaHashRemoto.mockImplementation(
+      () => new Promise(resolve => setTimeout(() => resolve('firma'), 30))
+    )
+
+    const [a, b] = await Promise.all([useCase.execute(comando), useCase.execute(comando)])
+
+    expect(client.firmaHashRemoto).toHaveBeenCalledTimes(1)
+    expect(client.inviaAcquisizioneFirma).toHaveBeenCalledTimes(1)
+    expect([a.esito, b.esito].sort()).toEqual(['COMPLETATA', 'IN_ATTESA'])
+    // Nessun rifiuto spurio e la sessione risulta COMPLETATA.
+    expect(sessioni.righe.map(s => s.stato)).toEqual(['COMPLETATA'])
+  })
+
+  it('M2: chiusa la sessione il token in chiaro non c e piu', async () => {
+    const { useCase, client, sessioni } = ambiente()
+    await useCase.execute(comando)
+    expect(sessioni.righe[0].tokenAcquisizione).toBe(TOKEN)
+    client.verificaAutorizzazioneFirma.mockResolvedValue({ stato: 'AUTORIZZATA', sad: 's' })
+    await useCase.execute(comando)
+    expect(sessioni.righe[0].tokenAcquisizione).toBeNull()
+  })
+
+  it('M4: se la rilettura dello stato fallisce dopo l acquisizione la sessione resta COMPLETATA', async () => {
+    const { useCase, client, sessioni } = ambiente()
+    await useCase.execute(comando)
+    client.verificaAutorizzazioneFirma.mockResolvedValue({ stato: 'AUTORIZZATA', sad: 's' })
+    client.leggiStato.mockRejectedValue(new Error('stato non letto'))
+    await expect(useCase.execute(comando)).rejects.toThrow('stato non letto')
+    expect(sessioni.righe[0].stato).toBe('COMPLETATA')
   })
 
   it('T2: sessione scaduta per orologio → SCADUTA, nessuna chiamata all ente, nessuna nuova sessione', async () => {

@@ -55,7 +55,7 @@ describe('RollbackEResetFirRentriUseCase', () => {
       sessioni,
       logger
     )
-    const sessione = await sessioni.apri({
+    const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
       firId: 'fir-1',
       tipoOperazione: 'ACCETTAZIONE',

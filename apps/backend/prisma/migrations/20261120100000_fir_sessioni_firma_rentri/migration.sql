@@ -10,19 +10,19 @@
 -- stato_sessione_firma_rentri; poi `npx prisma migrate resolve --rolled-back
 -- 20261120100000_fir_sessioni_firma_rentri`.
 
-CREATE TYPE "stato_sessione_firma_rentri" AS ENUM ('IN_ATTESA', 'COMPLETATA', 'SCADUTA', 'RIFIUTATA', 'ANNULLATA');
+CREATE TYPE "stato_sessione_firma_rentri" AS ENUM ('IN_AVVIO', 'IN_ATTESA', 'IN_FIRMA', 'COMPLETATA', 'SCADUTA', 'RIFIUTATA', 'ANNULLATA');
 
 CREATE TABLE "fir_sessioni_firma_rentri" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "tenant_id" UUID NOT NULL,
     "fir_id" UUID NOT NULL,
     "tipo_operazione" VARCHAR(60) NOT NULL,
-    "handle" VARCHAR(255) NOT NULL,
-    "token_hash" VARCHAR(64) NOT NULL,
-    "token_acquisizione" TEXT NOT NULL,
-    "digest_to_sign" TEXT NOT NULL,
+    "handle" VARCHAR(255),
+    "token_hash" VARCHAR(64),
+    "token_acquisizione" TEXT,
+    "digest_to_sign" TEXT,
     "scadenza" TIMESTAMPTZ(3) NOT NULL,
-    "stato" "stato_sessione_firma_rentri" NOT NULL DEFAULT 'IN_ATTESA',
+    "stato" "stato_sessione_firma_rentri" NOT NULL DEFAULT 'IN_AVVIO',
     "dettaglio_ente" TEXT,
     "utente_id" UUID,
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -33,9 +33,9 @@ CREATE TABLE "fir_sessioni_firma_rentri" (
 
 CREATE UNIQUE INDEX "fir_sessioni_firma_rentri_id_tenant_id_key" ON "fir_sessioni_firma_rentri"("id", "tenant_id");
 CREATE INDEX "fir_sessioni_firma_rentri_fir_idx" ON "fir_sessioni_firma_rentri"("tenant_id", "fir_id", "created_at");
--- Una sola sessione aperta per FIR: la seconda richiesta di autorizzazione sullo stesso FIR e' proprio
--- cio' che il pezzo vuole impedire.
-CREATE UNIQUE INDEX "fir_sessioni_firma_rentri_aperta_key" ON "fir_sessioni_firma_rentri"("fir_id") WHERE "stato" = 'IN_ATTESA';
+-- Una sola sessione aperta per FIR (la riga si prenota IN_AVVIO PRIMA di chiamare l'ente): la seconda
+-- richiesta di autorizzazione sullo stesso FIR e' proprio cio' che il pezzo vuole impedire.
+CREATE UNIQUE INDEX "fir_sessioni_firma_rentri_aperta_key" ON "fir_sessioni_firma_rentri"("fir_id") WHERE "stato" IN ('IN_AVVIO', 'IN_ATTESA', 'IN_FIRMA');
 
 ALTER TABLE "fir_sessioni_firma_rentri" ADD CONSTRAINT "fir_sessioni_firma_rentri_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "fir_sessioni_firma_rentri" ADD CONSTRAINT "fir_sessioni_firma_rentri_fir_fkey" FOREIGN KEY ("fir_id", "tenant_id") REFERENCES "firs"("id", "tenant_id") ON DELETE CASCADE ON UPDATE CASCADE;

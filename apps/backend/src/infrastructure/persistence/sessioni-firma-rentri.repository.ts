@@ -1,10 +1,13 @@
 import { createHash } from 'crypto'
 import { Injectable } from '@nestjs/common'
 import {
+  DatiAutorizzazioneFirma,
   ISessioniFirmaRentriRepository,
-  NuovaSessioneFirmaRentri,
+  PrenotazioneSessioneFirma,
   SessioneFirmaGiaApertaError,
   SessioneFirmaRentri,
+  STATI_SESSIONE_APERTA,
+  StatoSessioneChiusa,
   StatoSessioneFirma,
 } from '../../application/rentri/sessioni-firma-rentri.port'
 import { PrismaService } from './prisma.service'
@@ -29,6 +32,8 @@ function aDominio(r: Riga): SessioneFirmaRentri {
   }
 }
 
+const APERTE = STATI_SESSIONE_APERTA as unknown as Array<'IN_AVVIO' | 'IN_ATTESA' | 'IN_FIRMA'>
+
 /** Persistenza Prisma delle sessioni di firma; ogni query filtra anche per tenant (oltre alla RLS). */
 @Injectable()
 export class SessioniFirmaRentriRepository extends ISessioniFirmaRentriRepository {
@@ -38,7 +43,7 @@ export class SessioniFirmaRentriRepository extends ISessioniFirmaRentriRepositor
 
   async trovaAperta(tenantId: string, firId: string): Promise<SessioneFirmaRentri | null> {
     const r = await this.prisma.firSessioneFirmaRentri.findFirst({
-      where: { tenantId, firId, stato: 'IN_ATTESA' },
+      where: { tenantId, firId, stato: { in: APERTE } },
     })
     return r ? aDominio(r) : null
   }
@@ -48,18 +53,23 @@ export class SessioniFirmaRentriRepository extends ISessioniFirmaRentriRepositor
     return r ? aDominio(r) : null
   }
 
-  async apri(dati: NuovaSessioneFirmaRentri): Promise<SessioneFirmaRentri> {
+  async ultima(tenantId: string, firId: string): Promise<SessioneFirmaRentri | null> {
+    const r = await this.prisma.firSessioneFirmaRentri.findFirst({
+      where: { tenantId, firId },
+      orderBy: { createdAt: 'desc' },
+    })
+    return r ? aDominio(r) : null
+  }
+
+  async prenota(dati: PrenotazioneSessioneFirma): Promise<SessioneFirmaRentri> {
     try {
       const r = await this.prisma.firSessioneFirmaRentri.create({
         data: {
           tenantId: dati.tenantId,
           firId: dati.firId,
           tipoOperazione: dati.tipoOperazione,
-          handle: dati.handle,
-          tokenHash: createHash('sha256').update(dati.tokenAcquisizione).digest('hex'),
-          tokenAcquisizione: dati.tokenAcquisizione,
-          digestToSign: dati.digestToSign,
           scadenza: dati.scadenza,
+          stato: 'IN_AVVIO',
           utenteId: dati.utenteId ?? null,
         },
       })
@@ -73,15 +83,45 @@ export class SessioniFirmaRentriRepository extends ISessioniFirmaRentriRepositor
     }
   }
 
+  async completaAvvio(
+    tenantId: string,
+    id: string,
+    dati: DatiAutorizzazioneFirma
+  ): Promise<boolean> {
+    const { count } = await this.prisma.firSessioneFirmaRentri.updateMany({
+      where: { id, tenantId, stato: 'IN_AVVIO' },
+      data: {
+        stato: 'IN_ATTESA',
+        handle: dati.handle,
+        tokenAcquisizione: dati.tokenAcquisizione,
+        tokenHash: createHash('sha256').update(dati.tokenAcquisizione).digest('hex'),
+        digestToSign: dati.digestToSign,
+      },
+    })
+    return count === 1
+  }
+
+  async prendiPerFirma(tenantId: string, id: string, scadenzaPresa: Date): Promise<boolean> {
+    const { count } = await this.prisma.firSessioneFirmaRentri.updateMany({
+      where: { id, tenantId, stato: 'IN_ATTESA' },
+      data: { stato: 'IN_FIRMA', scadenza: scadenzaPresa },
+    })
+    return count === 1
+  }
+
   async chiudi(
     tenantId: string,
     id: string,
-    stato: Exclude<StatoSessioneFirma, 'IN_ATTESA'>,
+    stato: StatoSessioneChiusa,
     dettaglioEnte?: string
   ): Promise<boolean> {
     const { count } = await this.prisma.firSessioneFirmaRentri.updateMany({
-      where: { id, tenantId, stato: 'IN_ATTESA' },
-      data: { stato, ...(dettaglioEnte !== undefined ? { dettaglioEnte } : {}) },
+      where: { id, tenantId, stato: { in: APERTE } },
+      data: {
+        stato,
+        tokenAcquisizione: null,
+        ...(dettaglioEnte !== undefined ? { dettaglioEnte } : {}),
+      },
     })
     return count === 1
   }

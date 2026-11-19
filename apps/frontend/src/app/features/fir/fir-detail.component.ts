@@ -345,7 +345,13 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 aria-live="polite"
                 data-testid="fir-detail-firma-in-attesa"
               >
-                @if (sessione.scaduta) {
+                @if (sessione.stato === 'RIFIUTATA') {
+                  <p class="firma-in-attesa__testo" data-testid="fir-detail-firma-rifiutata">
+                    <i class="pi pi-times-circle" aria-hidden="true"></i>
+                    La firma è stata rifiutata sull'app RENTRI FIR Digitale. Non è stato firmato
+                    nulla: puoi chiederla di nuovo oppure annullare la richiesta.
+                  </p>
+                } @else if (sessione.scaduta) {
                   <p class="firma-in-attesa__testo" data-testid="fir-detail-firma-scaduta">
                     <i class="pi pi-clock" aria-hidden="true"></i>
                     La richiesta di firma è scaduta alle {{ sessione.scadenza | date: 'HH:mm' }}.

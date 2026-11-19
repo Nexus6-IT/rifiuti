@@ -112,11 +112,7 @@ export class RollbackEResetFirRentriUseCase {
       )
     }
 
-    // --- 4. Stato riletto dall'ente, mai dedotto; poi la sessione si chiude ---
-
-    const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
-    fir.applyRentriStato(statoEnte.stato_formulario, correlationId)
-    await this.firRepository.save(fir)
+    // --- 4. L'ente ha eseguito: la sessione aperta si chiude SUBITO (anche se la rilettura fallisse) ---
 
     const aperta = await this.sessioni.trovaAperta(tenantId, firId)
     let sessioneAnnullataId: string | undefined
@@ -124,6 +120,12 @@ export class RollbackEResetFirRentriUseCase {
       await this.sessioni.chiudi(tenantId, aperta.id, 'ANNULLATA', `Chiusa da ${operazione}`)
       sessioneAnnullataId = aperta.id
     }
+
+    // Stato riletto dall'ente, mai dedotto.
+
+    const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
+    fir.applyRentriStato(statoEnte.stato_formulario, correlationId)
+    await this.firRepository.save(fir)
 
     this.logger.info('Operazione RENTRI di annullamento eseguita', {
       firId,

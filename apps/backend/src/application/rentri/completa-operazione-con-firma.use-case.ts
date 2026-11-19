@@ -16,7 +16,7 @@ import {
   ISessioniFirmaRentriRepository,
   SessioneFirmaGiaApertaError,
   SessioneFirmaRentri,
-  StatoSessioneFirma,
+  StatoSessioneChiusa,
 } from './sessioni-firma-rentri.port'
 
 /**
@@ -54,6 +54,9 @@ export const ATTESA_MASSIMA_INVOCAZIONE_MS = 20000
  * all'utente; il limite è una scelta di WasteFlow.
  */
 export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
+
+/** Durata (ms) della presa esclusiva di una sessione per `sign-hash` + `acquisizione-firma`; poi la sessione e' ripresa o chiusa. */
+export const DURATA_PRESA_FIRMA_MS = 120_000
 
 /** Esito interno dell'attesa; il sad esiste solo se AUTORIZZATA. */
 type EsitoAttesa =
@@ -262,48 +265,57 @@ export class CompletaOperazioneConFirmaUseCase {
 
     // --- 1b. Sessione di firma gia' aperta su questo FIR? ---
     //
-    // Se c'e' e vale ancora, si RIPRENDE (nessuna seconda autorizzazione sul telefono).
+    // IN_ATTESA e valida: si RIPRENDE (nessuna seconda autorizzazione sul telefono). IN_AVVIO o
+    // IN_FIRMA valide: un'altra richiesta sta lavorando su questo FIR, si rifiuta (409) senza toccare
+    // l'ente. Scadute: IN_ATTESA -> SCADUTA (poi nuova sessione solo su richiesta esplicita); le altre
+    // sono richieste morte a meta' (processo caduto) e si chiudono ANNULLATA.
 
     let sessione: SessioneFirmaRentri | null = await this.sessioni.trovaAperta(tenantId, firId)
     if (sessione && sessione.scadenza.getTime() <= Date.now()) {
-      await this.chiudiSessione(sessione, 'SCADUTA')
-      if (sessione.tipoOperazione === tipoOperazione && !comando.nuovaSessione) {
+      const eraInAttesa = sessione.stato === 'IN_ATTESA'
+      await this.chiudiSessione(
+        sessione,
+        eraInAttesa ? 'SCADUTA' : 'ANNULLATA',
+        eraInAttesa ? undefined : "Sessione rimasta a meta': scaduta senza completarsi"
+      )
+      if (eraInAttesa && sessione.tipoOperazione === tipoOperazione && !comando.nuovaSessione) {
         // Stessa operazione e nessuna richiesta esplicita: non si riparte da soli.
         return {
           esito: 'SCADUTA',
-          handle: sessione.handle,
+          handle: sessione.handle ?? '',
           sessioneId: sessione.id,
           rilevataDa: 'orologio-locale',
         }
       }
       sessione = null
     }
-    if (sessione && sessione.tipoOperazione !== tipoOperazione) {
+    if (
+      sessione &&
+      (sessione.tipoOperazione !== tipoOperazione || sessione.stato !== 'IN_ATTESA')
+    ) {
       throw DomainException.businessRuleViolation(
         'SESSIONE_FIRMA_IN_CORSO',
-        `Su questo formulario c'e' gia' una firma in attesa di conferma (${sessione.tipoOperazione}): ` +
-          "riprendila oppure annulla la richiesta prima di avviare un'altra firma."
+        sessione.tipoOperazione !== tipoOperazione
+          ? `Su questo formulario c'e' gia' una firma in attesa di conferma (${sessione.tipoOperazione}): ` +
+              "riprendila oppure annulla la richiesta prima di avviare un'altra firma."
+          : "Un'altra richiesta di firma su questo formulario e' appena partita o sta firmando: " +
+              'attendi qualche secondo e controlla di nuovo.'
       )
     }
 
-    // --- 2. Certificato della credenziale di firma remota ---
-
-    const certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(
-      tenantId,
-      credentialsId
-    )
-
+    let certificato: string
     let digestToSign: string
     let token: string
     let handle: string
     let statoAutorizzazione: EsitoAttesa
 
     if (sessione) {
-      // Ripresa: stessi digest, token e handle della sessione salvata. Nessuna chiamata a `/hash`
+      // --- Ripresa: stessi digest, token e handle della sessione salvata. Nessuna chiamata a `/hash`
       // ne' ad `authorize`.
-      digestToSign = sessione.digestToSign
-      token = sessione.tokenAcquisizione
-      handle = sessione.handle
+      certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(tenantId, credentialsId)
+      digestToSign = sessione.digestToSign ?? ''
+      token = sessione.tokenAcquisizione ?? ''
+      handle = sessione.handle ?? ''
       this.logger.info('Firma remota RENTRI: ripresa della sessione in attesa', {
         firId,
         tenantId,
@@ -319,74 +331,101 @@ export class CompletaOperazioneConFirmaUseCase {
         sessione.scadenza.getTime()
       )
     } else {
-      // --- 3. Digest da firmare ---
+      // --- Nuova sessione. La riga si PRENOTA prima di toccare l'ente: vince sempre l'INSERT (indice
+      // unico parziale), chi perde la corsa riceve 409 senza aver mandato nulla al telefono.
+      try {
+        sessione = await this.sessioni.prenota({
+          tenantId,
+          firId,
+          tipoOperazione,
+          scadenza: new Date(Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000),
+          utenteId: comando.utenteId ?? null,
+        })
+      } catch (errore) {
+        if (errore instanceof SessioneFirmaGiaApertaError) {
+          throw DomainException.businessRuleViolation(
+            'SESSIONE_FIRMA_IN_CORSO',
+            "Un'altra richiesta di firma su questo formulario e' appena partita: riprendila " +
+              'invece di avviarne una nuova.'
+          )
+        }
+        throw errore
+      }
+      const prenotata = sessione
 
-      const hash = await this.rentriApiClient.richiediHashPerFirma(tenantId, numeroFir, certificato)
-      digestToSign = hash.digestToSign
-      token = hash.token
+      let sadImmediato: string | undefined
+      try {
+        // --- 2. Certificato della credenziale di firma remota ---
+        certificato = await this.rentriApiClient.leggiCertificatoFirmaRemota(
+          tenantId,
+          credentialsId
+        )
 
-      // --- 4. Autorizzazione (l'utente riceve la notifica sul dispositivo) ---
+        // --- 3. Digest da firmare ---
+        const hash = await this.rentriApiClient.richiediHashPerFirma(
+          tenantId,
+          numeroFir,
+          certificato
+        )
+        digestToSign = hash.digestToSign
+        token = hash.token
 
-      const autorizzazione = await this.rentriApiClient.autorizzaFirmaRemota(tenantId, {
-        credentialsId,
-        digestToSign,
-        // È l'unico testo che l'utente vede prima di confermare: deve dirgli
-        // COSA sta firmando, in italiano, non un identificativo tecnico. I
-        // caratteri che il contratto non ammette (es. `_` del numero FIR) sono
-        // già sostituiti dalla funzione.
-        description: descrizioneAutorizzazioneFirma(numeroFir, tipoOperazione),
-      })
-      handle = autorizzazione.handle
+        // --- 4. Autorizzazione (l'utente riceve la notifica sul dispositivo) ---
+        const autorizzazione = await this.rentriApiClient.autorizzaFirmaRemota(tenantId, {
+          credentialsId,
+          digestToSign,
+          // È l'unico testo che l'utente vede prima di confermare: deve dirgli
+          // COSA sta firmando, in italiano, non un identificativo tecnico. I
+          // caratteri che il contratto non ammette (es. `_` del numero FIR) sono
+          // già sostituiti dalla funzione.
+          description: descrizioneAutorizzazioneFirma(numeroFir, tipoOperazione),
+        })
+        handle = autorizzazione.handle
+        sadImmediato = autorizzazione.sad
 
-      this.logger.debug('Autorizzazione alla firma remota richiesta', {
-        firId,
-        tenantId,
-        numeroFir,
-        tipoOperazione,
-        handle,
-        correlationId,
-      })
+        this.logger.debug('Autorizzazione alla firma remota richiesta', {
+          firId,
+          tenantId,
+          numeroFir,
+          tipoOperazione,
+          handle,
+          correlationId,
+        })
+
+        const avviata = await this.sessioni.completaAvvio(tenantId, prenotata.id, {
+          handle,
+          tokenAcquisizione: token,
+          digestToSign,
+        })
+        if (!avviata) {
+          throw DomainException.businessRuleViolation(
+            'SESSIONE_FIRMA_NON_ATTIVA',
+            "La richiesta di firma e' stata annullata mentre partiva: avviala di nuovo."
+          )
+        }
+      } catch (errore) {
+        // Prima del telefono o subito dopo: la riga prenotata non deve bloccare il FIR.
+        await this.chiudiSessione(
+          prenotata,
+          'ANNULLATA',
+          errore instanceof Error ? errore.message : String(errore)
+        )
+        throw errore
+      }
 
       // --- 5. Attesa della conferma dell'utente ---
       //
-      // Se `authorize` ha già concesso (porta il `sad`) non c'è nulla da attendere ne' da
-      // riprendere: nessuna sessione. Altrimenti si salva la sessione PRIMA di attendere, cosi'
-      // una seconda invocazione la trova; il `sad` arriva dall'esito AUTORIZZATA di `authorize-check`.
-
-      if (autorizzazione.sad !== undefined) {
-        statoAutorizzazione = { esito: 'AUTORIZZATA', sad: autorizzazione.sad }
-      } else {
-        const scadenza = new Date(Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000)
-        try {
-          sessione = await this.sessioni.apri({
-            tenantId,
-            firId,
-            tipoOperazione,
-            handle,
-            tokenAcquisizione: token,
-            digestToSign,
-            scadenza,
-            utenteId: comando.utenteId ?? null,
-          })
-        } catch (errore) {
-          if (errore instanceof SessioneFirmaGiaApertaError) {
-            // Un'altra richiesta ha aperto la sessione nel frattempo (corsa): questa autorizzazione
-            // non e' tracciata, si rimanda alla sessione esistente.
-            throw DomainException.businessRuleViolation(
-              'SESSIONE_FIRMA_IN_CORSO',
-              "Un'altra richiesta di firma su questo formulario e' appena partita: riprendila " +
-                'invece di avviarne una nuova.'
+      // Se `authorize` ha già concesso (porta il `sad`) non c'è nulla da attendere; altrimenti il `sad`
+      // arriva dall'esito AUTORIZZATA di `authorize-check`.
+      statoAutorizzazione =
+        sadImmediato !== undefined
+          ? { esito: 'AUTORIZZATA', sad: sadImmediato }
+          : await this.attendiAutorizzazione(
+              tenantId,
+              { handle },
+              comando,
+              prenotata.scadenza.getTime()
             )
-          }
-          throw errore
-        }
-        statoAutorizzazione = await this.attendiAutorizzazione(
-          tenantId,
-          { handle },
-          comando,
-          scadenza.getTime()
-        )
-      }
     }
 
     if (statoAutorizzazione.esito !== 'AUTORIZZATA') {
@@ -437,6 +476,27 @@ export class CompletaOperazioneConFirmaUseCase {
             ...(sessioneId && { sessioneId }),
             scadenzaAutorizzazione: statoAutorizzazione.scadenza,
           }
+      }
+    }
+
+    // --- Presa esclusiva della sessione prima di firmare ---
+    //
+    // Due riprese concorrenti arrivano entrambe ad AUTORIZZATA con lo stesso `sad`: una sola puo'
+    // chiamare `sign-hash` e `acquisizione-firma`. Chi perde restituisce IN_ATTESA (il banner si
+    // aggiorna da solo alla rilettura) senza firmare. La presa ha una scadenza di sicurezza.
+    if (
+      sessione &&
+      !(await this.sessioni.prendiPerFirma(
+        tenantId,
+        sessione.id,
+        new Date(Date.now() + DURATA_PRESA_FIRMA_MS)
+      ))
+    ) {
+      return {
+        esito: 'IN_ATTESA',
+        handle,
+        sessioneId: sessione.id,
+        scadenzaAutorizzazione: sessione.scadenza,
       }
     }
 
@@ -498,6 +558,10 @@ export class CompletaOperazioneConFirmaUseCase {
         )
       }
 
+      // L'ente ha acquisito la firma: la sessione e' COMPLETATA anche se la rilettura che segue fallisse
+      // (il FIR si riallinea alla prossima lettura di /azioni).
+      await this.chiudiSessione(sessione, 'COMPLETATA')
+
       // --- 9. Stato finale: LETTO dall'ente, mai dedotto ---
 
       const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
@@ -513,8 +577,6 @@ export class CompletaOperazioneConFirmaUseCase {
         correlationId,
       })
 
-      await this.chiudiSessione(sessione, 'COMPLETATA')
-
       return { esito: 'COMPLETATA', statoFormulario: statoEnte.stato_formulario }
     } catch (errore) {
       await this.chiudiSessione(
@@ -529,7 +591,7 @@ export class CompletaOperazioneConFirmaUseCase {
   /** Chiude la sessione (se c'e' e se e' ancora aperta). Un errore di database qui non deve mai far perdere l'esito dell'ente. */
   private async chiudiSessione(
     sessione: SessioneFirmaRentri | null,
-    stato: Exclude<StatoSessioneFirma, 'IN_ATTESA'>,
+    stato: StatoSessioneChiusa,
     dettaglioEnte?: string
   ): Promise<void> {
     if (!sessione) return

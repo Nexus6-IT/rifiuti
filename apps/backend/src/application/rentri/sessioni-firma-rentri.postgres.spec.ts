@@ -80,13 +80,21 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
     tenantId: a.t,
     firId: a.fir,
     tipoOperazione: 'ACCETTAZIONE',
-    handle: 'handle-1',
-    tokenAcquisizione: 'token-segreto-1',
-    digestToSign: 'digest-1',
     scadenza: new Date(Date.now() + 120_000),
     utenteId: a.utente,
     ...extra,
   })
+
+  /** Prenota e porta la sessione a IN_ATTESA (il percorso normale). */
+  const apriInAttesa = async (a: Azienda, handle = 'handle-1') => {
+    const s = await repo.prenota(dati(a))
+    await repo.completaAvvio(a.t, s.id, {
+      handle,
+      tokenAcquisizione: 'token-segreto-1',
+      digestToSign: 'digest-1',
+    })
+    return (await repo.trovaPerId(a.t, s.id))!
+  }
 
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
@@ -125,7 +133,7 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
   it('un altro tenant non vede ne chiude le sessioni dell azienda', async () => {
     const a = await azienda()
     const b = await azienda()
-    const s = await nelTenant(a.t, () => repo.apri(dati(a)))
+    const s = await nelTenant(a.t, () => apriInAttesa(a))
     expect(await nelTenant(b.t, () => repo.trovaPerId(b.t, s.id))).toBeNull()
     expect(await nelTenant(b.t, () => repo.trovaAperta(b.t, a.fir))).toBeNull()
     // Anche passando il tenant giusto nel filtro, la RLS del contesto B nasconde la riga.
@@ -136,8 +144,8 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
 
   it('una sola sessione IN_ATTESA per FIR; chiusa quella, se ne puo aprire un altra', async () => {
     const a = await azienda()
-    const prima = await nelTenant(a.t, () => repo.apri(dati(a)))
-    await expect(nelTenant(a.t, () => repo.apri(dati(a, { handle: 'h2' })))).rejects.toBeInstanceOf(
+    const prima = await nelTenant(a.t, () => apriInAttesa(a))
+    await expect(nelTenant(a.t, () => repo.prenota(dati(a)))).rejects.toBeInstanceOf(
       SessioneFirmaGiaApertaError
     )
     expect(await nelTenant(a.t, () => repo.chiudi(a.t, prima.id, 'SCADUTA', 'scaduta'))).toBe(true)
@@ -145,14 +153,64 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
     expect(await nelTenant(a.t, () => repo.chiudi(a.t, prima.id, 'ANNULLATA'))).toBe(false)
     const chiusa = await nelTenant(a.t, () => repo.trovaPerId(a.t, prima.id))
     expect(chiusa).toMatchObject({ stato: 'SCADUTA', dettaglioEnte: 'scaduta' })
-    const seconda = await nelTenant(a.t, () => repo.apri(dati(a, { handle: 'h2' })))
+    const seconda = await nelTenant(a.t, () => repo.prenota(dati(a)))
     expect(seconda.id).not.toBe(prima.id)
     expect((await nelTenant(a.t, () => repo.trovaAperta(a.t, a.fir)))?.id).toBe(seconda.id)
   })
 
+  it('la riga si prenota IN_AVVIO senza handle e blocca subito una seconda prenotazione (I1)', async () => {
+    const a = await azienda()
+    const r = await nelTenant(a.t, () => repo.prenota(dati(a)))
+    expect(r).toMatchObject({ stato: 'IN_AVVIO', handle: null, tokenAcquisizione: null })
+    await expect(nelTenant(a.t, () => repo.prenota(dati(a)))).rejects.toBeInstanceOf(
+      SessioneFirmaGiaApertaError
+    )
+    // Due prenotazioni davvero concorrenti: una sola passa.
+    const b = await azienda()
+    const esiti = await Promise.allSettled([
+      nelTenant(b.t, () => repo.prenota(dati(b))),
+      nelTenant(b.t, () => repo.prenota(dati(b))),
+    ])
+    expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+  })
+
+  it('presa esclusiva: di due prendiPerFirma concorrenti ne vince una sola (I2)', async () => {
+    const a = await azienda()
+    const s = await nelTenant(a.t, () => apriInAttesa(a))
+    const scad = new Date(Date.now() + 60_000)
+    const esiti = await Promise.all([
+      nelTenant(a.t, () => repo.prendiPerFirma(a.t, s.id, scad)),
+      nelTenant(a.t, () => repo.prendiPerFirma(a.t, s.id, scad)),
+    ])
+    expect(esiti.filter(Boolean)).toHaveLength(1)
+    expect((await nelTenant(a.t, () => repo.trovaPerId(a.t, s.id)))?.stato).toBe('IN_FIRMA')
+    // Una sessione IN_FIRMA e ancora aperta: blocca una nuova prenotazione.
+    await expect(nelTenant(a.t, () => repo.prenota(dati(a)))).rejects.toBeInstanceOf(
+      SessioneFirmaGiaApertaError
+    )
+  })
+
+  it('chiudi azzera il token in chiaro e conserva l hash (M2)', async () => {
+    const a = await azienda()
+    const s = await nelTenant(a.t, () => apriInAttesa(a))
+    await nelTenant(a.t, () => repo.chiudi(a.t, s.id, 'COMPLETATA'))
+    const chiusa = await nelTenant(a.t, () => repo.trovaPerId(a.t, s.id))
+    expect(chiusa?.tokenAcquisizione).toBeNull()
+    expect(chiusa?.tokenHash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('ultima restituisce la sessione piu recente, di qualunque stato (I3)', async () => {
+    const a = await azienda()
+    const prima = await nelTenant(a.t, () => apriInAttesa(a))
+    await nelTenant(a.t, () => repo.chiudi(a.t, prima.id, 'SCADUTA'))
+    expect((await nelTenant(a.t, () => repo.ultima(a.t, a.fir)))?.stato).toBe('SCADUTA')
+    const seconda = await nelTenant(a.t, () => repo.prenota(dati(a)))
+    expect((await nelTenant(a.t, () => repo.ultima(a.t, a.fir)))?.id).toBe(seconda.id)
+  })
+
   it('il token e salvato anche come SHA-256 (64 esadecimali)', async () => {
     const a = await azienda()
-    const s = await nelTenant(a.t, () => repo.apri(dati(a)))
+    const s = await nelTenant(a.t, () => apriInAttesa(a))
     expect(s.tokenHash).toMatch(/^[0-9a-f]{64}$/)
     expect(s.tokenAcquisizione).toBe('token-segreto-1')
   })
@@ -178,7 +236,7 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
 
   it('il ruolo applicativo non cancella ne tronca le sessioni', async () => {
     const a = await azienda()
-    const s = await nelTenant(a.t, () => repo.apri(dati(a)))
+    const s = await nelTenant(a.t, () => apriInAttesa(a))
     await expect(
       nelTenant(a.t, () =>
         app.$executeRawUnsafe(`DELETE FROM fir_sessioni_firma_rentri WHERE id = '${s.id}'`)

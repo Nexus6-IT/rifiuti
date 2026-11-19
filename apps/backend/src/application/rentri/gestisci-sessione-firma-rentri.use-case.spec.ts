@@ -22,7 +22,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       completa as any,
       logger
     )
-    const sessione = await sessioni.apri({
+    const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
       firId: 'fir-1',
       tipoOperazione: 'ANNULLAMENTO',
@@ -41,6 +41,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       id: sessione.id,
       tipoOperazione: 'ANNULLAMENTO',
       scadenza: sessione.scadenza,
+      stato: 'IN_ATTESA',
       scaduta: false,
     })
     expect(JSON.stringify(v)).not.toContain('SEGRETO')
@@ -96,5 +97,47 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
     await expect(
       useCase.riprendi({ firId: 'fir-2', tenantId: TENANT, sessioneId: sessione.id })
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('I3: dopo SCADUTA o RIFIUTATA il banner resta (ultima sessione), con scaduta=true', async () => {
+    const { useCase, sessioni, sessione } = await ambiente()
+    await sessioni.chiudi(TENANT, sessione.id, 'SCADUTA')
+    expect(await useCase.inAttesa('fir-1', TENANT)).toMatchObject({
+      id: sessione.id,
+      stato: 'SCADUTA',
+      scaduta: true,
+    })
+    const altra = await sessioni.apriInAttesa({
+      tenantId: TENANT,
+      firId: 'fir-1',
+      tipoOperazione: 'ANNULLAMENTO',
+      scadenza: new Date(Date.now() + 60_000),
+    })
+    await sessioni.chiudi(TENANT, altra.id, 'RIFIUTATA')
+    expect(await useCase.inAttesa('fir-1', TENANT)).toMatchObject({
+      id: altra.id,
+      stato: 'RIFIUTATA',
+      scaduta: true,
+    })
+  })
+
+  it('I3: COMPLETATA o ANNULLATA piu recenti fanno sparire il banner', async () => {
+    const { useCase, sessioni, sessione } = await ambiente()
+    await sessioni.chiudi(TENANT, sessione.id, 'ANNULLATA')
+    expect(await useCase.inAttesa('fir-1', TENANT)).toBeNull()
+  })
+
+  it('M1: nuovaSessione su una sessione COMPLETATA o ANNULLATA e rifiutata senza chiamare l ente', async () => {
+    const { useCase, completa, sessione, sessioni } = await ambiente()
+    await sessioni.chiudi(TENANT, sessione.id, 'ANNULLATA')
+    await expect(
+      useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: sessione.id,
+        nuovaSessione: true,
+      })
+    ).rejects.toMatchObject({ metadata: { rule: 'SESSIONE_FIRMA_NON_ATTIVA' } })
+    expect(completa.execute).not.toHaveBeenCalled()
   })
 })

@@ -1718,6 +1718,7 @@ describe('FirDetailComponent', () => {
       id: 'sess-1',
       tipoOperazione: 'ACCETTAZIONE',
       scadenza: scadenzaFutura,
+      stato: 'IN_ATTESA' as const,
       scaduta: false,
     }
 
@@ -1752,7 +1753,7 @@ describe('FirDetailComponent', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegato))
       rentriFirLifecycleService.firmaInAttesa.and.returnValue(
-        of({ sessione: { ...sessione, scaduta: true } })
+        of({ sessione: { ...sessione, stato: 'SCADUTA' as const, scaduta: true } })
       )
       fixture.detectChanges()
 
@@ -1762,6 +1763,44 @@ describe('FirDetailComponent', () => {
       )
       expect(el.querySelector('[data-testid="fir-detail-firma-richiedi-di-nuovo"]')).toBeTruthy()
       expect(el.querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeFalsy()
+    })
+
+    it('I3: dopo una scadenza il reload mostra ancora il banner con «Richiedi di nuovo» e «Annulla»', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      const scaduta = { ...sessione, stato: 'SCADUTA' as const, scaduta: true }
+      rentriFirLifecycleService.firmaInAttesa.and.returnValues(
+        of({ sessione }),
+        of({ sessione: scaduta })
+      )
+      rentriFirLifecycleService.riprendiFirma.and.returnValue(
+        of({ esito: 'SCADUTA', handle: 'h', rilevataDa: 'orologio-locale' })
+      )
+      fixture.detectChanges()
+
+      component.riprendiFirma(firLegato, sessione, false)
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-firma-richiedi-di-nuovo"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-annulla-richiesta"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeFalsy()
+    })
+
+    it('I3: una firma RIFIUTATA mostra il messaggio dedicato e i due pulsanti', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({ sessione: { ...sessione, stato: 'RIFIUTATA' as const, scaduta: true } })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-firma-rifiutata"]')?.textContent).toContain(
+        'rifiutata'
+      )
+      expect(el.querySelector('[data-testid="fir-detail-firma-richiedi-di-nuovo"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-firma-annulla-richiesta"]')).toBeTruthy()
     })
 
     it('un VIEWER non vede il banner e non chiama /firme/in-attesa', () => {

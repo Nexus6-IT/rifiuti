@@ -6,14 +6,19 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
-import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
+import { ISessioniFirmaRentriRepository, STATI_SESSIONE_APERTA } from './sessioni-firma-rentri.port'
 
 /** Vista della sessione per l'interfaccia: mai token, digest o handle. */
 export interface SessioneFirmaInAttesa {
   id: string
   tipoOperazione: string
   scadenza: Date
-  /** `true` se il limite dei 120 s e' gia' passato: va richiesta una nuova firma, non ripresa. */
+  /** IN_ATTESA = ancora da confermare; SCADUTA/RIFIUTATA = chiusa, resta visibile per riprovare o annullare. */
+  stato: 'IN_ATTESA' | 'SCADUTA' | 'RIFIUTATA'
+  /**
+   * `true` se non si puo' riprendere (sessione gia' SCADUTA/RIFIUTATA oppure limite dei 120 s passato):
+   * va richiesta una nuova firma.
+   */
   scaduta: boolean
 }
 
@@ -48,16 +53,34 @@ export class GestisciSessioneFirmaRentriUseCase {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
 
+  /**
+   * La sessione da mostrare nel banner: quella aperta, oppure l'ULTIMA del FIR se e' SCADUTA o
+   * RIFIUTATA (cosi' dopo una scadenza o un rifiuto l'utente ha ancora «Richiedi di nuovo» e «Annulla»).
+   * Una sessione COMPLETATA o ANNULLATA piu' recente la fa sparire.
+   */
   async inAttesa(firId: string, tenantId: string): Promise<SessioneFirmaInAttesa | null> {
     await this.verificaFir(firId, tenantId)
-    const aperta = await this.sessioni.trovaAperta(tenantId, firId)
-    if (!aperta) return null
-    return {
-      id: aperta.id,
-      tipoOperazione: aperta.tipoOperazione,
-      scadenza: aperta.scadenza,
-      scaduta: aperta.scadenza.getTime() <= Date.now(),
+    const ultima = await this.sessioni.ultima(tenantId, firId)
+    if (!ultima) return null
+    if (STATI_SESSIONE_APERTA.includes(ultima.stato)) {
+      return {
+        id: ultima.id,
+        tipoOperazione: ultima.tipoOperazione,
+        scadenza: ultima.scadenza,
+        stato: 'IN_ATTESA',
+        scaduta: ultima.scadenza.getTime() <= Date.now(),
+      }
     }
+    if (ultima.stato === 'SCADUTA' || ultima.stato === 'RIFIUTATA') {
+      return {
+        id: ultima.id,
+        tipoOperazione: ultima.tipoOperazione,
+        scadenza: ultima.scadenza,
+        stato: ultima.stato,
+        scaduta: true,
+      }
+    }
+    return null
   }
 
   async riprendi(comando: ComandoRiprendiFirma): Promise<EsitoCompletamentoFirma> {
@@ -69,11 +92,28 @@ export class GestisciSessioneFirmaRentriUseCase {
       throw DomainException.notFound('Sessione di firma', sessioneId)
     }
 
-    if (sessione.stato !== 'IN_ATTESA' && !comando.nuovaSessione) {
+    // `nuovaSessione` vale solo per una richiesta scaduta o rifiutata: su una conclusa (COMPLETATA) o
+    // annullata non c'e' nulla da rifare, e partirebbe una scrittura inutile verso l'ente.
+    if (
+      comando.nuovaSessione &&
+      (sessione.stato === 'COMPLETATA' || sessione.stato === 'ANNULLATA')
+    ) {
+      throw DomainException.businessRuleViolation(
+        'SESSIONE_FIRMA_NON_ATTIVA',
+        `Questa richiesta di firma è già conclusa (${sessione.stato}): non si può richiedere di nuovo.`
+      )
+    }
+
+    if (
+      sessione.stato !== 'IN_ATTESA' &&
+      sessione.stato !== 'IN_AVVIO' &&
+      sessione.stato !== 'IN_FIRMA' &&
+      !comando.nuovaSessione
+    ) {
       if (sessione.stato === 'SCADUTA') {
         return {
           esito: 'SCADUTA',
-          handle: sessione.handle,
+          handle: sessione.handle ?? '',
           sessioneId: sessione.id,
           rilevataDa: sessione.dettaglioEnte ? 'ente' : 'orologio-locale',
           ...(sessione.dettaglioEnte && { dettaglioEnte: sessione.dettaglioEnte }),
@@ -82,7 +122,7 @@ export class GestisciSessioneFirmaRentriUseCase {
       if (sessione.stato === 'RIFIUTATA') {
         return {
           esito: 'RIFIUTATA',
-          handle: sessione.handle,
+          handle: sessione.handle ?? '',
           sessioneId: sessione.id,
           ...(sessione.dettaglioEnte && { dettaglioEnte: sessione.dettaglioEnte }),
         }
