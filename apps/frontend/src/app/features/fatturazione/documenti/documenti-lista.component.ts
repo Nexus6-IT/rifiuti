@@ -13,12 +13,22 @@ import { PaginatorModule, PaginatorState } from 'primeng/paginator'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { AuthService } from '../../../core/services/auth.service'
+import { FeatureFlagsService } from '../../../core/services/feature-flags.service'
 import { ClientiService } from '../../clienti/clienti.service'
 import { RegistroIva } from '../../clienti/clienti.model'
 import { TabelleFatturazioneService } from '../../clienti/tabelle-fatturazione.service'
 import { formattaGiorno } from '../../giacenze/giorno'
 import { codiceErrore } from '../../listino/errori-azione'
 import { importoItaliano } from '../../listino/listino-calcoli'
+import {
+  EsitoAccodamentoSdi,
+  FILTRO_SDI_NESSUNA,
+  FiltroStatoSdi,
+  STATI_SDI_IN_LAVORAZIONE,
+  STATI_SDI_VOCI,
+  STATI_TRASMISSIONE_SDI,
+  StatoTrasmissioneSdi,
+} from '../../sdi/sdi.model'
 import { erroreDaBlob, salvaFile } from '../download-fatturazione'
 import {
   AdattatoreVista,
@@ -47,6 +57,7 @@ import {
   MSG_EMISSIONE_PIU_DOCUMENTI,
   MSG_TRACCIATO_NON_VERIFICATO,
 } from './conferma-emissione-dialog.component'
+import { InvioSdiDialogComponent } from './invio-sdi-dialog.component'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -63,6 +74,21 @@ export const MSG_SERVE_SELEZIONE_CON_STATO = 'Seleziona i documenti oppure togli
 export const MSG_PERIODO_ROVESCIATO = 'La data iniziale è dopo quella finale.'
 export const MSG_TROPPI_SELEZIONATI = `Si possono selezionare al massimo ${MAX_DOCUMENTI_SELEZIONABILI} documenti per volta.`
 export const MSG_GESTIONALI_NON_CARICATI = 'Impossibile caricare i gestionali per l’export.'
+
+/** Rilettura della lista finche' ci sono invii allo SDI in lavorazione. */
+export const INTERVALLO_POLLING_SDI_MS = 5000
+
+export const MSG_INVIO_SDI_FALLITO = 'Impossibile accodare i documenti per l’invio allo SDI.'
+const MSG_INVIO_SDI_PER_CODICE: Readonly<Record<string, string>> = {
+  SDI_NON_CONFIGURATO:
+    'L’invio allo SDI non è configurato: completa la configurazione e verificala.',
+  INVIO_SDI_NON_ATTIVO: 'L’invio allo SDI non è attivo per questa azienda.',
+  INVII_SDI_SOSPESI: 'Gli invii allo SDI sono sospesi: riprova più tardi.',
+  TROPPI_DOCUMENTI: 'Ci sono troppi documenti: ne puoi inviare al massimo 500 per volta.',
+  NESSUN_DOCUMENTO: 'Seleziona almeno un documento.',
+  PROVIDER_NON_DISPONIBILE: 'Il provider SDI scelto non è disponibile.',
+  MODULO_NON_ATTIVO: 'L’invio allo SDI non è incluso nel tuo piano.',
+}
 
 const TITOLI_MAPPATURA: Readonly<Record<TipoMappatura, string>> = {
   CODICE_IVA: 'Codice IVA',
@@ -180,6 +206,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
     TableModule,
     TagModule,
     ConfermaEmissioneDialogComponent,
+    InvioSdiDialogComponent,
   ],
   template: `
     <div class="page pagina-lavoro">
@@ -198,6 +225,14 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
             [disabled]="!selezioneExport() || inEsportazione()"
             (onClick)="esportaCsv()"
             data-testid="dl-esporta-csv"
+          />
+          <p-button
+            *ngIf="puoInviareSdi()"
+            label="Invia allo SDI"
+            icon="pi pi-send"
+            [disabled]="selezione().size === 0 || inEsportazione()"
+            (onClick)="apriInvioSdi()"
+            data-testid="dl-invia-sdi"
           />
           <ng-container *ngIf="permessi().scaricaXml">
             <p-button
@@ -269,6 +304,21 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
             placeholder="Tutti"
             styleClass="w-full"
             data-testid="dl-filtro-stato"
+          />
+        </div>
+        <div class="dl-campo" *ngIf="moduloSdi()">
+          <label for="dl-stato-sdi">Stato SDI</label>
+          <p-dropdown
+            inputId="dl-stato-sdi"
+            [options]="opzioniStatiSdi"
+            optionLabel="label"
+            optionValue="value"
+            [ngModel]="statoSdi"
+            (ngModelChange)="cambia('statoSdi', $event)"
+            [showClear]="true"
+            placeholder="Tutti"
+            styleClass="w-full"
+            data-testid="dl-filtro-stato-sdi"
           />
         </div>
         <div class="dl-campo">
@@ -420,6 +470,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
               <th scope="col">Cliente</th>
               <th scope="col">Tipo</th>
               <th scope="col">Stato</th>
+              <th scope="col" *ngIf="moduloSdi()">SDI</th>
               <th scope="col" class="num-col">Totale</th>
               <th scope="col"><span class="sr-only">Azioni</span></th>
             </tr>
@@ -463,6 +514,15 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
                   [severity]="severita(voceStato(r.stato))"
                 />
               </td>
+              <td *ngIf="moduloSdi()" data-etichetta="SDI" data-testid="dl-sdi">
+                <p-tag
+                  *ngIf="r.statoSdi as sdi; else senzaSdi"
+                  [value]="voceSdi(sdi).etichetta"
+                  [severity]="severita(voceSdi(sdi))"
+                  [attr.data-stato-sdi]="sdi"
+                />
+                <ng-template #senzaSdi>—</ng-template>
+              </td>
               <td class="num-col" data-etichetta="Totale" data-testid="dl-totale">
                 {{ importo(r.totaleDocumento) }}
               </td>
@@ -480,7 +540,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
           </ng-template>
           <ng-template pTemplate="emptymessage">
             <tr>
-              <td colspan="8">
+              <td [attr.colspan]="moduloSdi() ? 9 : 8">
                 <div class="empty-state" data-testid="dl-vuota">
                   <span class="empty-state__title">Nessun documento.</span>
                 </div>
@@ -511,6 +571,19 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
         [inCorso]="inEsportazione()"
         (confermato)="confermaEsportazione()"
         (chiuso)="inAttesa.set(null)"
+      />
+
+      <app-invio-sdi-dialog
+        *ngIf="puoInviareSdi()"
+        [visible]="invioSdiAperto()"
+        [quanti]="selezione().size"
+        [giaEmessi]="documentiGiaEmessi()"
+        [inCorso]="invioSdiInCorso()"
+        [errore]="invioSdiErrore()"
+        [esito]="invioSdiEsito()"
+        [nomi]="nomiDocumenti()"
+        (confermato)="confermaInvioSdi($event.confermaGiaEmesso)"
+        (chiuso)="chiudiInvioSdi()"
       />
     </div>
   `,
@@ -554,6 +627,7 @@ export class DocumentiListaComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly auth = inject(AuthService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly funzioni = inject(FeatureFlagsService)
 
   readonly permessi = computed(() => permessiFatturazione(this.auth.currentUser()?.role))
 
@@ -561,6 +635,7 @@ export class DocumentiListaComponent {
   registroIvaId: string | null = null
   anno: number | null = null
   stato: StatoDocumento | null = null
+  statoSdi: FiltroStatoSdi | null = null
   clienteId: string | null = null
   dataDa: Date | null = null
   dataA: Date | null = null
@@ -580,6 +655,35 @@ export class DocumentiListaComponent {
   readonly infoSaltati = signal<string | null>(null)
   readonly erroreSelezione = signal<string | null>(null)
   readonly erroreClienti = signal<string | null>(null)
+
+  // Invio allo SDI (4.5b).
+  readonly moduloSdi = computed(() => this.funzioni.has('sdi'))
+  readonly puoInviareSdi = computed(() => this.moduloSdi() && this.permessi().rendeDefinitiva)
+  readonly invioSdiAperto = signal(false)
+  readonly invioSdiInCorso = signal(false)
+  readonly invioSdiErrore = signal<string | null>(null)
+  readonly invioSdiEsito = signal<EsitoAccodamentoSdi | null>(null)
+  /** Le righe viste in questa sessione, per id: la selezione puo' attraversare le pagine. */
+  private readonly viste = new Map<string, DocumentoRiga>()
+  readonly nomiDocumenti = computed<Record<string, string>>(() => {
+    // Ricalcolata a ogni lettura: `righe()` cambia.
+    this.righe()
+    return Object.fromEntries(
+      [...this.viste.values()].map(r => [r.id, r.numeroTesto ?? 'Documento senza numero'])
+    )
+  })
+  readonly documentiGiaEmessi = computed(() => {
+    this.righe()
+    return [...this.selezione()].filter(id => this.viste.get(id)?.emessoIl != null).length
+  })
+  readonly voceSdi = (s: StatoTrasmissioneSdi) => STATI_SDI_VOCI[s]
+  readonly opzioniStatiSdi: { label: string; value: FiltroStatoSdi }[] = [
+    { label: 'Non inviati', value: FILTRO_SDI_NESSUNA },
+    ...STATI_TRASMISSIONE_SDI.map(s => ({ label: STATI_SDI_VOCI[s].etichetta, value: s })),
+  ]
+  private timerPolling: ReturnType<typeof setTimeout> | null = null
+  /** La prossima lettura non mostra il caricamento (polling). */
+  private letturaSilenziosa = false
 
   readonly opzioniRegistri = signal<Opzione[]>([])
   readonly opzioniClienti = signal<Opzione[]>([])
@@ -649,7 +753,8 @@ export class DocumentiListaComponent {
     this.richiesta$
       .pipe(
         tap(() => {
-          this.caricamento.set(true)
+          if (!this.letturaSilenziosa) this.caricamento.set(true)
+          this.letturaSilenziosa = false
           this.errore.set(null)
         }),
         switchMap(() =>
@@ -660,6 +765,7 @@ export class DocumentiListaComponent {
               registroIvaId: this.registroIvaId ?? undefined,
               anno: this.anno ?? undefined,
               stato: this.stato ?? undefined,
+              statoSdi: this.statoSdi ?? undefined,
               clienteId: this.clienteId ?? undefined,
               dataDa: this.dataDa ? isoLocale(this.dataDa) : undefined,
               dataA: this.dataA ? isoLocale(this.dataA) : undefined,
@@ -676,10 +782,14 @@ export class DocumentiListaComponent {
         takeUntilDestroyed()
       )
       .subscribe(p => {
+        for (const r of p.elementi) this.viste.set(r.id, r)
         this.righe.set(p.elementi)
         this.totale.set(p.totale)
         this.caricamento.set(false)
+        this.pianificaPolling(p.elementi)
       })
+
+    this.destroyRef.onDestroy(() => this.fermaPolling())
 
     this.ricercaClienti$
       .pipe(
@@ -757,7 +867,7 @@ export class DocumentiListaComponent {
 
   /** Cambia un filtro: torna a pagina 1, azzera la selezione e rilegge (se il periodo è valido). */
   cambia(
-    campo: 'registroIvaId' | 'anno' | 'stato' | 'clienteId' | 'dataDa' | 'dataA',
+    campo: 'registroIvaId' | 'anno' | 'stato' | 'statoSdi' | 'clienteId' | 'dataDa' | 'dataA',
     valore: unknown
   ): void {
     const v = valore === '' || valore === undefined ? null : valore
@@ -770,6 +880,9 @@ export class DocumentiListaComponent {
         break
       case 'stato':
         this.stato = v as StatoDocumento | null
+        break
+      case 'statoSdi':
+        this.statoSdi = v as FiltroStatoSdi | null
         break
       case 'clienteId':
         this.clienteId = v as string | null
@@ -873,6 +986,71 @@ export class DocumentiListaComponent {
       ...(this.clienteId ? { clienteId: this.clienteId } : {}),
     }
     return Object.keys(s).length > 0 && !this.periodoRovesciato() ? s : null
+  }
+
+  // --- Invio allo SDI ------------------------------------------------------------------------
+
+  apriInvioSdi(): void {
+    if (!this.puoInviareSdi() || this.selezione().size === 0) return
+    this.invioSdiErrore.set(null)
+    this.invioSdiEsito.set(null)
+    this.invioSdiAperto.set(true)
+  }
+
+  confermaInvioSdi(confermaGiaEmesso: boolean): void {
+    if (!this.puoInviareSdi() || this.invioSdiInCorso()) return
+    const ids = [...this.selezione()]
+    if (ids.length === 0) return
+    this.invioSdiInCorso.set(true)
+    this.invioSdiErrore.set(null)
+    this.servizio
+      .invioSdi(ids, confermaGiaEmesso)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: esito => {
+          this.invioSdiInCorso.set(false)
+          this.invioSdiEsito.set(esito)
+          // I documenti accodati escono dalla selezione; gli altri restano per un nuovo tentativo.
+          const accodati = new Set(esito.accodate.map(a => a.documentoId))
+          this.selezione.set(new Set([...this.selezione()].filter(id => !accodati.has(id))))
+          this.letturaSilenziosa = true
+          this.carica()
+        },
+        error: (err: unknown) => {
+          this.invioSdiInCorso.set(false)
+          const codice = codiceErrore(err)
+          this.invioSdiErrore.set(
+            (codice !== null ? MSG_INVIO_SDI_PER_CODICE[codice] : undefined) ??
+              MSG_INVIO_SDI_FALLITO
+          )
+        },
+      })
+  }
+
+  chiudiInvioSdi(): void {
+    this.invioSdiAperto.set(false)
+    this.invioSdiEsito.set(null)
+    this.invioSdiErrore.set(null)
+  }
+
+  /** Rilegge la lista finche' c'e' almeno un invio in lavorazione (in coda, in invio, da verificare). */
+  private pianificaPolling(righe: readonly DocumentoRiga[]): void {
+    this.fermaPolling()
+    if (!this.moduloSdi()) return
+    const inLavorazione = righe.some(
+      r => r.statoSdi !== null && STATI_SDI_IN_LAVORAZIONE.includes(r.statoSdi)
+    )
+    if (!inLavorazione) return
+    this.timerPolling = setTimeout(() => {
+      this.timerPolling = null
+      this.letturaSilenziosa = true
+      this.carica()
+    }, INTERVALLO_POLLING_SDI_MS)
+  }
+
+  private fermaPolling(): void {
+    if (this.timerPolling !== null) clearTimeout(this.timerPolling)
+    this.timerPolling = null
   }
 
   // --- Export ------------------------------------------------------------------------------

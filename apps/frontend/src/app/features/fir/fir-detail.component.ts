@@ -37,6 +37,8 @@ import {
   RentriFirLifecycleService,
   AllegatoFirRentri,
   AzioneRentri,
+  EsitoFirmaRemota,
+  SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
@@ -335,6 +337,63 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 styleClass="w-full mb-3"
                 data-testid="fir-detail-rentri-messaggio-errore"
               />
+            }
+            @if (sessioneFirma(); as sessione) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                aria-live="polite"
+                data-testid="fir-detail-firma-in-attesa"
+              >
+                @if (sessione.stato === 'RIFIUTATA') {
+                  <p class="firma-in-attesa__testo" data-testid="fir-detail-firma-rifiutata">
+                    <i class="pi pi-times-circle" aria-hidden="true"></i>
+                    La firma è stata rifiutata sull'app RENTRI FIR Digitale. Non è stato firmato
+                    nulla: puoi chiederla di nuovo oppure annullare la richiesta.
+                  </p>
+                } @else if (sessione.scaduta) {
+                  <p class="firma-in-attesa__testo" data-testid="fir-detail-firma-scaduta">
+                    <i class="pi pi-clock" aria-hidden="true"></i>
+                    La richiesta di firma è scaduta alle {{ sessione.scadenza | date: 'HH:mm' }}.
+                    Non è stato firmato nulla: puoi chiederla di nuovo oppure annullare la
+                    richiesta.
+                  </p>
+                } @else {
+                  <p class="firma-in-attesa__testo">
+                    <i class="pi pi-mobile" aria-hidden="true"></i>
+                    In attesa della tua conferma sull'app RENTRI FIR Digitale, scade alle
+                    {{ sessione.scadenza | date: 'HH:mm' }}.
+                  </p>
+                }
+                <div class="row-actions">
+                  @if (sessione.scaduta) {
+                    <p-button
+                      label="Richiedi di nuovo la firma"
+                      icon="pi pi-refresh"
+                      [loading]="firmaInCorso()"
+                      (onClick)="riprendiFirma(f, sessione, true)"
+                      data-testid="fir-detail-firma-richiedi-di-nuovo"
+                    />
+                  } @else {
+                    <p-button
+                      label="Ho confermato, controlla"
+                      icon="pi pi-check"
+                      [loading]="firmaInCorso()"
+                      (onClick)="riprendiFirma(f, sessione, false)"
+                      data-testid="fir-detail-firma-riprendi"
+                    />
+                  }
+                  <p-button
+                    label="Annulla la richiesta"
+                    icon="pi pi-times"
+                    severity="secondary"
+                    [outlined]="true"
+                    [disabled]="firmaInCorso()"
+                    (onClick)="annullaRichiestaFirma(f)"
+                    data-testid="fir-detail-firma-annulla-richiesta"
+                  />
+                </div>
+              </div>
             }
             <div class="detail-grid">
               <div class="detail-field">
@@ -928,6 +987,19 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         font-size: var(--font-size-sm);
       }
 
+      .firma-in-attesa {
+        margin: 0 0 1rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--p-yellow-400, #facc15);
+        border-radius: 8px;
+        background: var(--p-yellow-50, #fefce8);
+      }
+      .firma-in-attesa__testo {
+        margin: 0 0 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+      }
       .rentri-status {
         margin-bottom: var(--spacing-base);
       }
@@ -1051,6 +1123,123 @@ export class FirDetailComponent implements OnInit {
   protected readonly annullamentoInCorso = signal(false)
   protected annullamentoMotivo = ''
 
+  /**
+   * «Ho confermato, controlla» (o «Richiedi di nuovo la firma» con `nuova`): riprende la stessa
+   * richiesta di firma. Nessun nuovo tentativo parte da solo: dopo una scadenza serve questo gesto.
+   */
+  riprendiFirma(fir: FIR, sessione: SessioneFirmaInAttesa, nuova: boolean): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService
+      .riprendiFirma(fir.id, sessione.id, nuova ? { nuovaSessione: true } : {})
+      .subscribe({
+        next: esito => {
+          this.firmaInCorso.set(false)
+          this.mostraEsitoFirma(esito)
+          this.reload()
+        },
+        error: err => {
+          this.firmaInCorso.set(false)
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Errore',
+            detail: this.extractError(err, 'Impossibile controllare la firma su RENTRI'),
+          })
+          this.reload()
+        },
+      })
+  }
+
+  /** Traduce l'esito della firma remota in un messaggio per l'utente. */
+  private mostraEsitoFirma(esito: EsitoFirmaRemota): void {
+    switch (esito.esito) {
+      case 'COMPLETATA':
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Firma completata',
+          detail: 'RENTRI ha registrato la tua firma.',
+        })
+        return
+      case 'IN_ATTESA':
+        this.messageService.add({
+          severity: 'info',
+          summary: 'Firma non ancora confermata',
+          detail:
+            "Apri l'app RENTRI FIR Digitale sul telefono e conferma la richiesta, poi premi «Ho confermato, controlla».",
+        })
+        return
+      case 'SCADUTA':
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Richiesta di firma scaduta',
+          detail:
+            'Non è stato firmato nulla. Puoi chiedere di nuovo la firma o annullare la richiesta.',
+        })
+        return
+      case 'RIFIUTATA':
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Firma rifiutata',
+          detail:
+            esito.dettaglioEnte || "La firma non è stata concessa dall'app RENTRI FIR Digitale.",
+        })
+        return
+    }
+  }
+
+  /**
+   * «Annulla la richiesta»: cancella presso l'ente i dati inseriti e non ancora firmati (reset) e chiude
+   * la richiesta di firma. Chiede conferma perche' i dati inseriti vanno reinseriti.
+   */
+  annullaRichiestaFirma(fir: FIR): void {
+    this.confirmationService.confirm({
+      header: 'Annulla la richiesta',
+      message:
+        'Annullando, i dati appena inviati a RENTRI e non ancora firmati vengono cancellati e dovrai inserirli di nuovo. Vuoi annullare la richiesta?',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Annulla la richiesta',
+      rejectLabel: 'Torna indietro',
+      accept: () => {
+        this.firmaInCorso.set(true)
+        this.rentriFirLifecycleService.resetStato(fir.id).subscribe({
+          next: () => {
+            this.firmaInCorso.set(false)
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Richiesta annullata',
+              detail: 'I dati non firmati sono stati cancellati su RENTRI.',
+            })
+            this.reload()
+          },
+          error: err => {
+            this.firmaInCorso.set(false)
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Errore',
+              detail: this.extractError(err, 'Impossibile annullare la richiesta su RENTRI'),
+            })
+          },
+        })
+      },
+    })
+  }
+
+  /**
+   * Messaggio dopo l'invio di un'operazione: se la firma e' ancora in attesa il banner (ricaricato da
+   * `reload`) porta i pulsanti per riprendere o annullare; senza esito noto resta il testo generico.
+   */
+  private messaggioDopoInvio(summary: string, esitoFirma: EsitoFirmaRemota | undefined): void {
+    if (esitoFirma && esitoFirma.esito !== 'IN_ATTESA') {
+      this.mostraEsitoFirma(esitoFirma)
+      return
+    }
+    this.messageService.add({
+      severity: 'success',
+      summary,
+      detail:
+        "La richiesta è stata inviata a RENTRI: conferma la firma sull'app RENTRI FIR Digitale, poi premi «Ho confermato, controlla».",
+    })
+  }
+
   // --- Allegati del formulario (R3 Task 6) ---
   protected readonly allegati = signal<AllegatoFirRentri[]>([])
   protected readonly allegatiCaricamentoInCorso = signal(false)
@@ -1064,6 +1253,11 @@ export class FirDetailComponent implements OnInit {
   // --- Azioni disponibili da RENTRI, pilotano i pulsanti del ciclo di vita (R3 Task 8) ---
   /** Ultima risposta nota di `/azioni`. Vuota finché non arriva (fail-closed). */
   protected readonly azioniRentri = signal<AzioneRentri[]>([])
+
+  // --- Firma in attesa di conferma sul dispositivo (FIR in viaggio, P1) ---
+  /** Sessione di firma aperta sul FIR (null se non c'e'). */
+  protected readonly sessioneFirma = signal<SessioneFirmaInAttesa | null>(null)
+  protected readonly firmaInCorso = signal(false)
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
@@ -1099,8 +1293,14 @@ export class FirDetailComponent implements OnInit {
             next: risultato => this.azioniRentri.set(risultato.azioni),
             error: () => this.azioniRentri.set([]),
           })
+          // Banner della firma in attesa: stesso criterio fail-closed (silenzioso se fallisce).
+          this.rentriFirLifecycleService.firmaInAttesa(fir.id).subscribe({
+            next: r => this.sessioneFirma.set(r.sessione),
+            error: () => this.sessioneFirma.set(null),
+          })
         } else {
           this.azioniRentri.set([])
+          this.sessioneFirma.set(null)
         }
       },
       error: err => {
@@ -1612,15 +1812,13 @@ export class FirDetailComponent implements OnInit {
           opzione === 'P' || opzione === 'R' ? this.accettazioneMotivo : undefined,
       })
       .subscribe({
-        next: () => {
+        next: risultato => {
           this.accettazioneInCorso.set(false)
           this.accettazioneDialogVisible.set(false)
-          this.messageService.add({
-            severity: 'success',
-            summary: opzione === 'R' ? 'Carico respinto' : 'Carico accettato',
-            detail:
-              'La richiesta è stata inviata a RENTRI: segui il tuo dispositivo per confermare la firma.',
-          })
+          this.messaggioDopoInvio(
+            opzione === 'R' ? 'Carico respinto' : 'Carico accettato',
+            risultato?.esitoFirma
+          )
           this.reload()
         },
         error: err => {
@@ -1678,15 +1876,10 @@ export class FirDetailComponent implements OnInit {
     this.rentriFirLifecycleService
       .annullaFIR(fir.id, { motivo: this.annullamentoMotivo })
       .subscribe({
-        next: () => {
+        next: risultato => {
           this.annullamentoInCorso.set(false)
           this.annullamentoDialogVisible.set(false)
-          this.messageService.add({
-            severity: 'success',
-            summary: 'Formulario annullato',
-            detail:
-              'La richiesta è stata inviata a RENTRI: segui il tuo dispositivo per confermare la firma.',
-          })
+          this.messaggioDopoInvio('Formulario annullato', risultato?.esitoFirma)
           this.reload()
         },
         error: err => {

@@ -3,6 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
 import { Observable, Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
+import { FeatureFlagsService } from '../../../core/services/feature-flags.service'
 import { ClientiService } from '../../clienti/clienti.service'
 import { TabelleFatturazioneService } from '../../clienti/tabelle-fatturazione.service'
 import { documentoRiga, paginaDocumenti } from '../elaborazioni/anteprima.fixture'
@@ -15,12 +16,15 @@ import {
 import { FatturazioneService, FileScaricato } from '../fatturazione.service'
 import {
   DIMENSIONE_RICERCA,
+  INTERVALLO_POLLING_SDI_MS,
+  MSG_INVIO_SDI_FALLITO,
   DocumentiListaComponent,
   MAX_DOCUMENTI_SELEZIONABILI,
   MSG_NON_CARICATI,
   MSG_TROPPI_SELEZIONATI,
   testoSaltati,
 } from './documenti-lista.component'
+import { InvioSdiDialogComponent } from './invio-sdi-dialog.component'
 import { erroreBlob, svuotaPromesse } from './documenti.fixture'
 
 const q = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
@@ -55,9 +59,16 @@ describe('DocumentiListaComponent', () => {
       lista?: Observable<Pagina<DocumentoRiga>>
       adattatori?: AdattatoreVista[]
       query?: Record<string, string>
+      /** Moduli attivi (default: nessuno, quindi niente colonna ne' pulsante SDI). */
+      moduli?: string[]
     } = {}
   ): Promise<void> {
-    servizio = jasmine.createSpyObj('FatturazioneService', ['documenti', 'esporta', 'adattatori'])
+    servizio = jasmine.createSpyObj('FatturazioneService', [
+      'documenti',
+      'esporta',
+      'adattatori',
+      'invioSdi',
+    ])
     servizio.documenti.and.returnValue(
       opzioni.lista ?? of(paginaDocumenti([documentoRiga(1), documentoRiga(2)]))
     )
@@ -76,6 +87,10 @@ describe('DocumentiListaComponent', () => {
           useValue: { snapshot: { queryParamMap: convertToParamMap(opzioni.query ?? {}) } },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => (opzioni.moduli ?? []).includes(k) },
+        },
         { provide: ClientiService, useValue: { clienti: { list: clientiList } } },
         {
           provide: TabelleFatturazioneService,
@@ -660,6 +675,201 @@ describe('DocumentiListaComponent', () => {
       await crea()
       comp.apri(documentoRiga(1))
       expect(router.navigate).toHaveBeenCalledWith(['/fatturazione', 'documenti', 'd1'])
+    })
+  })
+
+  describe('invio allo SDI (4.5b)', () => {
+    const SDI = { moduli: ['sdi'] }
+    const definitivo = (n: number, extra: Partial<DocumentoRiga> = {}) =>
+      documentoRiga(n, { stato: 'DEFINITIVO', numeroTesto: `${n}/A`, ...extra })
+
+    it('senza il modulo sdi: nessuna colonna, nessun filtro, nessun pulsante', async () => {
+      await crea('ADMIN', { lista: of(paginaDocumenti([definitivo(1, { statoSdi: 'INVIATA' })])) })
+      expect(q('dl-sdi')).toBeNull()
+      expect(q('dl-filtro-stato-sdi')).toBeNull()
+      expect(q('dl-invia-sdi')).toBeNull()
+    })
+
+    it('con il modulo: badge dello stato (o «—»), filtro e pulsante', async () => {
+      await crea('ADMIN', {
+        ...SDI,
+        lista: of(
+          paginaDocumenti([
+            definitivo(1, { statoSdi: 'CONSEGNATA', esitoFiscale: 'EMESSA' }),
+            definitivo(2, { statoSdi: 'ERRORE_INVIO', esitoFiscale: 'NON_EMESSA' }),
+            definitivo(3),
+          ])
+        ),
+      })
+      const celle = Array.from(document.body.querySelectorAll('[data-testid="dl-sdi"]')).map(c =>
+        c.textContent!.trim()
+      )
+      expect(celle).toEqual(['Consegnata', 'Errore', '—'])
+      expect(q('dl-filtro-stato-sdi')).not.toBeNull()
+      expect(q('dl-invia-sdi')).not.toBeNull()
+    })
+
+    it('il filtro Stato SDI arriva al servizio, torna a pagina 1 e si toglie', async () => {
+      await crea('ADMIN', SDI)
+      comp.pagina.set(2)
+      comp.cambia('statoSdi', 'SCARTATA')
+      expect(servizio.documenti.calls.mostRecent().args[0]).toEqual(
+        jasmine.objectContaining({ pagina: 1, statoSdi: 'SCARTATA' })
+      )
+      comp.cambia('statoSdi', 'NESSUNA')
+      expect(servizio.documenti.calls.mostRecent().args[0]!.statoSdi).toBe('NESSUNA')
+      comp.cambia('statoSdi', null)
+      expect(servizio.documenti.calls.mostRecent().args[0]!.statoSdi).toBeUndefined()
+    })
+
+    it('«Invia allo SDI» e disabilitato senza selezione; i ruoli non amministrativi non lo vedono', async () => {
+      await crea('ADMIN', SDI)
+      expect(q<HTMLButtonElement>('dl-invia-sdi')!.querySelector('button')!.disabled).toBe(true)
+      comp.seleziona('d1', true)
+      fixture.detectChanges()
+      expect(q<HTMLButtonElement>('dl-invia-sdi')!.querySelector('button')!.disabled).toBe(false)
+      TestBed.resetTestingModule()
+      await crea('OPERATOR', SDI)
+      expect(q('dl-invia-sdi')).toBeNull()
+    })
+
+    it('conferma: manda gli id selezionati senza conferma-gia-emesso e mostra accodati e saltati col motivo', async () => {
+      await crea('ADMIN', {
+        ...SDI,
+        lista: of(paginaDocumenti([definitivo(1), definitivo(2)])),
+      })
+      servizio.invioSdi.and.returnValue(
+        of({
+          accodate: [{ documentoId: 'd1', trasmissioneId: 't1', avvisi: [] }],
+          saltate: [{ documentoId: 'd2', motivo: 'DATA_FUTURA' as const }],
+        })
+      )
+      comp.selezionaPagina(true)
+      comp.apriInvioSdi()
+      fixture.detectChanges()
+      expect(q('invio-sdi-conteggio')!.textContent).toContain('2 documenti selezionati')
+      expect(q('invio-sdi-gia-emessi')).toBeNull()
+      comp.confermaInvioSdi(false)
+      fixture.detectChanges()
+      expect(servizio.invioSdi).toHaveBeenCalledWith(['d1', 'd2'], false)
+      expect(q('invio-sdi-esito')!.textContent).toContain('1 documento accodato')
+      const saltati = Array.from(
+        document.body.querySelectorAll('[data-testid="invio-sdi-saltato"]')
+      )
+      expect(saltati.map(x => x.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
+        '2/A: La data del documento è nel futuro',
+      ])
+      // L'accodato esce dalla selezione, il saltato resta per riprovare.
+      expect([...comp.selezione()]).toEqual(['d2'])
+    })
+
+    it('fra i selezionati ce n e uno gia emesso: serve la conferma esplicita e parte confermaGiaEmesso=true', async () => {
+      await crea('ADMIN', {
+        ...SDI,
+        lista: of(
+          paginaDocumenti([definitivo(1), definitivo(2, { emessoIl: '2026-11-01T10:00:00Z' })])
+        ),
+      })
+      servizio.invioSdi.and.returnValue(of({ accodate: [], saltate: [] }))
+      comp.selezionaPagina(true)
+      comp.apriInvioSdi()
+      fixture.detectChanges()
+      expect(q('invio-sdi-gia-emessi')!.textContent).toContain('1 documento risulta già emesso')
+      const ok = () => q('invio-sdi-ok')!.querySelector('button')!
+      expect(ok().disabled).toBe(true)
+      // Senza la spunta il dialog non conferma.
+      const dialogo = fixture.debugElement.query(el => el.name === 'app-invio-sdi-dialog')
+        .componentInstance as InvioSdiDialogComponent
+      dialogo.conferma()
+      expect(servizio.invioSdi).not.toHaveBeenCalledWith(jasmine.anything(), true)
+      dialogo.confermaGiaEmesso = true
+      fixture.detectChanges()
+      expect(ok().disabled).toBe(false)
+      dialogo.conferma()
+      expect(servizio.invioSdi).toHaveBeenCalledWith(['d1', 'd2'], true)
+    })
+
+    it('errore del backend: messaggio dal codice, la selezione resta, il dialog resta aperto', async () => {
+      await crea('ADMIN', SDI)
+      servizio.invioSdi.and.returnValue(
+        throwError(() => ({ status: 409, error: { error: 'INVIO_SDI_NON_ATTIVO' } }))
+      )
+      comp.seleziona('d1', true)
+      comp.apriInvioSdi()
+      comp.confermaInvioSdi(false)
+      fixture.detectChanges()
+      expect(q('invio-sdi-errore')!.textContent).toContain('non è attivo')
+      expect(comp.selezione().has('d1')).toBe(true)
+      expect(comp.invioSdiAperto()).toBe(true)
+      // Errore sconosciuto: ripiego generico, mai il testo libero.
+      servizio.invioSdi.and.returnValue(
+        throwError(() => ({ status: 500, error: { message: 'x' } }))
+      )
+      comp.confermaInvioSdi(false)
+      expect(comp.invioSdiErrore()).toBe(MSG_INVIO_SDI_FALLITO)
+    })
+
+    it('un click doppio durante la richiesta non spedisce due volte', async () => {
+      await crea('ADMIN', SDI)
+      const risposta = new Subject<{ accodate: []; saltate: [] }>()
+      servizio.invioSdi.and.returnValue(risposta)
+      comp.seleziona('d1', true)
+      comp.apriInvioSdi()
+      comp.confermaInvioSdi(false)
+      comp.confermaInvioSdi(false)
+      expect(servizio.invioSdi).toHaveBeenCalledTimes(1)
+      risposta.next({ accodate: [], saltate: [] })
+      expect(comp.invioSdiInCorso()).toBe(false)
+    })
+
+    it('un OPERATOR non puo accodare nemmeno chiamando il metodo', async () => {
+      await crea('OPERATOR', SDI)
+      comp.seleziona('d1', true)
+      comp.apriInvioSdi()
+      comp.confermaInvioSdi(false)
+      expect(servizio.invioSdi).not.toHaveBeenCalled()
+    })
+
+    it('polling: con un invio in coda la lista si rilegge dopo l intervallo, senza il caricamento; senza invii in lavorazione no', async () => {
+      jasmine.clock().install()
+      try {
+        await crea('ADMIN', {
+          ...SDI,
+          lista: of(paginaDocumenti([definitivo(1, { statoSdi: 'DA_INVIARE' })])),
+        })
+        const letture = servizio.documenti.calls.count()
+        jasmine.clock().tick(INTERVALLO_POLLING_SDI_MS - 1)
+        expect(servizio.documenti.calls.count()).toBe(letture)
+        jasmine.clock().tick(2)
+        expect(servizio.documenti.calls.count()).toBe(letture + 1)
+        expect(comp.caricamento()).toBe(false)
+        // Ora la riga e' INVIATA: il giro dopo non pianifica altro.
+        servizio.documenti.and.returnValue(
+          of(paginaDocumenti([definitivo(1, { statoSdi: 'INVIATA' })]))
+        )
+        jasmine.clock().tick(INTERVALLO_POLLING_SDI_MS + 1)
+        const dopo = servizio.documenti.calls.count()
+        jasmine.clock().tick(INTERVALLO_POLLING_SDI_MS * 3)
+        expect(servizio.documenti.calls.count()).toBe(dopo)
+      } finally {
+        jasmine.clock().uninstall()
+      }
+    })
+
+    it('il polling si ferma quando il componente viene distrutto', async () => {
+      jasmine.clock().install()
+      try {
+        await crea('ADMIN', {
+          ...SDI,
+          lista: of(paginaDocumenti([definitivo(1, { statoSdi: 'IN_INVIO' })])),
+        })
+        const letture = servizio.documenti.calls.count()
+        fixture.destroy()
+        jasmine.clock().tick(INTERVALLO_POLLING_SDI_MS * 3)
+        expect(servizio.documenti.calls.count()).toBe(letture)
+      } finally {
+        jasmine.clock().uninstall()
+      }
     })
   })
 })

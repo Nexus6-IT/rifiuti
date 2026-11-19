@@ -28,6 +28,7 @@
 -- una nuova tabella globale in sola lettura va AGGIUNTA a quell'elenco.
 --
 -- `autisti` (app campo, P1): un autista si disattiva, non si cancella.
+-- `fir_sessioni_firma_rentri` (FIR in viaggio, P1): una sessione di firma chiusa resta come traccia.
 -- `lotti_import` (Fase 3, 3.1): un lotto non si cancella, si annulla: sta in `v_senza_cancellazione`.
 -- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a; `letture_pesa` dal pezzo 8b): `v_solo_inserimento`
 -- (`pesate`, `rettifiche_peso`, `allegati_pesa`, `letture_pesa`, `notifiche_sdi` dalla 4.5a) ricevono solo SELECT e INSERT, con una REVOKE esplicita di
@@ -51,7 +52,7 @@ DECLARE
   v_sola_lettura text[] := ARRAY['causali_registro'];
   v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa', 'notifiche_sdi'];
   v_senza_cancellazione text[] :=
-    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti'];
+    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti', 'fir_sessioni_firma_rentri'];
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;

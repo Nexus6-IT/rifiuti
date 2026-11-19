@@ -3,6 +3,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import { IsIn, IsInt, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
 import { STATI_DOCUMENTO } from '../../../domain/fatturazione/codici'
+import {
+  STATI_TRASMISSIONE_SDI,
+  type StatoTrasmissioneSdi,
+} from '../../../domain/fatturazione/sdi/codici'
 import { PaginaQueryDto } from './lista-elaborazioni.dto'
 
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -35,6 +39,14 @@ export class ListaDocumentiQueryDto extends PaginaQueryDto {
   @IsOptional()
   @IsUUID()
   elaborazioneId?: string
+
+  @ApiPropertyOptional({
+    enum: [...STATI_TRASMISSIONE_SDI, 'NESSUNA'],
+    description: 'Stato SDI dell`ultima trasmissione; NESSUNA = mai accodati allo SDI',
+  })
+  @IsOptional()
+  @IsIn([...STATI_TRASMISSIONE_SDI, 'NESSUNA'])
+  statoSdi?: StatoTrasmissioneSdi | 'NESSUNA'
 
   @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()

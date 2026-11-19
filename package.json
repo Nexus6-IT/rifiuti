@@ -4,7 +4,8 @@
   "description": "Piattaforma SaaS gestione rifiuti digitale - MVP TDD-driven",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "apps/backend",
+    "apps/frontend",
     "libs/*"
   ],
   "scripts": {
