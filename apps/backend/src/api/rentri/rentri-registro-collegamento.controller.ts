@@ -74,7 +74,7 @@ export class RentriRegistroCollegamentoController {
     private readonly membership: RuoloEffettivoService
   ) {}
 
-  /** Errori di dominio e dell'ente -> HTTP; messaggi in italiano, senza id ne' dati fiscali. */
+  /** Errori di dominio e dell'ente -> HTTP; messaggi in italiano, senza dati fiscali (l'identificativo del registro RENTRI non e' un dato sensibile). */
   private traduci(err: unknown): unknown {
     if (err instanceof RuoloNonAutorizzatoRentriError) return new ForbiddenException(err.message)
     if (err instanceof RegistroNonTrovatoError) return new NotFoundException(err.message)
@@ -100,7 +100,7 @@ export class RentriRegistroCollegamentoController {
     if (err instanceof RentriApiError) {
       if (err.status === 403) {
         return new ForbiddenException(
-          'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata.'
+          "RENTRI non consente l'accesso a questa risorsa: verifica il certificato della tua azienda e che il registro appartenga alla tua azienda."
         )
       }
       if (err.retryable || err.status >= 500) {

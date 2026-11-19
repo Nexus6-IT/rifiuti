@@ -121,6 +121,8 @@ export class ApriRegistroRentriUseCase {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro-apertura|' + registroId}))`
       const contesto = await leggiContestoRegistroRentri(tx, tenantId, registroId)
       if (contesto.identificativoRentri !== null) throw new RegistroGiaCollegatoError()
+      // Serve gia' ora: senza, un esito incerto non si potrebbe risolvere per lettura.
+      richiediOperatore(contesto)
       if (contesto.rentriAperturaRichiestaIl !== null) {
         const eta = Date.now() - contesto.rentriAperturaRichiestaIl.getTime()
         if (eta < SOGLIA_STALLO_RENTRI_MS) throw new AperturaRegistroInCorsoError()
@@ -189,7 +191,12 @@ export class ApriRegistroRentriUseCase {
     await this.nelTenant(tenantId, async tx => {
       await tx.registroRifiuti.updateMany({
         where: { id: registroId, tenantId, identificativoRentri: null },
-        data: { rentriAperturaRichiestaIl: null, rentriAperturaDescrizione: null },
+        data: {
+          rentriAperturaRichiestaIl: null,
+          rentriAperturaDescrizione: null,
+          rentriAttivita: [],
+          rentriAttivitaRecSmalt: [],
+        },
       })
     })
   }
@@ -270,6 +277,21 @@ export class ApriRegistroRentriUseCase {
       return { esito: 'COLLEGATO_DOPO_VERIFICA', impostazioni }
     }
     if (candidati.length === 0) {
+      // Si azzera (e si puo' riaprire) solo se sulla sede NON c'e' alcun registro libero creato
+      // dopo la richiesta: il filtro dei candidati e' stretto (descrizione, attivita') e RENTRI
+      // puo' normalizzare i testi o omettere la data. Nel dubbio una seconda POST aprirebbe un
+      // secondo registro.
+      const sospetti = registri.filter(r => {
+        if (typeof r.identificativo !== 'string' || noti.has(r.identificativo)) return false
+        if (registroRentriChiuso(r)) return false
+        const creato = r.data_creazione ? Date.parse(r.data_creazione) : Number.NaN
+        return !Number.isFinite(creato) || creato >= richiestaIl - MARGINE_DATA_CREAZIONE_MS
+      })
+      if (sospetti.length > 0) {
+        throw new AperturaRegistroNonRisoltaError(
+          "Sul portale RENTRI c'è un registro nuovo che potrebbe essere quello appena aperto: scegli il registro giusto dall'elenco con «Collega»."
+        )
+      }
       await this.azzeraPrenotazione(tenantId, contesto.registroId)
       throw new AperturaRegistroNonRisoltaError(
         "Il registro non risulta aperto su RENTRI: puoi riprovare. Se lo vedi sul portale, collegalo dall'elenco."

@@ -267,7 +267,8 @@ export class RentriRegistroCollegamentoComponent {
 
   @Input({ required: true }) registro!: ImpostazioniRegistroRentri
   /** Il registro è stato collegato o aperto: il dialog e la pagina rileggono. */
-  @Output() aggiornato = new EventEmitter<void>()
+  /** `true` = registro collegato o aperto (il dialog si chiude); `false` = solo da rileggere (esito incerto). */
+  @Output() aggiornato = new EventEmitter<boolean>()
 
   readonly attivitaElenco = ATTIVITA_REGISTRO_RENTRI
   readonly modo = signal<Modo>(null)
@@ -315,7 +316,7 @@ export class RentriRegistroCollegamentoComponent {
         this.lavoro.set(false)
         this.toast.success('Registro collegato a RENTRI.')
         this.modo.set(null)
-        this.aggiornato.emit()
+        this.aggiornato.emit(true)
       },
       error: err => {
         this.lavoro.set(false)
@@ -359,7 +360,7 @@ export class RentriRegistroCollegamentoComponent {
           if (esito.esito === 'INCERTO') {
             // Non riprovare: la POST potrebbe essere già andata a buon fine.
             this.avviso.set(esito.messaggio)
-            this.aggiornato.emit()
+            this.aggiornato.emit(false)
             return
           }
           this.toast.success(
@@ -368,7 +369,7 @@ export class RentriRegistroCollegamentoComponent {
               : 'Registro ritrovato su RENTRI e collegato.'
           )
           this.modo.set(null)
-          this.aggiornato.emit()
+          this.aggiornato.emit(true)
         },
         error: err => {
           this.lavoro.set(false)

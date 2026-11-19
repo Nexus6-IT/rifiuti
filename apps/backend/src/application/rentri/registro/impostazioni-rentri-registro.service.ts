@@ -213,6 +213,11 @@ export class ImpostazioniRentriRegistroService {
 
     try {
       await this.nelTenant(tenantId, async tx => {
+        if (dati.collegamento) {
+          // Stessa chiave della prenotazione di `apri`: collegare a mano, aprire e risolvere un
+          // esito incerto si serializzano (nessuno sovrascrive il collegamento di un altro).
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro-apertura|' + registroId}))`
+        }
         const registro = await tx.registroRifiuti.findFirst({
           where: { id: registroId, tenantId },
           select: {
@@ -226,6 +231,16 @@ export class ImpostazioniRentriRegistroService {
         const identificativoFinale =
           nuovoIdentificativo === undefined ? registro.identificativoRentri : nuovoIdentificativo
         const cambia = identificativoFinale !== registro.identificativoRentri
+
+        // L'apertura (o la sua risoluzione) salva solo se la prenotazione e' ancora la nostra: se
+        // nel frattempo qualcuno ha collegato un altro registro non lo si sovrascrive.
+        if (dati.collegamento && dati.collegamento.origine !== 'COLLEGAMENTO' && cambia) {
+          if (registro.rentriAperturaRichiestaIl === null) {
+            throw new TrasmissioneNonModificabileError(
+              'Il registro è stato collegato nel frattempo a un altro registro RENTRI.'
+            )
+          }
+        }
 
         if (cambia) {
           if (registro.rentriAperturaRichiestaIl !== null && !dati.collegamento) {

@@ -391,8 +391,17 @@ describe('Collegare e aprire il registro RENTRI — Postgres reale, ruolo wastef
       expect(JSON.stringify(log[0].metadata)).toContain('APERTURA')
     })
 
-    it('senza descrizione usa quella del registro locale; funziona anche senza numero operatore', async () => {
+    it('senza numero operatore non apre: serve a risolvere un esito incerto', async () => {
       const a = await azienda({ senzaOperatore: true })
+      await expect(
+        apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
+      ).rejects.toBeInstanceOf(OperatoreRentriNonConfiguratoError)
+      expect(finto.chiamateApri).toHaveLength(0)
+      expect((await registroDi(a.registroId)).rentriAperturaRichiestaIl).toBeNull()
+    })
+
+    it('senza descrizione usa quella del registro locale', async () => {
+      const a = await azienda()
       await apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
       expect(finto.chiamateApri[0].descrizione).toBe('Registro di prova')
     })
@@ -455,6 +464,7 @@ describe('Collegare e aprire il registro RENTRI — Postgres reale, ruolo wastef
       const r = await registroDi(a.registroId)
       expect(r.rentriAperturaRichiestaIl).toBeNull()
       expect(r.identificativoRentri).toBeNull()
+      expect(r.rentriAttivita).toEqual([])
       finto.apri = null
       const dopo = await apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
       expect(dopo.esito).toBe('APERTO')
@@ -492,6 +502,18 @@ describe('Collegare e aprire il registro RENTRI — Postgres reale, ruolo wastef
       expect((await registroDi(a.registroId)).identificativoRentri).toBe('RNEW0000001')
     })
 
+    it("collega a mano mentre la POST e' in volo: il collegamento scelto NON viene sovrascritto", async () => {
+      const a = await azienda()
+      finto.ritardoApriMs = 400
+      finto.dettagli.set('RMANUALE001', modello(a, { identificativo: 'RMANUALE001' }))
+      const apertura = apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
+      await new Promise(r => setTimeout(r, 150))
+      await collega.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, 'RMANUALE001')
+      await expect(apertura).rejects.toBeInstanceOf(AperturaRegistroNonRisoltaError)
+      expect(finto.chiamateApri).toHaveLength(1)
+      expect((await registroDi(a.registroId)).identificativoRentri).toBe('RMANUALE001')
+    })
+
     describe('risoluzione di un esito incerto (dopo la soglia di stallo)', () => {
       async function incerto(a: { registroId: string }, extra: Record<string, unknown> = {}) {
         await owner.registroRifiuti.update({
@@ -522,7 +544,7 @@ describe('Collegare e aprire il registro RENTRI — Postgres reale, ruolo wastef
         expect(JSON.stringify(log[0].metadata)).toContain('APERTURA_RISOLTA')
       })
 
-      it("ignora i registri gia' collegati, chiusi, creati prima della richiesta o con altre attivita'", async () => {
+      it("ignora i registri gia' collegati, chiusi, creati molto prima della richiesta: si azzera", async () => {
         const a = await azienda()
         await owner.registroRifiuti.create({
           data: {
@@ -543,13 +565,62 @@ describe('Collegare e aprire il registro RENTRI — Postgres reale, ruolo wastef
             identificativo: 'RVECCHIO001',
             data_creazione: minutiFa(24 * 60).toISOString(),
           }),
-          modello(a, { ...base, identificativo: 'RALTREATT01', attivita: ['Trasporto'] }),
         ]
         await expect(
           apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
         ).rejects.toBeInstanceOf(AperturaRegistroNonRisoltaError)
         // Nessun candidato: la prenotazione si azzera e si puo' riprovare.
         expect((await registroDi(a.registroId)).rentriAperturaRichiestaIl).toBeNull()
+        expect(finto.chiamateApri).toHaveLength(0)
+      })
+
+      it('registro nuovo con descrizione normalizzata da RENTRI: la prenotazione RESTA, niente nuova POST', async () => {
+        const a = await azienda()
+        await incerto(a)
+        finto.elenco = [
+          modello(a, { identificativo: 'RNORMALIZZ1', descrizione: 'NUOVO  REGISTRO' }),
+        ]
+        await expect(
+          apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
+        ).rejects.toThrow(/dall'elenco/)
+        expect((await registroDi(a.registroId)).rentriAperturaRichiestaIl).not.toBeNull()
+        await expect(
+          apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
+        ).rejects.toBeInstanceOf(AperturaRegistroNonRisoltaError)
+        expect(finto.chiamateApri).toHaveLength(0)
+      })
+
+      it('registro libero senza data_creazione leggibile: la prenotazione RESTA', async () => {
+        const a = await azienda()
+        await incerto(a)
+        finto.elenco = [
+          modello(a, {
+            identificativo: 'RSENZADATA1',
+            descrizione: 'Altro',
+            data_creazione: undefined,
+          }),
+        ]
+        await expect(
+          apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta)
+        ).rejects.toBeInstanceOf(AperturaRegistroNonRisoltaError)
+        expect((await registroDi(a.registroId)).rentriAperturaRichiestaIl).not.toBeNull()
+      })
+
+      it('due risoluzioni parallele: stesso collegamento, nessun errore', async () => {
+        const a = await azienda()
+        await incerto(a)
+        finto.elenco = [
+          modello(a, { identificativo: 'RTROVATO002', descrizione: 'Nuovo registro' }),
+        ]
+        const esiti = await Promise.all([
+          apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta),
+          apri.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, richiesta),
+        ])
+        expect(esiti.map(e => e.esito)).toEqual([
+          'COLLEGATO_DOPO_VERIFICA',
+          'COLLEGATO_DOPO_VERIFICA',
+        ])
+        expect((await registroDi(a.registroId)).identificativoRentri).toBe('RTROVATO002')
         expect(finto.chiamateApri).toHaveLength(0)
       })
 

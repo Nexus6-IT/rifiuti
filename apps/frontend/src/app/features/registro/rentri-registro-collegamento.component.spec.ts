@@ -110,7 +110,7 @@ describe('RentriRegistroCollegamentoComponent', () => {
     fixture.detectChanges()
     expect(servizio.collega).toHaveBeenCalledOnceWith('r1', 'RAB12CD34E5')
     expect(toast.success).toHaveBeenCalled()
-    expect(aggiornato).toHaveBeenCalled()
+    expect(aggiornato).toHaveBeenCalledOnceWith(true)
   })
 
   it('elenco vuoto: invita ad aprire un registro', () => {
@@ -171,7 +171,7 @@ describe('RentriRegistroCollegamentoComponent', () => {
         attivita: ['Produzione', 'Recupero'],
         attivitaRecSmalt: ['R13', 'D15'],
       })
-      expect(aggiornato).toHaveBeenCalled()
+      expect(aggiornato).toHaveBeenCalledOnceWith(true)
     })
 
     it('Recupero senza codici: errore locale, nessuna chiamata', () => {
@@ -197,7 +197,7 @@ describe('RentriRegistroCollegamentoComponent', () => {
       fixture.detectChanges()
       expect(q('rentri-col-avviso')!.textContent).toContain('Non riprovare subito.')
       expect(toast.success).not.toHaveBeenCalled()
-      expect(aggiornato).toHaveBeenCalled()
+      expect(aggiornato).toHaveBeenCalledOnceWith(false)
     })
 
     it('errore del backend (409): messaggio nel pannello', () => {
