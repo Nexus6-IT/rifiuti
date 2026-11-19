@@ -45,6 +45,8 @@ export interface MappaAggancio {
 
 export interface MappaImport {
   readonly formato: typeof FORMATO_MAPPA
+  /** Azienda di WasteFlow a cui appartiene la mappa (UUID: non e' un dato personale). */
+  readonly tenantId: string
   /** Ditta WinWaste, 4 cifre. */
   readonly ditta: string
   readonly anno: number
@@ -75,7 +77,7 @@ function oggetto(v: unknown, dove: string, chiavi: readonly string[]): Record<st
   if (v === null || typeof v !== 'object' || Array.isArray(v)) errore(dove, 'atteso un oggetto')
   const o = v as Record<string, unknown>
   for (const k of Object.keys(o)) {
-    if (!chiavi.includes(k)) errore(dove, `chiave non prevista «${k}»`)
+    if (!chiavi.includes(k)) errore(dove, 'chiave non prevista')
   }
   for (const k of chiavi) {
     if (!(k in o)) errore(dove, `manca «${k}»`)
@@ -125,6 +127,7 @@ function senzaDuplicati(valori: readonly string[], dove: string): void {
 export function validaMappa(json: unknown): MappaImport {
   const m = oggetto(json, 'mappa', [
     'formato',
+    'tenantId',
     'ditta',
     'anno',
     'dataTaglio',
@@ -136,6 +139,7 @@ export function validaMappa(json: unknown): MappaImport {
   if (m.formato !== FORMATO_MAPPA) {
     throw new PacchettoError('FORMATO_SCONOSCIUTO', `la mappa non e' ${FORMATO_MAPPA}`)
   }
+  const tenantId = stringa(m.tenantId, 'tenantId', UUID).toLowerCase()
   const ditta = stringa(m.ditta, 'ditta', /^\d{4}$/)
   if (typeof m.anno !== 'number' || !Number.isInteger(m.anno) || m.anno < 1990 || m.anno > 2100) {
     errore('anno', 'atteso un intero fra 1990 e 2100')
@@ -146,6 +150,9 @@ export function validaMappa(json: unknown): MappaImport {
     !new Date(`${dataTaglio}T00:00:00Z`).toISOString().startsWith(dataTaglio)
   ) {
     errore('dataTaglio', 'data inesistente')
+  }
+  if (Number(dataTaglio.slice(0, 4)) !== m.anno) {
+    errore('dataTaglio', "deve cadere nell'anno della mappa")
   }
 
   const registri = lista(m.registri, 'registri').map((r, i) => {
@@ -215,6 +222,7 @@ export function validaMappa(json: unknown): MappaImport {
 
   return {
     formato: FORMATO_MAPPA,
+    tenantId,
     ditta,
     anno: m.anno as number,
     dataTaglio,

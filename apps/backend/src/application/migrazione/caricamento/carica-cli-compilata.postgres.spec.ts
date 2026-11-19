@@ -65,6 +65,7 @@ const run = promisify(execFile)
         mappaFile,
         JSON.stringify({
           ...mappaValida(),
+          tenantId,
           registri: [],
           unitaLocali: [],
           causali: [],

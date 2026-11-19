@@ -39,3 +39,16 @@ export async function scriviStagingDitteProva(
   )
   return { cartella, pivaUno, pivaAgganciata, cfPrivato, pivaNonValida }
 }
+
+/** Staging con le sole righe CLIFOR date: `[PRECOD, COD, DES, EST, CODFIS, PIVA]`. */
+export async function scriviStagingClifor(
+  radice: string,
+  righe: (string | null)[][]
+): Promise<string> {
+  const { cartella } = await scriviStaging(
+    radice,
+    { ditta: '0001', anno: 2026, estrattoIl: '2026-11-14T00:00:00.000Z' },
+    [{ nome: 'CLIFOR', colonne: COLONNE_CLIFOR_PROVA, righe }]
+  )
+  return cartella
+}

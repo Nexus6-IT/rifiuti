@@ -46,6 +46,14 @@ export class AmbitoNonCaricabileError extends Error {
   }
 }
 
+/** La verifica che precede il caricamento ha trovato bloccanti: nessun lotto aperto. */
+export class BloccantiVerificaError extends Error {
+  constructor(readonly bloccanti: readonly Collisione[]) {
+    super(`Caricamento rifiutato: ${bloccanti.length} bloccanti`)
+    this.name = 'BloccantiVerificaError'
+  }
+}
+
 /** Il ruolo del database aggira la RLS (proprietario, superutente o ruolo di sistema). */
 export class RuoloNonApplicativoError extends Error {
   constructor() {
@@ -96,13 +104,19 @@ export class CaricaPacchettoService {
   private async leggiFase<R>(
     p: PacchettoAperto,
     ambito: AmbitoPacchetto,
-    def: DefinizioneFase<R>
+    def: DefinizioneFase<R>,
+    invalide?: { n: number }
   ): Promise<R[]> {
     const out: R[] = []
     for await (const { numeroRiga, record } of p.leggi(ambito, def.nome)) {
       try {
         out.push(def.valida(record, p.mappa))
       } catch (e) {
+        if (e instanceof PacchettoError && invalide) {
+          // Solo per `--verifica`: si contano tutte le righe non valide e si prosegue con le altre.
+          invalide.n++
+          continue
+        }
         if (e instanceof PacchettoError) {
           throw new PacchettoError(
             'RIGA_NON_VALIDA',
@@ -115,11 +129,14 @@ export class CaricaPacchettoService {
     return out
   }
 
-  private async leggiTutto(r: { pacchetto: PacchettoAperto; ambito: AmbitoPacchetto }) {
+  private async leggiTutto(
+    r: { pacchetto: PacchettoAperto; ambito: AmbitoPacchetto },
+    invalide?: { n: number }
+  ) {
     const def = this.fasiDa(r)
     const lette: Array<{ def: DefinizioneFase<any>; righe: unknown[] }> = []
     for (const d of def)
-      lette.push({ def: d, righe: await this.leggiFase(r.pacchetto, r.ambito, d) })
+      lette.push({ def: d, righe: await this.leggiFase(r.pacchetto, r.ambito, d, invalide) })
     return lette
   }
 
@@ -127,13 +144,13 @@ export class CaricaPacchettoService {
   async verifica(r: RichiestaCaricamento): Promise<RapportoVerifica> {
     const bloccanti: Collisione[] = []
     const informazioni: Record<string, number> = {}
-    let lette: Awaited<ReturnType<CaricaPacchettoService['leggiTutto']>> = []
-    try {
-      lette = await this.leggiTutto(r)
-    } catch (e) {
-      if (!(e instanceof PacchettoError) || e.codice !== 'RIGA_NON_VALIDA') throw e
-      bloccanti.push({ codice: 'RECORD_NON_VALIDO', conteggio: 1 })
+    // La mappa appartiene a un'azienda: con un `--tenant` diverso non si legge nulla di quell'altra azienda.
+    if (r.pacchetto.mappa.tenantId !== r.tenantId.toLowerCase()) {
+      return { bloccanti: [{ codice: 'TENANT_DIVERSO', conteggio: 1 }], informazioni }
     }
+    const invalide = { n: 0 }
+    const lette = await this.leggiTutto(r, invalide)
+    if (invalide.n > 0) bloccanti.push({ codice: 'RECORD_NON_VALIDO', conteggio: invalide.n })
     await TenantContext.run({ tenantId: r.tenantId }, async () =>
       this.prisma.$transaction(async (tx: Tx) => {
         await tx.$executeRaw`SET LOCAL transaction_read_only = on`
@@ -238,6 +255,10 @@ export class CaricaPacchettoService {
    */
   async carica(r: RichiestaCaricamento): Promise<EsitoCaricamento> {
     const lette = await this.leggiTutto(r)
+    // Stessi controlli di `--verifica`, in sola lettura, PRIMA di aprire il lotto: azienda sbagliata,
+    // riferimenti della mappa inesistenti e collisioni non lasciano un lotto FALLITO a meta'.
+    const esito = await this.verifica(r)
+    if (esito.bloccanti.length > 0) throw new BloccantiVerificaError(esito.bloccanti)
     const fasi: Array<FaseCaricamento<any>> = lette.map(({ def, righe }) => ({
       nome: def.nome,
       righe: async () => righe,

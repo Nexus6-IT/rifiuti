@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { createReadStream } from 'fs'
-import { readFile, stat } from 'fs/promises'
+import { lstat, readFile, stat } from 'fs/promises'
 import { basename, join, resolve } from 'path'
 import { createInterface } from 'readline'
 import { PacchettoError } from './errori-pacchetto'
@@ -110,7 +110,8 @@ export async function apriPacchetto(
 
   for (const f of manifest.file) {
     try {
-      await stat(join(radice, f.file))
+      // Un collegamento simbolico non e' un file del pacchetto (potrebbe puntare fuori cartella).
+      if ((await lstat(join(radice, f.file))).isSymbolicLink()) throw new Error('symlink')
     } catch {
       throw new PacchettoError('FILE_ASSENTE', f.file)
     }

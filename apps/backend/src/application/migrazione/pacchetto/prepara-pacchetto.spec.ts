@@ -4,6 +4,7 @@ import { join } from 'path'
 import { eseguiCli } from '../../../cli/migrazione-prepara'
 import { mappaValida, U2 } from '../../../test-support/migrazione/mappa-di-prova'
 import {
+  scriviStagingClifor,
   scriviStagingDitteProva,
   StagingDitteProva,
 } from '../../../test-support/migrazione/staging-ditte-di-prova'
@@ -79,6 +80,50 @@ describe('migrazione:prepara (staging + mappa -> pacchetto)', () => {
         join(radice, 'p', 'WW00012026')
       )
     ).rejects.toMatchObject({ codice: 'MAPPA_DIVERSA' })
+  })
+
+  describe('duplicati su P.IVA e codice fiscale (I-2)', () => {
+    const CF = 'ZZZZZZ00A00Z000Z'
+    async function ditteScritte(righe: (string | null)[][]) {
+      const cartella = await scriviStagingClifor(await mkdtemp(join(radice, 'cl-')), righe)
+      const dest = join(await mkdtemp(join(radice, 'pd-')), 'WW00012026')
+      const rapporto = await preparaPacchetto(
+        await apriStaging(cartella),
+        validaMappa(mappa({ agganci: [] })),
+        dest
+      )
+      const p = await apriPacchetto(dest)
+      let n = 0
+      for await (const _ of p.leggi('ANAGRAFICHE', 'ditte')) n++
+      return { n, scarti: Object.fromEntries(rapporto.scarti.map(s => [s.codice, s.conteggio])) }
+    }
+
+    it('A {P.IVA, CF} e B {solo CF}: entra solo A, B e segnalata', async () => {
+      const r = await ditteScritte([
+        ['C', '000001', 'UNO', null, CF, prova.pivaUno],
+        ['F', '000002', 'UNO COME FORNITORE', null, CF, null],
+      ])
+      expect(r.n).toBe(1)
+      expect(r.scarti).toEqual({ DITTA_DUPLICATA: 1 })
+    })
+
+    it('A {X, CF} e B {Z, stesso CF}: entra solo A', async () => {
+      const r = await ditteScritte([
+        ['C', '000001', 'UNO', null, CF, prova.pivaUno],
+        ['F', '000002', 'DUE', null, CF, prova.pivaAgganciata],
+      ])
+      expect(r.n).toBe(1)
+      expect(r.scarti).toEqual({ DITTA_DUPLICATA: 1 })
+    })
+
+    it('B {solo CF} prima di A {P.IVA, stesso CF}: entra solo la prima, nessuna collisione residua', async () => {
+      const r = await ditteScritte([
+        ['F', '000002', 'DUE', null, CF, null],
+        ['C', '000001', 'UNO', null, CF, prova.pivaUno],
+      ])
+      expect(r.n).toBe(1)
+      expect(r.scarti).toEqual({ DITTA_DUPLICATA: 1 })
+    })
   })
 
   describe('CLI', () => {

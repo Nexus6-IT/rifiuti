@@ -60,6 +60,7 @@ La scrive l'operatore; viaggia col pacchetto; la sua impronta identifica la scel
 ```json
 {
   "formato": "wasteflow-mappa/1",
+  "tenantId": "<uuid dell'azienda di WasteFlow>",
   "ditta": "0001",
   "anno": 2026,
   "dataTaglio": "2026-06-30",
@@ -75,7 +76,8 @@ La scrive l'operatore; viaggia col pacchetto; la sua impronta identifica la scel
 - `causali`: `OPER` -> causale F2-5 (`causali_registro`) con il verso. Le corrispondenze `dedotta` di
   `oper.ts` vanno confermate una per una: finche' `confermata` e' `false`, `--verifica` segnala un bloccante.
 - `agganci`: ditta gia' presente in WasteFlow (P.IVA uguale): si usa l'id esistente, non si inserisce.
-- La data di taglio e' `AAAA-MM-GG`.
+- `tenantId` lega la mappa a UNA azienda: con `--tenant` diverso `migrazione:carica` (anche `--verifica`) esce 2 con `BLOCCANTE TENANT_DIVERSO` senza leggere nulla dell'altra azienda.
+- La data di taglio e' `AAAA-MM-GG` e deve cadere nell'anno della mappa.
 
 **La mappa non contiene dati personali.** Lo schema e' chiuso: ogni chiave e' elencata, una chiave non
 prevista e' un errore (non c'e' un campo libero dove scrivere un nome); ogni stringa ha un pattern
@@ -124,4 +126,15 @@ sullo stesso lotto (`inserisciABlocchi(..., { concludi: false })`); `completa` a
 Alla prima fase fallita il lotto e' `FALLITO` e le seguenti non partono; i blocchi gia' scritti
 restano e la riesecuzione e' idempotente sulla chiave legacy (le righe gia' presenti sono «saltate»).
 `hash_staging` del lotto contiene l'impronta del `manifest.json` del pacchetto (che a sua volta
-contiene quella dello staging e quella della mappa).
+contiene quella dello staging e quella della mappa). Poiche' il pacchetto si cancella, a fine
+caricamento la CLI stampa `hashStaging`, `hashMappa` e `hashManifest`: vanno registrati col rapporto
+di destinazione, e `manifest.json` e `mappa-import.json` (senza dati personali per costruzione)
+si conservano. Cosi' si puo' dimostrare quale staging e quale mappa hanno prodotto il lotto.
+
+## Controlli prima del lotto
+
+`migrazione:carica` esegue sempre, in sola lettura e prima di aprire il lotto, gli stessi controlli
+di `--verifica` (tenant della mappa, riferimenti della mappa, collisioni con ditte esistenti,
+duplicati di P.IVA o codice fiscale dentro il pacchetto `DUPLICATO_NEL_PACCHETTO`): con un
+bloccante esce 2 senza lotto. `prepara` scarta le righe CLIFOR che condividono P.IVA o codice
+fiscale con una gia' scritta (`DITTA_DUPLICATA`).

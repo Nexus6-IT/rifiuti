@@ -75,4 +75,26 @@ describe('mappa di import', () => {
       improntaMappa(a)
     )
   })
+
+  it('il tenant e obbligatorio e deve essere un UUID', () => {
+    const senza: Record<string, unknown> = mappaValida()
+    delete senza.tenantId
+    rifiutata(senza)
+    rifiutata({ ...mappaValida(), tenantId: 'non-uuid' })
+  })
+
+  it('una chiave non prevista e rifiutata senza ripetere il nome della chiave', () => {
+    try {
+      validaMappa({ ...mappaValida(), MarioRossi: 'x' })
+    } catch (e) {
+      expect((e as Error).message).not.toContain('MarioRossi')
+      return
+    }
+    throw new Error('doveva essere rifiutata')
+  })
+
+  it('la data di taglio deve cadere nell anno della mappa', () => {
+    rifiutata({ ...mappaValida(), dataTaglio: '2025-12-31' })
+    rifiutata({ ...mappaValida(), anno: 2027 })
+  })
 })

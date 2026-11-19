@@ -50,7 +50,10 @@ async function* ditte(
   conta: (codice: CodiceScartoPrepara) => void,
   agganciata: () => void
 ): AsyncGenerator<RecordDitta> {
-  const viste = new Set<string>()
+  // Un soggetto puo' comparire piu' volte (cliente e fornitore) con P.IVA e/o CF diversi: la ditta
+  // e' la stessa se coincide UNA delle due identita' fiscali.
+  const pivaViste = new Set<string>()
+  const cfVisti = new Set<string>()
   const agganci = new Set(mappa.agganci.map(a => a.partitaIva))
   for await (const el of staging.leggi('CLIFOR') as AsyncGenerator<ElementoLettura>) {
     if (el.tipo === 'scarto') {
@@ -79,11 +82,12 @@ async function* ditte(
     }
     const fiscale = piva !== '' ? piva : cf
     const chiave = chiaveDitta(mappa.ditta, fiscale)
-    if (viste.has(chiave)) {
+    if ((piva !== '' && pivaViste.has(piva)) || (cf !== '' && cfVisti.has(cf))) {
       conta('DITTA_DUPLICATA')
       continue
     }
-    viste.add(chiave)
+    if (piva !== '') pivaViste.add(piva)
+    if (cf !== '') cfVisti.add(cf)
     if (piva !== '' && agganci.has(piva)) {
       agganciata()
       continue

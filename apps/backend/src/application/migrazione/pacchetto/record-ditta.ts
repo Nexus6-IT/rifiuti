@@ -45,7 +45,9 @@ export function validaRecordDitta(valore: unknown, dittaWinWaste: string): Recor
   const { legacyKey, ragioneSociale, partitaIva, codiceFiscale } = o
   if (typeof ragioneSociale !== 'string') riga('RAGIONE_SOCIALE')
   const rs = (ragioneSociale as string).trim()
-  if (rs.length === 0 || rs.length > 255) riga('RAGIONE_SOCIALE')
+  // eslint-disable-next-line no-control-regex
+  if (rs.length === 0 || rs.length > 255 || /[\u0000-\u001f\u007f]/.test(rs))
+    riga('RAGIONE_SOCIALE')
   if (
     partitaIva !== null &&
     (typeof partitaIva !== 'string' || !partitaIvaItalianaValida(partitaIva))

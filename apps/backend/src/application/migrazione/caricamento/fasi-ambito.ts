@@ -29,6 +29,25 @@ export interface DefinizioneFase<R = unknown> {
   ) => Promise<{ collisioni: Collisione[]; giaCaricate: number }>
 }
 
+/** Righe del pacchetto che condividono P.IVA o codice fiscale con un'altra riga (violerebbero gli unici). */
+function duplicatiNelPacchetto(righe: readonly RecordDitta[]): number {
+  const piva = new Set<string>()
+  const cf = new Set<string>()
+  const chiavi = new Set<string>()
+  let doppie = 0
+  for (const r of righe) {
+    const dup =
+      chiavi.has(r.legacyKey) ||
+      (r.partitaIva !== null && piva.has(r.partitaIva)) ||
+      (r.codiceFiscale !== null && cf.has(r.codiceFiscale))
+    if (dup) doppie++
+    chiavi.add(r.legacyKey)
+    if (r.partitaIva !== null) piva.add(r.partitaIva)
+    if (r.codiceFiscale !== null) cf.add(r.codiceFiscale)
+  }
+  return doppie
+}
+
 async function collisioniDitte(tx: Tx, tenantId: string, righe: readonly RecordDitta[]) {
   const chiavi = righe.map(r => r.legacyKey)
   const piva = righe.map(r => r.partitaIva).filter((v): v is string => v !== null)
@@ -45,6 +64,8 @@ async function collisioniDitte(tx: Tx, tenantId: string, righe: readonly RecordD
     WHERE "tenant_id" = ${tenantId}::uuid AND "codice_fiscale" = ANY(${cf}::text[])
       AND ("import_source" IS DISTINCT FROM 'WINWASTE' OR "legacy_key" <> ALL(${chiavi}::text[]))`
   const out: Collisione[] = []
+  const doppie = duplicatiNelPacchetto(righe)
+  if (doppie > 0) out.push({ codice: 'DUPLICATO_NEL_PACCHETTO', conteggio: doppie })
   if (Number(p.n) > 0)
     out.push({ codice: 'PARTITA_IVA_GIA_PRESENTE_NON_AGGANCIATA', conteggio: Number(p.n) })
   if (Number(c.n) > 0)

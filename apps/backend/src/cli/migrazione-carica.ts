@@ -19,6 +19,7 @@ import { LottoGiaInCorsoError } from '../application/migrazione/caricamento/erro
 import { FaseCaricamentoFallitaError } from '../application/migrazione/caricamento/carica-ambito'
 import {
   AmbitoNonCaricabileError,
+  BloccantiVerificaError,
   CaricaPacchettoService,
   RuoloNonApplicativoError,
 } from '../application/migrazione/caricamento/carica-pacchetto.service'
@@ -116,6 +117,11 @@ export async function eseguiCli(
     const esito = await servizio.carica(richiesta)
     const c = esito.conteggi
     uscita.scrivi(`lotto ${esito.lottoId} completato`)
+    // Da conservare col rapporto di destinazione: legano il lotto allo staging e alla mappa anche
+    // dopo la cancellazione del pacchetto (`hash_staging` del lotto = hashManifest).
+    uscita.scrivi(`hashStaging: ${pacchetto.manifest.hashStaging}`)
+    uscita.scrivi(`hashMappa: ${pacchetto.manifest.hashMappa}`)
+    uscita.scrivi(`hashManifest: ${pacchetto.hashManifest}`)
     uscita.scrivi(
       `lette: ${c.lette}; inserite: ${c.inserite}; saltate: ${c.saltate}; blocchi: ${c.blocchi}`
     )
@@ -123,6 +129,10 @@ export async function eseguiCli(
   } catch (e) {
     if (e instanceof PacchettoError) {
       uscita.errore(`pacchetto rifiutato: ${e.message}`)
+      return 2
+    }
+    if (e instanceof BloccantiVerificaError) {
+      for (const b of e.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
       return 2
     }
     if (e instanceof AmbitoNonCaricabileError) {

@@ -9,7 +9,7 @@ mai nel repository; si cancellano a fine lotto e la cancellazione si registra.
 
 ## 1. Preparare la mappa
 
-Sulla workstation, scrivere `mappa-import.json` (formato in `formato-pacchetto.md`). Serve l'elenco di
+Sulla workstation, scrivere `mappa-import.json` (formato in `formato-pacchetto.md`, con il `tenantId` dell'azienda). Serve l'elenco di
 registri, sedi e unita' locali creati in WasteFlow per l'azienda (`admin/tenants` per l'azienda del
 gruppo: nessun tenant si crea in automatico). **Niente dati personali nella mappa.** Confermare una per
 una le corrispondenze `OPER` -> causale `dedotta` (`confermata: true`).
@@ -46,6 +46,10 @@ node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella>/WW0001
 node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella>/WW00012026 --ambito ANAGRAFICHE
 ```
 
+Il pacchetto va montato in sola lettura e leggibile dall'utente del container (`USER nodejs`, uid 1001):
+`docker compose run --rm -v <cartella>:/pacchetto:ro backend node dist/cli/migrazione-carica.js ... --pacchetto /pacchetto/WW00012026`
+(i file sono 0600: assegnarli all'uid 1001 o usare `--user`). **Non ancora provato nell'immagine reale.**
+
 `DATABASE_URL` deve essere quello del ruolo `wasteflow_app` (non quello del proprietario: il comando
 si rifiuta). Un'azienda alla volta. Se il lotto fallisce (uscita 1) il lotto e' `FALLITO` con il
 numero del blocco e la classe dell'errore; correggere la causa e rilanciare: i blocchi gia' scritti
@@ -53,5 +57,8 @@ restano e vengono saltati.
 
 ## 5. Cancellazione
 
-A fine lotto cancellare il pacchetto (cartella e `.tar.age`), lo staging, i `.bak.age` e `SHA256SUMS`
-ricevuti, e registrare la cancellazione (data, chi, cosa) come da piano.
+A fine lotto **conservare** `manifest.json` e `mappa-import.json` (non contengono dati personali, per
+costruzione) insieme al rapporto di destinazione e alle tre impronte stampate dalla CLI
+(`hashStaging`, `hashMappa`, `hashManifest`): sono l'unico legame fra il lotto e lo staging/la mappa
+che l'hanno prodotto. Cancellare invece i `.jsonl` del pacchetto, il `.tar.age`, lo staging, i
+`.bak.age` e `SHA256SUMS` ricevuti, e registrare la cancellazione (data, chi, cosa) come da piano.
