@@ -133,6 +133,7 @@ model Tenant {
   strumentiPesa         StrumentoPesa[]
   automezzi             Automezzo[]
   autisti               Autista[]
+  sessioniFirmaRentri   FirSessioneFirmaRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
   rettifichePeso        RettificaPeso[]
@@ -285,6 +286,7 @@ model User {
   recordedMovements       WasteMovement[]     @relation("RecordedMovements")
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
+  sessioniFirmaRentri     FirSessioneFirmaRentri[]
 
   @@unique([tenantId, fiscalCode])
   @@unique([id, tenantId], map: "users_id_tenant_id_key")
@@ -562,6 +564,7 @@ model FIR {
   activityLogs   ActivityLog[]
   rentriSyncLogs RENTRISyncLog[]
   allegatiRentri FIRAllegatoRentri[]
+  sessioniFirmaRentri FirSessioneFirmaRentri[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
@@ -5031,4 +5034,46 @@ model LottoImport {
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
   @@map("lotti_import")
+}
+
+enum StatoSessioneFirmaRentri {
+  IN_ATTESA
+  COMPLETATA
+  SCADUTA
+  RIFIUTATA
+  ANNULLATA
+
+  @@map("stato_sessione_firma_rentri")
+}
+
+/// Sessione di firma remota RENTRI in corso su un FIR (piano FIR in viaggio, P1): tiene l'`handle`
+/// dell'autorizzazione e i dati di `/hash` perche' una seconda invocazione RIPRENDA il polling invece
+/// di mandare all'utente una seconda richiesta sul telefono. Una sola sessione `IN_ATTESA` per FIR
+/// (indice unico parziale `fir_sessioni_firma_rentri_aperta_key`, solo SQL). Mai cancellata
+/// (`ruoli-db.sql`): una sessione chiusa resta come traccia. `token_acquisizione` e' il `token` di
+/// `/hash`, serve a `acquisizione-firma`: da solo non firma nulla (manca il `sad`, che arriva solo dalla
+/// conferma sul telefono), vive al massimo 120 s e non esce mai dal backend.
+model FirSessioneFirmaRentri {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                   @map("tenant_id") @db.Uuid
+  firId             String                   @map("fir_id") @db.Uuid
+  tipoOperazione    String                   @map("tipo_operazione") @db.VarChar(60)
+  handle            String                   @db.VarChar(255)
+  tokenHash         String                   @map("token_hash") @db.VarChar(64)
+  tokenAcquisizione String                   @map("token_acquisizione")
+  digestToSign      String                   @map("digest_to_sign")
+  scadenza          DateTime                 @db.Timestamptz(3)
+  stato             StatoSessioneFirmaRentri @default(IN_ATTESA)
+  dettaglioEnte     String?                  @map("dettaglio_ente")
+  utenteId          String?                  @map("utente_id") @db.Uuid
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fir    FIR    @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "fir_sessioni_firma_rentri_fir_fkey")
+  utente User?  @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "fir_sessioni_firma_rentri_utente_fkey")
+
+  @@unique([id, tenantId], map: "fir_sessioni_firma_rentri_id_tenant_id_key")
+  @@index([tenantId, firId, createdAt], map: "fir_sessioni_firma_rentri_fir_idx")
+  @@map("fir_sessioni_firma_rentri")
 }
