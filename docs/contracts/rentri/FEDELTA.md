@@ -617,6 +617,27 @@ di proposito. Adottarli renderebbe la fake meno fedele e porterebbe i client su 
 in dismissione. Resta valido il punto della checklist demo: verificare cosa risponde
 l'ente al path generico per una transazione di copia o trasmissione.
 
+### 8.1 Quantita' e trasporto della fase iniziale (2026-11-21, FIR in viaggio, P2)
+
+Le **transizioni** della fase iniziale, ipotesi dedotta dai NOMI degli stati (il contratto non le
+documenta; da verificare sulla demo, punto 1 della checklist):
+- creazione (`POST /`): con quantita' (`rifiuto.quantita`) e trasporto (`dati_trasporto_partenza`) il
+  formulario nasce in `FirmaProduttoreTrasportatoreIniziale`; con la sola quantita' in
+  `InserimentoTrasportoIniziale`; con il solo trasporto in `InserimentoQuantita`;
+- `quantita` completata: `InserimentoQuantitaTrasportoIniziale` -> `InserimentoTrasportoIniziale`,
+  `InserimentoQuantita` -> `FirmaProduttoreTrasportatoreIniziale`;
+- `trasporto` completata: `InserimentoQuantitaTrasportoIniziale` -> `InserimentoQuantita`,
+  `InserimentoTrasportoIniziale` -> `FirmaProduttoreTrasportatoreIniziale`;
+- negli stati di correzione (`DatiQuantitaUpdate`, `TrasportoUpdate`) lo stato non cambia.
+
+Divergenza dichiarata: **senza quantita' ne' trasporto** la creazione resta nello stato storico della fake
+(`InserimentoQuantita`), mantenuto per non cambiare le suite esistenti; il nome piu' fedele sarebbe
+`InserimentoQuantitaTrasportoIniziale`. Il corpo di creazione e' validato contro `NuovoFormularioModel`, quindi
+`rifiuto.quantita`, `numero_colli`, `rinfusa`, `caratteristiche_pericolo` e `dati_trasporto_partenza` sono
+giudicati dal contratto. Non modellato: `numero_colli` obbligatorio se non c'e' `rinfusa` (il contratto lo dice
+solo in prosa; lo impone il client, `mappaQuantitaRifiuto`) e «`caratteristiche_pericolo` se e solo se l'EER e'
+pericoloso».
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in

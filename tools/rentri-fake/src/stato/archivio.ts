@@ -6,6 +6,34 @@ import { LookupItem } from './fixture-codifiche'
 import * as anagrafiche from './fixture-anagrafiche'
 import { RegistriOperatore } from './registri-operatore'
 
+/**
+ * Stato iniziale di un formulario creato con `POST /` (FIR in viaggio, P2). Il contratto non documenta la
+ * macchina: dai NOMI degli stati si deduce che con quantita' E trasporto di partenza il formulario nasce in
+ * attesa di firma, con la sola quantita' manca il trasporto, con il solo trasporto manca la quantita'.
+ * Senza nessuno dei due vale lo stato storico della fake (`InserimentoQuantita`), mantenuto per non
+ * cambiare le suite esistenti: il nome piu' fedele sarebbe `InserimentoQuantitaTrasportoIniziale`
+ * (divergenza dichiarata in FEDELTA.md).
+ */
+export function statoInizialeDa(richiesta: Record<string, unknown>): string {
+  const partenza = richiesta.dati_partenza as { rifiuto?: { quantita?: unknown } } | undefined
+  const haQuantita = partenza?.rifiuto?.quantita !== undefined
+  const haTrasporto = richiesta.dati_trasporto_partenza !== undefined
+  if (haQuantita && haTrasporto) return 'FirmaProduttoreTrasportatoreIniziale'
+  if (haQuantita) return 'InserimentoTrasportoIniziale'
+  if (haTrasporto) return 'InserimentoQuantita'
+  return 'InserimentoQuantita'
+}
+
+const TRANSIZIONE_QUANTITA: Readonly<Record<string, string>> = {
+  InserimentoQuantitaTrasportoIniziale: 'InserimentoTrasportoIniziale',
+  InserimentoQuantita: 'FirmaProduttoreTrasportatoreIniziale',
+}
+
+const TRANSIZIONE_TRASPORTO: Readonly<Record<string, string>> = {
+  InserimentoQuantitaTrasportoIniziale: 'InserimentoQuantita',
+  InserimentoTrasportoIniziale: 'FirmaProduttoreTrasportatoreIniziale',
+}
+
 export interface Formulario {
   numero_fir: string
   stato: string
@@ -583,7 +611,7 @@ export class Archivio {
       const richiesta = transazione.richiestaCreazione ?? {}
       this.salvaFormulario({
         numero_fir: numeroFir,
-        stato: typeof richiesta.stato === 'string' ? richiesta.stato : 'InserimentoQuantita',
+        stato: typeof richiesta.stato === 'string' ? richiesta.stato : statoInizialeDa(richiesta),
         produttore: denominazioneProduttore(richiesta),
         identificativo_soggetto: identificativoSoggettoDa(richiesta),
         num_iscr_sito:
@@ -715,10 +743,21 @@ export class Archivio {
       return
     }
 
-    // Quantita, trasporto, annotazione, sosta tecnica, trasbordi, nuovo
-    // destinatario: la fake registra il ciclo (202, esito) ma non applica
-    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno
-    // (piano FIR in viaggio, P2-P8).
+    // `quantita` e `trasporto` (FIR in viaggio, P2): chiudono la fase iniziale. Il contratto da' i nomi
+    // degli stati `Inserimento*`/`Firma*` ma non la macchina (v. FEDELTA.md): questa e' la deduzione piu'
+    // semplice. Negli stati di correzione (`...Update`) lo stato non cambia.
+    if (contesto.operazione === 'Quantita') {
+      formulario.stato = TRANSIZIONE_QUANTITA[formulario.stato] ?? formulario.stato
+      return
+    }
+    if (contesto.operazione === 'Trasporto') {
+      formulario.stato = TRANSIZIONE_TRASPORTO[formulario.stato] ?? formulario.stato
+      return
+    }
+
+    // Annotazione, sosta tecnica, trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito)
+    // ma non applica ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in
+    // viaggio, P4-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito
