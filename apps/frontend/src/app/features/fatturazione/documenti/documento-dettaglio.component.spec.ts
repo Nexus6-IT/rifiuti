@@ -3,6 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router'
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
+import { FeatureFlagsService } from '../../../core/services/feature-flags.service'
 import { DocumentoDettaglio } from '../fatturazione.model'
 import { FatturazioneService, FileScaricato } from '../fatturazione.service'
 import {
@@ -57,6 +58,7 @@ describe('DocumentoDettaglioComponent', () => {
           useValue: { paramMap: params$, queryParamMap: query$ },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
+        { provide: FeatureFlagsService, useValue: { has: () => false } },
       ],
     }).compileComponents()
     fixture = TestBed.createComponent(DocumentoDettaglioComponent)

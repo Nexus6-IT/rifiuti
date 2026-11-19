@@ -2,7 +2,7 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
-import { EsitoAccodamentoSdi, FiltroStatoSdi } from '../sdi/sdi.model'
+import { EsitoAccodamentoSdi, FiltroStatoSdi, StatoSdiDocumento } from '../sdi/sdi.model'
 import {
   AdattatoreVista,
   DocumentoDettaglio,
@@ -197,6 +197,21 @@ export class FatturazioneService {
   /** Nuova trasmissione per un documento il cui invio e' finito in errore. */
   riprovaInvioSdi(id: string): Observable<unknown> {
     return this.http.post(`${this.urlDocumento(id)}/invio-sdi/riprova`, {})
+  }
+
+  /** Trasmissioni SDI del documento con la cronologia delle notifiche (4.5c). */
+  statoSdi(id: string): Observable<StatoSdiDocumento> {
+    return this.http.get<StatoSdiDocumento>(`${this.urlDocumento(id)}/sdi`)
+  }
+
+  /** XML di una ricevuta SDI come file (nome da `Content-Disposition`). */
+  scaricaRicevutaSdi(id: string, notificaId: string): Observable<FileScaricato> {
+    return this.http
+      .get(`${this.urlDocumento(id)}/sdi/notifiche/${encodeURIComponent(notificaId)}/file`, {
+        responseType: 'blob',
+        observe: 'response',
+      })
+      .pipe(map(daRisposta))
   }
 
   documento(id: string): Observable<DocumentoDettaglio> {

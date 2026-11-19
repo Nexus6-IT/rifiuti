@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import type { PrismaClient } from '@prisma/client'
 import {
@@ -21,6 +22,7 @@ import {
 import { FatturazionePage } from '../../pages/fatturazione.page'
 import { ATTESA_SERVER, attendiRisposta } from '../../utils/attese'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
+import { getApiUrl } from '../../utils/env'
 
 /**
  * E2E dell'invio allo SDI (pezzo 4.5b, T4) col provider `fake` in-process. I dati si preparano via API
@@ -34,12 +36,18 @@ import { partitaIvaCasualeValida } from '../../utils/partita-iva'
  * si sceglie con ultima cifra 0 o 9: per il fake vuol dire «accettato, consegnato» (le altre cifre
  * simulano scarti, errori e incertezze).
  *
+ * Pezzo 4.5c: la ricevuta di consegna arriva dal webhook (firmato con HMAC come fa il fake) e il badge
+ * passa a «Consegnata»; la cronologia del dettaglio mostra la notifica. L'inbox la elabora il job
+ * degli eventi (ogni 30 secondi).
+ *
  * Senza un database locale (`DATABASE_URL`) lo spec si salta. Documenti e movimenti sono immutabili e
  * restano, riconoscibili dall'azienda con il prefisso della run; anagrafiche e listino si ripuliscono
  * per id esatti in `afterAll`.
  */
 
 const db = clientDbLocale()
+
+const SEGRETO_WEBHOOK = 'segreto-webhook-e2e'
 
 /** Partita IVA valida con ultima cifra 0 o 9 (esito «accettato» del fake). */
 function partitaIvaPerFake(): string {
@@ -66,6 +74,7 @@ test.describe('Invio allo SDI (interfaccia, provider fake)', () => {
   let azienda: AziendaDiTest
   const tok = { admin: '', operator: '' }
   let documentoId = ''
+  let tokenWebhook = ''
   let fp: FatturazionePage
   let page: Page
 
@@ -115,11 +124,14 @@ test.describe('Invio allo SDI (interfaccia, provider fake)', () => {
     documentoId = d.id
 
     // Configurazione SDI: provider fake, verificata e con l'invio acceso.
-    const creata = await ok<{ versione: number }>('PUT', '/sdi/configurazione', tok.admin, {
-      provider: 'fake',
-      ambiente: 'SANDBOX',
-      versione: 0,
-    })
+    const creata = await ok<{ versione: number; webhookToken?: string }>(
+      'PUT',
+      '/sdi/configurazione',
+      tok.admin,
+      { provider: 'fake', ambiente: 'SANDBOX', segretoWebhook: SEGRETO_WEBHOOK, versione: 0 }
+    )
+    expect(creata.webhookToken, 'il token del webhook si vede alla creazione').toBeTruthy()
+    tokenWebhook = creata.webhookToken!
     const verificata = await ok<{ esito: { ok: boolean }; configurazione: { versione: number } }>(
       'POST',
       '/sdi/configurazione/verifica',
@@ -254,5 +266,59 @@ test.describe('Invio allo SDI (interfaccia, provider fake)', () => {
       documentoId
     )
     expect(conta[0].n).toBe(1)
+  })
+
+  test('webhook: la ricevuta di consegna firmata porta il badge a «Consegnata» e la cronologia la mostra', async () => {
+    const [t] = await owner.$queryRawUnsafe<{ id_provider: string }[]>(
+      `SELECT id_provider FROM trasmissioni_sdi WHERE documento_id = $1::uuid`,
+      documentoId
+    )
+    const corpo = Buffer.from(
+      JSON.stringify({
+        id: `evt-e2e-${Date.now()}`,
+        idProvider: t.id_provider,
+        notifica: {
+          tipo: 'RC',
+          esitoCommittente: null,
+          codiciErrore: [],
+          dataRicezioneSdi: new Date().toISOString(),
+          idNotifica: `${t.id_provider}-RC`,
+        },
+      })
+    )
+    const ts = Math.floor(Date.now() / 1000)
+    const firma = createHmac('sha256', SEGRETO_WEBHOOK).update(`${ts}.`).update(corpo).digest('hex')
+    const url = `${getApiUrl()}/sdi/webhook/fake/${tokenWebhook}`
+    const invia = (intestazione: string) =>
+      fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-sdi-signature': intestazione },
+        body: corpo,
+      })
+    // Firma sbagliata: 401, nessun dato dell'azienda nella risposta.
+    const rifiutata = await invia(`t=${ts},v1=${'0'.repeat(64)}`)
+    expect(rifiutata.status).toBe(401)
+    expect(await rifiutata.text()).not.toContain(azienda.tenantId)
+    const buona = `t=${ts},v1=${firma}`
+    expect((await invia(buona)).status).toBe(200)
+    // Consegna ripetuta: stesso 200, un solo evento.
+    expect((await invia(buona)).status).toBe(200)
+    const eventi = await owner.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM eventi_sdi_ricevuti WHERE tenant_id = $1::uuid`,
+      azienda.tenantId
+    )
+    expect(eventi[0].n).toBe(1)
+
+    await page.goto('/fatturazione/documenti')
+    const riga = page.getByTestId(`documento-${documentoId}`)
+    await expect(riga.getByTestId('dl-sdi')).toContainText('Consegnata', { timeout: 120_000 })
+
+    await page.goto(`/fatturazione/documenti/${documentoId}`)
+    await expect(page.getByTestId('sc-stato')).toContainText('Consegnata', {
+      timeout: ATTESA_SERVER,
+    })
+    await expect(page.getByTestId('sc-esito-fiscale')).toContainText('Fattura emessa')
+    await expect(page.getByTestId('sc-notifiche')).toContainText('Ricevuta di consegna')
+    await expect(page.getByTestId('sc-notifiche')).toContainText('Webhook')
   })
 })

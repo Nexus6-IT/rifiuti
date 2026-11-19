@@ -33,6 +33,7 @@ import {
   MSG_EMISSIONE,
 } from './conferma-emissione-dialog.component'
 import { DatiStorno, StornoDialogComponent } from './storno-dialog.component'
+import { SdiCronologiaComponent } from '../../sdi/sdi-cronologia.component'
 
 export const MSG_DOCUMENTO_NON_CARICATO = 'Impossibile caricare il documento.'
 export const MSG_PDF_NON_SCARICATO = 'Impossibile scaricare la copia di cortesia.'
@@ -80,6 +81,7 @@ type Conferma = 'xml' | 'emesso'
     AnnullaDialogComponent,
     StornoDialogComponent,
     ConfermaEmissioneDialogComponent,
+    SdiCronologiaComponent,
   ],
   template: `
     <div class="page pagina-lavoro">
@@ -315,6 +317,8 @@ type Conferma = 'xml' | 'emesso'
           <dt>Netto a pagare</dt>
           <dd>{{ importo(d.nettoAPagare) }}</dd>
         </dl>
+
+        <app-sdi-cronologia *ngIf="d.stato !== 'BOZZA'" [documentoId]="d.id" />
       </ng-container>
 
       <app-annulla-dialog
