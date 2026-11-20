@@ -1377,6 +1377,13 @@ export class LayoutComponent implements OnInit {
       feature: ['ritiri', 'campo'],
     },
     {
+      // «Esiti dal campo» (app campo, P4): backend @RichiedeModulo('campo'), tutti i ruoli d'ufficio.
+      label: 'Esiti dal campo',
+      route: '/esiti-campo',
+      icon: 'pi pi-mobile',
+      feature: 'campo',
+    },
+    {
       // Modelli di stampa di FIR e distinta ritiri: scrittura solo ADMIN, serve fir o ritiri.
       label: 'Modelli di stampa',
       route: '/impostazioni/modelli-stampa',
