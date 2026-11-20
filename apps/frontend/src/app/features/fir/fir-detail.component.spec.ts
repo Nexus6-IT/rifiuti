@@ -2612,6 +2612,20 @@ describe('FirDetailComponent', () => {
       })
     }
 
+    it('R4: dopo un Reset accettato la nostra annotazione precedente non e piu da firmare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(
+        of({
+          eventi: [
+            { ...eventoAnnotazione(), id: 'ev-r', operazione: 'Reset', payload: null },
+            eventoAnnotazione(),
+          ],
+        })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+    })
+
     it('R1: un invio chiuso come RIFIUTATA non e da firmare', () => {
       preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
       rentriFirLifecycleService.eventi.and.returnValue(

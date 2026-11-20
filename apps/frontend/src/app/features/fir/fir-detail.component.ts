@@ -2141,6 +2141,13 @@ export class FirDetailComponent implements OnInit {
   private annotazioneInSospeso(): EventoFirRentri | null {
     for (const e of this.eventi()) {
       if (e.operazione === 'AcquisizioneFirmaAnnotazione' && e.esito === 'ACCETTATA') return null
+      // Un reset o un rollback accettati cambiano cio' che c'e' presso l'ente (R4): lo storico precedente non vale.
+      if (
+        (e.operazione === 'Reset' || e.operazione === 'RollbackFirma') &&
+        e.esito === 'ACCETTATA'
+      ) {
+        return null
+      }
       if (e.operazione === 'Annotazione' && e.esito !== 'RIFIUTATA') return e
     }
     return null
