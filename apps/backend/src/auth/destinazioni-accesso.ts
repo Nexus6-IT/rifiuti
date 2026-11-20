@@ -23,9 +23,37 @@ export type ChiaveDestinazioneAccesso = keyof typeof DESTINAZIONI_ACCESSO
 export const PERCORSO_ACCESSO_PREDEFINITO = '/auth/callback'
 export const REFRESH_GIORNI_PREDEFINITO = 7
 
-/** Restituisce la destinazione per la chiave ricevuta, oppure null se non e' nell'elenco. */
+/**
+ * RelayState = `<chiave>` oppure `<chiave>.<nonce>`: il nonce (16-32 caratteri base64url) lo genera
+ * il browser prima del login e lo rimanda indietro nel fragment; l'app accetta i token solo se
+ * coincide con quello che ha salvato (difesa dal login CSRF: link con i token di un altro utente).
+ */
+const RELAY_STATE_CON_NONCE = /^([a-z]+)\.([A-Za-z0-9_-]{16,32})$/
+
+export interface RelayStateLetto {
+  destinazione: DestinazioneAccesso | null
+  nonce: string | null
+}
+
+function perChiave(chiave: string): DestinazioneAccesso | null {
+  if (!Object.prototype.hasOwnProperty.call(DESTINAZIONI_ACCESSO, chiave)) return null
+  return DESTINAZIONI_ACCESSO[chiave as ChiaveDestinazioneAccesso]
+}
+
+/** Legge il RelayState ricevuto dall'IdP: solo chiavi dell'elenco chiuso, nonce solo se ben formato. */
+export function leggiRelayState(valore: unknown): RelayStateLetto {
+  const nessuna: RelayStateLetto = { destinazione: null, nonce: null }
+  if (typeof valore !== 'string') return nessuna
+  const conNonce = RELAY_STATE_CON_NONCE.exec(valore)
+  if (conNonce) {
+    const destinazione = perChiave(conNonce[1])
+    return destinazione ? { destinazione, nonce: conNonce[2] } : nessuna
+  }
+  const destinazione = perChiave(valore)
+  return destinazione ? { destinazione, nonce: null } : nessuna
+}
+
+/** Restituisce la destinazione per il RelayState ricevuto, oppure null se non e' nell'elenco. */
 export function risolviDestinazioneAccesso(valore: unknown): DestinazioneAccesso | null {
-  if (typeof valore !== 'string') return null
-  if (!Object.prototype.hasOwnProperty.call(DESTINAZIONI_ACCESSO, valore)) return null
-  return DESTINAZIONI_ACCESSO[valore as ChiaveDestinazioneAccesso]
+  return leggiRelayState(valore).destinazione
 }

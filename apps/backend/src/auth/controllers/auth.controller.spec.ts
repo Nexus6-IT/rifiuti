@@ -235,6 +235,28 @@ describe('AuthController', () => {
         )
       })
 
+      it('RelayState «campo.<nonce>»: il nonce torna nel fragment, accanto ai token', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo.AbC_def-1234567890xyz')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        const frammento = new URLSearchParams(url.split('#')[1])
+        expect(frammento.get('nonce')).toBe('AbC_def-1234567890xyz')
+        expect(frammento.get('refreshToken')).toBe('refresh-30-giorni')
+      })
+
+      it('senza nonce nel RelayState il fragment non ha il campo nonce', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo')
+        expect(new URLSearchParams(url.split('#')[1]).has('nonce')).toBe(false)
+      })
+
+      it('nonce malformato: RelayState scartato, percorso predefinito e nessun nonce', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo.corto')
+        expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+        expect(new URLSearchParams(url.split('#')[1]).has('nonce')).toBe(false)
+      })
+
       it("la sessione unica resta: anche dal canale campo si revoca e si alza l'epoca", async () => {
         preparaUtente('AUTISTA')
         await chiama('campo')

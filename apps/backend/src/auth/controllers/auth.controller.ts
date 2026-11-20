@@ -36,7 +36,7 @@ import {
   DESTINAZIONI_ACCESSO,
   PERCORSO_ACCESSO_PREDEFINITO,
   REFRESH_GIORNI_PREDEFINITO,
-  risolviDestinazioneAccesso,
+  leggiRelayState,
 } from '../destinazioni-accesso'
 
 // Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
@@ -105,7 +105,8 @@ export class AuthController {
     // Canale di ritorno: il RelayState SAML e' solo la CHIAVE di un elenco chiuso (mai un URL),
     // quindi non c'e' open redirect. Il refresh lungo vale solo per il canale che lo prevede E
     // solo per il ruolo indicato (app campo: AUTISTA, 30 giorni); tutti gli altri restano a 7.
-    const destinazione = risolviDestinazioneAccesso(req.body?.RelayState)
+    const relay = leggiRelayState(req.body?.RelayState)
+    const destinazione = relay.destinazione
     const refreshLungo = destinazione !== null && role === destinazione.ruoloRefreshLungo
     const refreshGiorni = refreshLungo ? destinazione.refreshGiorni : REFRESH_GIORNI_PREDEFINITO
     if (refreshLungo) {
@@ -135,11 +136,14 @@ export class AuthController {
     // passando i token nel fragment (#) per non finire in log/referer lato server.
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://rifiuti.ignicraft.com'
-    const fragment = new URLSearchParams({
+    const parametri: Record<string, string> = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: String(tokens.expiresIn),
-    }).toString()
+    }
+    // Il nonce del browser torna indietro cosi' com'e': l'app accetta i token solo se coincide.
+    if (relay.nonce !== null) parametri.nonce = relay.nonce
+    const fragment = new URLSearchParams(parametri).toString()
     const percorso = destinazione?.percorso ?? PERCORSO_ACCESSO_PREDEFINITO
     return res.redirect(302, `${frontendUrl}${percorso}#${fragment}`)
   }
