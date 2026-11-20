@@ -1,6 +1,7 @@
 import {
   CHIAVE_LEGACY_PATTERN,
   LUNGHEZZA_MASSIMA_CHIAVE_LEGACY,
+  chiaveAutomezzo,
   chiaveDitta,
   chiaveMovimento,
   chiaveRecordAnnuale,
@@ -114,5 +115,19 @@ describe('CHIAVE_LEGACY_PATTERN', () => {
     ['abcd|2026|MOVIMENTI|1'],
   ])('rifiuta %j', k => {
     expect(regex.test(k)).toBe(false)
+  })
+})
+
+describe('chiaveAutomezzo', () => {
+  it('ditta|MEZ|soggetto.unita|COD, accettata dal pattern', () => {
+    const k = chiaveAutomezzo('0001', '000123.0002', '0007')
+    expect(k).toBe('0001|MEZ|000123.0002|0007')
+    expect(new RegExp(CHIAVE_LEGACY_PATTERN).test(k)).toBe(true)
+  })
+  it('rifiuta componenti vuoti, con barra verticale o troppo lunghi', () => {
+    expect(() => chiaveAutomezzo('0001', '', '0007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('0001', '1|2', '0007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('0001', '000123.0002', '00007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('1', 'a', 'b')).toThrow(ChiaveLegacyError)
   })
 })

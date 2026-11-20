@@ -104,3 +104,15 @@ export function chiaveSede(ditta: string, prec: string, cod: string, ul: string)
   componente(ul, 4, "COD unita' locale")
   return `${ditta}|${prec}|${cod}|${ul}`
 }
+
+/**
+ * Automezzo (`AUTOMEZZI`, senza PK): `ditta|MEZ|<PRECOD>|<COD>`, con PRECOD = soggetto.unita'
+ * proprietario (fino a 11 caratteri) e COD = codice del mezzo (4). «MEZ» non puo' essere un anno ne'
+ * un PRECOD di CLIFOR (C/F), quindi la famiglia di chiavi non collide con le altre.
+ */
+export function chiaveAutomezzo(ditta: string, precod: string, cod: string): string {
+  verificaDitta(ditta)
+  componente(precod, 11, 'PRECOD automezzo')
+  componente(cod, 4, 'COD automezzo')
+  return `${ditta}|MEZ|${precod}|${cod}`
+}
