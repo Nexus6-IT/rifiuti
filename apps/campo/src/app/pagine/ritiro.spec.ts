@@ -344,6 +344,33 @@ describe('RitiroPagina: esito', () => {
       expect(el(f).querySelector('[data-testid="posizione-pronta"]')).toBeNull();
     });
 
+    it('solo foto in attesa (esito gia confermato): il riepilogo le conta e «Invia ora» le fa ripartire dopo un 403', async () => {
+      const f = await apri();
+      await clic(f, 'eseguito');
+      await aggiungiFoto(f);
+      await clic(f, 'conferma-esito');
+      const req = http.expectOne('/api/v1/campo/eventi');
+      req.flush({ id: req.request.body.id, esito: 'APPLICATO', motivoConflitto: null });
+      await flush();
+      http
+        .expectOne(`/api/v1/campo/eventi/${req.request.body.id}/foto`)
+        .flush(
+          { message: 'Modulo non attivo.', error: 'MODULO_NON_ATTIVO' },
+          { status: 403, statusText: 'x' },
+        );
+      await flush();
+      f.detectChanges();
+      expect(el(f).querySelector('[data-testid="bloccata"]')).not.toBeNull();
+      expect(el(f).querySelector('[data-testid="da-inviare"]')?.textContent).toContain(
+        '1 foto da inviare',
+      );
+      await clic(f, 'invia-ora');
+      http.expectOne(`/api/v1/campo/eventi/${req.request.body.id}/foto`).flush({});
+      await flush();
+      f.detectChanges();
+      expect(el(f).querySelector('[data-testid="da-inviare"]')).toBeNull();
+    });
+
     it('una foto rifiutata dal server si vede col motivo', async () => {
       const f = await apri();
       await clic(f, 'eseguito');

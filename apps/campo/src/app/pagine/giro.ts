@@ -4,7 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
 import { CodaEventi } from '../core/coda-eventi';
 import { SessioneService } from '../core/sessione.service';
-import { StatoCoda } from '../core/stato-coda';
+import { StatoCoda, riepilogoDaInviare } from '../core/stato-coda';
 import { StatoGiro } from '../core/stato-giro';
 
 @Component({
@@ -88,10 +88,11 @@ export class GiroPagina {
 
   protected esci(): void {
     const n = this.coda.daInviare();
+    const foto = this.coda.fotoDaInviare();
     if (
-      n > 0 &&
+      (n > 0 || foto > 0) &&
       !window.confirm(
-        `Hai ${n} ${n === 1 ? 'esito' : 'esiti'} non ancora inviat${n === 1 ? 'o' : 'i'}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
+        `Hai ${riepilogoDaInviare(n, foto)}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
       )
     ) {
       return;
