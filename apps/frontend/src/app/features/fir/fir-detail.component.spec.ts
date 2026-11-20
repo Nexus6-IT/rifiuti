@@ -2359,11 +2359,16 @@ describe('FirDetailComponent', () => {
         }
         firService.emettiFIR.and.returnValue(of(emesso))
         fixture.detectChanges()
+        // Dopo l'avviso il dettaglio si ricarica: il FIR riletto e' quello emesso.
+        firService.getFIRById.and.returnValue(of(emesso))
         const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
 
         component.emettiFIR(bozza)
 
-        expect(component['fir']()).toEqual(emesso)
+        expect(component['fir']()).toEqual(
+          jasmine.objectContaining({ rentriNumeroFir: 'RENTRI-000777' })
+        )
+        expect(firService.getFIRById).toHaveBeenCalledTimes(2)
         expect(aggiungi).toHaveBeenCalledWith(
           jasmine.objectContaining({ summary: 'FIR emesso', severity: 'success' })
         )
