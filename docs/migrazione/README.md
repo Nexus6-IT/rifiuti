@@ -31,6 +31,10 @@ una le corrispondenze `OPER` -> causale `dedotta` (`confermata: true`).
    WinWaste) e avvisi (`avviso ...`: scelte dedotte da controllare, vedi `formato-pacchetto.md` §I4):
    vanno letti con l'operatore prima di caricare. Il pacchetto di I4 contiene ditte, sedi, ruoli
    (produttori, trasportatori, destinatari) e automezzi.
+   FIR (I5): dopo ANAGRAFICHE, stesso comando con `--ambito FIR --operatore <uuid utente dell'azienda>`.
+   I FIR digitali non si caricano: il rapporto di `prepara` li elenca (`fir-digitale <numero> <idRentri>`) e si
+   riacquisiscono da RENTRI con `migrazione:riacquisisci-fir` (prima in simulazione, poi `--esegui`;
+   sola lettura sull'ente, con limite di frequenza: vedi `formato-pacchetto.md`).
 5. Caricare (stesso comando senza `--verifica`), poi **ricaricare**: la seconda volta deve dire
    `inserite: 0` e `saltate` = `lette`.
 6. Il rapporto di destinazione della prova va al cliente insieme al rapporto sorgente.

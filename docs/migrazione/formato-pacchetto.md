@@ -39,8 +39,9 @@ forma dei modelli di WasteFlow, con `legacyKey` (stesse chiavi di `chiavi-legacy
 Fasi definite oggi, tutte di ambito `ANAGRAFICHE`, caricate in quest'ordine (le parti si legano
 per chiave legacy, non per id): `ditte`, `sedi`, `produttori`, `trasportatori`, `destinatari`,
 `automezzi`. Le fasi vuote non si scrivono (tranne `ditte`): un pacchetto di sole ditte (pezzo I2)
-si carica ancora. FIR, registro e giacenze arrivano con i pezzi I5-I7 senza cambiare il formato (si
-aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`).
+si carica ancora. Registro e giacenze arrivano con i pezzi I6-I7 senza cambiare il formato (si
+aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`). Dal pezzo I5 c'e' anche
+l'ambito `FIR` (vedi sotto), da caricare DOPO ANAGRAFICHE.
 
 | Fase | Record | Chiave legacy |
 |---|---|---|
@@ -54,6 +55,56 @@ aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`).
 `dittaId` e' valorizzato solo per una **ditta agganciata** (P.IVA gia' in WasteFlow, vedi `agganci`
 della mappa): l'id deve coincidere con quello della mappa, altrimenti la riga e' rifiutata. Le sedi di
 una ditta agganciata non sono mai principali (la ditta esistente ha gia' la sua).
+
+### Ambito `FIR` (I5)
+
+Fasi: `fir` (si carica) e `fir-digitali` (solo elenco: il server la conosce ma non la carica, vedi
+`FASI_SOLO_ELENCO`). Da `FORMULARI` (+ `AUTOMEZZI` per la targa, `XRENTRIFIRTRASMESSI` per l'IDRENTRI).
+
+| Fase | Record | Chiave legacy |
+|---|---|---|
+| `fir` | `{ legacyKey, firNumber, stato, dataTrasporto, dataFine\|null, cerCode, pericoloso, descrizione, quantitaKg, targa, operazione, produttore, trasportatore\|null, destinatario }` | `ditta\|anno\|FORMULARI\|COD` |
+| `fir-digitali` | `{ legacyKey, numeroFir, idRentri\|null, unitaLocaleId\|null }` | idem (la riga sorgente) |
+
+Una parte e' `{ tipo: 'ditta', dittaKey, dittaId\|null, sedeKey\|null, ruoloKey\|null }` oppure
+`{ tipo: 'propria', sedeId }` (unita' locale dell'azienda stessa, dalla mappa). Nome, partita IVA e
+indirizzo dello snapshot si leggono dal database al caricamento (la ditta puo' essere un aggancio).
+
+Regole (tutte con fixture SINTETICHE: nessun `.bak` era disponibile, forme dei campi PRESUNTE):
+
+- **`firNumber` = `FORMU` com'e'**, mai rinominato. Un numero ripetuto nel pacchetto
+  (`FIR_NUMBER_DUPLICATO_NEL_PACCHETTO`) o gia' in azienda e non importato (`FIR_NUMBER_GIA_PRESENTE`)
+  e BLOCCANTE in `--verifica` e in `carica`; `prepara` lo segnala come avviso `FIR_NUMBER_DUPLICATO`.
+- `C7`: vuoto, `R`, `9` sono FIR; `A` (`FIR_ANNULLATO`) e richieste del portale (`RICHIESTA_PORTALE`) sono scarti.
+- **FIR digitali** (`C6` = `DIGITALE` / `INVIATO A RENTRI ...`): non si copiano; vanno in `fir-digitali` e
+  nel rapporto di `prepara` (`fir-digitale <numero> <idRentri|->`). Si riacquisiscono da RENTRI con
+  `migrazione:riacquisisci-fir`.
+- Stato dedotto: `COMPLETED` con data di fine trasporto (`DATF`) e peso a destino, altrimenti
+  `AWAITING_RECEIVER`. Anche CER, data, quantita', targa, recupero/smaltimento sono dedotti o presi
+  dai campi del FIR; stato fisico, provenienza e caratteristiche di pericolo restano vuoti (non si inventano).
+- Scarti per FIR: `PRODUTTORE|DESTINATARIO|TRASPORTATORE_NON_RISOLTO/_AMBIGUO/_PROPRIO_NON_IN_MAPPA`,
+  `QUANTITA_ASSENTE`, `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
+  senza sede importata ripiega sulla sede predefinita della ditta (avviso `SEDE_NON_RISOLTA`).
+- Ogni FIR importato nasce `bloccato_invio` e senza legame RENTRI: non si trasmette mai prima della riconciliazione (3.6).
+- L'operatore (`--operatore <uuid>`, utente dell'azienda) e' obbligatorio per l'ambito FIR:
+  `producer_user_id` e' una FK a `users`. `--verifica`: `OPERATORE_ASSENTE` / `OPERATORE_INESISTENTE`.
+- ANAGRAFICHE devono essere gia' caricate: `RIFERIMENTO_DITTA_NON_CARICATO`, `RIFERIMENTO_SEDE_NON_CARICATO`.
+- La chiave della sede di un riferimento `PROD/TRAS/SMAL` usa la STESSA regola di `prepara` (UL), in
+  `chiaveSedeDaSoggettoUnita` (`domain/migrazione/chiavi-legacy.ts`).
+
+#### `migrazione:riacquisisci-fir`
+
+```
+node dist/cli/migrazione-riacquisisci-fir.js --tenant <uuid> --pacchetto <cartella> --utente <uuid> [--esegui] [--pausa-ms N] [--massimo N]
+```
+
+Senza `--esegui` e' una simulazione (RENTRI non si contatta). Con `--esegui`: SOLA LETTURA verso l'ente
+(`leggiFormulario`); mai `creaFormulario`, mai `acquisisciVisibilita` (e' una scrittura sull'ente: se la
+visibilita' manca l'esito e' `VISIBILITA_NON_ACQUISITA` e si risolve a mano). Limite di frequenza:
+pausa fra le chiamate (default 3 s, minimo 1 s), massimo per esecuzione (default 25, tetto 500), stop
+al primo errore transitorio dell'ente. Un FIR riacquisito nasce senza provenienza e non bloccato (Q5);
+un numero gia' presente nel database non si richiede. Uscite: 0 ok, 1 interrotto/falliti, 2 pacchetto o
+utente rifiutati, 64 uso errato.
 
 ### Regole di trasformazione (I4)
 
@@ -138,7 +189,7 @@ partita IVA degli agganci (con cifra di controllo valida).
 npm run migrazione:prepara -- <cartella-staging> --mappa <mappa-import.json> --destinazione <cartella> [--forza]
 
 # server, dentro l'immagine del backend (compilato, niente ts-node)
-node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella> --ambito <AMBITO> [--verifica] [--dimensione-blocco N]
+node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella> --ambito <AMBITO> [--operatore <uuid>] [--verifica] [--dimensione-blocco N]
 ```
 
 | Uscita | `migrazione:prepara` | `migrazione:carica` |
@@ -157,8 +208,9 @@ database la rifiuterebbe (SQLSTATE 25006). Non apre lotti. Controlla: registri, 
 della mappa esistenti nell'azienda; causali esistenti (catalogo di sistema o proprie dell'azienda) e
 confermate; agganci esistenti con quella P.IVA; **azienda (tenant) della mappa esistente** (`TENANT_INESISTENTE`:
 l'import non crea mai aziende, si usa il flusso `admin/tenants`); collisioni di P.IVA e codice fiscale
-con ditte non agganciate; **targhe gia' in azienda e non importate** (`TARGA_GIA_PRESENTE_NON_IMPORTATA`); lotto gia' `IN_CORSO` per (archivio, ambito); record non validi. Le collisioni di
-`firNumber` e dei progressivi si aggiungono con I5 e I7.
+con ditte non agganciate; **targhe gia' in azienda e non importate** (`TARGA_GIA_PRESENTE_NON_IMPORTATA`); lotto gia' `IN_CORSO` per (archivio, ambito); record non validi. Per l'ambito FIR anche
+l'operatore, le ditte e le sedi gia' caricate e le collisioni di `firNumber` (vedi sopra). Le collisioni
+dei progressivi si aggiungono con I7.
 
 ### Il client e' solo quello applicativo
 
