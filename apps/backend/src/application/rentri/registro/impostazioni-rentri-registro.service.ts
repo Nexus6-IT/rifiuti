@@ -71,6 +71,8 @@ export interface ImpostazioniRegistro {
   aperturaInCorso: boolean
   /** eREGI E2: registro chiuso su RENTRI (niente piu' invii). */
   rentriChiusoIl: Date | null
+  /** eREGI E3: chiusura richiesta a RENTRI e non ancora confermata (invii gia' fermi). */
+  chiusuraInCorso: boolean
 }
 
 /** Dati letti da RENTRI che il collegamento salva insieme all'identificativo (E2). */
@@ -128,6 +130,7 @@ export class ImpostazioniRentriRegistroService {
           rentriAttivitaRecSmalt: true,
           rentriAperturaRichiestaIl: true,
           rentriChiusoIl: true,
+          rentriChiusuraRichiestaIl: true,
           unitaLocale: { select: { numIscrSito: true } },
         },
       })
@@ -171,6 +174,7 @@ export class ImpostazioniRentriRegistroService {
           rentriAttivitaRecSmalt: r.rentriAttivitaRecSmalt,
           aperturaInCorso: r.rentriAperturaRichiestaIl !== null,
           rentriChiusoIl: r.rentriChiusoIl,
+          chiusuraInCorso: r.rentriChiusuraRichiestaIl !== null && r.rentriChiusoIl === null,
         }
       })
     })
@@ -225,10 +229,14 @@ export class ImpostazioniRentriRegistroService {
             invioRentriAutomaticoDal: true,
             rentriAperturaRichiestaIl: true,
             rentriChiusoIl: true,
+            rentriChiusuraRichiestaIl: true,
           },
         })
         if (!registro) throw new RegistroNonTrovatoError()
-        if (dati.invioAutomatico === true && registro.rentriChiusoIl !== null) {
+        if (
+          dati.invioAutomatico === true &&
+          (registro.rentriChiusoIl !== null || registro.rentriChiusuraRichiestaIl !== null)
+        ) {
           throw new TrasmissioneNonModificabileError(
             "Il registro è chiuso su RENTRI: non si può attivare l'invio automatico."
           )
@@ -307,6 +315,7 @@ export class ImpostazioniRentriRegistroService {
                   rentriAperturaRichiestaIl: null,
                   rentriAperturaDescrizione: null,
                   rentriChiusoIl: null,
+                  rentriChiusuraRichiestaIl: null,
                 }
               : cambia
                 ? {
@@ -315,6 +324,7 @@ export class ImpostazioniRentriRegistroService {
                     rentriAttivitaRecSmalt: [],
                     rentriSincronizzatoIl: null,
                     rentriChiusoIl: null,
+                    rentriChiusuraRichiestaIl: null,
                   }
                 : {}),
           },

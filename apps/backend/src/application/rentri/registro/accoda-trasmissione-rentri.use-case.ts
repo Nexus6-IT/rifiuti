@@ -89,11 +89,14 @@ export class AccodaTrasmissioneRentriUseCase {
   ) {
     const registro = await tx.registroRifiuti.findFirst({
       where: { id: registroId, tenantId },
-      select: { id: true, rentriChiusoIl: true },
+      select: { id: true, rentriChiusoIl: true, rentriChiusuraRichiestaIl: true },
     })
     if (!registro) throw new RegistroNonTrovatoError()
     // eREGI E3: la registrazione locale e' nostra e resta; verso un registro chiuso non si accoda.
-    if (!ammettiChiuso && registro.rentriChiusoIl !== null)
+    if (
+      !ammettiChiuso &&
+      (registro.rentriChiusoIl !== null || registro.rentriChiusuraRichiestaIl !== null)
+    )
       throw new TrasmissioneNonModificabileError(MESSAGGIO_REGISTRO_CHIUSO)
   }
 

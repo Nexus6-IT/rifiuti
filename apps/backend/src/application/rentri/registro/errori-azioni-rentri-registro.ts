@@ -118,3 +118,48 @@ export class AperturaRegistroNonRisoltaError extends DomainError {
     this.name = 'AperturaRegistroNonRisoltaError'
   }
 }
+
+/** 409: il registro locale non e' collegato a un registro RENTRI (manca l'identificativo). */
+export class RegistroNonCollegatoRentriError extends DomainError {
+  constructor() {
+    super('Il registro non è collegato a un registro RENTRI: collegalo o aprilo prima.')
+    this.name = 'RegistroNonCollegatoRentriError'
+  }
+}
+
+/** 409: il registro e' chiuso su RENTRI (eREGI E3): niente modifiche ne' invii. */
+export class RegistroRentriChiusoError extends DomainError {
+  constructor(messaggio = 'Il registro è già chiuso su RENTRI.') {
+    super(messaggio)
+    this.name = 'RegistroRentriChiusoError'
+  }
+}
+
+/** 409: ci sono annotazioni in volo o da trasmettere: la chiusura le lascerebbe senza destinazione. */
+export class ChiusuraRegistroNonPossibileError extends DomainError {
+  constructor(
+    messaggio: string,
+    readonly conteggi: Readonly<Record<string, number>>
+  ) {
+    super(messaggio)
+    this.name = 'ChiusuraRegistroNonPossibileError'
+  }
+}
+
+/** 409: RENTRI non ha chiuso il registro (la prenotazione di chiusura e' stata annullata). */
+export class ChiusuraRegistroNonConfermataError extends DomainError {
+  constructor() {
+    super(
+      'RENTRI non ha chiuso il registro: risulta ancora aperto. Gli invii sono di nuovo attivi; riprova la chiusura.'
+    )
+    this.name = 'ChiusuraRegistroNonConfermataError'
+  }
+}
+
+/** 409: non c'e' nessuna apertura in corso da abbandonare. */
+export class NessunaAperturaDaAbbandonareError extends DomainError {
+  constructor() {
+    super("Non c'è nessuna apertura del registro su RENTRI da abbandonare.")
+    this.name = 'NessunaAperturaDaAbbandonareError'
+  }
+}

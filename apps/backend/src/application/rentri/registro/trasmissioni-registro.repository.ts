@@ -89,12 +89,18 @@ export class TrasmissioniRegistroRepository {
 
         const registro = await tx.registroRifiuti.findFirst({
           where: { id: registroId, tenantId },
-          select: { identificativoRentri: true, rentriChiusoIl: true },
+          select: {
+            identificativoRentri: true,
+            rentriChiusoIl: true,
+            rentriChiusuraRichiestaIl: true,
+          },
         })
         if (!registro?.identificativoRentri) return { esito: 'SENZA_IDENTIFICATIVO' }
         // eREGI E3: nessun invio verso un registro chiuso (o in chiusura) su RENTRI. Il controllo
         // sta DOPO il lock: la chiusura imposta il flag sotto lo stesso lock.
-        if (registro.rentriChiusoIl !== null) return { esito: 'REGISTRO_CHIUSO' }
+        if (registro.rentriChiusoIl !== null || registro.rentriChiusuraRichiestaIl !== null) {
+          return { esito: 'REGISTRO_CHIUSO' }
+        }
 
         const inCorso = await tx.movimentoTrasmissioneRentri.count({
           where: { tenantId, registroId, stato: { in: ['IN_INVIO', 'ATTESA_ESITO'] } },
@@ -510,6 +516,7 @@ export class TrasmissioniRegistroRepository {
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND r."invio_rentri_automatico_dal" IS NOT NULL
           AND r."rentri_chiuso_il" IS NULL
+          AND r."rentri_chiusura_richiesta_il" IS NULL
           AND m."import_source" IS NULL
           AND ${NESSUNA_CATENA_DA_RICONCILIARE}
           AND m."created_at" >= r."invio_rentri_automatico_dal"
@@ -541,6 +548,7 @@ export class TrasmissioniRegistroRepository {
         JOIN "registri_rifiuti" r ON r."id" = m."registro_id" AND r."tenant_id" = m."tenant_id"
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND r."rentri_chiuso_il" IS NULL
+          AND r."rentri_chiusura_richiesta_il" IS NULL
           AND m."movimento_rettificato_id" IS NOT NULL
           AND p."stato" IN ('TRASMESSA', 'GIA_SU_RENTRI')
           AND m."import_source" IS NULL
