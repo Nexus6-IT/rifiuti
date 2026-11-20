@@ -309,9 +309,14 @@ test.describe('Invio allo SDI (interfaccia, provider fake)', () => {
     )
     expect(eventi[0].n).toBe(1)
 
-    await page.goto('/fatturazione/documenti')
+    // La lista si rilegge da sola solo per gli invii in lavorazione (DA_INVIARE, IN_INVIO, INCERTA):
+    // «Inviata» e` uno stato d'attesa senza polling, quindi dopo il webhook (l'inbox la elabora il job
+    // ogni 30 secondi) si ricarica la pagina a ogni tentativo invece di aspettare un badge che non cambia.
     const riga = page.getByTestId(`documento-${documentoId}`)
-    await expect(riga.getByTestId('dl-sdi')).toContainText('Consegnata', { timeout: 120_000 })
+    await expect(async () => {
+      await page.goto('/fatturazione/documenti')
+      await expect(riga.getByTestId('dl-sdi')).toContainText('Consegnata', { timeout: 5_000 })
+    }).toPass({ timeout: 120_000, intervals: [2_000, 5_000, 10_000] })
 
     await page.goto(`/fatturazione/documenti/${documentoId}`)
     await expect(page.getByTestId('sc-stato')).toContainText('Consegnata', {
