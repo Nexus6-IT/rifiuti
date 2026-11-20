@@ -70,11 +70,14 @@ import { comeHttpPese } from '../pese/errori-http'
 import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { rispostaModuloNonAttivo } from '../../core/context/modulo-non-attivo-errore'
 import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { MaxDecimali } from '../../core/validators/max-decimali'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 import { FirNonTrovatoError } from '../../core/domain/errors'
 import {
+  AMMESSE_EMISSIONE,
+  AMMESSE_PRESA_IN_CARICO,
   AVVISO_FIRMA_RENTRI_DA_COMPLETARE,
   EsitoFirmaPartenzaDopoAzione,
   esitoProposta,
@@ -402,22 +405,26 @@ export class FIRControllerV2 {
     if (dto?.firmaRentri !== true) {
       return FIRResponseDto.fromDomain(result.value)
     }
-    // La richiesta di firma e' una scrittura sull'ente: serve il ruolo EFFETTIVO nell'azienda del FIR
-    // (un consulente solo VIEWER nel cliente non la fa; l'emissione resta).
-    try {
-      await richiediRuoloEffettivo(this.membership, user, result.value.tenantId ?? '')
-    } catch {
-      return FIRResponseDto.fromDomain(result.value)
-    }
+    // La richiesta di firma e' una scrittura sull'ente: serve il ruolo EFFETTIVO nell'azienda del FIR (un
+    // consulente solo VIEWER nel cliente non la fa). L'emissione resta, e l'avviso lo dice.
     let firmaRentri: EsitoFirmaPartenzaDopoAzione
     try {
+      await richiediRuoloEffettivo(this.membership, user, result.value.tenantId ?? '')
       firmaRentri = await this.firmaPartenza.dopoAzioneLocale({
         firId: id,
         tenantId: result.value.tenantId ?? '',
         utenteId: user.id,
+        ammesse: AMMESSE_EMISSIONE,
       })
-    } catch {
-      firmaRentri = { stato: 'DA_COMPLETARE', avviso: AVVISO_FIRMA_RENTRI_DA_COMPLETARE }
+    } catch (error) {
+      firmaRentri =
+        error instanceof ForbiddenException
+          ? {
+              stato: 'DA_COMPLETARE',
+              codice: 'RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE',
+              avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: il tuo ruolo nell'azienda selezionata non consente di richiederla.`,
+            }
+          : { stato: 'DA_COMPLETARE', avviso: AVVISO_FIRMA_RENTRI_DA_COMPLETARE }
     }
     if (firmaRentri.stato === 'NON_APPLICABILE') {
       return FIRResponseDto.fromDomain(result.value)
@@ -464,6 +471,7 @@ export class FIRControllerV2 {
           firId: id,
           tenantId: tenantRentri,
           utenteId: user.id,
+          ammesse: AMMESSE_PRESA_IN_CARICO,
         })
       } catch (error) {
         throw this.mappaErroreFirmaPartenza(error)
@@ -599,6 +607,9 @@ export class FIRControllerV2 {
       return error
     }
     const rule = error.metadata?.rule as string | undefined
+    if (rule === 'MODULO_NON_ATTIVO') {
+      return new ForbiddenException(rispostaModuloNonAttivo(['rentri']))
+    }
     if (
       rule === 'FIRMA_PARTENZA_NON_DISPONIBILE' ||
       rule === 'SESSIONE_FIRMA_IN_CORSO' ||

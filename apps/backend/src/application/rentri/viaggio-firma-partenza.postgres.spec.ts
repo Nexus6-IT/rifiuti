@@ -172,7 +172,8 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
           getAzioni as any,
           completa as any,
           this.eventi,
-          logger()
+          logger(),
+          { moduliAttivi: jest.fn().mockResolvedValue(['fir', 'rentri']) } as any
         )
       },
     }
@@ -224,7 +225,7 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     expect(altro).toBeNull()
   })
 
-  it('FIR cartaceo (non legato): la firma di partenza e NON_APPLICABILE e non tocca ne ente ne stato', async () => {
+  it('FIR non legato: la firma di partenza e NON_ANCORA_LEGATO e non tocca ne ente ne stato', async () => {
     const firId = await firEmesso()
     const h = useCaseFirmaPartenza()
 
@@ -232,7 +233,7 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
       h.build().dopoAzioneLocale({ firId, tenantId, utenteId: userId })
     )
 
-    expect(esito).toEqual({ stato: 'NON_APPLICABILE' })
+    expect(esito).toMatchObject({ stato: 'NON_ANCORA_LEGATO' })
     expect(h.completa.execute).not.toHaveBeenCalled()
     const riga = await owner.fIR.findUnique({ where: { id: firId } })
     expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.EMESSO)

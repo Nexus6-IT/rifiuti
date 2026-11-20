@@ -7,6 +7,10 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
+import {
+  FirmaPartenzaRentriUseCase,
+  operazionePartenzaDaTipo,
+} from './firma-partenza-rentri.use-case'
 import { ISessioniFirmaRentriRepository, STATI_SESSIONE_APERTA } from './sessioni-firma-rentri.port'
 
 /** Vista della sessione per l'interfaccia: mai token, digest o handle. */
@@ -49,7 +53,8 @@ export class GestisciSessioneFirmaRentriUseCase {
     private readonly firRepository: IFIRRepository,
     private readonly sessioni: ISessioniFirmaRentriRepository,
     private readonly completaOperazioneConFirma: CompletaOperazioneConFirmaUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly firmaPartenza: FirmaPartenzaRentriUseCase
   ) {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
@@ -136,6 +141,21 @@ export class GestisciSessioneFirmaRentriUseCase {
         'SESSIONE_FIRMA_NON_ATTIVA',
         `Questa richiesta di firma è già conclusa (${sessione.stato}): non c'è nulla da riprendere.`
       )
+    }
+
+    // Firma di partenza: passa dal suo use case, cosi' lo storico registra l'esito della ripresa e una nuova
+    // richiesta ricontrolla `/azioni` prima di una nuova `authorize`.
+    const operazionePartenza = operazionePartenzaDaTipo(sessione.tipoOperazione)
+    if (operazionePartenza) {
+      const { firma } = await this.firmaPartenza.execute({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+        ammesse: [operazionePartenza],
+      })
+      return firma
     }
 
     return this.completaOperazioneConFirma.execute({

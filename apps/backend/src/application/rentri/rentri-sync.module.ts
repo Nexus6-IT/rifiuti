@@ -480,14 +480,16 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         getAzioni: GetAzioniDisponibiliUseCase,
         completa: CompletaOperazioneConFirmaUseCase,
         eventi: IEventiFirRentriRepository,
-        logger: LoggerService
-      ) => new FirmaPartenzaRentriUseCase(firRepo, getAzioni, completa, eventi, logger),
+        logger: LoggerService,
+        moduli: ModuliAttiviService
+      ) => new FirmaPartenzaRentriUseCase(firRepo, getAzioni, completa, eventi, logger, moduli),
       inject: [
         FIRPrismaRepository,
         GetAzioniDisponibiliUseCase,
         CompletaOperazioneConFirmaUseCase,
         IEventiFirRentriRepository,
         LoggerService,
+        ModuliAttiviService,
       ],
     },
     // FIR in viaggio P2: quantita' e dati di trasporto (`/quantita`, `/trasporto`) e storico delle operazioni.
@@ -539,13 +541,16 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         firRepo: FIRPrismaRepository,
         sessioni: ISessioniFirmaRentriRepository,
         completa: CompletaOperazioneConFirmaUseCase,
-        logger: LoggerService
-      ) => new GestisciSessioneFirmaRentriUseCase(firRepo, sessioni, completa, logger),
+        logger: LoggerService,
+        firmaPartenza: FirmaPartenzaRentriUseCase
+      ) =>
+        new GestisciSessioneFirmaRentriUseCase(firRepo, sessioni, completa, logger, firmaPartenza),
       inject: [
         FIRPrismaRepository,
         ISessioniFirmaRentriRepository,
         CompletaOperazioneConFirmaUseCase,
         LoggerService,
+        FirmaPartenzaRentriUseCase,
       ],
     },
     // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione

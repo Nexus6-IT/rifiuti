@@ -1,9 +1,6 @@
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { DomainException } from '../../domain/shared/domain-exception'
-import {
-  FirmaPartenzaRentriUseCase,
-  TIPO_OPERAZIONE_PARTENZA,
-} from './firma-partenza-rentri.use-case'
+import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
 
 /**
@@ -28,7 +25,7 @@ describe('FirmaPartenzaRentriUseCase', () => {
     return fir
   }
 
-  function ambiente(opzioni: { azioni?: string[]; legato?: boolean } = {}) {
+  function ambiente(opzioni: { azioni?: string[]; legato?: boolean; moduli?: string[] } = {}) {
     const fir = creaFir(opzioni.legato ?? true)
     const eventi = new EventiFirRentriInMemoria()
     const firRepository = { findById: jest.fn().mockResolvedValue(fir) }
@@ -51,14 +48,18 @@ describe('FirmaPartenzaRentriUseCase', () => {
       warn: jest.fn(),
       error: jest.fn(),
     }
+    const moduli = {
+      moduliAttivi: jest.fn().mockResolvedValue(opzioni.moduli ?? ['fir', 'rentri']),
+    }
     const useCase = new FirmaPartenzaRentriUseCase(
       firRepository as any,
       getAzioni as any,
       completa as any,
       eventi,
-      logger
+      logger,
+      moduli as any
     )
-    return { useCase, firRepository, getAzioni, completa, eventi, logger, fir }
+    return { moduli, useCase, firRepository, getAzioni, completa, eventi, logger, fir }
   }
 
   const comando = { firId: 'fir-1', tenantId: TENANT, utenteId: 'u-1' }
@@ -103,7 +104,7 @@ describe('FirmaPartenzaRentriUseCase', () => {
         expect.objectContaining({
           firId: 'fir-1',
           tenantId: TENANT,
-          tipoOperazione: TIPO_OPERAZIONE_PARTENZA,
+          tipoOperazione: 'PARTENZA_PRODUTTORE_TRASPORTATORE',
           utenteId: 'u-1',
           correlationId: 'c-1',
         })
@@ -265,14 +266,16 @@ describe('FirmaPartenzaRentriUseCase', () => {
       expect(a.firma).toMatchObject({ sessioneId: 's-1' })
       expect(b.firma).toMatchObject({ sessioneId: 's-1' })
       expect(
-        completa.execute.mock.calls.every(c => c[0].tipoOperazione === TIPO_OPERAZIONE_PARTENZA)
+        completa.execute.mock.calls.every(
+          c => c[0].tipoOperazione === 'PARTENZA_PRODUTTORE_TRASPORTATORE'
+        )
       ).toBe(true)
     })
   })
 
   describe('dopoAzioneLocale (Emetti / Presa in carico: la firma RENTRI non annulla mai l azione locale)', () => {
-    it('FIR non legato (flusso cartaceo): NON_APPLICABILE, nessuna chiamata all ente', async () => {
-      const { useCase, getAzioni, completa } = ambiente({ legato: false })
+    it('FIR non legato (flusso cartaceo, senza modulo rentri): NON_APPLICABILE, nessuna chiamata all ente', async () => {
+      const { useCase, getAzioni, completa } = ambiente({ legato: false, moduli: ['fir'] })
 
       const esito = await useCase.dopoAzioneLocale(comando)
 
@@ -361,6 +364,84 @@ describe('FirmaPartenzaRentriUseCase', () => {
       const esito = await useCase.dopoAzioneLocale(comando)
 
       expect(esito).toMatchObject({ stato: 'DA_COMPLETARE' })
+    })
+  })
+
+  describe('veste del firmatario (I2)', () => {
+    const PT = 'AcquisizioneFirmaProduttoreTrasportatore'
+    const P = 'AcquisizioneFirmaProduttore'
+    const T = 'AcquisizioneFirmaTrasportatore'
+
+    it('«Presa in carico» (ammesse trasportatore): ignora la firma del produttore, 409 che nomina quale firma chiede l ente', async () => {
+      const { useCase, completa } = ambiente({ azioni: [P] })
+
+      const errore = await useCase.execute({ ...comando, ammesse: [PT, T] }).catch(e => e)
+
+      expect(errore.metadata.rule).toBe('FIRMA_PARTENZA_NON_DISPONIBILE')
+      expect(String(errore.metadata.details)).toMatch(/produttore/i)
+      expect(completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('«Emetti» (ammesse produttore): ignora la firma del solo trasportatore', async () => {
+      const { useCase, completa } = ambiente({ azioni: [T] })
+
+      await expect(useCase.execute({ ...comando, ammesse: [PT, P] })).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'FIRMA_PARTENZA_NON_DISPONIBILE' }),
+      })
+      expect(completa.execute).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      [[PT, P], [P], 'PARTENZA_PRODUTTORE'],
+      [[PT, T], [T], 'PARTENZA_TRASPORTATORE'],
+      [undefined, [PT], 'PARTENZA_PRODUTTORE_TRASPORTATORE'],
+    ])(
+      'ammesse %j con azioni %j: tipoOperazione %s (la veste e nel testo sul telefono)',
+      async (ammesse, azioni, tipo) => {
+        const { useCase, completa } = ambiente({ azioni })
+
+        await useCase.execute({ ...comando, ammesse: ammesse as any })
+
+        expect(completa.execute).toHaveBeenCalledWith(
+          expect.objectContaining({ tipoOperazione: tipo })
+        )
+      }
+    )
+  })
+
+  describe('modulo rentri (I3)', () => {
+    it('execute senza il modulo: 403 MODULO_NON_ATTIVO, nessuna chiamata', async () => {
+      const { useCase, getAzioni, completa } = ambiente({ moduli: ['fir'] })
+
+      await expect(useCase.execute(comando)).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'MODULO_NON_ATTIVO' }),
+      })
+      expect(getAzioni.execute).not.toHaveBeenCalled()
+      expect(completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('dopoAzioneLocale senza il modulo: NON_APPLICABILE, come prima di P3', async () => {
+      const { useCase, completa } = ambiente({ moduli: ['fir'] })
+
+      expect(await useCase.dopoAzioneLocale(comando)).toEqual({ stato: 'NON_APPLICABILE' })
+      expect(completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('tenantSeLegatoRentri resta indipendente dal modulo (decide il flusso, poi execute risponde 403)', async () => {
+      expect(await ambiente({ moduli: ['fir'] }).useCase.tenantSeLegatoRentri('fir-1')).toBe(TENANT)
+    })
+  })
+
+  describe('FIR non ancora legato con modulo rentri (M1)', () => {
+    it('dopoAzioneLocale: NON_ANCORA_LEGATO con il messaggio, nessuna chiamata all ente', async () => {
+      const { useCase, getAzioni, completa } = ambiente({ legato: false })
+
+      const esito = await useCase.dopoAzioneLocale(comando)
+
+      expect(esito).toMatchObject({ stato: 'NON_ANCORA_LEGATO' })
+      expect((esito as { avviso: string }).avviso).toMatch(/Firma la partenza su RENTRI/)
+      expect(getAzioni.execute).not.toHaveBeenCalled()
+      expect(completa.execute).not.toHaveBeenCalled()
     })
   })
 

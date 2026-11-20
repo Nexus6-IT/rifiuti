@@ -222,6 +222,7 @@ export interface PaginatedFIRResponse {
 /** Esito della firma di partenza su RENTRI dopo un'azione locale (v. backend `EsitoFirmaPartenzaDopoAzione`). */
 export type EsitoFirmaPartenzaDopoAzione =
   | { stato: 'NON_APPLICABILE' }
+  | { stato: 'NON_ANCORA_LEGATO'; avviso: string }
   | { stato: 'COMPLETATA'; statoFormulario: string }
   | { stato: 'IN_ATTESA'; sessioneId?: string; scadenza: string }
   | { stato: 'SCADUTA' | 'RIFIUTATA'; sessioneId?: string; avviso: string }

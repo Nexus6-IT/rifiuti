@@ -2,6 +2,10 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { FIRControllerV2 } from './fir.controller.v2'
 import { Result } from '../../core/application/result'
 import { FIRResponseDto } from './dtos/fir-response.dto'
+import {
+  AMMESSE_EMISSIONE,
+  AMMESSE_PRESA_IN_CARICO,
+} from '../../application/rentri/firma-partenza-rentri.use-case'
 import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
@@ -70,6 +74,7 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
         firId: 'f1',
         tenantId: 'T1',
         utenteId: 'u1',
+        ammesse: AMMESSE_EMISSIONE,
       })
       expect(r).not.toHaveProperty('firmaRentri')
       expect(firmaPartenza.rileggiFir).not.toHaveBeenCalled()
@@ -129,15 +134,31 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
       expect(firmaPartenza.dopoAzioneLocale).not.toHaveBeenCalled()
     })
 
-    it('ruolo effettivo insufficiente (consulente VIEWER): l emissione resta, nessuna richiesta di firma RENTRI', async () => {
+    it('ruolo effettivo insufficiente (consulente VIEWER): l emissione resta, avviso dedicato e nessuna richiesta di firma RENTRI (M2)', async () => {
       ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
 
       const r = await controller().emetti('f1', { firmaRentri: true }, USER)
 
       expect(r).toMatchObject({ id: 'f1', stato: 'EMESSO' })
-      expect(r).not.toHaveProperty('firmaRentri')
+      expect(r.firmaRentri).toMatchObject({
+        stato: 'DA_COMPLETARE',
+        codice: 'RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE',
+      })
       expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(USER, 'T1')
       expect(firmaPartenza.dopoAzioneLocale).not.toHaveBeenCalled()
+    })
+
+    it('FIR non ancora legato con modulo rentri (trasmissione in corso): la risposta porta il messaggio, il FIR non si rilegge (M1)', async () => {
+      const esito = {
+        stato: 'NON_ANCORA_LEGATO',
+        avviso: 'Il formulario non è ancora legato a RENTRI',
+      }
+      firmaPartenza.dopoAzioneLocale.mockResolvedValue(esito)
+
+      const r = await controller().emetti('f1', { firmaRentri: true }, USER)
+
+      expect(r.firmaRentri).toEqual(esito)
+      expect(firmaPartenza.rileggiFir).not.toHaveBeenCalled()
     })
 
     it('anche se lo use case di firma sollevasse, l emissione non si perde', async () => {
@@ -173,6 +194,7 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
         firId: 'f1',
         tenantId: 'T1',
         utenteId: 'u1',
+        ammesse: AMMESSE_PRESA_IN_CARICO,
       })
       expect(r).toMatchObject({ stato: 'IN_TRANSITO' })
       expect(r.firmaRentri).toEqual({
@@ -208,6 +230,21 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
       )
 
       expect(firmaPartenza.execute).not.toHaveBeenCalled()
+      expect(presaInCarico.execute).not.toHaveBeenCalled()
+    })
+
+    it('FIR legato ma azienda senza il modulo rentri: 403 MODULO_NON_ATTIVO, nessuna presa in carico locale (I3)', async () => {
+      firmaPartenza.tenantSeLegatoRentri.mockResolvedValue('T1')
+      firmaPartenza.execute.mockRejectedValue(
+        DomainException.businessRuleViolation('MODULO_NON_ATTIVO', 'modulo spento')
+      )
+
+      const errore = await controller()
+        .presaInCarico('f1', {}, USER)
+        .catch(e => e)
+
+      expect(errore).toBeInstanceOf(ForbiddenException)
+      expect(errore.getResponse()).toMatchObject({ error: 'MODULO_NON_ATTIVO' })
       expect(presaInCarico.execute).not.toHaveBeenCalled()
     })
 

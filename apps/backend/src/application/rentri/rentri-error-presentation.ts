@@ -293,6 +293,7 @@ function estraiTipoOperazioneFirma(
 
   const match = errorMessage.match(/l'operazione\s+(\S+)\s+non è stata completata/i)
   const tipo = match?.[1]?.toUpperCase()
+  if (tipo?.startsWith('PARTENZA')) return 'PARTENZA'
   return tipo === 'ACCETTAZIONE' || tipo === 'ANNULLAMENTO' || tipo === 'PARTENZA'
     ? tipo
     : undefined

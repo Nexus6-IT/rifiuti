@@ -6,6 +6,7 @@ import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { GetAzioniDisponibiliUseCase } from '../../application/rentri/get-azioni-disponibili.use-case'
 import { CompletaOperazioneConFirmaUseCase } from '../../application/rentri/completa-operazione-con-firma.use-case'
+import { GestisciSessioneFirmaRentriUseCase } from '../../application/rentri/gestisci-sessione-firma-rentri.use-case'
 import { FirmaPartenzaRentriUseCase } from '../../application/rentri/firma-partenza-rentri.use-case'
 import { EventiFirRentriInMemoria } from '../../application/rentri/eventi-fir-rentri.in-memoria'
 import { SessioniFirmaRentriInMemoria } from '../../application/rentri/sessioni-firma-rentri.in-memoria'
@@ -231,9 +232,17 @@ describe('P3 — firme di partenza contro la fake RENTRI (in-process)', () => {
       getAzioni,
       completa,
       eventi,
-      creaLogger()
+      creaLogger(),
+      { moduliAttivi: jest.fn().mockResolvedValue(['fir', 'rentri']) } as any
     )
-    return { completa, firmaPartenza, eventi }
+    const gestisci = new GestisciSessioneFirmaRentriUseCase(
+      firRepository as any,
+      sessioni,
+      completa,
+      creaLogger(),
+      firmaPartenza
+    )
+    return { completa, firmaPartenza, eventi, gestisci }
   }
 
   /**
@@ -475,9 +484,91 @@ describe('P3 — firme di partenza contro la fake RENTRI (in-process)', () => {
 
       const esito = await firmaPartenza.dopoAzioneLocale({ firId: cartaceo.id, tenantId })
 
-      expect(esito).toEqual({ stato: 'NON_APPLICABILE' })
+      expect(esito).toMatchObject({ stato: 'NON_ANCORA_LEGATO' })
       expect(richieste).not.toHaveBeenCalled()
       expect(sessioni.righe).toHaveLength(0)
     })
   })
+
+  it('I1: IN_ATTESA, conferma sul telefono, «Ho confermato» (riprendi) = storico [INVIATA, ACCETTATA] e una sola authorize', async () => {
+    const tenantId = 'tenant-oracolo-p3-7'
+    const numeroFir = 'BCDFGH00050ZN'
+    const { fir, client, sessioni, firmaPartenza, gestisci, eventi } = await preparaFirDaFirmare(
+      numeroFir,
+      tenantId,
+      'FirmaProduttoreTrasportatoreIniziale'
+    )
+    const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+    const completatore = avviaCompletatore()
+
+    try {
+      const prima = await firmaPartenza.execute({
+        firId: fir.id,
+        tenantId,
+        intervalloPollingMs: 5,
+        attesaMassimaMs: 100,
+      })
+      expect(prima.firma.esito).toBe('IN_ATTESA')
+      const handle = (prima.firma as { handle: string }).handle
+      await app.inject({ method: 'POST', url: `/__controllo/ca-rentri/autorizza/${handle}` })
+
+      const esito = await gestisci.riprendi({
+        firId: fir.id,
+        tenantId,
+        sessioneId: sessioni.righe[0].id,
+        utenteId: 'u-1',
+      })
+
+      expect(esito).toEqual({ esito: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' })
+      expect(authorize).toHaveBeenCalledTimes(1)
+      const storico = (await eventi.elenca(tenantId, fir.id)).map(e => e.esito).sort()
+      expect(storico).toEqual(['ACCETTATA', 'INVIATA'])
+    } finally {
+      completatore.ferma()
+    }
+  }, 60000)
+
+  it('I1: «Richiedi di nuovo» dopo SCADUTA quando /azioni non propone piu la firma: 409 senza authorize', async () => {
+    const tenantId = 'tenant-oracolo-p3-8'
+    const numeroFir = 'BCDFGH00050ZP'
+    const { fir, client, sessioni, firmaPartenza, gestisci } = await preparaFirDaFirmare(
+      numeroFir,
+      tenantId,
+      'FirmaProduttoreTrasportatoreIniziale'
+    )
+    const completatore = avviaCompletatore()
+
+    try {
+      await firmaPartenza.execute({
+        firId: fir.id,
+        tenantId,
+        intervalloPollingMs: 5,
+        attesaMassimaMs: 100,
+      })
+      sessioni.righe[0].stato = 'SCADUTA'
+      // Nel frattempo la partenza e' stata firmata altrove: l'ente non la propone piu.
+      await app.inject({
+        method: 'POST',
+        url: '/__controllo/formulario',
+        payload: {
+          numero_fir: numeroFir,
+          stato: 'InserimentoAccettazione',
+          identificativo_soggetto: CF,
+        },
+      })
+      const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+
+      await expect(
+        gestisci.riprendi({
+          firId: fir.id,
+          tenantId,
+          sessioneId: sessioni.righe[0].id,
+          nuovaSessione: true,
+        })
+      ).rejects.toMatchObject({ metadata: { rule: 'FIRMA_PARTENZA_NON_DISPONIBILE' } })
+      expect(authorize).not.toHaveBeenCalled()
+    } finally {
+      completatore.ferma()
+    }
+  }, 60000)
 })

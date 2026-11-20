@@ -12,20 +12,13 @@ import {
 } from './completa-operazione-con-firma.use-case'
 import { IEventiFirRentriRepository, EsitoEventoFirRentri } from './eventi-fir-rentri.port'
 import { registraEventoFirRentri } from './registra-evento-fir-rentri'
-
-/**
- * `tipoOperazione` della sessione di firma delle firme di partenza. Costante: una seconda richiesta di
- * firma di partenza sullo stesso FIR riprende la sessione aperta (stessa operazione) invece di
- * mandare una seconda richiesta sul telefono; una sessione aperta per un'ALTRA operazione
- * (accettazione, annullamento) blocca con 409 `SESSIONE_FIRMA_IN_CORSO`.
- */
-export const TIPO_OPERAZIONE_PARTENZA = 'PARTENZA'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 
 /**
  * Le firme di partenza, dalla piu' completa alla meno: quando l'ente ne propone piu' di una (tenant che e'
- * insieme produttore e trasportatore) si sceglie quella che chiude piu' firme in un colpo. La scelta e'
- * informativa: `acquisizione-firma` e' un solo endpoint, e a decidere cosa si firma e' lo stato del
- * formulario presso l'ente.
+ * insieme produttore e trasportatore) si sceglie quella che chiude piu' firme in un colpo. `acquisizione-firma` e'
+ * un solo endpoint: a decidere cosa si firma e' lo stato del formulario presso l'ente, ma la VESTE del firmatario
+ * (produttore, trasportatore o entrambi) la dice l'operazione proposta da `/azioni`.
  */
 export const OPERAZIONI_FIRMA_PARTENZA = [
   'AcquisizioneFirmaProduttoreTrasportatore',
@@ -34,6 +27,44 @@ export const OPERAZIONI_FIRMA_PARTENZA = [
 ] as const satisfies readonly Operazione[]
 
 export type OperazioneFirmaPartenza = (typeof OPERAZIONI_FIRMA_PARTENZA)[number]
+
+const TIPO_PER_OPERAZIONE: Readonly<Record<OperazioneFirmaPartenza, string>> = {
+  AcquisizioneFirmaProduttoreTrasportatore: 'PARTENZA_PRODUTTORE_TRASPORTATORE',
+  AcquisizioneFirmaProduttore: 'PARTENZA_PRODUTTORE',
+  AcquisizioneFirmaTrasportatore: 'PARTENZA_TRASPORTATORE',
+}
+
+/**
+ * `tipoOperazione` della sessione di firma, uno per veste: una seconda richiesta con la stessa veste riprende la
+ * sessione aperta (una sola richiesta sul telefono), una veste diversa o un'altra operazione (accettazione,
+ * annullamento) blocca con 409 `SESSIONE_FIRMA_IN_CORSO`. Il nome finisce nel testo letto sul telefono.
+ */
+export function tipoOperazionePartenza(operazione: OperazioneFirmaPartenza): string {
+  return TIPO_PER_OPERAZIONE[operazione]
+}
+
+/** L'operazione di partenza di una sessione (`PARTENZA_*`), o `undefined` se la sessione e' di un'altra operazione. */
+export function operazionePartenzaDaTipo(tipo: string): OperazioneFirmaPartenza | undefined {
+  return OPERAZIONI_FIRMA_PARTENZA.find(o => TIPO_PER_OPERAZIONE[o] === tipo)
+}
+
+const VESTE: Readonly<Record<OperazioneFirmaPartenza, string>> = {
+  AcquisizioneFirmaProduttoreTrasportatore: 'del produttore e del trasportatore',
+  AcquisizioneFirmaProduttore: 'del produttore',
+  AcquisizioneFirmaTrasportatore: 'del trasportatore',
+}
+
+/** «Emetti»: firma del produttore (anche combinata). */
+export const AMMESSE_EMISSIONE: readonly OperazioneFirmaPartenza[] = [
+  'AcquisizioneFirmaProduttoreTrasportatore',
+  'AcquisizioneFirmaProduttore',
+]
+
+/** «Presa in carico»: firma del trasportatore (anche combinata). */
+export const AMMESSE_PRESA_IN_CARICO: readonly OperazioneFirmaPartenza[] = [
+  'AcquisizioneFirmaProduttoreTrasportatore',
+  'AcquisizioneFirmaTrasportatore',
+]
 
 export const AVVISO_FIRMA_RENTRI_DA_COMPLETARE = 'Firma RENTRI da completare'
 
@@ -45,6 +76,11 @@ export interface ComandoFirmaPartenza {
   /** Richiesta esplicita di una nuova sessione dopo una scaduta o rifiutata (pulsante del banner). */
   nuovaSessione?: boolean
   correlationId?: string
+  /**
+   * Firme che questa azione puo' dare («Emetti»: produttore; «Presa in carico»: trasportatore). Senza, vale
+   * qualunque firma di partenza proposta dall'ente (pulsante «Firma la partenza su RENTRI»).
+   */
+  ammesse?: readonly OperazioneFirmaPartenza[]
   /** Solo per i test: v. `ComandoCompletaOperazioneConFirma.attesaMassimaMs`. */
   attesaMassimaMs?: number
   /** Solo per i test: v. `ComandoCompletaOperazioneConFirma.intervalloPollingMs`. */
@@ -63,8 +99,10 @@ export interface EsitoFirmaPartenza {
  * un'eccezione: l'azione locale non si annulla se la firma RENTRI non va a buon fine.
  */
 export type EsitoFirmaPartenzaDopoAzione =
-  /** FIR non legato a RENTRI (flusso cartaceo): nessuna chiamata all'ente. */
+  /** FIR non legato a RENTRI (flusso cartaceo) o azienda senza il modulo `rentri`: nessuna chiamata all'ente. */
   | { stato: 'NON_APPLICABILE' }
+  /** Modulo `rentri` attivo ma formulario non ancora legato (trasmissione in corso o manuale): la firma si fa dopo. */
+  | { stato: 'NON_ANCORA_LEGATO'; avviso: string }
   | { stato: 'COMPLETATA'; statoFormulario: StatoFormulario }
   /** Richiesta partita: l'utente deve confermare sul telefono (banner di P1). */
   | { stato: 'IN_ATTESA'; sessioneId?: string; scadenza: Date }
@@ -117,7 +155,8 @@ export class FirmaPartenzaRentriUseCase {
     private readonly getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
     private readonly completaOperazioneConFirma: CompletaOperazioneConFirmaUseCase,
     private readonly eventi: IEventiFirRentriRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext('FirmaPartenzaRentriUseCase')
   }
@@ -143,6 +182,14 @@ export class FirmaPartenzaRentriUseCase {
       )
     }
 
+    // Come le rotte di firma di P1-P3 (`@RichiedeModulo('rentri')`): senza il modulo nessuna scrittura sull'ente.
+    if (!(await this.moduli.moduliAttivi(tenantId)).includes('rentri')) {
+      throw DomainException.businessRuleViolation(
+        'MODULO_NON_ATTIVO',
+        "Il modulo RENTRI non è attivo per l'azienda: la firma di partenza non può essere richiesta."
+      )
+    }
+
     // --- 2. L'operazione la sceglie /azioni (riconcilia anche lo stato del FIR) ---
 
     const { azioni } = await this.getAzioniDisponibiliUseCase.execute(
@@ -151,12 +198,17 @@ export class FirmaPartenzaRentriUseCase {
       correlationId
     )
     const proposte = new Set(azioni.map(a => a.operazione))
-    const operazione = OPERAZIONI_FIRMA_PARTENZA.find(o => proposte.has(o))
+    const ammesse = comando.ammesse ?? OPERAZIONI_FIRMA_PARTENZA
+    const operazione = OPERAZIONI_FIRMA_PARTENZA.find(o => proposte.has(o) && ammesse.includes(o))
     if (!operazione) {
+      const altre = OPERAZIONI_FIRMA_PARTENZA.filter(o => proposte.has(o))
       throw DomainException.businessRuleViolation(
         'FIRMA_PARTENZA_NON_DISPONIBILE',
-        "L'ente non chiede ora la firma di partenza di questo formulario: mancano ancora dei dati del viaggio " +
-          '(quantità o trasporto), oppure la partenza è già stata firmata. Nessuna firma è stata richiesta.'
+        altre.length > 0
+          ? `L'ente chiede ora la firma di partenza ${VESTE[altre[0]]}, non quella richiesta da questa azione: ` +
+              'usa «Firma la partenza su RENTRI». Nessuna firma è stata richiesta.'
+          : "L'ente non chiede ora la firma di partenza di questo formulario: mancano ancora dei dati del viaggio " +
+              '(quantità o trasporto), oppure la partenza è già stata firmata. Nessuna firma è stata richiesta.'
       )
     }
 
@@ -167,7 +219,7 @@ export class FirmaPartenzaRentriUseCase {
       firma = await this.completaOperazioneConFirma.execute({
         firId,
         tenantId,
-        tipoOperazione: TIPO_OPERAZIONE_PARTENZA,
+        tipoOperazione: tipoOperazionePartenza(operazione),
         utenteId,
         nuovaSessione: comando.nuovaSessione,
         correlationId,
@@ -222,8 +274,18 @@ export class FirmaPartenzaRentriUseCase {
     const { firId, tenantId } = comando
     try {
       const fir = await this.firRepository.findById(firId)
-      if (!fir || fir.tenantId !== tenantId || !fir.rentriNumeroFir) {
+      if (!fir || fir.tenantId !== tenantId) {
         return { stato: 'NON_APPLICABILE' }
+      }
+      if (!(await this.moduli.moduliAttivi(tenantId)).includes('rentri')) {
+        return { stato: 'NON_APPLICABILE' }
+      }
+      if (!fir.rentriNumeroFir) {
+        return {
+          stato: 'NON_ANCORA_LEGATO',
+          avviso:
+            'Il formulario non è ancora legato a RENTRI: appena sarà registrato, nel dettaglio comparirà «Firma la partenza su RENTRI».',
+        }
       }
 
       const { firma } = await this.execute(comando)

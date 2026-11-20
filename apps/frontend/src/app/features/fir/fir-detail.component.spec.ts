@@ -6,7 +6,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 // test non serve animare — serve solo che l'animazione non sia un errore.
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
-import { of, throwError } from 'rxjs'
+import { of, Subject, throwError } from 'rxjs'
 import { FirDetailComponent } from './fir-detail.component'
 import { FirService } from './fir.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -2391,6 +2391,55 @@ describe('FirDetailComponent', () => {
         component.emettiFIR(bozza)
 
         expect(aggiungi).toHaveBeenCalledTimes(1)
+      })
+
+      it('Emetti con FIR non ancora legato (trasmissione in corso): toast informativo, non un avviso di errore (M1)', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(bozza))
+        firService.emettiFIR.and.returnValue(
+          of({
+            ...baseFIR,
+            stato: FIRStato.EMESSO,
+            firmaRentri: {
+              stato: 'NON_ANCORA_LEGATO',
+              avviso: 'Il formulario non è ancora legato a RENTRI',
+            },
+          })
+        )
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.emettiFIR(bozza)
+
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ severity: 'info', summary: 'Firma RENTRI più tardi' })
+        )
+        expect(aggiungi).not.toHaveBeenCalledWith(jasmine.objectContaining({ severity: 'warn' }))
+      })
+
+      it('durante Emetti il pulsante e in caricamento e torna libero a risposta arrivata (M3)', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(bozza))
+        const risposta = new Subject<FIR>()
+        firService.emettiFIR.and.returnValue(risposta)
+        fixture.detectChanges()
+
+        component.emettiFIR(bozza)
+        expect(component['azioneInCorso']()).toBeTrue()
+        risposta.next({ ...baseFIR, stato: FIRStato.EMESSO })
+        expect(component['azioneInCorso']()).toBeFalse()
+      })
+
+      it('su un FIR legato con la firma proposta «Presa in carico» non compare accanto a «Firma la partenza» (I2)', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(firLegato))
+        rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+          azioni('AcquisizioneFirmaTrasportatore')
+        )
+        fixture.detectChanges()
+
+        expect(el().querySelector('[data-testid="fir-detail-presa-in-carico"]')).toBeFalsy()
+        expect(el().querySelector(PULSANTE)).toBeTruthy()
       })
 
       it('Presa in carico su FIR legato: la firma e in attesa del telefono, messaggio dedicato', () => {

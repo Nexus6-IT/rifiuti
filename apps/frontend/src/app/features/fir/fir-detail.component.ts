@@ -495,6 +495,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               }
               @if (f.stato === 'BOZZA') {
                 <p-button
+                  [loading]="azioneInCorso()"
                   label="Emetti"
                   icon="pi pi-send"
                   (onClick)="emettiFIR(f)"
@@ -502,8 +503,9 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [attr.aria-label]="'Emetti FIR ' + (f.numeroProgressivo || f.id)"
                 />
               }
-              @if (f.stato === 'EMESSO') {
+              @if (f.stato === 'EMESSO' && !canFirmarePartenza(f)) {
                 <p-button
+                  [loading]="azioneInCorso()"
                   label="Presa in carico"
                   icon="pi pi-truck"
                   (onClick)="presaInCarico(f)"
@@ -1874,11 +1876,16 @@ export class FirDetailComponent implements OnInit {
     )
   }
 
+  /** Emissione o presa in carico in corso: la firma RENTRI puo' attendere fino a 20 s la conferma sul telefono. */
+  protected readonly azioneInCorso = signal(false)
+
   emettiFIR(fir: FIR): void {
+    this.azioneInCorso.set(true)
     // `firmaRentri`: se il FIR e' legato a RENTRI il backend propone anche la firma di partenza; un suo
     // fallimento non annulla l'emissione (arriva come avviso in `firmaRentri`).
     this.firService.emettiFIR(fir.id, { firmaRentri: true }).subscribe({
       next: updated => {
+        this.azioneInCorso.set(false)
         this.fir.set(updated)
         this.messageService.add({
           severity: 'success',
@@ -1888,6 +1895,7 @@ export class FirDetailComponent implements OnInit {
         this.mostraFirmaRentriDopoAzione(updated.firmaRentri)
       },
       error: err => {
+        this.azioneInCorso.set(false)
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
@@ -1905,6 +1913,14 @@ export class FirDetailComponent implements OnInit {
   private mostraFirmaRentriDopoAzione(esito: EsitoFirmaPartenzaDopoAzione | undefined): void {
     if (!esito || esito.stato === 'NON_APPLICABILE') return
     switch (esito.stato) {
+      case 'NON_ANCORA_LEGATO':
+        // Trasmissione in corso: nessun avviso di errore, e' il percorso normale.
+        this.messageService.add({
+          severity: 'info',
+          summary: 'Firma RENTRI più tardi',
+          detail: esito.avviso,
+        })
+        return
       case 'COMPLETATA':
         this.messageService.add({
           severity: 'success',
@@ -1997,8 +2013,10 @@ export class FirDetailComponent implements OnInit {
   }
 
   presaInCarico(fir: FIR): void {
+    this.azioneInCorso.set(true)
     this.firService.presaInCarico(fir.id).subscribe({
       next: updated => {
+        this.azioneInCorso.set(false)
         this.fir.set(updated)
         // FIR legato a RENTRI: la presa in carico e' la firma di partenza del trasportatore (`firmaRentri`).
         if (updated.firmaRentri) {
@@ -2012,6 +2030,7 @@ export class FirDetailComponent implements OnInit {
         })
       },
       error: err => {
+        this.azioneInCorso.set(false)
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',

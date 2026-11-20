@@ -223,7 +223,7 @@ describe('traduciErroreRentri', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'FIRMA_RENTRI_RIFIUTATA',
       errorMessage:
-        "L'ente ha rifiutato la firma del formulario 123: l'operazione PARTENZA NON è stata completata. Dettaglio della validazione RENTRI: []",
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione PARTENZA_TRASPORTATORE NON è stata completata. Dettaglio della validazione RENTRI: []",
     })
 
     expect(risultato.messaggio).toBe(

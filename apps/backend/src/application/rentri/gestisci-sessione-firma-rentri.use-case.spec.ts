@@ -5,7 +5,7 @@ import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria
 describe('GestisciSessioneFirmaRentriUseCase', () => {
   const TENANT = 'tenant-gs-1'
 
-  async function ambiente() {
+  async function ambiente(tipoOperazione = 'ANNULLAMENTO') {
     const fir = FIR.create({
       produttoreId: 'p',
       trasportatoreId: 't',
@@ -19,22 +19,29 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
     const sessioni = new SessioniFirmaRentriInMemoria()
     const completa = { execute: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA' }) }
     const logger: any = { setContext: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    const firmaPartenza = {
+      execute: jest.fn().mockResolvedValue({
+        operazione: 'AcquisizioneFirmaTrasportatore',
+        firma: { esito: 'IN_ATTESA', handle: 'h' },
+      }),
+    }
     const useCase = new GestisciSessioneFirmaRentriUseCase(
       { findById: jest.fn().mockResolvedValue(fir) } as any,
       sessioni,
       completa as any,
-      logger
+      logger,
+      firmaPartenza as any
     )
     const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
       firId: 'fir-1',
-      tipoOperazione: 'ANNULLAMENTO',
+      tipoOperazione: tipoOperazione,
       handle: 'h',
       tokenAcquisizione: 'SEGRETO',
       digestToSign: 'd',
       scadenza: new Date(Date.now() + 60_000),
     })
-    return { useCase, sessioni, completa, sessione, fir }
+    return { useCase, sessioni, completa, sessione, fir, firmaPartenza }
   }
 
   it('inAttesa espone id, operazione e scadenza, MAI token, digest o handle', async () => {
@@ -152,5 +159,64 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
     fir.applyRentriStato('InserimentoAccettazione')
 
     expect(await useCase.inAttesa('fir-1', TENANT)).toBeNull()
+  })
+
+  describe('sessioni di firma di partenza (I1)', () => {
+    it.each([
+      ['PARTENZA_TRASPORTATORE', 'AcquisizioneFirmaTrasportatore'],
+      ['PARTENZA_PRODUTTORE', 'AcquisizioneFirmaProduttore'],
+      ['PARTENZA_PRODUTTORE_TRASPORTATORE', 'AcquisizioneFirmaProduttoreTrasportatore'],
+    ])(
+      'riprendi su %s passa da FirmaPartenzaRentriUseCase (storico e /azioni), non dal ciclo comune',
+      async (tipo, operazione) => {
+        const { useCase, completa, firmaPartenza, sessione } = await ambiente(tipo)
+        sessione.firId = 'fir-1'
+
+        const esito = await useCase.riprendi({
+          firId: 'fir-1',
+          tenantId: TENANT,
+          sessioneId: sessione.id,
+          utenteId: 'u1',
+          nuovaSessione: false,
+        })
+
+        expect(firmaPartenza.execute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            firId: 'fir-1',
+            tenantId: TENANT,
+            utenteId: 'u1',
+            ammesse: [operazione],
+          })
+        )
+        expect(completa.execute).not.toHaveBeenCalled()
+        expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h' })
+      }
+    )
+
+    it('«Richiedi di nuovo» (nuovaSessione) su una sessione PARTENZA scaduta ricontrolla /azioni tramite lo use case di partenza', async () => {
+      const { useCase, sessioni, firmaPartenza, sessione } =
+        await ambiente('PARTENZA_TRASPORTATORE')
+      sessioni.righe[0].stato = 'SCADUTA'
+
+      await useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: sessione.id,
+        nuovaSessione: true,
+      })
+
+      expect(firmaPartenza.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ nuovaSessione: true })
+      )
+    })
+
+    it('una sessione di un altra operazione continua a passare dal ciclo comune', async () => {
+      const { useCase, completa, firmaPartenza, sessione } = await ambiente('ACCETTAZIONE')
+
+      await useCase.riprendi({ firId: 'fir-1', tenantId: TENANT, sessioneId: sessione.id })
+
+      expect(completa.execute).toHaveBeenCalledTimes(1)
+      expect(firmaPartenza.execute).not.toHaveBeenCalled()
+    })
   })
 })
