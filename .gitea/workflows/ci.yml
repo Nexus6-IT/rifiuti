@@ -96,6 +96,16 @@ jobs:
       - name: Lint backend (check-only, config ESLint root)
         run: npx eslint "{src,test}/**/*.ts" --max-warnings=-1
 
+      # xmlsec1: verificatore XMLDSig indipendente per la firma del registro (eREGI E5,
+      # firma-xml-registro.spec.ts). Con XMLSEC1_OBBLIGATORIO=1 il test fallisce se manca,
+      # invece di saltare in silenzio.
+      - name: Installa xmlsec1
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y -qq --no-install-recommends xmlsec1
+          xmlsec1 --version
+
       # Test unitari Jest con coverage (lo script test:cov esiste nel
       # package.json e incorpora gli stessi flag di hardening usati dal gate
       # bloccante in deploy.yml: --forceExit --ci --runInBand).
@@ -103,6 +113,7 @@ jobs:
         env:
           NODE_ENV: test
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+          XMLSEC1_OBBLIGATORIO: '1'
         run: npm run test:cov
 
       # Script di backup/restore (ops/): test bash senza database.

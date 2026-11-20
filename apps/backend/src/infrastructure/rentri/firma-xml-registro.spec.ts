@@ -208,6 +208,10 @@ describe('firmaXmlRegistro (XMLDSig enveloped, eREGI E5)', () => {
 
     it('un verificatore indipendente (xmlsec1) accetta la firma e rifiuta quella alterata', () => {
       if (spawnSync('xmlsec1', ['--version']).status !== 0) {
+        // In CI (`.gitea/workflows/ci.yml`) xmlsec1 e' installato e obbligatorio: niente salto silenzioso.
+        if (process.env.XMLSEC1_OBBLIGATORIO === '1') {
+          throw new Error('xmlsec1 non installato ma XMLSEC1_OBBLIGATORIO=1')
+        }
         // eslint-disable-next-line no-console
         console.warn('xmlsec1 non installato: prova con verificatore indipendente saltata')
         return
