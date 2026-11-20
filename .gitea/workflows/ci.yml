@@ -698,6 +698,9 @@ jobs:
           # Invio allo SDI (4.5b): l'interruttore globale e' SPENTO di default; solo questo backend
           # di collaudo (provider `fake` in-process) lo accende, per l'e2e tests/sdi. Mai in produzione.
           SDI_INVII_ATTIVI: "true"
+          # Chiave di cifratura delle credenziali SDI: l'e2e tests/sdi salva la configurazione (PUT
+          # /sdi/configurazione, 503 SDI_CHIAVE_CIFRATURA_ASSENTE senza). Valore finto, solo collaudo.
+          SDI_CREDENTIAL_ENC_KEY: ci-dummy-sdi-credential-key-not-used-in-prod
         run: |
           # Porta scelta a runtime da porta-libera.sh (non fissa: run parallele).
           export PORT="${E2E_BACKEND_PORT:?E2E_BACKEND_PORT non impostata}"
