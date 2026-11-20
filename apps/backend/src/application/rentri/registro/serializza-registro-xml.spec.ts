@@ -328,12 +328,12 @@ describe('serializzaRegistro', () => {
     })
     expect(
       xml.startsWith(
-        '<?xml version="1.0" encoding="UTF-8"?><reg:Registro xmlns:reg="urn:it:rentri:registri:1.0" xmlns:mov="urn:it:rentri:movimenti:1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><reg:eREGI'
+        '<?xml version="1.0" encoding="UTF-8"?><reg:Registro xmlns:reg="urn:it:rentri:registri:1.0"><reg:eREGI'
       )
     ).toBe(true)
     expect(xml).toContain(
       '</reg:eREGI><reg:RiferimentiPrecedenti><reg:Ref DigestValue="AAAA" DataCreazione="2026-01-02T08:00:00Z"/><reg:Ref DigestValue="BBBB" DataCreazione="2026-02-01T00:00:00.000Z"/></reg:RiferimentiPrecedenti>' +
-        '<reg:Registrazioni Anno="2026" ProgressivoDa="8" ProgressivoA="9" NumeroRegistrazioni="2" DataCreazione="2026-04-01T00:00:00.000Z"><reg:Movimento>'
+        '<reg:Registrazioni xmlns:mov="urn:it:rentri:movimenti:1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Anno="2026" ProgressivoDa="8" ProgressivoA="9" NumeroRegistrazioni="2" DataCreazione="2026-04-01T00:00:00.000Z"><reg:Movimento>'
     )
     expect(xml.endsWith('</reg:Registrazioni></reg:Registro>')).toBe(true)
   })

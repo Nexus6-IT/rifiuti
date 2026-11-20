@@ -61,15 +61,21 @@ function materialeRsa(): MaterialeFirmaRegistro {
  * eREGI di prova con una firma VERA dell'"ente" (chiave dedicata), con la canonicalizzazione
  * richiesta: serve a verificare che la firma dell'eREGI sopravviva all'inserimento nel registro.
  */
-function eregiFirmato(c14n: string): string {
+function eregiFirmato(c14n: string, prefisso = 'reg'): string {
   const ente = materialeRsa()
-  const corpo =
+  const corpoReg =
     `<reg:eREGI xmlns:reg="${NS_REG}" xmlns:ds="${NS_DS}" Id="eREGI-CS-0">` +
     '<reg:Identificativo>R1234ABCDE0</reg:Identificativo>' +
     '<reg:Operatore><reg:NumIscr>OP1234567890123</reg:NumIscr><reg:CodiceFiscale>01234567890</reg:CodiceFiscale><reg:Denominazione>Rossi &amp; Figli</reg:Denominazione></reg:Operatore>' +
     '<reg:NumIscrSito>OP1234567890123-MI0001</reg:NumIscrSito><reg:IndirizzoSito>Via Roma 1</reg:IndirizzoSito>' +
     '<reg:DataRichiesta>2026-01-02T08:00:00Z</reg:DataRichiesta><reg:IdentificativoRichiesta>x</reg:IdentificativoRichiesta>' +
     '<reg:AutoreRichiesta>y</reg:AutoreRichiesta><reg:CCIAANome>z</reg:CCIAANome></reg:eREGI>'
+  const corpo =
+    prefisso === 'reg'
+      ? corpoReg
+      : corpoReg
+          .replace(/(<\/?)reg:/g, `$1${prefisso}:`)
+          .replace('xmlns:reg=', `xmlns:${prefisso}=`)
   const firmatore = new SignedXml({
     privateKey: ente.privateKeyPem,
     signatureAlgorithm: ALG_RSA,
@@ -248,13 +254,22 @@ describe('firmaXmlRegistro (XMLDSig enveloped, eREGI E5)', () => {
     expect(eregiVerificabile(xml, eregi)).toBe(true)
   })
 
-  it('M5: con C14N inclusiva i namespace della radice (mov, xsi) entrano nell eREGI e ne rompono la firma in contesto', () => {
-    // Caratterizzazione, non un requisito: se RENTRI firma l'eREGI con C14N inclusiva e lo verifica
-    // dentro il registro, il digest cambia (mov/xsi ereditati). Da chiudere con la prova sul demo (Q6).
+  it('M5: un eREGI firmato con C14N inclusiva (prefisso reg) resta valido dentro il registro, anche dopo la firma', () => {
+    // La radice dichiara solo `reg`: `mov` e `xsi` stanno su `reg:Registrazioni`, cosi' la C14N
+    // inclusiva dell'eREGI in contesto eredita gli stessi namespace che ha da solo.
     const inclusiva = eregiFirmato(ALG_C14N_INCLUSIVA)
     const registro = registroNonFirmato(inclusiva)
     expect(eregiVerificabile(inclusiva, inclusiva)).toBe(true)
-    expect(eregiVerificabile(registro, inclusiva)).toBe(false)
+    expect(eregiVerificabile(registro, inclusiva)).toBe(true)
+    expect(eregiVerificabile(firmaXmlRegistro(registro, ec).xml, inclusiva)).toBe(true)
+  })
+
+  it('M5 residuo: con C14N inclusiva e un prefisso diverso da reg la firma dell eREGI in contesto si rompe', () => {
+    // Caratterizzazione, non un requisito: `xmlns:reg` della radice entra nella forma canonica.
+    // Da chiudere con la prova sul demo (Q6): serve sapere prefisso e C14N dell'eREGI reale.
+    const inclusiva = eregiFirmato(ALG_C14N_INCLUSIVA, 'r')
+    expect(eregiVerificabile(inclusiva, inclusiva)).toBe(true)
+    expect(eregiVerificabile(registroNonFirmato(inclusiva), inclusiva)).toBe(false)
   })
 
   it('rifiuta un registro gia firmato, una radice sbagliata, un DOCTYPE e un XML rotto', () => {
