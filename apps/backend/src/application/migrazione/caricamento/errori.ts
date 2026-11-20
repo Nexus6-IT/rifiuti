@@ -30,6 +30,18 @@ export class CaricamentoBloccoFallitoError extends Error {
   }
 }
 
+/**
+ * Errore di una fase di caricamento con una descrizione SENZA dati che dice quale regola ha fermato il
+ * blocco (nessun valore delle righe: al piu' conteggi o nomi di regole). `causaSenzaDati` la riporta
+ * cosi' com'e', al posto del generico «errore del database».
+ */
+export class ErroreSenzaDati extends Error {
+  constructor(readonly descrizione: string) {
+    super(descrizione)
+    this.name = 'ErroreSenzaDati'
+  }
+}
+
 const LUNGHEZZA_MASSIMA = 1000
 
 const DESCRIZIONE_SQLSTATE: Record<string, string> = {
@@ -59,6 +71,7 @@ export function causaSenzaDati(errore: unknown): string {
   if (errore instanceof LottoNonInCorsoError) {
     return 'il lotto di import non è in corso (già concluso o annullato)'
   }
+  if (errore instanceof ErroreSenzaDati) return errore.descrizione.slice(0, LUNGHEZZA_MASSIMA - 40)
   const e = errore as {
     code?: unknown
     message?: unknown

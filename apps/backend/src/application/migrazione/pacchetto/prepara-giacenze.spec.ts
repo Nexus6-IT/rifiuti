@@ -56,8 +56,12 @@ describe('I6: preparaGiacenze (trasformazione pura)', () => {
   })
 
   it('origini dei carichi con anno e protocollo; l apertura non ne ha', () => {
-    expect(famiglia(U1, '15 01 01')?.origini).toEqual([{ anno: 2026, protocollo: 12, quantita: 600 }])
-    expect(famiglia(U1, '20 03 01')?.origini).toEqual([{ anno: 2026, protocollo: 13, quantita: 300 }])
+    expect(famiglia(U1, '15 01 01')?.origini).toEqual([
+      { anno: 2026, protocollo: 12, quantita: 600 },
+    ])
+    expect(famiglia(U1, '20 03 01')?.origini).toEqual([
+      { anno: 2026, protocollo: 13, quantita: 300 },
+    ])
     expect(famiglia(REG_B, '15 01 02')?.origini).toEqual([])
     expect(avviso('ORIGINI_APERTURA_NON_NOTE')).toBe(2)
   })
@@ -96,7 +100,10 @@ describe('I6: preparaGiacenze (trasformazione pura)', () => {
         { scrivi: m => righe.push(m), errore: m => righe.push(`ERR ${m}`) }
       )
       expect(codice).toBe(0)
-      const archivio = righe.find(l => l.startsWith('archivio '))?.split(' ')[1].replace(':', '') as string
+      const archivio = righe
+        .find(l => l.startsWith('archivio '))
+        ?.split(' ')[1]
+        .replace(':', '') as string
       expect(righe).toContain('GIACENZE/giacenze: 4 righe')
       expect(righe).toContain('differenza-giascar 4 30 0')
       expect(righe.some(l => l.startsWith('scarto GIACENZE MAGAZZINO_NON_IN_MAPPA'))).toBe(true)

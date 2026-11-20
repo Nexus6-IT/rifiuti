@@ -61,7 +61,10 @@ describe('I6: validazione del record giacenze (il server non si fida del pacchet
   })
   it('CER e stato fisico non validi', () => {
     rifiuta({ cerCode: '150101' }, 'CER')
-    rifiuta({ statoFisico: 'a|b', legacyKey: `0001|2026|GIACENZE|${U1}|150101|a|b` }, 'STATO_FISICO')
+    rifiuta(
+      { statoFisico: 'a|b', legacyKey: `0001|2026|GIACENZE|${U1}|150101|a|b` },
+      'STATO_FISICO'
+    )
     rifiuta({ statoFisico: '-' }, 'STATO_FISICO')
     rifiuta({ statoFisico: '' }, 'STATO_FISICO')
   })
@@ -79,7 +82,13 @@ describe('I6: validazione del record giacenze (il server non si fida del pacchet
     rifiuta({ origini: [{ anno: 1980, protocollo: 1, quantita: 1 }] }, 'ORIGINI')
     rifiuta({ origini: [{ anno: 2026, protocollo: 0, quantita: 1 }] }, 'ORIGINI')
     rifiuta(
-      { origini: Array.from({ length: 201 }, (_, i) => ({ anno: 2026, protocollo: i + 1, quantita: 0.01 })) },
+      {
+        origini: Array.from({ length: 201 }, (_, i) => ({
+          anno: 2026,
+          protocollo: i + 1,
+          quantita: 0.01,
+        })),
+      },
       'ORIGINI'
     )
   })

@@ -37,6 +37,12 @@ una le corrispondenze `OPER` -> causale `dedotta` (`confermata: true`).
    I FIR digitali non si caricano: il rapporto di `prepara` li elenca (`fir-digitale <numero> <idRentri>`) e si
    riacquisiscono da RENTRI con `migrazione:riacquisisci-fir` (prima in simulazione, poi `--esegui`;
    sola lettura sull'ente, con limite di frequenza: vedi `formato-pacchetto.md`).
+   Giacenze al taglio (I6): `--ambito GIACENZE --operatore <uuid>`, anche dopo o prima di ANAGRAFICHE (non ne
+   dipende). Il rapporto di `prepara` elenca `differenza-giascar <COD> <GIASCAR> <ricalcolato>` (carichi il cui
+   `GIASCAR` non coincide col ricalcolo da `RELAZ`: vanno al cliente, mai corretti in silenzio) e gli scarti
+   `GIACENZE MAGAZZINO_NON_IN_MAPPA` (aggiungere il magazzino a `registri` nella mappa e rifare il pacchetto).
+   Una giacenza iniziale gia' inserita a mano sulla stessa famiglia e' un bloccante: va tolta a mano
+   dall'applicazione (se non e' ancora usata da scarichi) prima del caricamento; l'import non la sovrascrive.
 5. Caricare (stesso comando senza `--verifica`), poi **ricaricare**: la seconda volta deve dire
    `inserite: 0` e `saltate` = `lette`.
 6. Il rapporto di destinazione della prova va al cliente insieme al rapporto sorgente.
