@@ -20,7 +20,7 @@ import {
   IMPORT_SOURCE_WINWASTE,
 } from '../pacchetto/manifest-pacchetto'
 import { caricaAmbito, EsitoCaricamento, FaseCaricamento } from './carica-ambito'
-import { Collisione, DefinizioneFase, FASI_AMBITO } from './fasi-ambito'
+import { Collisione, DefinizioneFase, FASI_AMBITO, FASI_SOLO_ELENCO } from './fasi-ambito'
 import { LottiImportService } from './lotti-import.service'
 import { DIMENSIONE_BLOCCO_DEFAULT, Tx } from './tipi'
 
@@ -94,6 +94,7 @@ export class CaricaPacchettoService {
     const fasi = FASI_AMBITO[r.ambito].filter(f => presenti.has(f.nome))
     // Una fase del pacchetto che il server non conosce non si salta in silenzio.
     for (const f of presenti) {
+      if (FASI_SOLO_ELENCO[r.ambito].includes(f)) continue
       if (!FASI_AMBITO[r.ambito].some(d => d.nome === f))
         throw new AmbitoNonCaricabileError(r.ambito)
     }
@@ -156,6 +157,7 @@ export class CaricaPacchettoService {
       this.prisma.$transaction(async (tx: Tx) => {
         await tx.$executeRaw`SET LOCAL transaction_read_only = on`
         bloccanti.push(...(await this.verificaMappa(tx, r)))
+        bloccanti.push(...(await this.verificaOperatore(tx, r)))
         const [inCorso] = await tx.$queryRaw<Array<{ n: bigint }>>`
           SELECT count(*)::bigint AS n FROM "lotti_import"
           WHERE "tenant_id" = ${r.tenantId}::uuid AND "archivio" = ${r.pacchetto.manifest.archivio}
@@ -171,6 +173,19 @@ export class CaricaPacchettoService {
       })
     )
     return { bloccanti, informazioni }
+  }
+
+  /**
+   * I FIR importati hanno un utente (`producer_user_id`, FK a `users`): l'operatore che avvia il
+   * caricamento. Serve solo all'ambito FIR e deve essere un utente di QUESTA azienda.
+   */
+  private async verificaOperatore(tx: Tx, r: RichiestaCaricamento): Promise<Collisione[]> {
+    if (r.ambito !== 'FIR') return []
+    if (!r.avviatoDa) return [{ codice: 'OPERATORE_ASSENTE', conteggio: 1 }]
+    const [{ n }] = await tx.$queryRaw<Array<{ n: bigint }>>`
+      SELECT count(*)::bigint AS n FROM "users"
+      WHERE "tenant_id" = ${r.tenantId}::uuid AND "id" = ${r.avviatoDa}::uuid`
+    return Number(n) === 0 ? [{ codice: 'OPERATORE_INESISTENTE', conteggio: 1 }] : []
   }
 
   /** Registri, sedi, unita' locali, causali e agganci della mappa devono esistere nell'azienda. */

@@ -1,8 +1,8 @@
 /**
  * Registro delle fasi di ogni ambito del pacchetto: per ciascuna, come si rivalida un record (il
  * pacchetto non e' fidato), come si scrive un blocco e quali collisioni controlla `--verifica`.
- * Oggi: ANAGRAFICHE (ditte, sedi, produttori, trasportatori, destinatari, automezzi). I pezzi I5-I7
- * aggiungono qui FIR, registro e giacenze. L'ORDINE delle fasi e' quello dell'elenco: le parti
+ * Oggi: ANAGRAFICHE (ditte, sedi, produttori, trasportatori, destinatari, automezzi) e FIR (I5: `fir`).
+ * I pezzi I6-I7 aggiungono qui registro e giacenze. L'ORDINE delle fasi e' quello dell'elenco: le parti
  * si legano per chiave legacy, quindi ditte -> sedi -> ruoli -> automezzi.
  */
 import type { AmbitoPacchetto } from '../pacchetto/manifest-pacchetto'
@@ -20,6 +20,7 @@ import {
   validaRecordTrasportatore,
 } from '../pacchetto/record-anagrafiche'
 import { RecordDitta, validaRecordDitta } from '../pacchetto/record-ditta'
+import { RecordFir, validaRecordFir } from '../pacchetto/record-fir'
 import {
   inserisciAutomezzi,
   inserisciDestinatari,
@@ -28,6 +29,7 @@ import {
   inserisciTrasportatori,
 } from './inserisci-anagrafiche'
 import { inserisciDitte } from './inserisci-ditte'
+import { inserisciFir } from './inserisci-fir'
 import type { InserisciBlocco, Tx } from './tipi'
 
 export interface Collisione {
@@ -168,6 +170,69 @@ async function collisioniAutomezzi(tx: Tx, tenantId: string, righe: readonly Rec
   return { collisioni: out, giaCaricate: base.giaCaricate }
 }
 
+/**
+ * Collisioni dei FIR. `firNumber` e' quello di WinWaste e non si rinomina MAI: un numero gia' in
+ * azienda (non importato da questo pacchetto) o ripetuto nel pacchetto e' BLOCCANTE. I riferimenti a
+ * ditte e sedi devono gia' essere nel database (ANAGRAFICHE caricate prima, o ditta agganciata).
+ */
+async function collisioniFir(tx: Tx, tenantId: string, righe: readonly RecordFir[]) {
+  const chiavi = righe.map(r => r.legacyKey)
+  const numeri = righe.map(r => r.firNumber)
+  const out: Collisione[] = []
+  const doppie = chiaviRipetute(chiavi)
+  if (doppie > 0) out.push({ codice: 'DUPLICATO_NEL_PACCHETTO', conteggio: doppie })
+  const ripetuti = chiaviRipetute(numeri)
+  if (ripetuti > 0) out.push({ codice: 'FIR_NUMBER_DUPLICATO_NEL_PACCHETTO', conteggio: ripetuti })
+  const [carico] = await tx.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*)::bigint AS n FROM "firs"
+    WHERE "tenant_id" = ${tenantId}::uuid AND "import_source" = 'WINWASTE'
+      AND "legacy_key" = ANY(${chiavi}::text[])`
+  const [occupati] = await tx.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*)::bigint AS n FROM "firs"
+    WHERE "tenant_id" = ${tenantId}::uuid AND "fir_number" = ANY(${numeri}::text[])
+      AND ("import_source" IS DISTINCT FROM 'WINWASTE' OR "legacy_key" <> ALL(${chiavi}::text[]))`
+  if (Number(occupati.n) > 0)
+    out.push({ codice: 'FIR_NUMBER_GIA_PRESENTE', conteggio: Number(occupati.n) })
+
+  const parti = righe.flatMap(r => [r.produttore, r.trasportatore, r.destinatario])
+  const dittaKeys = new Set<string>()
+  const sedi = new Set<string>()
+  for (const p of parti) {
+    if (p === null || p.tipo !== 'ditta') continue
+    if (p.dittaId === null) dittaKeys.add(p.dittaKey)
+    if (p.sedeKey !== null) sedi.add(p.sedeKey)
+  }
+  if (dittaKeys.size > 0) {
+    const [d] = await tx.$queryRaw<Array<{ n: bigint }>>`
+      SELECT count(*)::bigint AS n FROM "ditte"
+      WHERE "tenant_id" = ${tenantId}::uuid AND "import_source" = 'WINWASTE'
+        AND "legacy_key" = ANY(${[...dittaKeys]}::text[])`
+    const mancanti = dittaKeys.size - Number(d.n)
+    if (mancanti > 0) out.push({ codice: 'RIFERIMENTO_DITTA_NON_CARICATO', conteggio: mancanti })
+  }
+  if (sedi.size > 0) {
+    const [d] = await tx.$queryRaw<Array<{ n: bigint }>>`
+      SELECT count(DISTINCT "legacy_key")::bigint AS n FROM "sedi_ditte"
+      WHERE "tenant_id" = ${tenantId}::uuid AND "import_source" = 'WINWASTE'
+        AND "legacy_key" = ANY(${[...sedi]}::text[])`
+    const mancanti = sedi.size - Number(d.n)
+    if (mancanti > 0) out.push({ codice: 'RIFERIMENTO_SEDE_NON_CARICATO', conteggio: mancanti })
+  }
+  return { collisioni: out, giaCaricate: Number(carico.n) }
+}
+
+/**
+ * Fasi che il pacchetto puo' contenere ma che NON si caricano nel database. `fir-digitali` e' solo
+ * l'elenco dei FIR da riacquisire da RENTRI (`migrazione:riacquisisci-fir`): i FIR digitali non si
+ * copiano (Q5 del 14/11).
+ */
+export const FASI_SOLO_ELENCO: Readonly<Record<AmbitoPacchetto, readonly string[]>> = {
+  ANAGRAFICHE: [],
+  REGISTRO: [],
+  GIACENZE: [],
+  FIR: ['fir-digitali'],
+}
+
 export const FASI_AMBITO: Readonly<Record<AmbitoPacchetto, ReadonlyArray<DefinizioneFase<any>>>> = {
   ANAGRAFICHE: [
     {
@@ -209,5 +274,12 @@ export const FASI_AMBITO: Readonly<Record<AmbitoPacchetto, ReadonlyArray<Definiz
   ],
   REGISTRO: [],
   GIACENZE: [],
-  FIR: [],
+  FIR: [
+    {
+      nome: 'fir',
+      valida: (g, mappa) => validaRecordFir(g, mappa),
+      inserisciBlocco: inserisciFir,
+      collisioni: collisioniFir,
+    } satisfies DefinizioneFase<RecordFir>,
+  ],
 }
