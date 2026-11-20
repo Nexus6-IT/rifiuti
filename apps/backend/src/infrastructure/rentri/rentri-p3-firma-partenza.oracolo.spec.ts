@@ -240,7 +240,8 @@ describe('P3 — firme di partenza contro la fake RENTRI (in-process)', () => {
       sessioni,
       completa,
       creaLogger(),
-      firmaPartenza
+      firmaPartenza,
+      {} as any // AnnotazioneRentriUseCase: non usato dalle firme di partenza
     )
     return { completa, firmaPartenza, eventi, gestisci }
   }
