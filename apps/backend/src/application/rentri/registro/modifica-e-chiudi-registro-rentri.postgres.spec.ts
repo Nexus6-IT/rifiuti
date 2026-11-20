@@ -555,6 +555,27 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
         expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_AVVIATA')).toHaveLength(1)
       })
 
+      it('I4: nella ripresa la guardia non si rifa: annotazioni nate dopo la prenotazione restano locali', async () => {
+        const a = await azienda({
+          rentriChiusuraRichiestaIl: minutiFa(30),
+          invioRentriAutomaticoDal: minutiFa(1000),
+        })
+        await movimentoSenzaRiga(a)
+        await riga(a, 'DA_TRASMETTERE')
+        finto.dettaglio = chiusoSuRentri
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('CHIUSO')
+        expect(finto.chiamateDelete).toHaveLength(0)
+        const db = await registroDi(a.registroId)
+        expect(db.rentriChiusoIl).not.toBeNull()
+        expect(db.rentriChiusuraRichiestaIl).toBeNull()
+        // le annotazioni restano nel registro locale, nessuna riga di trasmissione nuova
+        expect(await owner.wasteMovement.count({ where: { registroId: a.registroId } })).toBe(2)
+        expect(
+          await owner.movimentoTrasmissioneRentri.count({ where: { registroId: a.registroId } })
+        ).toBe(1)
+      })
+
       it('ripresa con il registro ancora aperto sul portale: si rifa la DELETE', async () => {
         const a = await azienda({ rentriChiusuraRichiestaIl: minutiFa(30) })
         finto.dettaglio = aperto()

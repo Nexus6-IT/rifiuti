@@ -108,34 +108,37 @@ export class ChiudiRegistroRentriUseCase {
       }
       if (contesto.rentriChiusoIl !== null) throw new RegistroRentriChiusoError()
 
-      // Stesse regole del termine mensile (E0): in volo, incerte, da trasmettere, rifiutate, non
-      // trasmissibili e le annotazioni che l'invio automatico adottera' (SENZA_RIGA).
-      const conteggi: Record<string, number> = await contaDaTrasmettereRegistro(
-        tx,
-        tenantId,
-        registroId
-      )
-      const inVolo = await tx.movimentoTrasmissioneRentri.groupBy({
-        by: ['stato'],
-        where: { tenantId, registroId, stato: { in: STATI_IN_VOLO } },
-        _count: { _all: true },
-      })
-      for (const g of inVolo) conteggi[g.stato] = g._count._all
-      const voci = Object.entries(conteggi)
-      if (voci.length > 0) {
-        const elenco = voci.map(([stato, n]) => `${n} ${ETICHETTE[stato] ?? stato}`).join(', ')
-        throw new ChiusuraRegistroNonPossibileError(
-          `Non si può chiudere il registro: ci sono annotazioni ${elenco}. Trasmettile o toglile dalla coda e riprova.`,
-          conteggi
-        )
-      }
-
+      // Ripresa di una chiusura gia' prenotata (la DELETE e' gia' stata tentata): la guardia di
+      // ingresso NON si rifa'. Dalla prenotazione nessun lotto parte e `accoda` rifiuta, quindi le
+      // annotazioni nate dopo restano nel registro locale (avviso «registro chiuso») e non devono
+      // bloccare per sempre la conferma.
       const registro = await tx.registroRifiuti.findFirst({
         where: { id: registroId, tenantId },
         select: { rentriChiusuraRichiestaIl: true },
       })
       const ripresa = registro?.rentriChiusuraRichiestaIl != null
       if (!ripresa) {
+        // Stesse regole del termine mensile (E0): in volo, incerte, da trasmettere, rifiutate, non
+        // trasmissibili e le annotazioni che l'invio automatico adottera' (SENZA_RIGA).
+        const conteggi: Record<string, number> = await contaDaTrasmettereRegistro(
+          tx,
+          tenantId,
+          registroId
+        )
+        const inVolo = await tx.movimentoTrasmissioneRentri.groupBy({
+          by: ['stato'],
+          where: { tenantId, registroId, stato: { in: STATI_IN_VOLO } },
+          _count: { _all: true },
+        })
+        for (const g of inVolo) conteggi[g.stato] = g._count._all
+        const voci = Object.entries(conteggi)
+        if (voci.length > 0) {
+          const elenco = voci.map(([stato, n]) => `${n} ${ETICHETTE[stato] ?? stato}`).join(', ')
+          throw new ChiusuraRegistroNonPossibileError(
+            `Non si può chiudere il registro: ci sono annotazioni ${elenco}. Trasmettile o toglile dalla coda e riprova.`,
+            conteggi
+          )
+        }
         await tx.registroRifiuti.updateMany({
           where: { id: registroId, tenantId },
           data: { rentriChiusuraRichiestaIl: new Date() },
