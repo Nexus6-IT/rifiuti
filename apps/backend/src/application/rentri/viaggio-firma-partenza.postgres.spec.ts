@@ -32,7 +32,7 @@ import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-si
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
 import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
-import { FIR, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
+import { FIR, FIRStato, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
 import { DigitalSignatureService } from '../signatures/digital-signature.service'
 import { VerifySignaturesUseCase } from '../signatures/verify-signatures.use-case'
 import { EmettiFIRUseCase } from '../fir/use-cases/emetti-fir.use-case'
@@ -198,7 +198,7 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     expect(esito).toEqual({ stato: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' })
     const riga = await owner.fIR.findUnique({ where: { id: firId } })
     expect(riga?.rentriStatoFormulario).toBe('InserimentoAccettazione')
-    expect(riga?.stato).toBe('IN_TRANSITO')
+    expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.IN_TRANSITO)
     const dopo = await documentoFirmabile(firId)
     expect(dopo.doc).toEqual(prima.doc)
     expect(dopo.hash).toBe(prima.hash)
@@ -235,7 +235,7 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     expect(esito).toEqual({ stato: 'NON_APPLICABILE' })
     expect(h.completa.execute).not.toHaveBeenCalled()
     const riga = await owner.fIR.findUnique({ where: { id: firId } })
-    expect(riga?.stato).toBe('EMESSO')
+    expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.EMESSO)
     expect(riga?.rentriStatoFormulario).toBeNull()
   })
 
@@ -249,7 +249,7 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
 
     expect(r.isSuccess).toBe(true)
     const riga = await owner.fIR.findUnique({ where: { id: firId } })
-    expect(riga?.stato).toBe('IN_TRANSITO')
+    expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.IN_TRANSITO)
     expect((await nelTenant(() => verifica.execute({ firId, tenantId }))).allValid).toBe(true)
   })
 
@@ -263,6 +263,6 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     )
 
     expect(r.isFailure).toBe(true)
-    expect((await owner.fIR.findUnique({ where: { id: firId } }))?.stato).toBe('EMESSO')
+    expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.EMESSO)
   })
 })
