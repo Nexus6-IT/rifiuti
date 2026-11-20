@@ -218,10 +218,17 @@ export class FatturazioneService {
     return this.http.get<DocumentoDettaglio>(this.urlDocumento(id))
   }
 
-  annulla(id: string, motivo: string, versione: number): Observable<DocumentoDettaglio> {
+  /** `confermaGiaInviata`: annullo di uno scarto SDI «duplicato» (4.5d). */
+  annulla(
+    id: string,
+    motivo: string,
+    versione: number,
+    confermaGiaInviata = false
+  ): Observable<DocumentoDettaglio> {
     return this.http.post<DocumentoDettaglio>(`${this.urlDocumento(id)}/annulla`, {
       motivo,
       versione,
+      ...(confermaGiaInviata ? { confermaGiaInviata: true } : {}),
     })
   }
 

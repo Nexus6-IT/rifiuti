@@ -142,7 +142,7 @@ type Conferma = 'xml' | 'emesso'
             <button
               pButton
               type="button"
-              label="Annulla"
+              [label]="d.emessoIl !== null ? 'Annulla e rifattura' : 'Annulla'"
               icon="pi pi-times"
               class="p-button-danger p-button-outlined"
               [disabled]="motivoNonAnnullabile(d) !== null || inAzione()"
@@ -326,6 +326,11 @@ type Conferma = 'xml' | 'emesso'
         [visible]="annullaAperta()"
         [inCorso]="inAzione()"
         [errore]="erroreDialog()"
+        [scarto]="dettaglio()?.emessoIl != null"
+        [motivoIniziale]="motivoAnnulloIniziale()"
+        [chiediDuplicato]="chiediDuplicato()"
+        [duplicatoControllato]="duplicatoControllato()"
+        (duplicatoCambiato)="duplicatoControllato.set($event)"
         (confermato)="annulla($event)"
         (chiuso)="chiudiDialog()"
       />
@@ -412,6 +417,9 @@ export class DocumentoDettaglioComponent {
   readonly inAzione = signal(false)
 
   readonly annullaAperta = signal(false)
+  /** Scarto SDI «duplicato»: il backend ha chiesto la conferma (409 PROBABILMENTE_GIA_INVIATA). */
+  readonly chiediDuplicato = signal(false)
+  readonly duplicatoControllato = signal(false)
   readonly stornoAperto = signal(false)
   readonly rifatturabileIniziale = signal(false)
   readonly conferma = signal<Conferma | null>(null)
@@ -428,6 +436,12 @@ export class DocumentoDettaglioComponent {
   readonly severita = (v: VoceVocabolario): SeveritaTag => SEVERITA_TAG[v.severita]
   /** Salvataggio del file: sostituibile nei test. */
   salva = salvaFile
+
+  /** Motivo precompilato dell'annullo di un emesso scartato dallo SDI (4.5d). */
+  motivoAnnulloIniziale(): string {
+    const d = this.dettaglio()
+    return d !== null && d.emessoIl !== null ? `Scarto SDI n. ${d.numeroTesto ?? ''}`.trim() : ''
+  }
 
   /** Perché «Annulla» è disattivato; `null` se si può annullare. */
   motivoNonAnnullabile(d: DocumentoDettaglio): string | null {
@@ -513,6 +527,8 @@ export class DocumentoDettaglioComponent {
   apriAnnulla(): void {
     if (!this.puoScrivere()) return
     this.erroreDialog.set(null)
+    this.chiediDuplicato.set(false)
+    this.duplicatoControllato.set(false)
     this.annullaAperta.set(true)
   }
 
@@ -572,6 +588,7 @@ export class DocumentoDettaglioComponent {
           this.inAzione.set(false)
           this.erroreDialog.set(messaggioDaCodice(err, ripiego))
           const codice = codiceErrore(err)
+          if (codice === 'PROBABILMENTE_GIA_INVIATA') this.chiediDuplicato.set(true)
           if (codice !== null && RILEGGI_DOPO.includes(codice)) this.carica()
         },
       })
@@ -579,7 +596,10 @@ export class DocumentoDettaglioComponent {
 
   annulla(motivo: string): void {
     if (!this.puoScrivere()) return
-    this.scrivi(v => this.servizio.annulla(this.id, motivo, v), MSG_ANNULLO_FALLITO)
+    this.scrivi(
+      v => this.servizio.annulla(this.id, motivo, v, this.duplicatoControllato()),
+      MSG_ANNULLO_FALLITO
+    )
   }
 
   storna(dati: DatiStorno): void {

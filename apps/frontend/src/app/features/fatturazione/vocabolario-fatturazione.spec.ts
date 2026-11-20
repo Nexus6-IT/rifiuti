@@ -103,6 +103,8 @@ describe('vocabolario della fatturazione', () => {
       'VOCI_DUPLICATE',
       'PARTENZA_NON_VALIDA',
       'RIGA_ADDEBITO_IN_USO',
+      // 4.5d: scarto SDI «duplicato», conferma richiesta all'annullo.
+      'PROBABILMENTE_GIA_INVIATA',
       // Task 25a (m4, m7): 400 e 404 dei servizi della fatturazione.
       'MOTIVO_NON_VALIDO',
       'VERSIONE_NON_VALIDA',
@@ -139,7 +141,14 @@ describe('vocabolario della fatturazione', () => {
 
   it('i cinque MotivoNonAnnullabile, STORNATO compreso, e i due MotivoNonStornabile', () => {
     expect(Object.keys(MOTIVI_NON_ANNULLABILE_VOCI).sort()).toEqual(
-      ['EMESSO', 'NON_DEFINITIVO', 'NON_ULTIMO', 'NOTA_DI_CREDITO', 'STORNATO'].sort()
+      [
+        'EMESSO',
+        'NON_DEFINITIVO',
+        'NON_ULTIMO',
+        'NOTA_DI_CREDITO',
+        'STORNATO',
+        'TRASMISSIONE_SDI_VIVA',
+      ].sort()
     )
     expect(MOTIVI_NON_ANNULLABILE_VOCI.STORNATO.etichetta.length).toBeGreaterThan(0)
     expect(Object.keys(MOTIVI_NON_STORNABILE_VOCI).sort()).toEqual(

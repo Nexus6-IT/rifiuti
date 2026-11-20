@@ -235,9 +235,58 @@ describe('DocumentoDettaglioComponent', () => {
       fixture.detectChanges()
       expect(q('annulla-motivo')).not.toBeNull()
       comp.annulla('Errore di importo')
-      expect(servizio.annulla).toHaveBeenCalledWith('d1', 'Errore di importo', 3)
+      expect(servizio.annulla).toHaveBeenCalledWith('d1', 'Errore di importo', 3, false)
       expect(comp.dettaglio()?.stato).toBe('ANNULLATO')
       expect(comp.annullaAperta()).toBeFalse()
+    })
+
+    it('emesso scartato dallo SDI: «Annulla e rifattura» con il motivo precompilato', async () => {
+      await crea(
+        'ADMIN',
+        dettaglioDocumento({ emessoIl: '2026-11-10T10:00:00.000Z', annullabile: true })
+      )
+      expect(bottone('dd-annulla')?.textContent).toContain('Annulla e rifattura')
+      comp.apriAnnulla()
+      fixture.detectChanges()
+      expect(q('annulla-scarto')).not.toBeNull()
+      expect((q('annulla-motivo') as HTMLTextAreaElement).value).toBe('Scarto SDI n. 15/A')
+    })
+
+    it('documento non emesso: «Annulla» e nessun testo di scarto', async () => {
+      await crea()
+      expect(bottone('dd-annulla')?.textContent).toContain('Annulla')
+      expect(bottone('dd-annulla')?.textContent).not.toContain('rifattura')
+      comp.apriAnnulla()
+      fixture.detectChanges()
+      expect(q('annulla-scarto')).toBeNull()
+    })
+
+    it('scarto «duplicato»: il 409 chiede la conferma, che poi parte con l annullo', async () => {
+      await crea(
+        'ADMIN',
+        dettaglioDocumento({ emessoIl: '2026-11-10T10:00:00.000Z', annullabile: true })
+      )
+      servizio.annulla.and.returnValues(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'PROBABILMENTE_GIA_INVIATA', message: 'x' },
+        })),
+        of(dettaglioDocumento({ stato: 'ANNULLATO', versione: 4, annullabile: false }))
+      )
+      comp.apriAnnulla()
+      comp.annulla('Scarto SDI n. 15/A')
+      fixture.detectChanges()
+      expect(comp.chiediDuplicato()).toBeTrue()
+      expect(comp.erroreDialog()).toContain('duplicato')
+      expect(q('annulla-duplicato')).not.toBeNull()
+      comp.duplicatoControllato.set(true)
+      comp.annulla('Scarto SDI n. 15/A')
+      expect(servizio.annulla.calls.mostRecent().args).toEqual([
+        'd1',
+        'Scarto SDI n. 15/A',
+        3,
+        true,
+      ])
     })
 
     it('doppio clic: una sola richiesta', async () => {

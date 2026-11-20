@@ -230,6 +230,17 @@ describe('FatturazioneService', () => {
     req.flush({})
   })
 
+  it('annulla con conferma dello scarto duplicato: il corpo porta confermaGiaInviata', () => {
+    servizio.annulla('d1', 'Scarto SDI', 2, true).subscribe()
+    const req = http.expectOne(`${doc}/d1/annulla`)
+    expect(req.request.body).toEqual({
+      motivo: 'Scarto SDI',
+      versione: 2,
+      confermaGiaInviata: true,
+    })
+    req.flush({})
+  })
+
   it('storno: POST con motivo, dataDocumento e rifatturabile', () => {
     const dati = { motivo: 'Reso', dataDocumento: '2026-11-05', rifatturabile: true, versione: 6 }
     servizio.storno('d1', dati).subscribe()

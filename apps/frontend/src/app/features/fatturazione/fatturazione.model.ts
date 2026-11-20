@@ -54,6 +54,7 @@ export type MotivoNonAnnullabile =
   | 'NOTA_DI_CREDITO'
   | 'STORNATO'
   | 'EMESSO'
+  | 'TRASMISSIONE_SDI_VIVA'
   | 'NON_ULTIMO'
 /** Q33 */
 export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO'
