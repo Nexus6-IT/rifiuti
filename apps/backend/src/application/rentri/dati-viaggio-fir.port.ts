@@ -28,7 +28,15 @@ export interface TrattaAggiuntivaViaggio extends DatiTrasportoTrattaLocale {
   dataOraInizioTrasporto: Date | null
 }
 
+/** Cio' che l'ente ha accettato con `/quantita` e `/trasporto`: copia separata, accanto al firmato. */
+export interface DichiaratoRentri {
+  quantita?: { valore: number; unitaMisura: string; numeroColli: number | null }
+  trasporto?: { targaAutomezzo: string | null }
+}
+
 export interface DatiViaggioFir {
+  /** Copia dichiarata all'ente (null se mai inviato nulla da WasteFlow). */
+  dichiarato: DichiaratoRentri | null
   firId: string
   quantita: number
   /** Unita' del FIR (`kg`, `litri`, `t`). */
@@ -90,13 +98,20 @@ export abstract class IDatiViaggioFirRepository {
     firId: string,
     dati: DatiPartenzaDaSalvare
   ): Promise<void>
-  /** Dopo l'esito positivo di `/quantita`: la quantita' locale segue quella dell'ente. */
+  /**
+   * Dopo l'esito positivo di `/quantita`: registra cio' che l'ente ha accettato in una copia SEPARATA
+   * (`rentri_dichiarato`), piu' rinfusa e verifica. NON riscrive quantita', unita' e colli del FIR, che
+   * entrano nel documento firmato all'emissione.
+   */
   abstract aggiornaQuantitaDopoEnte(
     tenantId: string,
     firId: string,
     quantita: QuantitaInviata
   ): Promise<void>
-  /** Dopo l'esito positivo di `/trasporto`: targa, conducente, rimorchio e percorso locali seguono l'ente. */
+  /**
+   * Dopo l'esito positivo di `/trasporto`: conducente, rimorchio e percorso (colonne non firmate) e la
+   * targa nella copia separata. NON riscrive `carrier_vehicle_plate` (documento firmato).
+   */
   abstract aggiornaTrasportoDopoEnte(
     tenantId: string,
     firId: string,

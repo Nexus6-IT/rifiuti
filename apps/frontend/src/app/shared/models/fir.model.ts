@@ -69,6 +69,14 @@ export interface DatiViaggioFIR {
   conducenteCognome: string | null
   targaRimorchio: string | null
   percorso: string | null
+  /**
+   * Cio' che l'ente ha accettato con quantita' e trasporto: copia SEPARATA, accanto ai dati firmati
+   * all'emissione (che dopo non cambiano).
+   */
+  dichiarato?: {
+    quantita?: { valore: number; unitaMisura: string; numeroColli: number | null }
+    trasporto?: { targaAutomezzo: string | null }
+  } | null
 }
 
 export interface FIR {

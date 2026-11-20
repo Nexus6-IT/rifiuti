@@ -1028,6 +1028,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       conducenteCognome: record.conducenteCognome ?? null,
       targaRimorchio: record.targaRimorchio ?? null,
       percorso: record.percorso ?? null,
+      dichiarato: record.rentriDichiarato ?? null,
     })
 
     return fir

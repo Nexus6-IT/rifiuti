@@ -12,6 +12,7 @@ import {
 import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
 import { IEventiFirRentriRepository, NuovoEventoFirRentri } from './eventi-fir-rentri.port'
 import { registraEventoFirRentri } from './registra-evento-fir-rentri'
+import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { DatoMancantePerRentriError } from './mappatura/mappa-parti'
 import { ValoreNonTraducibilePerRentriError } from './mappatura/mappa-rifiuto'
@@ -50,6 +51,11 @@ export interface EsitoInviaDatiViaggio {
   operazione: string
   /** Stato del formulario riletto dall'ente; `null` se la rilettura non e' riuscita (l'operazione e' comunque riuscita). */
   statoFormulario: StatoFormulario | null
+  /**
+   * `false` se l'ente ha accettato ma la copia locale non si e' potuta salvare: l'operazione e' riuscita
+   * (l'evento c'e'), il dato dichiarato si rivede alla prossima rilettura.
+   */
+  copiaLocaleAggiornata: boolean
 }
 
 interface DefinizioneOperazione {
@@ -102,7 +108,8 @@ export class InviaDatiViaggioFirRentriUseCase {
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly datiViaggio: IDatiViaggioFirRepository,
     private readonly eventi: IEventiFirRentriRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly sessioni: ISessioniFirmaRentriRepository
   ) {
     this.logger.setContext('InviaDatiViaggioFirRentriUseCase')
   }
@@ -231,6 +238,15 @@ export class InviaDatiViaggioFirRentriUseCase {
 
     // --- 2. Precondizione da /azioni ---
 
+    // Una firma gia' richiesta (hash calcolato, autorizzazione sul telefono) non si cambia sotto i piedi:
+    // come per le altre operazioni, prima si conclude o si annulla la richiesta.
+    if (await this.sessioni.trovaAperta(tenantId, firId)) {
+      throw DomainException.businessRuleViolation(
+        'SESSIONE_FIRMA_IN_CORSO',
+        "C'è una richiesta di firma in attesa su questo formulario: confermala sul telefono o annullala prima di cambiare quantità o trasporto."
+      )
+    }
+
     const { azioni } = await this.getAzioniDisponibiliUseCase.execute(
       firId,
       tenantId,
@@ -312,7 +328,26 @@ export class InviaDatiViaggioFirRentriUseCase {
     // --- 4. L'ente ha accettato: stato riletto, poi la copia locale ---
 
     const statoDopo = await this.rileggiStatoEApplica(fir, tenantId, numeroFir, correlationId)
-    await p.aggiornaLocale(corpo)
+    // L'ente ha gia' accettato: un errore della copia locale NON deve annullare l'esito ne' perdere l'evento.
+    let copiaLocaleAggiornata = true
+    let dettaglioCopia: string | null = null
+    try {
+      await p.aggiornaLocale(corpo)
+    } catch (errore) {
+      copiaLocaleAggiornata = false
+      dettaglioCopia = `copia locale non aggiornata: ${errore instanceof Error ? errore.message : String(errore)}`
+      this.logger.error(
+        'Copia locale non aggiornata dopo un invio accettato da RENTRI',
+        errore as Error,
+        {
+          firId,
+          tenantId,
+          numeroFir,
+          operazione,
+          correlationId,
+        }
+      )
+    }
 
     // --- 5. Storico ---
 
@@ -323,7 +358,7 @@ export class InviaDatiViaggioFirRentriUseCase {
       payload: corpo,
       transazioneId: esito.transazioneId ?? null,
       esito: 'ACCETTATA',
-      dettaglioEnte: null,
+      dettaglioEnte: dettaglioCopia,
       statoFormularioDopo: statoDopo,
       utenteId: utenteId ?? null,
     })
@@ -337,7 +372,7 @@ export class InviaDatiViaggioFirRentriUseCase {
       correlationId,
     })
 
-    return { operazione, statoFormulario: statoDopo }
+    return { operazione, statoFormulario: statoDopo, copiaLocaleAggiornata }
   }
 
   /** Rilegge lo stato dall'ente e lo applica al FIR. Se la rilettura fallisce l'operazione resta riuscita. */

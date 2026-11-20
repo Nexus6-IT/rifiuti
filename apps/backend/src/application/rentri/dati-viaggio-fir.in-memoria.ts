@@ -50,9 +50,14 @@ export class DatiViaggioFirInMemoria extends IDatiViaggioFirRepository {
     this.scritture.push('aggiornaQuantitaDopoEnte')
     const r = this.righe.get(firId)
     if (!r) return
-    r.quantita = q.valore
-    r.unitaMisura = q.unitaMisura
-    r.numeroColli = q.rinfusa ? null : q.numeroColli
+    r.dichiarato = {
+      ...r.dichiarato,
+      quantita: {
+        valore: q.valore,
+        unitaMisura: q.unitaMisura,
+        numeroColli: q.rinfusa ? null : q.numeroColli,
+      },
+    }
     r.rinfusa = q.rinfusa
     r.verificatoInPartenza = q.verificatoInPartenza
   }
@@ -65,7 +70,7 @@ export class DatiViaggioFirInMemoria extends IDatiViaggioFirRepository {
     this.scritture.push('aggiornaTrasportoDopoEnte')
     const r = this.righe.get(firId)
     if (!r) return
-    r.targaAutomezzo = t.targaAutomezzo ?? ''
+    r.dichiarato = { ...r.dichiarato, trasporto: { targaAutomezzo: t.targaAutomezzo } }
     r.principale = {
       conducenteNome: t.conducenteNome,
       conducenteCognome: t.conducenteCognome,

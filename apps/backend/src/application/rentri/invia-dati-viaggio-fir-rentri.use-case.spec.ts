@@ -5,6 +5,7 @@ import {
 } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { DatiViaggioFirInMemoria } from './dati-viaggio-fir.in-memoria'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
+import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
 import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
 
 /**
@@ -42,6 +43,7 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
     const fir = opzioni.fir ?? creaFir()
     const dati = new DatiViaggioFirInMemoria()
     const eventi = new EventiFirRentriInMemoria()
+    const sessioni = new SessioniFirmaRentriInMemoria()
     const sequenza: string[] = []
     const firRepository = {
       findById: jest.fn().mockResolvedValue(fir),
@@ -68,6 +70,7 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
     const apply = jest.spyOn(fir, 'applyRentriStato')
     dati.righe.set(FIR_ID, {
       firId: FIR_ID,
+      dichiarato: null,
       quantita: 10,
       unitaMisura: 'kg',
       numeroColli: null,
@@ -106,9 +109,21 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
       client as any,
       dati,
       eventi,
-      logger
+      logger,
+      sessioni
     )
-    return { useCase, fir, dati, eventi, firRepository, getAzioni, client, apply, sequenza }
+    return {
+      useCase,
+      fir,
+      dati,
+      eventi,
+      sessioni,
+      firRepository,
+      getAzioni,
+      client,
+      apply,
+      sequenza,
+    }
   }
 
   const quantita = (extra: Record<string, unknown> = {}) => ({
@@ -148,11 +163,9 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
       // la riscriverebbe.
       expect(sequenza).toEqual(['save', 'aggiornaQuantitaDopoEnte'])
       expect(dati.righe.get(FIR_ID)).toMatchObject({
-        quantita: 1.5,
-        unitaMisura: 't',
-        numeroColli: 3,
         rinfusa: false,
         verificatoInPartenza: true,
+        dichiarato: { quantita: { valore: 1.5, unitaMisura: 't', numeroColli: 3 } },
       })
       expect(r).toMatchObject({
         operazione: 'DatiQuantita',
@@ -184,7 +197,10 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
         quantita: { valore: 1500, unita_misura: 'kg' },
         rinfusa: true,
       })
-      expect(dati.righe.get(FIR_ID)).toMatchObject({ rinfusa: true, numeroColli: null })
+      expect(dati.righe.get(FIR_ID)).toMatchObject({
+        rinfusa: true,
+        dichiarato: { quantita: { numeroColli: null } },
+      })
     })
 
     it("operazione assente da /azioni: 409 e NESSUNA chiamata all'ente, nessun evento", async () => {
@@ -317,7 +333,7 @@ describe('InviaDatiViaggioFirRentriUseCase', () => {
       })
       expect(sequenza).toEqual(['save', 'aggiornaTrasportoDopoEnte'])
       expect(dati.righe.get(FIR_ID)).toMatchObject({
-        targaAutomezzo: 'AB123CD',
+        dichiarato: { trasporto: { targaAutomezzo: 'AB123CD' } },
         principale: {
           conducenteNome: 'Mario',
           conducenteCognome: 'Rossi',

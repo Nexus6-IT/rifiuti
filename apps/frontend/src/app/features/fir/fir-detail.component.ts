@@ -293,6 +293,21 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 <span class="detail-value">{{ f.rifiuto.numeroColli }}</span>
               </div>
             }
+            @if (f.datiViaggio?.dichiarato?.quantita; as dq) {
+              <div class="detail-field" data-testid="fir-detail-dichiarato-quantita">
+                <span class="detail-label">Quantità dichiarata a RENTRI</span>
+                <span class="detail-value"
+                  >{{ dq.valore }} {{ dq.unitaMisura
+                  }}{{ dq.numeroColli ? ' · ' + dq.numeroColli + ' colli' : ' · rinfusa' }}</span
+                >
+              </div>
+            }
+            @if (f.datiViaggio?.dichiarato?.trasporto?.targaAutomezzo; as dt) {
+              <div class="detail-field" data-testid="fir-detail-dichiarato-trasporto">
+                <span class="detail-label">Targa dichiarata a RENTRI</span>
+                <span class="detail-value">{{ dt }}</span>
+              </div>
+            }
             @if (f.rifiuto.codiceOperazione) {
               <div class="detail-field">
                 <span class="detail-label">Operazione destinatario R/D</span>
@@ -2149,9 +2164,11 @@ export class FirDetailComponent implements OnInit {
   }
 
   apriDialogQuantita(fir: FIR): void {
-    this.qtaValore = fir.rifiuto?.quantita ?? null
-    this.qtaUnita = fir.rifiuto?.unitaMisura ?? 'kg'
-    this.qtaColli = fir.rifiuto?.numeroColli ?? null
+    // Se l'ente ha gia' una quantita' dichiarata si parte da quella; il firmato resta quello emesso.
+    const dq = fir.datiViaggio?.dichiarato?.quantita
+    this.qtaValore = dq?.valore ?? fir.rifiuto?.quantita ?? null
+    this.qtaUnita = dq?.unitaMisura ?? fir.rifiuto?.unitaMisura ?? 'kg'
+    this.qtaColli = dq ? dq.numeroColli : (fir.rifiuto?.numeroColli ?? null)
     this.qtaRinfusa = fir.datiViaggio?.rinfusa === true
     this.qtaVerificato = fir.datiViaggio?.verificatoInPartenza === true
     this.quantitaErrore.set(null)
@@ -2203,7 +2220,10 @@ export class FirDetailComponent implements OnInit {
     const v = fir.datiViaggio
     this.trpNome = v?.conducenteNome ?? ''
     this.trpCognome = v?.conducenteCognome ?? ''
-    this.trpTargaAutomezzo = fir.trasportatore?.targaVeicolo ?? ''
+    this.trpTargaAutomezzo =
+      fir.datiViaggio?.dichiarato?.trasporto?.targaAutomezzo ??
+      fir.trasportatore?.targaVeicolo ??
+      ''
     this.trpTargaRimorchio = v?.targaRimorchio ?? ''
     this.trpPercorso = v?.percorso ?? ''
     this.trpInizio = ''

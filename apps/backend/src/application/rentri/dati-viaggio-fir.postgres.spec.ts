@@ -165,8 +165,22 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
     expect(d).toMatchObject({ rinfusa: true, principale: { conducenteNome: 'Mario' } })
   })
 
-  it('aggiornaQuantitaDopoEnte: quantita, unita, colli, rinfusa e verifica; alla rinfusa i colli si azzerano', async () => {
+  /** Le colonne che entrano nel documento firmato all'emissione (`toSignableDocument`). */
+  const firmate = async (firId: string) => {
+    const r = (await owner.fIR.findUnique({ where: { id: firId } }))!
+    return {
+      quantity: Number(r.quantity),
+      unit: r.unit,
+      wastePackageCount: r.wastePackageCount,
+      carrierVehiclePlate: r.carrierVehiclePlate,
+      transportDate: r.transportDate,
+      versione: r.versione,
+    }
+  }
+
+  it('aggiornaQuantitaDopoEnte: scrive la copia dichiarata e NON tocca le colonne firmate (C1)', async () => {
     const a = await azienda()
+    const prima = await firmate(a.fir)
     await nelTenant(a.t, () =>
       repo.aggiornaQuantitaDopoEnte(a.t, a.fir, {
         valore: 1.5,
@@ -176,13 +190,15 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
         verificatoInPartenza: true,
       })
     )
+    expect(await firmate(a.fir)).toEqual(prima)
     expect(await nelTenant(a.t, () => repo.leggi(a.t, a.fir))).toMatchObject({
-      quantita: 1.5,
-      unitaMisura: 't',
-      numeroColli: 7,
+      quantita: 100,
+      numeroColli: 4,
       rinfusa: false,
       verificatoInPartenza: true,
+      dichiarato: { quantita: { valore: 1.5, unitaMisura: 't', numeroColli: 7 } },
     })
+    // alla rinfusa i colli dichiarati sono null
     await nelTenant(a.t, () =>
       repo.aggiornaQuantitaDopoEnte(a.t, a.fir, {
         valore: 800,
@@ -192,17 +208,26 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
         verificatoInPartenza: null,
       })
     )
-    expect(await nelTenant(a.t, () => repo.leggi(a.t, a.fir))).toMatchObject({
-      quantita: 800,
+    expect((await nelTenant(a.t, () => repo.leggi(a.t, a.fir)))?.dichiarato?.quantita).toEqual({
+      valore: 800,
       unitaMisura: 'litri',
       numeroColli: null,
-      rinfusa: true,
     })
+    expect(await firmate(a.fir)).toEqual(prima)
   })
 
-  it('aggiornaTrasportoDopoEnte: targa, conducente, rimorchio e percorso; la versione avanza', async () => {
+  it('aggiornaTrasportoDopoEnte: copia dichiarata, quantita e trasporto si fondono, firmate intatte (C1)', async () => {
     const a = await azienda()
-    const prima = (await owner.fIR.findUnique({ where: { id: a.fir } }))!.versione
+    const prima = await firmate(a.fir)
+    await nelTenant(a.t, () =>
+      repo.aggiornaQuantitaDopoEnte(a.t, a.fir, {
+        valore: 5,
+        unitaMisura: 'kg',
+        numeroColli: 1,
+        rinfusa: false,
+        verificatoInPartenza: null,
+      })
+    )
     await nelTenant(a.t, () =>
       repo.aggiornaTrasportoDopoEnte(a.t, a.fir, {
         targaAutomezzo: 'AB123CD',
@@ -214,15 +239,32 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
     )
     const d = await nelTenant(a.t, () => repo.leggi(a.t, a.fir))
     expect(d).toMatchObject({
-      targaAutomezzo: 'AB123CD',
-      principale: {
-        conducenteNome: 'Mario',
-        conducenteCognome: 'De Rossi',
-        targaRimorchio: null,
-        percorso: 'A1',
+      targaAutomezzo: '',
+      principale: { conducenteNome: 'Mario', conducenteCognome: 'De Rossi', percorso: 'A1' },
+      dichiarato: {
+        quantita: { valore: 5, unitaMisura: 'kg', numeroColli: 1 },
+        trasporto: { targaAutomezzo: 'AB123CD' },
       },
     })
-    expect((await owner.fIR.findUnique({ where: { id: a.fir } }))!.versione).toBe(prima + 1)
+    expect(await firmate(a.fir)).toEqual(prima)
+  })
+
+  it("il save dell'aggregate non riscrive la copia dichiarata (I1)", async () => {
+    const a = await azienda()
+    const fir = await nelTenant(a.t, () => firRepo.findById(a.fir))
+    await nelTenant(a.t, () =>
+      repo.aggiornaQuantitaDopoEnte(a.t, a.fir, {
+        valore: 9,
+        unitaMisura: 'kg',
+        numeroColli: 2,
+        rinfusa: false,
+        verificatoInPartenza: null,
+      })
+    )
+    await nelTenant(a.t, () => firRepo.save(fir!)) // aggregate letto PRIMA: stato vecchio
+    expect((await nelTenant(a.t, () => repo.leggi(a.t, a.fir)))?.dichiarato?.quantita?.valore).toBe(
+      9
+    )
   })
 
   it('le tratte aggiuntive portano i loro dati di trasporto', async () => {

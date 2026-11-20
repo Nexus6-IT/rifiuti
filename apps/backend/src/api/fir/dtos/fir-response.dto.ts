@@ -110,6 +110,10 @@ export class FIRResponseDto {
     conducenteCognome: string | null
     targaRimorchio: string | null
     percorso: string | null
+    dichiarato: {
+      quantita?: { valore: number; unitaMisura: string; numeroColli: number | null }
+      trasporto?: { targaAutomezzo: string | null }
+    } | null
   } | null
 
   @ApiProperty({ example: 'tenant-uuid-producer', description: 'ID produttore' })

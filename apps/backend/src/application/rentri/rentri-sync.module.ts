@@ -480,7 +480,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         rentriApiClient: RENTRIApiClient,
         datiViaggio: IDatiViaggioFirRepository,
         eventi: IEventiFirRentriRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        sessioni: ISessioniFirmaRentriRepository
       ) =>
         new InviaDatiViaggioFirRentriUseCase(
           firRepo,
@@ -488,7 +489,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
           rentriApiClient,
           datiViaggio,
           eventi,
-          logger
+          logger,
+          sessioni
         ),
       inject: [
         FIRPrismaRepository,
@@ -497,6 +499,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         IDatiViaggioFirRepository,
         IEventiFirRentriRepository,
         LoggerService,
+        ISessioniFirmaRentriRepository,
       ],
     },
     {

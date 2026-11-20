@@ -477,6 +477,8 @@ model FIR {
   conducenteCognome    String?  @map("conducente_cognome") @db.VarChar(50)
   targaRimorchio       String?  @map("targa_rimorchio") @db.VarChar(10)
   percorso             String?  @db.VarChar(250)
+  /// Copia SEPARATA di quantita' e targa accettate dall'ente (JSON); le colonne firmate non si riscrivono dopo l'emissione.
+  rentriDichiarato     Json?    @map("rentri_dichiarato")
 
   rentriSyncStatus        RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
   // DEPRECATO: nonostante il nome, in pratica avrebbe dovuto contenere il

@@ -2134,6 +2134,40 @@ describe('FirDetailComponent', () => {
       expect(storico?.textContent).toContain('Stato: InserimentoTrasportoIniziale')
     })
 
+    it('C1: il dichiarato a RENTRI si mostra accanto al firmato e prefilla i dialog', () => {
+      setup({ role: 'OPERATOR' })
+      const f: FIR = {
+        ...firLegato,
+        datiViaggio: {
+          verificatoInPartenza: null,
+          rinfusa: null,
+          conducenteNome: null,
+          conducenteCognome: null,
+          targaRimorchio: null,
+          percorso: null,
+          dichiarato: {
+            quantita: { valore: 1500, unitaMisura: 'kg', numeroColli: 6 },
+            trasporto: { targaAutomezzo: 'AB123CD' },
+          },
+        },
+      }
+      firService.getFIRById.and.returnValue(of(f))
+      fixture.detectChanges()
+      expect(
+        el().querySelector('[data-testid="fir-detail-dichiarato-quantita"]')?.textContent
+      ).toContain('1500 kg · 6 colli')
+      expect(
+        el().querySelector('[data-testid="fir-detail-dichiarato-trasporto"]')?.textContent
+      ).toContain('AB123CD')
+      // il firmato resta quello emesso (42 kg)
+      expect(el().textContent).toContain('42')
+      component.apriDialogQuantita(f)
+      expect(component['qtaValore']).toBe(1500)
+      expect(component['qtaColli']).toBe(6)
+      component.apriDialogTrasporto(f)
+      expect(component['trpTargaAutomezzo']).toBe('AB123CD')
+    })
+
     it('uno storico vuoto lo dice', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegato))

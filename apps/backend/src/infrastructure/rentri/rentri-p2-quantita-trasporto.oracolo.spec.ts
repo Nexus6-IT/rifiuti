@@ -8,6 +8,7 @@ import { RentriConfig } from './rentri-config'
 import { GetAzioniDisponibiliUseCase } from '../../application/rentri/get-azioni-disponibili.use-case'
 import { InviaDatiViaggioFirRentriUseCase } from '../../application/rentri/invia-dati-viaggio-fir-rentri.use-case'
 import { DatiViaggioFirInMemoria } from '../../application/rentri/dati-viaggio-fir.in-memoria'
+import { SessioniFirmaRentriInMemoria } from '../../application/rentri/sessioni-firma-rentri.in-memoria'
 import { EventiFirRentriInMemoria } from '../../application/rentri/eventi-fir-rentri.in-memoria'
 import { mappaNuovoFormulario } from '../../application/rentri/mappatura/mappa-nuovo-formulario'
 import { FIR, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
@@ -252,6 +253,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
     const dati = new DatiViaggioFirInMemoria()
     dati.righe.set(fir.id, {
       firId: fir.id,
+      dichiarato: null,
       quantita: 100,
       unitaMisura: 'kg',
       numeroColli: null,
@@ -274,7 +276,8 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
       client,
       dati,
       eventi,
-      creaLogger()
+      creaLogger(),
+      new SessioniFirmaRentriInMemoria()
     )
     return { fir, client, useCase, dati, eventi }
   }
@@ -425,7 +428,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
         statoFormulario: 'FirmaProduttoreTrasportatoreIniziale',
       })
       expect(dati.righe.get(fir.id)).toMatchObject({
-        targaAutomezzo: 'AB123CD',
+        dichiarato: { trasporto: { targaAutomezzo: 'AB123CD' } },
         principale: { conducenteNome: 'Mario', conducenteCognome: 'Rossi' },
       })
     } finally {

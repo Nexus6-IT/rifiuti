@@ -124,6 +124,7 @@ describe('CostruisciPayloadRentri', () => {
   describe("quantita' e trasporto noti (FIR in viaggio P2, D2)", () => {
     const viaggio = (extra: Record<string, unknown> = {}) => ({
       firId: 'fir-1',
+      dichiarato: null,
       quantita: 120,
       unitaMisura: 'kg',
       numeroColli: null,

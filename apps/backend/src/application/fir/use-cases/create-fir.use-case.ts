@@ -174,6 +174,7 @@ export class CreateFIRUseCase {
           conducenteCognome: colonne.conducenteCognome ?? null,
           targaRimorchio: colonne.targaRimorchio ?? null,
           percorso: colonne.percorso ?? null,
+          dichiarato: null,
         })
       }
 

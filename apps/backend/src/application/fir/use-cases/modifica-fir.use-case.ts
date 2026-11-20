@@ -250,6 +250,7 @@ export class ModificaFIRUseCase {
           ? colonne.targaRimorchio
           : (prima?.targaRimorchio ?? null),
       percorso: colonne.percorso !== undefined ? colonne.percorso : (prima?.percorso ?? null),
+      dichiarato: prima?.dichiarato ?? null,
     })
   }
 }
