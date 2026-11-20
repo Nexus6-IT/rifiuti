@@ -108,9 +108,7 @@ describe('eventi_campo — schema, Postgres reale, ruolo wasteflow_app', () => {
     await expect(
       owner.$executeRawUnsafe(`DELETE FROM eventi_campo WHERE tenant_id = '${a.t}'`)
     ).rejects.toThrow(/non si cancellano/)
-    await expect(owner.$executeRawUnsafe(`TRUNCATE eventi_campo`)).rejects.toThrow(
-      /non si svuota/
-    )
+    await expect(owner.$executeRawUnsafe(`TRUNCATE eventi_campo`)).rejects.toThrow(/non si svuota/)
   })
 
   it('unico (azienda, evento_uuid): lo stesso uuid due volte e una violazione; in un’altra azienda e ammesso', async () => {
