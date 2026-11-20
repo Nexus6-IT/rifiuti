@@ -34,3 +34,12 @@ export class AutistaNonCollegatoError extends DomainError {
     this.name = 'AutistaNonCollegatoError'
   }
 }
+
+/** 409 `EVENTO_DI_ALTRO_UTENTE`: l'identificativo dell'evento e' gia' stato usato da un altro autista. */
+export class EventoCampoDiAltroUtenteError extends DomainError {
+  readonly code = 'EVENTO_DI_ALTRO_UTENTE'
+  constructor() {
+    super("L'evento risulta gia' registrato da un altro utente.")
+    this.name = 'EventoCampoDiAltroUtenteError'
+  }
+}

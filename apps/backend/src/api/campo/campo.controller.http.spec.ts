@@ -17,6 +17,10 @@ import {
   AutistaNonCollegatoError,
 } from '../../application/campo/errori-campo'
 import { GiroService } from '../../application/campo/giro.service'
+import { EventiCampoService } from '../../application/campo/eventi-campo.service'
+import { EventoCampoDiAltroUtenteError } from '../../application/campo/errori-campo'
+import { RitiroNonTrovatoError } from '../../application/ritiri/errori-ritiri'
+import { EsitiCampoController } from './esiti-campo.controller'
 import { RitiriService } from '../../application/ritiri/ritiri.service'
 import { GENERA_FIR_DA_RITIRI } from '../ritiri/genera-fir.porta'
 import { RitiriController } from '../ritiri/ritiri.controller'
@@ -30,6 +34,16 @@ import { CampoController } from './campo.controller'
 const TENANT = '5a5a5a5a-0000-4000-8000-00000000000a'
 const UTENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const ID = '3b3b3b3b-0000-4000-8000-000000000006'
+const EVENTO = '4c4c4c4c-0000-4000-8000-000000000007'
+const corpoEvento = {
+  id: EVENTO,
+  ritiroId: ID,
+  tipo: 'RITIRO_ESEGUITO',
+  versioneVista: 2,
+  dataVista: '2026-12-01',
+  sedeVista: '33333333-3333-4333-8333-333333333333',
+  rilevatoIl: '2026-12-01T08:30:00.000Z',
+}
 
 describe('Campo - catena HTTP', () => {
   let app: INestApplication
@@ -37,6 +51,7 @@ describe('Campo - catena HTTP', () => {
   let ruoloEffettivo: string
   let moduliAttivi: string[]
   let giro: { giro: jest.Mock }
+  let eventi: { registra: jest.Mock; elenca: jest.Mock }
   let autisti: Record<string, jest.Mock>
   let ritiri: Record<string, jest.Mock>
 
@@ -45,6 +60,12 @@ describe('Campo - catena HTTP', () => {
     ruoloEffettivo = 'OPERATOR'
     moduliAttivi = ['campo', 'ritiri']
     giro = { giro: jest.fn().mockResolvedValue({ data: '2026-11-19', ritiri: [] }) }
+    eventi = {
+      registra: jest
+        .fn()
+        .mockResolvedValue({ id: EVENTO, esito: 'APPLICATO', motivoConflitto: null }),
+      elenca: jest.fn().mockResolvedValue({ righe: [], totale: 0 }),
+    }
     autisti = {
       elenca: jest.fn().mockResolvedValue([]),
       crea: jest.fn().mockResolvedValue({ id: ID }),
@@ -58,9 +79,10 @@ describe('Campo - catena HTTP', () => {
       error: jest.fn(),
     }
     const moduleRef = await Test.createTestingModule({
-      controllers: [CampoController, AutistiController, RitiriController],
+      controllers: [CampoController, AutistiController, RitiriController, EsitiCampoController],
       providers: [
         { provide: GiroService, useValue: giro },
+        { provide: EventiCampoService, useValue: eventi },
         { provide: AutistiService, useValue: autisti },
         { provide: RitiriService, useValue: ritiri },
         { provide: GENERA_FIR_DA_RITIRI, useValue: { genera: jest.fn() } },
@@ -140,6 +162,67 @@ describe('Campo - catena HTTP', () => {
       expect(autisti.aggiorna).not.toHaveBeenCalled()
     })
 
+    it('invia un esito: il servizio riceve azienda, utente del token e corpo; risposta 200', async () => {
+      const r = await http().post('/campo/eventi').send(corpoEvento).expect(200)
+      expect(r.body).toEqual({ id: EVENTO, esito: 'APPLICATO', motivoConflitto: null })
+      expect(eventi.registra).toHaveBeenCalledWith(TENANT, UTENTE, corpoEvento)
+    })
+
+    it('il corpo non puo indicare autista, utente o azienda (whitelist) e deve essere valido', async () => {
+      for (const extra of [
+        { autistaId: ID },
+        { utenteId: ID },
+        { tenantId: TENANT },
+        { esito: 'APPLICATO' },
+      ]) {
+        await http()
+          .post('/campo/eventi')
+          .send({ ...corpoEvento, ...extra })
+          .expect(400)
+      }
+      await http()
+        .post('/campo/eventi')
+        .send({ ...corpoEvento, id: 'x' })
+        .expect(400)
+      await http()
+        .post('/campo/eventi')
+        .send({ ...corpoEvento, tipo: 'ALTRO' })
+        .expect(400)
+      await http()
+        .post('/campo/eventi')
+        .send({ ...corpoEvento, versioneVista: 0 })
+        .expect(400)
+      await http()
+        .post('/campo/eventi')
+        .send({ ...corpoEvento, dati: 'x' })
+        .expect(400)
+      expect(eventi.registra).not.toHaveBeenCalled()
+    })
+
+    it('errori dell esito: 404 ritiro, 409 EVENTO_DI_ALTRO_UTENTE, 403 AUTISTA_NON_COLLEGATO', async () => {
+      eventi.registra.mockRejectedValueOnce(new RitiroNonTrovatoError())
+      await http().post('/campo/eventi').send(corpoEvento).expect(404)
+      eventi.registra.mockRejectedValueOnce(new EventoCampoDiAltroUtenteError())
+      const c = await http().post('/campo/eventi').send(corpoEvento).expect(409)
+      expect(JSON.stringify(c.body)).toContain('EVENTO_DI_ALTRO_UTENTE')
+      eventi.registra.mockRejectedValueOnce(new AutistaNonCollegatoError())
+      const f = await http().post('/campo/eventi').send(corpoEvento).expect(403)
+      expect(JSON.stringify(f.body)).toContain('AUTISTA_NON_COLLEGATO')
+    })
+
+    it('non legge gli esiti d ufficio: 403 e il servizio non gira', async () => {
+      const r = await http().get('/esiti-campo').expect(403)
+      expect(JSON.stringify(r.body)).toContain('ROTTA_NON_CONSENTITA_ALL_AUTISTA')
+      expect(eventi.elenca).not.toHaveBeenCalled()
+    })
+
+    it('senza il modulo campo anche l invio e chiuso (403 MODULO_NON_ATTIVO)', async () => {
+      moduliAttivi = ['ritiri']
+      const r = await http().post('/campo/eventi').send(corpoEvento).expect(403)
+      expect(JSON.stringify(r.body)).toContain('MODULO_NON_ATTIVO')
+      expect(eventi.registra).not.toHaveBeenCalled()
+    })
+
     it('un utente non collegato a un autista riceve 403 AUTISTA_NON_COLLEGATO', async () => {
       giro.giro.mockRejectedValue(new AutistaNonCollegatoError())
       const r = await http().get('/campo/giro?data=2026-11-19').expect(403)
@@ -163,6 +246,28 @@ describe('Campo - catena HTTP', () => {
       const r = await http().get('/campo/giro?data=2026-11-19').expect(403)
       expect(JSON.stringify(r.body)).toContain('GIRO_RISERVATO_AGLI_AUTISTI')
       expect(giro.giro).not.toHaveBeenCalled()
+    })
+
+    it('non puo inviare esiti (e dell autista): 403 e il servizio non gira', async () => {
+      const r = await http().post('/campo/eventi').send(corpoEvento).expect(403)
+      expect(JSON.stringify(r.body)).toContain('GIRO_RISERVATO_AGLI_AUTISTI')
+      expect(eventi.registra).not.toHaveBeenCalled()
+    })
+
+    it('legge gli esiti dal campo, con filtro e pagina; filtro non valido: 400', async () => {
+      eventi.elenca.mockResolvedValue({ righe: [{ id: EVENTO }], totale: 1 })
+      const r = await http().get('/esiti-campo?esito=DA_RICONCILIARE&pagina=2').expect(200)
+      expect(r.body).toEqual({ righe: [{ id: EVENTO }], totale: 1 })
+      expect(eventi.elenca).toHaveBeenCalledWith(TENANT, { esito: 'DA_RICONCILIARE', pagina: 2 })
+      await http().get('/esiti-campo?esito=BOH').expect(400)
+      await http().get('/esiti-campo?pagina=0').expect(400)
+      ruoloEffettivo = 'VIEWER'
+      await http().get('/esiti-campo').expect(200)
+    })
+
+    it('gli esiti richiedono il modulo campo', async () => {
+      moduliAttivi = ['ritiri']
+      await http().get('/esiti-campo').expect(403)
     })
 
     it('elenca gli autisti e con attivi=true passa il filtro', async () => {

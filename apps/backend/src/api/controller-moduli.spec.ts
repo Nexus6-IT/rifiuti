@@ -219,7 +219,11 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   'api/campo/campo.controller.ts': {
     chiavi: ['campo'],
-    motivo: "App campo: giro dell'autista (P1)",
+    motivo: "App campo: giro ed esiti dell'autista (P1, P4)",
+  },
+  'api/campo/esiti-campo.controller.ts': {
+    chiavi: ['campo'],
+    motivo: "Esiti dal campo per l'ufficio (P4)",
   },
   'api/campo/autisti.controller.ts': {
     chiavi: ['ritiri', 'campo'],
