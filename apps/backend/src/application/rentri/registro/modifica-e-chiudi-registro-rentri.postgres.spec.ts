@@ -35,7 +35,10 @@ import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { SOGLIA_STALLO_RENTRI_MS } from '../sync-fir-to-rentri.use-case'
 import { RegistroNonTrovatoError } from '../../registro/registri.service'
 import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-registro-rentri.use-case'
-import { ChiudiRegistroRentriUseCase } from './chiudi-registro-rentri.use-case'
+import {
+  ChiudiRegistroRentriUseCase,
+  MESSAGGIO_RIPRESA_NON_VERIFICATA,
+} from './chiudi-registro-rentri.use-case'
 import {
   AperturaRegistroInCorsoError,
   ChiusuraRegistroNonConfermataError,
@@ -575,13 +578,88 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
           await owner.movimentoTrasmissioneRentri.count({ where: { registroId: a.registroId } })
         ).toBe(1)
       })
+    })
 
-      it('ripresa con il registro ancora aperto sul portale: si rifa la DELETE', async () => {
-        const a = await azienda({ rentriChiusuraRichiestaIl: minutiFa(30) })
+    describe('I5: ripresa di una chiusura prenotata — macchina a stati sul dettaglio di RENTRI', () => {
+      /** Registro con la chiusura prenotata da un tentativo precedente e l'invio automatico attivo. */
+      const prenotato = () =>
+        azienda({
+          rentriChiusuraRichiestaIl: minutiFa(30),
+          invioRentriAutomaticoDal: minutiFa(1000),
+        })
+
+      it('CHIUSO su RENTRI: conferma senza guardia e senza DELETE, anche con annotazioni nate dopo', async () => {
+        const a = await prenotato()
+        await movimentoSenzaRiga(a)
+        finto.dettaglio = chiusoSuRentri
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('CHIUSO')
+        expect(finto.chiamateDelete).toHaveLength(0)
+        expect(finto.chiamateDettaglio).toBe(1)
+        const db = await registroDi(a.registroId)
+        expect(db.rentriChiusoIl?.toISOString()).toBe('2026-06-01T10:00:00.000Z')
+        expect(db.rentriChiusuraRichiestaIl).toBeNull()
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')).toHaveLength(0)
+      })
+
+      it('APERTO e guardia che passa: la DELETE si rifa una volta, con audit della ripetizione', async () => {
+        const a = await prenotato()
+        await riga(a, 'TRASMESSA')
+        await riga(a, 'DA_TRASMETTERE', {
+          esclusoIl: new Date(),
+          esclusoDa: utenteId,
+          motivoEsclusione: 'prova',
+        })
         finto.dettaglio = aperto()
         const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
         expect(r.esito).toBe('CHIUSO')
-        expect(finto.chiamateDelete).toHaveLength(1)
+        expect(finto.chiamateDelete).toEqual([ID])
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_RIPETUTA')).toHaveLength(1)
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')).toHaveLength(0)
+        expect((await registroDi(a.registroId)).rentriChiusoIl).not.toBeNull()
+      })
+
+      it('APERTO e guardia che blocca: 409 con i conteggi, nessuna DELETE, prenotazione annullata', async () => {
+        const a = await prenotato()
+        await movimentoSenzaRiga(a)
+        await riga(a, 'DA_TRASMETTERE')
+        finto.dettaglio = aperto()
+        const errore = await chiudi
+          .esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+          .catch(e => e)
+        expect(errore).toBeInstanceOf(ChiusuraRegistroNonPossibileError)
+        expect((errore as ChiusuraRegistroNonPossibileError).conteggi).toEqual({
+          SENZA_RIGA: 1,
+          DA_TRASMETTERE: 1,
+        })
+        expect(finto.chiamateDelete).toHaveLength(0)
+        const db = await registroDi(a.registroId)
+        expect(db.rentriChiusuraRichiestaIl).toBeNull()
+        expect(db.rentriChiusoIl).toBeNull()
+        expect(db.invioRentriAutomaticoDal).not.toBeNull()
+        const annullata = await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')
+        expect(annullata).toHaveLength(1)
+        expect(annullata[0].metadata).toMatchObject({ motivo: 'GUARDIA' })
+        // gli invii ripartono: la prenotazione dei lotti non vede piu' la chiusura
+        expect(
+          await repo.prenota(a.tenantId, a.registroId, async () => ({
+            lotto: [],
+            nonTrasmissibili: [],
+          }))
+        ).not.toEqual({ esito: 'REGISTRO_CHIUSO' })
+      })
+
+      it('lettura fallita: INCERTO, nessuna DELETE, la prenotazione resta', async () => {
+        const a = await prenotato()
+        finto.dettaglio = new Error('rete')
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('INCERTO')
+        if (r.esito === 'INCERTO') expect(r.messaggio).toBe(MESSAGGIO_RIPRESA_NON_VERIFICATA)
+        expect(finto.chiamateDelete).toHaveLength(0)
+        const db = await registroDi(a.registroId)
+        expect(db.rentriChiusuraRichiestaIl).not.toBeNull()
+        expect(db.rentriChiusoIl).toBeNull()
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')).toHaveLength(0)
       })
     })
 
@@ -683,13 +761,14 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
       })
 
       it('400 e rilettura che fallisce: la prenotazione RESTA, esito INCERTO', async () => {
-        const a = await azienda({ rentriChiusuraRichiestaIl: minutiFa(30) })
+        const a = await azienda()
         finto.dettaglio = new Error('rete')
         finto.delete = () => {
           throw new RentriApiError(400, 'Registro già chiuso', 'x', false)
         }
         const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
         expect(r.esito).toBe('INCERTO')
+        expect(finto.chiamateDelete).toEqual([ID])
         expect((await registroDi(a.registroId)).rentriChiusuraRichiestaIl).not.toBeNull()
       })
     })

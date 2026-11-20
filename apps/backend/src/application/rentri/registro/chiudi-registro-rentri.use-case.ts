@@ -11,8 +11,14 @@
  *    (`data_chiusura`): chiuso = confermato, ancora aperto = prenotazione annullata, rilettura
  *    fallita = la prenotazione resta (invii fermi) e la richiesta si ripete in sicurezza;
  * 4. conferma: `rentri_chiuso_il`, invio automatico spento, audit prima/dopo.
- * Una chiusura prenotata e rimasta incerta si riprende con la stessa richiesta: prima si rilegge
- * il dettaglio, la DELETE si rifa' solo se il registro e' ancora aperto.
+ * Ripresa (prenotazione gia' presente, un tentativo precedente e' rimasto incerto): prima si
+ * rilegge il dettaglio su RENTRI, poi si decide:
+ * - CHIUSO -> conferma, senza guardia e senza DELETE (le annotazioni nate durante la prenotazione
+ *   non potevano partire e restano nel registro locale);
+ * - APERTO -> la DELETE precedente non ha avuto effetto: si rifa' la guardia di ingresso sotto lo
+ *   stesso lock; se blocca si annulla la prenotazione (409 con i conteggi), altrimenti si rifa'
+ *   la DELETE con la stessa gestione degli errori della prima;
+ * - lettura fallita -> INCERTO, nessuna DELETE, la prenotazione resta.
  */
 import { Injectable } from '@nestjs/common'
 import type { Prisma, StatoTrasmissioneRentri } from '@prisma/client'
@@ -50,6 +56,10 @@ export type EsitoChiusura =
 export const MESSAGGIO_CHIUSURA_INCERTA =
   'RENTRI non ha confermato la chiusura e non è stato possibile verificarla: gli invii verso questo registro sono fermi. Tra qualche minuto ripeti «Chiudi»: WasteFlow controlla prima lo stato su RENTRI.'
 
+/** Ripresa di una chiusura prenotata senza poter leggere lo stato su RENTRI: nessuna DELETE. */
+export const MESSAGGIO_RIPRESA_NON_VERIFICATA =
+  'Non è stato possibile leggere lo stato del registro su RENTRI: la chiusura resta in sospeso e gli invii verso questo registro restano fermi. Ripeti «Chiudi» tra qualche minuto.'
+
 /** Stati che impediscono la chiusura (annotazioni in volo, incerte o ancora da trasmettere). */
 const STATI_IN_VOLO: StatoTrasmissioneRentri[] = ['IN_INVIO', 'ATTESA_ESITO']
 
@@ -61,6 +71,18 @@ const ETICHETTE: Record<string, string> = {
   RIFIUTATA: 'rifiutate da RENTRI',
   NON_TRASMISSIBILE: 'non trasmissibili',
   SENZA_RIGA: 'registrate e non ancora in coda',
+}
+
+type MotivoAnnullamento = 'RIFIUTATA' | 'NON_CHIUSO' | 'GUARDIA'
+
+function erroreGuardia(conteggi: Record<string, number>): ChiusuraRegistroNonPossibileError {
+  const elenco = Object.entries(conteggi)
+    .map(([stato, n]) => `${n} ${ETICHETTE[stato] ?? stato}`)
+    .join(', ')
+  return new ChiusuraRegistroNonPossibileError(
+    `Non si può chiudere il registro: ci sono annotazioni ${elenco}. Trasmettile o toglile dalla coda e riprova.`,
+    conteggi
+  )
 }
 
 @Injectable()
@@ -108,37 +130,15 @@ export class ChiudiRegistroRentriUseCase {
       }
       if (contesto.rentriChiusoIl !== null) throw new RegistroRentriChiusoError()
 
-      // Ripresa di una chiusura gia' prenotata (la DELETE e' gia' stata tentata): la guardia di
-      // ingresso NON si rifa'. Dalla prenotazione nessun lotto parte e `accoda` rifiuta, quindi le
-      // annotazioni nate dopo restano nel registro locale (avviso «registro chiuso») e non devono
-      // bloccare per sempre la conferma.
+      // Ripresa di una chiusura gia' prenotata: la guardia si decide DOPO aver letto RENTRI (fase 2).
       const registro = await tx.registroRifiuti.findFirst({
         where: { id: registroId, tenantId },
         select: { rentriChiusuraRichiestaIl: true },
       })
       const ripresa = registro?.rentriChiusuraRichiestaIl != null
       if (!ripresa) {
-        // Stesse regole del termine mensile (E0): in volo, incerte, da trasmettere, rifiutate, non
-        // trasmissibili e le annotazioni che l'invio automatico adottera' (SENZA_RIGA).
-        const conteggi: Record<string, number> = await contaDaTrasmettereRegistro(
-          tx,
-          tenantId,
-          registroId
-        )
-        const inVolo = await tx.movimentoTrasmissioneRentri.groupBy({
-          by: ['stato'],
-          where: { tenantId, registroId, stato: { in: STATI_IN_VOLO } },
-          _count: { _all: true },
-        })
-        for (const g of inVolo) conteggi[g.stato] = g._count._all
-        const voci = Object.entries(conteggi)
-        if (voci.length > 0) {
-          const elenco = voci.map(([stato, n]) => `${n} ${ETICHETTE[stato] ?? stato}`).join(', ')
-          throw new ChiusuraRegistroNonPossibileError(
-            `Non si può chiudere il registro: ci sono annotazioni ${elenco}. Trasmettile o toglile dalla coda e riprova.`,
-            conteggi
-          )
-        }
+        const conteggi = await this.guardia(tx, tenantId, registroId)
+        if (conteggi !== null) throw erroreGuardia(conteggi)
         await tx.registroRifiuti.updateMany({
           where: { id: registroId, tenantId },
           data: { rentriChiusuraRichiestaIl: new Date() },
@@ -159,9 +159,17 @@ export class ChiudiRegistroRentriUseCase {
     // Fase 2: sul portale, fuori da ogni transazione.
     let chiuso: RegistroAnagraficoModel | null = null
     if (fase.ripresa) {
-      // Un tentativo precedente era rimasto incerto: si guarda prima, la DELETE si rifa' solo se serve.
+      // Un tentativo precedente era rimasto incerto: si guarda prima di qualsiasi DELETE.
       const letto = await this.leggiSeRiesce(fase.identificativo, tenantId)
-      if (letto !== null && registroRentriChiuso(letto)) chiuso = letto
+      if (letto === null) {
+        this.logger.warn('Ripresa chiusura: dettaglio RENTRI non leggibile, nessuna DELETE', {
+          tenantId,
+          registroId,
+        })
+        return { esito: 'INCERTO', messaggio: MESSAGGIO_RIPRESA_NON_VERIFICATA }
+      }
+      if (registroRentriChiuso(letto)) chiuso = letto
+      else await this.ripetiGuardia(tenantId, utenteId, registroId, fase.identificativo)
     }
     if (chiuso === null) {
       try {
@@ -188,6 +196,82 @@ export class ChiudiRegistroRentriUseCase {
     const impostazioni = lista.find(r => r.registroId === registroId)
     if (!impostazioni) throw new RegistroRentriNonTrovatoError()
     return { esito: 'CHIUSO', impostazioni }
+  }
+
+  /**
+   * Guardia di ingresso, con le stesse regole del termine mensile (E0): in volo, incerte, da
+   * trasmettere, rifiutate, non trasmissibili e le annotazioni che l'invio automatico adottera'
+   * (SENZA_RIGA). Va chiamata sotto il lock `rentri-registro|<id>`.
+   * @returns i conteggi per stato se qualcosa blocca, altrimenti `null`
+   */
+  private async guardia(
+    tx: Tx,
+    tenantId: string,
+    registroId: string
+  ): Promise<Record<string, number> | null> {
+    const conteggi: Record<string, number> = await contaDaTrasmettereRegistro(
+      tx,
+      tenantId,
+      registroId
+    )
+    const inVolo = await tx.movimentoTrasmissioneRentri.groupBy({
+      by: ['stato'],
+      where: { tenantId, registroId, stato: { in: STATI_IN_VOLO } },
+      _count: { _all: true },
+    })
+    for (const g of inVolo) conteggi[g.stato] = g._count._all
+    return Object.keys(conteggi).length > 0 ? conteggi : null
+  }
+
+  /**
+   * Ripresa con RENTRI che dice APERTO: la DELETE precedente non ha avuto effetto, quindi prima di
+   * rifarla si ripete la guardia di ingresso sotto lo stesso lock. Se blocca, la prenotazione si
+   * annulla nella stessa transazione (gli invii ripartono) e si risponde 409 con i conteggi.
+   * @throws ChiusuraRegistroNonPossibileError 409 la guardia blocca (prenotazione annullata)
+   * @throws ChiusuraRegistroNonConfermataError 409 la prenotazione non c'e' piu' o il collegamento e' cambiato
+   * @throws RegistroRentriChiusoError 409 il registro e' stato confermato chiuso nel frattempo
+   */
+  private async ripetiGuardia(
+    tenantId: string,
+    utenteId: string,
+    registroId: string,
+    identificativo: string
+  ): Promise<void> {
+    const bloccata = await this.nelTenant(tenantId, async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
+      const r = await tx.registroRifiuti.findFirst({
+        where: { id: registroId, tenantId },
+        select: {
+          identificativoRentri: true,
+          rentriChiusoIl: true,
+          rentriChiusuraRichiestaIl: true,
+        },
+      })
+      if (!r) throw new RegistroRentriNonTrovatoError()
+      if (r.rentriChiusoIl !== null) throw new RegistroRentriChiusoError()
+      // Un'altra richiesta ha annullato la prenotazione o cambiato il collegamento mentre si leggeva
+      // RENTRI: non si chiude nulla alla cieca.
+      if (r.rentriChiusuraRichiestaIl === null || r.identificativoRentri !== identificativo) {
+        throw new ChiusuraRegistroNonConfermataError()
+      }
+      const conteggi = await this.guardia(tx, tenantId, registroId)
+      if (conteggi !== null) {
+        await this.annullaInTx(tx, tenantId, utenteId, registroId, 'GUARDIA', conteggi)
+        return conteggi
+      }
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utenteId,
+          action: 'RENTRI_REGISTRO_CHIUSURA_RIPETUTA',
+          description:
+            'Chiusura del registro su RENTRI ripetuta: il tentativo precedente non aveva avuto effetto',
+          metadata: { registroId },
+        },
+      })
+      return null
+    })
+    if (bloccata !== null) throw erroreGuardia(bloccata)
   }
 
   /**
@@ -244,30 +328,41 @@ export class ChiudiRegistroRentriUseCase {
     tenantId: string,
     utenteId: string,
     registroId: string,
-    motivo: 'RIFIUTATA' | 'NON_CHIUSO'
+    motivo: MotivoAnnullamento
   ): Promise<void> {
-    await this.nelTenant(tenantId, async tx => {
-      const r = await tx.registroRifiuti.updateMany({
-        where: {
-          id: registroId,
-          tenantId,
-          rentriChiusoIl: null,
-          rentriChiusuraRichiestaIl: { not: null },
-        },
-        data: { rentriChiusuraRichiestaIl: null },
-      })
-      if (r.count > 0) {
-        await tx.activityLog.create({
-          data: {
-            tenantId,
-            userId: utenteId,
-            action: 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA',
-            description: 'Chiusura del registro su RENTRI non avvenuta: invii di nuovo attivi',
-            metadata: { registroId, motivo },
-          },
-        })
-      }
+    await this.nelTenant(tenantId, tx =>
+      this.annullaInTx(tx, tenantId, utenteId, registroId, motivo)
+    )
+  }
+
+  private async annullaInTx(
+    tx: Tx,
+    tenantId: string,
+    utenteId: string,
+    registroId: string,
+    motivo: MotivoAnnullamento,
+    conteggi?: Record<string, number>
+  ): Promise<void> {
+    const r = await tx.registroRifiuti.updateMany({
+      where: {
+        id: registroId,
+        tenantId,
+        rentriChiusoIl: null,
+        rentriChiusuraRichiestaIl: { not: null },
+      },
+      data: { rentriChiusuraRichiestaIl: null },
     })
+    if (r.count > 0) {
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utenteId,
+          action: 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA',
+          description: 'Chiusura del registro su RENTRI non avvenuta: invii di nuovo attivi',
+          metadata: { registroId, motivo, ...(conteggi ? { conteggi } : {}) },
+        },
+      })
+    }
   }
 
   private async conferma(
