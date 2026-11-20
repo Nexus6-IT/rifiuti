@@ -40,6 +40,7 @@ describe('AuthController', () => {
     const mockJwtTokensService = {
       generateTokenPair: jest.fn(),
       generateAccessToken: jest.fn(),
+      generateRefreshToken: jest.fn(),
       verifyRefreshToken: jest.fn(),
       extractTokenFromHeader: jest.fn(),
     }
@@ -194,6 +195,123 @@ describe('AuthController', () => {
         604800 // 7 giorni in secondi
       )
     })
+
+    describe("ritorno verso l'app campo (RelayState in elenco chiuso)", () => {
+      const FRONTEND = 'https://rifiuti.ignicraft.com'
+      const TRENTA_GIORNI = 30 * 24 * 60 * 60
+
+      const preparaUtente = (role: string) => {
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role }) as any
+        )
+        jwtTokensService.generateTokenPair.mockReturnValue(createMockTokens())
+        jwtTokensService.generateRefreshToken.mockReturnValue('refresh-30-giorni')
+      }
+      const chiama = async (relayState: unknown) => {
+        const res = { redirect: jest.fn() }
+        const req: any = { user: createMockSpidUser({ id: 'user-123' }) }
+        if (relayState !== undefined) req.body = { RelayState: relayState }
+        await controller.spidCallback(req, res as any)
+        return res.redirect.mock.calls[0][1] as string
+      }
+
+      it('AUTISTA con RelayState=campo: torna a /campo/accesso con refresh a 30 giorni', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        const frammento = new URLSearchParams(url.split('#')[1])
+        expect(frammento.get('refreshToken')).toBe('refresh-30-giorni')
+        expect(frammento.get('accessToken')).toBe('mock-access-token-jwt-string')
+        expect(jwtTokensService.generateRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'tenant-123',
+          '30d',
+          'campo'
+        )
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'refresh-30-giorni',
+          TRENTA_GIORNI
+        )
+      })
+
+      it('RelayState «campo.<nonce>»: il nonce torna nel fragment, accanto ai token', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo.AbC_def-1234567890xyz')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        const frammento = new URLSearchParams(url.split('#')[1])
+        expect(frammento.get('nonce')).toBe('AbC_def-1234567890xyz')
+        expect(frammento.get('refreshToken')).toBe('refresh-30-giorni')
+      })
+
+      it('senza nonce nel RelayState il fragment non ha il campo nonce', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo')
+        expect(new URLSearchParams(url.split('#')[1]).has('nonce')).toBe(false)
+      })
+
+      it('nonce malformato: RelayState scartato, percorso predefinito e nessun nonce', async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama('campo.corto')
+        expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+        expect(new URLSearchParams(url.split('#')[1]).has('nonce')).toBe(false)
+      })
+
+      it("la sessione unica resta: anche dal canale campo si revoca e si alza l'epoca", async () => {
+        preparaUtente('AUTISTA')
+        await chiama('campo')
+        expect(redisService.revokeAllRefreshTokens).toHaveBeenCalledWith('user-123')
+        expect(redisService.impostaEpocaSessione).toHaveBeenCalledWith('user-123')
+      })
+
+      it("utente d'ufficio dal canale campo: ritorna a campo ma il refresh resta di 7 giorni", async () => {
+        preparaUtente('ADMIN')
+        const url = await chiama('campo')
+        expect(url.startsWith(`${FRONTEND}/campo/accesso#`)).toBe(true)
+        expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'mock-refresh-token-jwt-string',
+          7 * 24 * 60 * 60
+        )
+      })
+
+      it("AUTISTA senza RelayState (login dal frontend d'ufficio): 7 giorni e percorso predefinito", async () => {
+        preparaUtente('AUTISTA')
+        const url = await chiama(undefined)
+        expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+        expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+          'user-123',
+          'mock-refresh-token-jwt-string',
+          7 * 24 * 60 * 60
+        )
+      })
+
+      it.each([
+        'https://evil.example/',
+        '//evil.example',
+        '/campo/accesso',
+        'ufficio',
+        '',
+        ['campo'],
+        { campo: 1 },
+      ])(
+        'RelayState non ammesso %p: percorso predefinito, mai un redirect fuori elenco',
+        async valore => {
+          preparaUtente('AUTISTA')
+          const url = await chiama(valore)
+          expect(url.startsWith(`${FRONTEND}/auth/callback#`)).toBe(true)
+          expect(url).not.toContain('evil')
+          expect(jwtTokensService.generateRefreshToken).not.toHaveBeenCalled()
+          expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
+            'user-123',
+            'mock-refresh-token-jwt-string',
+            7 * 24 * 60 * 60
+          )
+        }
+      )
+    })
   })
 
   describe('refresh', () => {
@@ -314,6 +432,62 @@ describe('AuthController', () => {
 
       expect(tenantVisto).toBeNull()
       expect(Reflect.getMetadata('design:paramtypes', AuthController)[2]).toBe(PrismaSistemaService)
+    })
+
+    describe('refresh del canale campo (refresh lungo ricontrollato sul ruolo)', () => {
+      const payloadCampo = {
+        sub: 'user-123',
+        tenantId: 'tenant-123',
+        type: 'refresh',
+        canale: 'campo',
+      } as any
+
+      it('utente ancora AUTISTA: rinnova (e il refresh token non viene toccato)', async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue(payloadCampo)
+        redisService.isRefreshTokenValid.mockResolvedValue(true)
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'AUTISTA' }) as any
+        )
+        jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+
+        const r = await controller.refresh({ refreshToken: 'rt-30' })
+
+        expect(r.accessToken).toBe('nuovo')
+        expect(redisService.revokeRefreshToken).not.toHaveBeenCalled()
+        expect(redisService.storeRefreshToken).not.toHaveBeenCalled()
+      })
+
+      it.each(['ADMIN', 'OPERATOR', 'VIEWER'])(
+        'utente diventato %s: revoca il refresh token e risponde 401',
+        async ruolo => {
+          jwtTokensService.verifyRefreshToken.mockReturnValue(payloadCampo)
+          redisService.isRefreshTokenValid.mockResolvedValue(true)
+          prismaService.user.findUnique.mockResolvedValue(
+            createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: ruolo }) as any
+          )
+
+          await expect(controller.refresh({ refreshToken: 'rt-30' })).rejects.toThrow(
+            UnauthorizedException
+          )
+          expect(redisService.revokeRefreshToken).toHaveBeenCalledWith('user-123', 'rt-30')
+          expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
+        }
+      )
+
+      it("refresh senza claim canale (login d'ufficio): nessun vincolo sul ruolo", async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          type: 'refresh',
+        } as any)
+        redisService.isRefreshTokenValid.mockResolvedValue(true)
+        prismaService.user.findUnique.mockResolvedValue(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'ADMIN' }) as any
+        )
+        jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+
+        await expect(controller.refresh({ refreshToken: 'rt' })).resolves.toBeDefined()
+        expect(redisService.revokeRefreshToken).not.toHaveBeenCalled()
+      })
     })
 
     describe('azienda selezionata con lo switch (portata dal refresh token)', () => {
