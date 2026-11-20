@@ -28,6 +28,7 @@ interface Mov {
   relaz?: SegmentoRelaz[]
   registri?: Array<{ registro: string; protocollo: number | null }>
   annullato?: boolean
+  stato?: string
 }
 
 function mov(m: Mov): RecordMovimento {
@@ -69,7 +70,7 @@ function mov(m: Mov): RecordMovimento {
     kgnum: m.netto ?? 0,
     mcnum: null,
     giascar: m.giascar ?? null,
-    stato: '',
+    stato: m.stato ?? '',
     nfatt: '',
   }
 }
@@ -340,7 +341,7 @@ describe('I6 T1: giacenza al taglio (ricalcolo indipendente)', () => {
     const r = calcola({
       movimenti: [
         mov({ cod: 1, oper: '16', mag1: '001', netto: 10 }), // CARICO senza classe
-        mov({ cod: 2, oper: '13', mag1: '001', netto: 10, relaz: [] }), // ENTRAMBI
+        mov({ cod: 2, oper: '15', mag1: '001', netto: 10, relaz: [] }), // ENTRAMBI senza STATO
         mov({ cod: 3, oper: '20', mag2: '001', moda: '', netto: 10 }), // R/D senza moda
         mov({ cod: 4, oper: '50', mag1: '001', netto: 10 }), // X
         mov({ cod: 5, oper: '51', relaz: [G(0, 5, 'X')], netto: 5 }),
@@ -415,5 +416,33 @@ describe('I6 T1: giacenza al taglio (ricalcolo indipendente)', () => {
     const somma = f.origini.reduce((t, o) => t + Math.round(o.quantita * 100), 0)
     expect(somma).toBeLessThanOrEqual(Math.round(f.quantitaKg * 100))
     expect(f.quantitaKg).toBe(0.66)
+  })
+
+  it('D1: OPER 13 e anche un carico R/D (MAG2): residuo = netto meno i segmenti C, nessun SEGMENTO_C_SENZA_CARICO', () => {
+    const r = calcola({
+      movimenti: [
+        mov({ cod: 1, oper: '13', mag1: '001', mag2: '002', moda: 'R13', netto: 100, giascar: 40 }),
+        mov({ cod: 2, oper: '21', relaz: [C(1, 40)], netto: 40 }),
+      ],
+    })
+    expect(r.famiglie.map(f => [f.registroId, f.quantitaKg])).toEqual([[REG_B, 60]])
+    expect(avviso(r, 'SEGMENTO_C_SENZA_CARICO')).toBe(0)
+    expect(avviso(r, 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')).toBe(0)
+    expect(r.differenzeGiascar).toEqual([])
+  })
+
+  it("D1: OPER 15/24 e 16/26 decidono il lato carico da STATO; senza classe resta l'avviso", () => {
+    const r = calcola({
+      movimenti: [
+        mov({ cod: 1, oper: '24', mag2: '001', moda: 'D15', netto: 10, stato: 'D001' }),
+        mov({ cod: 2, oper: '15', mag1: '001', netto: 20, stato: 'T001' }),
+        mov({ cod: 3, oper: '15', mag1: '001', netto: 30, stato: '' }),
+        mov({ cod: 4, oper: '16', mag1: '001', netto: 5, stato: 'T001' }),
+        mov({ cod: 5, oper: '26', mag1: '001', netto: 7, stato: '' }),
+      ],
+    })
+    expect(r.famiglie.map(f => f.quantitaKg)).toEqual([35])
+    expect(avviso(r, 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')).toBe(1)
+    expect(avviso(r, 'CARICO_SENZA_CLASSE_DI_GIACENZA')).toBe(1)
   })
 })

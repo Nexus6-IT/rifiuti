@@ -26,8 +26,8 @@ import { DataIso } from './risultato'
  *
  * LIMITI NOTI (si segnalano, non si correggono):
  *  - il deposito del produttore (`G0`, classe `X`) vive in `[Schede produttori]`, non nello staging;
- *  - un movimento ENTRAMBI (OPER 13, 15, 24) conta come scarico, non come carico: non si conosce con
- *    certezza se crei giacenza (`AVANZ` della causale);
+ *  - OPER 13 crea sempre un carico R/D; per 15, 24, 16, 26 il lato carico lo decide `STATO` (senza classe
+ *    non si conta e si segnala: `AVANZ` della causale e `POS2` sono altre UL, domanda Q2);
  *  - i m³ non si portano (WasteFlow non li traccia sulle aperture);
  *  - FORMA PRESUNTA, da riverificare sul primo `.bak`: il magazzino di un carico e' `MAG1` per le
  *    classi T e X e `MAG2` per R/D; il magazzino dei segmenti `G` e `P` e' `MAG1` dello scarico.
@@ -149,6 +149,25 @@ function statoFisicoPulito(v: string): string | null | 'NON_VALIDO' {
   return t
 }
 
+type ClasseCarico = 'T' | 'R_D' | 'X'
+
+/**
+ * Classe del carico che un movimento crea, `null` se non ne crea (o non si sa). OPER 13 crea SEMPRE un
+ * carico R/D (movimenti.md §2.4). Per gli altri ENTRAMBI (15, 24) e per i CARICO senza classe (16, 26)
+ * decide `STATO` (classe T/R/D/X + posizione, `$` se esaurito: la giacenza di WinWaste e' quella dei
+ * movimenti con `stato > '0'`); senza classe in `STATO` non si conta e si segnala.
+ */
+function classeCarico(m: RecordMovimento): ClasseCarico | null {
+  if (m.oper.tipo === 'CARICO' && m.oper.classe !== null) return m.oper.classe
+  if (m.oper.tipo === 'ENTRAMBI' && m.oper.codice === '13') return 'R_D'
+  if (m.oper.tipo === 'ENTRAMBI' || (m.oper.tipo === 'CARICO' && m.oper.classe === null)) {
+    const c = m.stato.trim().charAt(0).toUpperCase()
+    if (c === 'R' || c === 'D') return 'R_D'
+    if (c === 'T' || c === 'X') return c
+  }
+  return null
+}
+
 export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze {
   const avvisi = new Contatori<CodiceAvvisoGiacenze>()
   const scarti = new Contatori<CodiceScartoGiacenze>()
@@ -205,7 +224,7 @@ export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze 
   const scaricatoAlTaglio = new Map<number, number>()
   const codiciCarico = new Set<number>()
   for (const m of vivi) {
-    if (m.oper.tipo === 'CARICO' && m.oper.classe !== null) codiciCarico.add(m.cod)
+    if (classeCarico(m) !== null) codiciCarico.add(m.cod)
   }
   const segnalatiSenzaCarico = new Set<number>()
   for (const m of vivi) {
@@ -255,13 +274,10 @@ export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze 
   // 4. carichi aperti dell'anno.
   const differenze: DifferenzaGiascar[] = []
   for (const m of vivi) {
-    if (m.oper.tipo === 'ENTRAMBI') {
-      avvisi.conta('OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')
-      continue
-    }
-    if (m.oper.tipo !== 'CARICO') continue
-    if (m.oper.classe === null) {
-      avvisi.conta('CARICO_SENZA_CLASSE_DI_GIACENZA')
+    const classe = classeCarico(m)
+    if (classe === null) {
+      if (m.oper.tipo === 'ENTRAMBI') avvisi.conta('OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')
+      else if (m.oper.tipo === 'CARICO') avvisi.conta('CARICO_SENZA_CLASSE_DI_GIACENZA')
       continue
     }
     if (m.cer === null || m.data === null || (m.nettoKg ?? 0) <= 0) continue
@@ -269,11 +285,11 @@ export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze 
       avvisi.conta('CARICO_DOPO_IL_TAGLIO')
       continue
     }
-    if (m.oper.classe === 'R_D' && !/^[RD]/i.test(m.moda.trim())) {
+    if (classe === 'R_D' && !/^[RD]/i.test(m.moda.trim())) {
       scarti.conta('MODA_NON_RICONOSCIUTA')
       continue
     }
-    const mag = m.oper.classe === 'R_D' ? m.mag2 : m.mag1
+    const mag = classe === 'R_D' ? m.mag2 : m.mag1
     const f = famiglia(mag, m.cer.codice, m.statoFisico, m.cer.pericoloso)
     if (f === null) continue
     const nettoMilli = milli(m.nettoKg as number)
