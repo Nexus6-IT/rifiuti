@@ -52,8 +52,9 @@ export interface EsitoInviaDatiViaggio {
   /** Stato del formulario riletto dall'ente; `null` se la rilettura non e' riuscita (l'operazione e' comunque riuscita). */
   statoFormulario: StatoFormulario | null
   /**
-   * `false` se l'ente ha accettato ma la copia locale non si e' potuta salvare: l'operazione e' riuscita
-   * (l'evento c'e'), il dato dichiarato si rivede alla prossima rilettura.
+   * `false` se l'ente ha accettato ma la copia locale non si e' potuta salvare: l'operazione e' riuscita e
+   * l'evento ACCETTATA c'e' (con il motivo), ma il dichiarato a RENTRI NON e' stato registrato e nessuna
+   * rilettura lo ricostruisce da sola: si rimedia ripetendo l'invio (correzione) o leggendo l'evento.
    */
   copiaLocaleAggiornata: boolean
 }

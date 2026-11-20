@@ -2008,6 +2008,22 @@ describe('FirDetailComponent', () => {
       expect(firService.getFIRById).toHaveBeenCalledTimes(2)
     })
 
+    it("M9: con copiaLocaleAggiornata false l'avviso è un warning che dice cosa fare", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni('DatiQuantita'))
+      rentriFirLifecycleService.inviaQuantita.and.returnValue(
+        of({ operazione: 'DatiQuantita', statoFormulario: null, copiaLocaleAggiornata: false })
+      )
+      fixture.detectChanges()
+      const add = spyOn(component['messageService'], 'add')
+      component.apriDialogQuantita(firLegato)
+      component.confermaQuantita()
+      const msg = add.calls.mostRecent().args[0]
+      expect(msg.severity).toBe('warn')
+      expect(msg.detail).toContain('ripeti')
+    })
+
     it("rifiuto dell'ente sulla quantità: il messaggio resta nel dialog, che non si chiude", () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegato))

@@ -2195,13 +2195,16 @@ export class FirDetailComponent implements OnInit {
         verificatoInPartenza: this.qtaVerificato,
       })
       .subscribe({
-        next: () => {
+        next: esito => {
           this.quantitaInCorso.set(false)
           this.quantitaDialogVisible.set(false)
           this.messageService.add({
-            severity: 'success',
+            severity: esito?.copiaLocaleAggiornata === false ? 'warn' : 'success',
             summary: 'Quantità inviata a RENTRI',
-            detail: "L'ente ha accettato la quantità del formulario.",
+            detail:
+              esito?.copiaLocaleAggiornata === false
+                ? "L'ente ha accettato, ma qui il dato dichiarato non è stato salvato: ripeti l'invio per vederlo nel dettaglio."
+                : "L'ente ha accettato la quantità del formulario.",
           })
           this.reload()
         },
@@ -2273,13 +2276,16 @@ export class FirDetailComponent implements OnInit {
         dataOraInizioTrasporto: this.trpInizio ? new Date(this.trpInizio).toISOString() : undefined,
       })
       .subscribe({
-        next: () => {
+        next: esito => {
           this.trasportoInCorso.set(false)
           this.trasportoDialogVisible.set(false)
           this.messageService.add({
-            severity: 'success',
+            severity: esito?.copiaLocaleAggiornata === false ? 'warn' : 'success',
             summary: 'Dati di trasporto inviati a RENTRI',
-            detail: "L'ente ha accettato i dati del trasporto.",
+            detail:
+              esito?.copiaLocaleAggiornata === false
+                ? "L'ente ha accettato, ma qui il dato dichiarato non è stato salvato: ripeti l'invio per vederlo nel dettaglio."
+                : "L'ente ha accettato i dati del trasporto.",
           })
           this.reload()
         },

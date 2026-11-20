@@ -87,6 +87,8 @@ export interface InviaTrasportoFirRentriPayload {
 export interface EsitoInviaDatiViaggio {
   operazione: string
   statoFormulario: string | null
+  /** false: l'ente ha accettato ma il dichiarato a RENTRI non e' stato salvato qui. */
+  copiaLocaleAggiornata?: boolean
 }
 
 /** Una riga dello storico delle operazioni inviate all'ente (v. backend `EventoFirRentri`). */

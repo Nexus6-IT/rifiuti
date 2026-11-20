@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
 import {
   DatiPartenzaDaSalvare,
   DatiViaggioFir,
@@ -126,26 +125,12 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
     })
   }
 
-  /** Fonde `parte` nella copia dichiarata (chiavi diverse per quantita' e trasporto). */
-  private async fondiDichiarato(
-    tenantId: string,
-    firId: string,
-    parte: Prisma.InputJsonObject
-  ): Promise<Prisma.InputJsonObject> {
-    const r = await this.prisma.fIR.findFirst({
-      where: { id: firId, tenantId },
-      select: { rentriDichiarato: true },
-    })
-    const attuale = (r?.rentriDichiarato ?? {}) as Prisma.InputJsonObject
-    return { ...attuale, ...parte }
-  }
-
   async aggiornaQuantitaDopoEnte(
     tenantId: string,
     firId: string,
     q: QuantitaInviata
   ): Promise<void> {
-    const dichiarato = await this.fondiDichiarato(tenantId, firId, {
+    const parte = JSON.stringify({
       quantita: {
         valore: q.valore,
         unitaMisura: q.unitaMisura,
@@ -153,15 +138,17 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
         numeroColli: q.rinfusa ? null : q.numeroColli,
       },
     })
-    // `quantity`, `unit` e `waste_package_count` NON si toccano: entrano nel documento firmato
-    // all'emissione. Il `versione` non avanza: nessun campo dell'aggregate cambia.
-    await this.prisma.fIR.updateMany({
-      where: { id: firId, tenantId },
-      data: {
-        rinfusa: q.rinfusa,
-        verificatoInPartenza: q.verificatoInPartenza,
-        rentriDichiarato: dichiarato,
-      },
+    // UN SOLO UPDATE: la fusione del JSON (`||`) e' atomica, quindi `/quantita` e `/trasporto` concorrenti
+    // non si perdono a vicenda. `quantity`, `unit` e `waste_package_count` NON si toccano: entrano nel
+    // documento firmato all'emissione. Il `versione` non avanza: nessun campo dell'aggregate cambia.
+    // Dentro `$transaction` perche' l'estensione imposta il tenant (RLS) per la transazione.
+    await this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`
+        UPDATE firs SET
+          rinfusa = ${q.rinfusa},
+          verificato_in_partenza = ${q.verificatoInPartenza}::boolean,
+          rentri_dichiarato = COALESCE(rentri_dichiarato, '{}'::jsonb) || ${parte}::jsonb
+        WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid`
     })
   }
 
@@ -170,19 +157,17 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
     firId: string,
     t: TrasportoInviato
   ): Promise<void> {
-    const dichiarato = await this.fondiDichiarato(tenantId, firId, {
-      trasporto: { targaAutomezzo: t.targaAutomezzo },
-    })
+    const parte = JSON.stringify({ trasporto: { targaAutomezzo: t.targaAutomezzo } })
     // `carrier_vehicle_plate` NON si tocca (documento firmato): la targa dichiarata sta nella copia.
-    await this.prisma.fIR.updateMany({
-      where: { id: firId, tenantId },
-      data: {
-        conducenteNome: t.conducenteNome,
-        conducenteCognome: t.conducenteCognome,
-        targaRimorchio: t.targaRimorchio,
-        percorso: t.percorso,
-        rentriDichiarato: dichiarato,
-      },
+    await this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`
+        UPDATE firs SET
+          conducente_nome = ${t.conducenteNome},
+          conducente_cognome = ${t.conducenteCognome},
+          targa_rimorchio = ${t.targaRimorchio}::varchar,
+          percorso = ${t.percorso}::varchar,
+          rentri_dichiarato = COALESCE(rentri_dichiarato, '{}'::jsonb) || ${parte}::jsonb
+        WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid`
     })
   }
 }
