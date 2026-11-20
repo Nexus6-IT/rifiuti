@@ -3,6 +3,7 @@
  * (due insiemi di ditte) sullo stesso lotto.
  */
 import { PrismaClient } from '@prisma/client'
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
 const urlProprietario =
@@ -72,7 +73,7 @@ describe('Pezzo I2 T4: caricaAmbito — Postgres reale, ruolo wasteflow_app', ()
     lotti = new LottiImportService(app, logger)
   })
   afterAll(async () => {
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })
