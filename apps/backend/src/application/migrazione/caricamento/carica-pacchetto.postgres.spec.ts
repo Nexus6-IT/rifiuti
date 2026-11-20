@@ -209,7 +209,19 @@ describe('Pezzo I2 T5/T6: carica pacchetto — Postgres reale, ruolo wasteflow_a
                     }
                   }
                   if (typeof nome === 'string' && nome !== 'then' && typeof v === 'object') {
-                    istruzioni.push(`MODELLO:${nome}`)
+                    // Un modello Prisma: si registra il METODO chiamato (solo `count` e' ammesso).
+                    return new Proxy(v as object, {
+                      get(modello, metodo, r2) {
+                        const f = Reflect.get(modello, metodo, r2)
+                        if (typeof metodo === 'string' && typeof f === 'function') {
+                          return (...a: unknown[]) => {
+                            istruzioni.push(`MODELLO:${nome}.${metodo}`)
+                            return (f as (...x: unknown[]) => unknown).apply(modello, a)
+                          }
+                        }
+                        return f
+                      },
+                    })
                   }
                   return typeof v === 'function' ? v.bind(bersaglio) : v
                 },
@@ -241,7 +253,8 @@ describe('Pezzo I2 T5/T6: carica pacchetto — Postgres reale, ruolo wasteflow_a
       expect(u.out.join('\n')).toContain('verifica: nessun bloccante')
       expect(istruzioni[0]).toContain('SET LOCAL transaction_read_only = on')
       expect(istruzioni.length).toBeGreaterThan(3)
-      for (const i of istruzioni.slice(1)) expect(i).toMatch(/^\s*SELECT /i)
+      // solo SELECT, piu' la lettura `tenant.count` (esistenza dell'azienda della mappa, I4)
+      for (const i of istruzioni.slice(1)) expect(i).toMatch(/^\s*SELECT |^MODELLO:tenant\.count$/i)
       expect([
         await owner.ditta.count({ where: { tenantId: t } }),
         await owner.lottoImport.count({ where: { tenantId: t } }),

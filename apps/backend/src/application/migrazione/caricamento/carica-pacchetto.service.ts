@@ -181,9 +181,8 @@ export class CaricaPacchettoService {
       if (conteggio > 0) out.push({ codice, conteggio })
     }
     // Mai creazione automatica di tenant: l'azienda della mappa deve esistere gia'.
-    const [azienda] = await tx.$queryRaw<Array<{ n: bigint }>>`
-      SELECT count(*)::bigint AS n FROM "tenants" WHERE "id" = ${t}::uuid`
-    aggiungi('TENANT_INESISTENTE', Number(azienda.n) === 0 ? 1 : 0)
+    const azienda = await tx.tenant.count({ where: { id: t } })
+    aggiungi('TENANT_INESISTENTE', azienda === 0 ? 1 : 0)
     const mancanti = async (
       tabella: 'registri_rifiuti' | 'sedi_ditte' | 'rentri_unita_locali',
       ids: string[]
