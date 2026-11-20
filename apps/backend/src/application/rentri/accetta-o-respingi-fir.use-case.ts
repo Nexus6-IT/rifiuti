@@ -21,6 +21,8 @@ export interface ComandoAccettaORespingiFIR {
   causaleRespingimento?: 'NC' | 'IR' | 'A'
   motivoRespingimento?: string
   attesaVerificaAnalitica?: boolean
+  /** Utente che chiede l'operazione: finisce sulla sessione di firma. */
+  utenteId?: string
   correlationId?: string
 }
 
@@ -159,6 +161,7 @@ export class AccettaORespingiFIRUseCase {
       firId,
       tenantId,
       tipoOperazione: 'ACCETTAZIONE',
+      utenteId: comando.utenteId,
       correlationId,
     })
 

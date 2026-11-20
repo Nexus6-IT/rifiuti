@@ -1,9 +1,9 @@
 import { creaApp } from '../src/app'
 import { intestazioniAutenticate } from './aiuti/token'
 
-// Task 1 di R4: l'oracolo impara a rispondere anche su `anagrafiche` (solo i
-// path di lettura su Operatore/Soggetto delegato — i `/registri` restano
-// fuori dall'ambito). Un test per regola: un caso che passa, uno respinto.
+// Task 1 di R4: l'oracolo impara a rispondere anche su `anagrafiche` (path di
+// lettura su Operatore/Soggetto delegato; i registri dell'operatore stanno in
+// `registri-operatore.test.ts`). Un test per regola: un caso che passa, uno respinto.
 describe('Rotte anagrafiche', () => {
   it("rifiuta con 403 l'elenco unità locali senza token", async () => {
     const app = creaApp()

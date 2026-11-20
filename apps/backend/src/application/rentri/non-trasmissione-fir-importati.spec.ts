@@ -3,6 +3,7 @@
  * repository e client finti (la parte con Postgres e HTTP e' in `non-trasmissione-fir-importati.postgres.spec.ts`):
  * il client RENTRI non riceve mai una chiamata di scrittura per un FIR bloccato.
  */
+import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { FirBloccatoAllInvioError } from '../../domain/fir/guardia-invio-rentri'
@@ -309,6 +310,7 @@ describe('Altri punti di scrittura: nessuna chiamata al client per un FIR blocca
       {} as any,
       c as any,
       {} as any,
+      new SessioniFirmaRentriInMemoria(),
       logger() as any
     )
     await expect(

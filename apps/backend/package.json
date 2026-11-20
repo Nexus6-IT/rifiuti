@@ -26,7 +26,9 @@
     "test:oracolo": "jest -c jest.oracolo.config.js --forceExit --ci --runInBand",
     "test:postgres": "NODE_OPTIONS=--max-old-space-size=3584 jest -c jest.postgres.config.js --forceExit --maxWorkers=1 --workerIdleMemoryLimit=2048MB",
     "test:redis": "jest -c jest.redis.config.js --forceExit --runInBand",
-    "migrazione:analizza": "ts-node -r tsconfig-paths/register src/cli/migrazione-analizza.ts"
+    "migrazione:analizza": "ts-node -r tsconfig-paths/register src/cli/migrazione-analizza.ts",
+    "migrazione:prepara": "ts-node -r tsconfig-paths/register src/cli/migrazione-prepara.ts",
+    "migrazione:carica": "ts-node -r tsconfig-paths/register src/cli/migrazione-carica.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
@@ -46,6 +48,7 @@
     "@sentry/node": "^10.62.0",
     "@types/ioredis": "^4.28.10",
     "@willsoto/nestjs-prometheus": "^6.0.2",
+    "@xmldom/xmldom": "0.9.12",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.1.0",
     "cache-manager": "^5.7.6",
@@ -71,7 +74,8 @@
     "stripe": "^17.7.0",
     "uuid": "^9.0.0",
     "winston": "^3.18.3",
-    "xmllint-wasm": "5.3.0"
+    "xmllint-wasm": "5.3.0",
+    "xpath": "0.0.32"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.0",

@@ -145,6 +145,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'Ritiro',
   // Anagrafica autisti (app campo, P1).
   'Autista',
+  // Sessione di firma remota RENTRI riprendibile (FIR in viaggio, P1).
+  'FirSessioneFirmaRentri',
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
   'ComunicazioneConsorzio',
   'ComunicazioneConsorzioMovimento',

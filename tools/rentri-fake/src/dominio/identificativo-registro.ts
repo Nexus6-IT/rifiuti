@@ -4,8 +4,8 @@
  * path/parametro di questo servizio, es. riga 252): `R` seguito da 10
  * caratteri alfanumerici maiuscoli — es. `R1234ABCDEF`.
  *
- * Il registro NON si apre tramite alcuna API di questo contratto (nessun
- * path lo crea): tutti gli endpoint presuppongono un `identificativo_registro`
+ * Il registro NON si apre tramite alcuna API di questo contratto (si apre con
+ * `POST /anagrafiche/v1.0/operatore/registri`, v. `routes/anagrafiche-registri.ts`): tutti gli endpoint presuppongono un `identificativo_registro`
  * gia' esistente, ottenuto sul portale RENTRI. Questo modulo valida solo il
  * FORMATO del parametro; l'ESISTENZA del registro e' responsabilita' di
  * `Registri.registroConosciuto` (v. `stato/registri.ts`).
