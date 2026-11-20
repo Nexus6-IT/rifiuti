@@ -381,16 +381,21 @@ export class ChiudiRegistroRentriUseCase {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
       const prima = await tx.registroRifiuti.findFirst({
         where: { id: registroId, tenantId },
-        select: { invioRentriAutomaticoDal: true, rentriChiusoIl: true },
+        select: {
+          invioRentriAutomaticoDal: true,
+          rentriChiusoIl: true,
+          identificativoRentri: true,
+        },
       })
-      // Solo se e' ancora il registro che abbiamo chiuso: se nel frattempo un admin ha cambiato o
-      // tolto l'identificativo, il registro locale non va segnato chiuso.
+      // RENTRI ha chiuso QUESTO identificativo: lo si segna chiuso a prescindere dalla prenotazione,
+      // che una richiesta concorrente puo' aver annullato (M9). Se nel frattempo un admin ha cambiato
+      // o tolto l'identificativo, il registro locale non va segnato chiuso (M1).
       const r = await tx.registroRifiuti.updateMany({
         where: {
           id: registroId,
           tenantId,
           identificativoRentri: identificativo,
-          rentriChiusuraRichiestaIl: { not: null },
+          rentriChiusoIl: null,
         },
         data: {
           rentriChiusoIl: quando,
@@ -399,6 +404,14 @@ export class ChiudiRegistroRentriUseCase {
           rentriSincronizzatoIl: new Date(),
         },
       })
+      // Gia' confermato da un'altra richiesta (DELETE doppia): idempotente, nessun audit in piu'.
+      if (
+        r.count === 0 &&
+        prima?.rentriChiusoIl != null &&
+        prima.identificativoRentri === identificativo
+      ) {
+        return
+      }
       await tx.activityLog.create({
         data: {
           tenantId,

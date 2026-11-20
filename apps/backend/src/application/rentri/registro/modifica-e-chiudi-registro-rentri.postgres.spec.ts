@@ -797,6 +797,66 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
       ).toBe(true)
     })
 
+    describe('M9: due chiusure concorrenti non lasciano RENTRI chiuso e il registro locale aperto', () => {
+      const conAudit = async (tenantId: string) =>
+        (await audit(tenantId, 'RENTRI_REGISTRO_CHIUSO')).filter(l =>
+          JSON.stringify(l.metadata).includes('collegamentoCambiato')
+        )
+
+      it('A annulla la prenotazione (DELETE incerta, registro aperto) mentre la DELETE della ripresa B riesce: registro chiuso', async () => {
+        const a = await azienda()
+        finto.dettaglio = aperto()
+        let rilasciaA!: () => void
+        const cancelloA = new Promise<void>(r => (rilasciaA = r))
+        let chiamata = 0
+        finto.delete = async () => {
+          if (++chiamata === 1) {
+            // DELETE di A: resta in volo finche' B non e' alla sua DELETE, poi esito incerto.
+            await cancelloA
+            throw new TrasmissioneRentriIncertaError('TIMEOUT' as never)
+          }
+          // DELETE di B: A finisce (rilegge APERTO e annulla la prenotazione), poi B riesce.
+          rilasciaA()
+          await fineA
+        }
+        // la closure di `delete` legge fineA solo alla seconda chiamata, dopo l'inizializzazione
+        const fineA: Promise<unknown> = chiudi
+          .esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+          .catch(e => e)
+        while (finto.chiamateDelete.length === 0) await new Promise(r => setTimeout(r, 10))
+        const b = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(await fineA).toBeInstanceOf(ChiusuraRegistroNonConfermataError)
+        expect(b.esito).toBe('CHIUSO')
+        expect(finto.chiamateDelete).toHaveLength(2)
+        const db = await registroDi(a.registroId)
+        expect(db.rentriChiusoIl).not.toBeNull()
+        expect(db.rentriChiusuraRichiestaIl).toBeNull()
+        expect(db.invioRentriAutomaticoDal).toBeNull()
+        expect(await conAudit(a.tenantId)).toHaveLength(0)
+      })
+
+      it("DELETE doppia: la seconda conferma e' idempotente, nessun audit «collegamento cambiato»", async () => {
+        const a = await azienda()
+        const chiusoDaA = new Date('2026-06-01T10:00:00Z')
+        finto.delete = async () => {
+          // nel frattempo l'altra richiesta ha gia' confermato la chiusura; questa riceve 400
+          await owner.registroRifiuti.update({
+            where: { id: a.registroId },
+            data: { rentriChiusoIl: chiusoDaA, rentriChiusuraRichiestaIl: null },
+          })
+          throw new RentriApiError(400, 'Registro già chiuso', 'x', false)
+        }
+        finto.dettagliSuccessivi = [chiusoSuRentri]
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('CHIUSO')
+        expect((await registroDi(a.registroId)).rentriChiusoIl?.toISOString()).toBe(
+          chiusoDaA.toISOString()
+        )
+        expect(await conAudit(a.tenantId)).toHaveLength(0)
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')).toHaveLength(0)
+      })
+    })
+
     it('con la chiusura prenotata nessun lotto parte e accoda e invio automatico sono rifiutati', async () => {
       const a = await azienda({ rentriChiusuraRichiestaIl: minutiFa(1) })
       const m = await riga(a, 'RIFIUTATA')
