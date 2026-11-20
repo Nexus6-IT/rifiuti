@@ -102,7 +102,10 @@ describe('POST /operatore/{registro}/valida: firma XMLDSig e catena dei digest (
     await app.close()
   })
 
-  async function valida(xml: string, nomeFile = 'registro.xml'): Promise<{ errore: boolean; validazione: { tipo: string; codice_messaggio: string }[] }> {
+  async function valida(
+    xml: string,
+    nomeFile = 'registro.xml'
+  ): Promise<{ errore: boolean; validazione: { tipo: string; codice_messaggio: string }[] }> {
     await app.inject({
       method: 'POST',
       url: '/__controllo/dati-registri/registro',
@@ -112,7 +115,11 @@ describe('POST /operatore/{registro}/valida: firma XMLDSig e catena dei digest (
       method: 'POST',
       url: `/dati-registri/v1.0/operatore/${REGISTRO}/valida`,
       headers: await intestazioniAutenticate(),
-      payload: { file_content: Buffer.from(xml).toString('base64'), nome_file: nomeFile, mime: 'application/xml' },
+      payload: {
+        file_content: Buffer.from(xml).toString('base64'),
+        nome_file: nomeFile,
+        mime: 'application/xml',
+      },
     })
     expect(risposta.statusCode).toBe(202)
     const id = risposta.json().transazione_id
@@ -132,7 +139,9 @@ describe('POST /operatore/{registro}/valida: firma XMLDSig e catena dei digest (
   it('registro non firmato: avvertimento firmaNonPresente, nessun errore', async () => {
     const esito = await valida(registro(DIGEST_EREGI))
     expect(esito.errore).toBe(false)
-    expect(esito.validazione).toEqual([{ tipo: 'Avvertimento', codice_messaggio: 'firmaNonPresente' }])
+    expect(esito.validazione).toEqual([
+      { tipo: 'Avvertimento', codice_messaggio: 'firmaNonPresente' },
+    ])
   })
 
   describe.each([
@@ -145,16 +154,42 @@ describe('POST /operatore/{registro}/valida: firma XMLDSig e catena dei digest (
     })
 
     it('una virgola cambiata dopo la firma: firmaNonValida', async () => {
-      const xml = firma(registro(DIGEST_EREGI), chiave()).replace('ProgressivoDa="1"', 'ProgressivoDa="2"')
+      const xml = firma(registro(DIGEST_EREGI), chiave()).replace(
+        'ProgressivoDa="1"',
+        'ProgressivoDa="2"'
+      )
       const esito = await valida(xml)
       expect(esito.errore).toBe(true)
-      expect(esito.validazione).toContainEqual({ tipo: 'Errore', codice_messaggio: 'firmaNonValida' })
+      expect(esito.validazione).toContainEqual({
+        tipo: 'Errore',
+        codice_messaggio: 'firmaNonValida',
+      })
+    })
+
+    it('firma che non copre tutto il documento o firma duplicata: firmaNonValida', async () => {
+      const firmato = firma(registro(DIGEST_EREGI), chiave())
+      const parziale = firmato.replace('<ds:Reference URI="">', '<ds:Reference URI="#eREGI-CS-0">')
+      const firmaRadice = firmato.slice(
+        firmato.lastIndexOf('<ds:Signature '),
+        -'</reg:Registro>'.length
+      )
+      const doppia = firmato.replace('</reg:Registro>', `${firmaRadice}</reg:Registro>`)
+      for (const xml of [parziale, doppia]) {
+        const esito = await valida(xml)
+        expect(esito.errore).toBe(true)
+        expect(esito.validazione).toContainEqual({
+          tipo: 'Errore',
+          codice_messaggio: 'firmaNonValida',
+        })
+      }
     })
 
     it('Ref[0] diverso dal digest dell eREGI rilasciato: catenaDigestNonValida', async () => {
       const esito = await valida(firma(registro('AAAA'), chiave()))
       expect(esito.errore).toBe(true)
-      expect(esito.validazione).toEqual([{ tipo: 'Errore', codice_messaggio: 'catenaDigestNonValida' }])
+      expect(esito.validazione).toEqual([
+        { tipo: 'Errore', codice_messaggio: 'catenaDigestNonValida' },
+      ])
     })
   })
 

@@ -56,12 +56,17 @@ class EcdsaSha256 implements SignatureAlgorithm {
 }
 
 /** Estrae l'XML dal `file_content` (base64 di un .xml, o di uno .zip con un solo XML). */
-export async function estraiXmlDaFile(fileContent: string, nomeFile: string): Promise<string | undefined> {
+export async function estraiXmlDaFile(
+  fileContent: string,
+  nomeFile: string
+): Promise<string | undefined> {
   try {
     const buffer = Buffer.from(fileContent, 'base64')
     if (nomeFile.toLowerCase().endsWith('.zip')) {
       const zip = await JSZip.loadAsync(buffer)
-      const voci = Object.values(zip.files).filter(f => !f.dir && f.name.toLowerCase().endsWith('.xml'))
+      const voci = Object.values(zip.files).filter(
+        f => !f.dir && f.name.toLowerCase().endsWith('.xml')
+      )
       return voci.length === 1 ? await voci[0].async('string') : undefined
     }
     return buffer.toString('utf8')
@@ -95,14 +100,20 @@ function verificaFirma(xml: string, firma: Elemento): boolean {
     const riferimenti = discendenti(firma, 'Reference')
     // Deve coprire tutto il documento (URI="") con enveloped + C14N 1.0 + SHA-256.
     if (riferimenti.length !== 1 || riferimenti[0].getAttribute('URI') !== '') return false
-    const trasformazioni = discendenti(riferimenti[0], 'Transform').map(t => t.getAttribute('Algorithm'))
+    const trasformazioni = discendenti(riferimenti[0], 'Transform').map(t =>
+      t.getAttribute('Algorithm')
+    )
     if (!trasformazioni.includes(ALG_ENVELOPED)) return false
-    if (discendenti(riferimenti[0], 'DigestMethod')[0]?.getAttribute('Algorithm') !== ALG_SHA256) return false
-    if (discendenti(firma, 'CanonicalizationMethod')[0]?.getAttribute('Algorithm') !== ALG_C14N) return false
+    if (discendenti(riferimenti[0], 'DigestMethod')[0]?.getAttribute('Algorithm') !== ALG_SHA256)
+      return false
+    if (discendenti(firma, 'CanonicalizationMethod')[0]?.getAttribute('Algorithm') !== ALG_C14N)
+      return false
 
     const certificato = discendenti(firma, 'X509Certificate')[0]?.textContent?.replace(/\s+/g, '')
     if (!certificato) return false
-    const chiavePubblica = new crypto.X509Certificate(Buffer.from(certificato, 'base64')).publicKey.export({
+    const chiavePubblica = new crypto.X509Certificate(
+      Buffer.from(certificato, 'base64')
+    ).publicKey.export({
       type: 'spki',
       format: 'pem',
     }) as string
