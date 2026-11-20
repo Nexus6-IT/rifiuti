@@ -113,95 +113,95 @@ model Tenant {
   mudNonDovutoDa     String?   @map("mud_non_dovuto_da") @db.Uuid
 
   // Relationships
-  users                           User[]
-  firs                            FIR[]
-  mudReports                      MUDReport[]
-  companyTemplates                CompanyTemplate[]
-  notifications                   Notification[]
-  produttori                      Produttore[]
-  trasportatori                   Trasportatore[]
-  destinatari                     Destinatario[]
-  autorizzazioniImpianto          AutorizzazioneImpianto[]
-  wasteMovements                  WasteMovement[]
-  rentriUnitaLocali               RentriUnitaLocale[]
-  rentriNumeriVidimati            RentriNumeroVidimato[]
-  registroProgressiviIniziali     RegistroProgressivoIniziale[]
-  registriRifiuti                 RegistroRifiuti[]
-  giacenzeIniziali                GiacenzaIniziale[]
-  causaliRegistroAzienda          CausaleRegistroAzienda[]
-  soglieDeposito                  SogliaDepositoTemporaneo[]
-  strumentiPesa                   StrumentoPesa[]
-  automezzi                       Automezzo[]
-  autisti                         Autista[]
-  eventiCampo                     EventoCampo[]
-  allegatiCampo                   AllegatoCampo[]
-  sessioniFirmaRentri             FirSessioneFirmaRentri[]
-  accessiPesa                     AccessoPesa[]
-  pesate                          Pesata[]
-  rettifichePeso                  RettificaPeso[]
-  allegatiPesa                    AllegatoPesa[]
-  collegamentiAccesso             CollegamentoAccesso[]
-  agentiPesa                      AgentePesa[]
-  lottiImport                     LottoImport[]
-  lettureAgentePesa               LetturaPesa[]
-  abbinamentiCaricoScarico        AbbinamentoCaricoScarico[]
-  madre                           Tenant?                           @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
-  figlie                          Tenant[]                          @relation("GruppoAziende")
+  users                  User[]
+  firs                   FIR[]
+  mudReports             MUDReport[]
+  companyTemplates       CompanyTemplate[]
+  notifications          Notification[]
+  produttori             Produttore[]
+  trasportatori          Trasportatore[]
+  destinatari            Destinatario[]
+  autorizzazioniImpianto AutorizzazioneImpianto[]
+  wasteMovements         WasteMovement[]
+  rentriUnitaLocali      RentriUnitaLocale[]
+  rentriNumeriVidimati   RentriNumeroVidimato[]
+  registroProgressiviIniziali RegistroProgressivoIniziale[]
+  registriRifiuti       RegistroRifiuti[]
+  giacenzeIniziali      GiacenzaIniziale[]
+  causaliRegistroAzienda CausaleRegistroAzienda[]
+  soglieDeposito        SogliaDepositoTemporaneo[]
+  strumentiPesa         StrumentoPesa[]
+  automezzi             Automezzo[]
+  autisti               Autista[]
+  eventiCampo           EventoCampo[]
+  allegatiCampo         AllegatoCampo[]
+  sessioniFirmaRentri   FirSessioneFirmaRentri[]
+  accessiPesa           AccessoPesa[]
+  pesate                Pesata[]
+  rettifichePeso        RettificaPeso[]
+  allegatiPesa          AllegatoPesa[]
+  collegamentiAccesso   CollegamentoAccesso[]
+  agentiPesa            AgentePesa[]
+  lottiImport           LottoImport[]
+  lettureAgentePesa     LetturaPesa[]
+  abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
+  madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  figlie                 Tenant[]                 @relation("GruppoAziende")
   // Fase 2 pezzo 10
-  ditte                           Ditta[]
-  sediDitte                       SedeDitta[]
-  trasmissioniRentri              MovimentoTrasmissioneRentri[]
+  ditte                  Ditta[]
+  sediDitte              SedeDitta[]
+  trasmissioniRentri     MovimentoTrasmissioneRentri[]
   // Fase 4 pezzo 0
-  contracts                       Contract[]
+  contracts              Contract[]
   // Fase 4 pezzo 1
-  condizioniPagamento             CondizionePagamento[]
-  contiCorrenti                   ContoCorrente[]
-  speseAccessorie                 SpesaAccessoria[]
-  registriIva                     RegistroIva[]
-  testiFatturazione               TestoFatturazione[]
-  codificheContratto              CodificaContratto[]
-  agenti                          Agente[]
-  clienti                         Cliente[]
-  contrattiCliente                ContrattoCliente[]
-  periodiFatturazioneCliente      PeriodoFatturazioneCliente[]
-  allegatiContrattoCliente        AllegatoContrattoCliente[]
+  condizioniPagamento    CondizionePagamento[]
+  contiCorrenti          ContoCorrente[]
+  speseAccessorie        SpesaAccessoria[]
+  registriIva            RegistroIva[]
+  testiFatturazione      TestoFatturazione[]
+  codificheContratto     CodificaContratto[]
+  agenti                 Agente[]
+  clienti                Cliente[]
+  contrattiCliente       ContrattoCliente[]
+  periodiFatturazioneCliente PeriodoFatturazioneCliente[]
+  allegatiContrattoCliente AllegatoContrattoCliente[]
   // Fase 4 pezzo 2a
-  codiciIva                       CodiceIva[]
-  codificheAddebito               CodificaAddebito[]
-  addebiti                        Addebito[]
-  prezziListinoAddebito           PrezzoListinoAddebito[]
-  elenchiAddebiti                 ElencoAddebiti[]
-  allegatiElencoAddebiti          AllegatoElencoAddebiti[]
-  righeAddebito                   RigaAddebito[]
-  scaglioniRigaAddebito           ScaglioneRigaAddebito[]
-  scadenzeRigaAddebito            ScadenzaRigaAddebito[]
+  codiciIva                CodiceIva[]
+  codificheAddebito        CodificaAddebito[]
+  addebiti                 Addebito[]
+  prezziListinoAddebito    PrezzoListinoAddebito[]
+  elenchiAddebiti          ElencoAddebiti[]
+  allegatiElencoAddebiti   AllegatoElencoAddebiti[]
+  righeAddebito            RigaAddebito[]
+  scaglioniRigaAddebito    ScaglioneRigaAddebito[]
+  scadenzeRigaAddebito     ScadenzaRigaAddebito[]
   // Fase 4 pezzo 3
-  legamiMovimento                 LegameMovimento[]
-  righeLegameMovimento            RigaLegameMovimento[]
-  impostazioniFatturazione        ImpostazioneFatturazione[]
+  legamiMovimento          LegameMovimento[]
+  righeLegameMovimento     RigaLegameMovimento[]
+  impostazioniFatturazione ImpostazioneFatturazione[]
   // Fase 4 pezzo 4a
-  cedentiFatturazione             CedenteFatturazione[]
+  cedentiFatturazione         CedenteFatturazione[]
   // Fase 4 pezzo 4.5a (SDI)
-  configurazioniSdi               ConfigurazioneSdi[]
-  trasmissioniSdi                 TrasmissioneSdi[]
-  notificheSdi                    NotificaSdi[]
-  eventiSdiRicevuti               EventoSdiRicevuto[]
-  numerazioniFattura              NumerazioneFattura[]
-  elaborazioniFatturazione        ElaborazioneFatturazione[]
-  documentiFattura                DocumentoFattura[]
-  righeDocumentoFattura           RigaDocumentoFattura[]
-  riepiloghiIvaDocumento          RiepilogoIvaDocumento[]
-  rateDocumentoFattura            RataDocumentoFattura[]
-  marcatoriAddebitiFatturati      MarcatoreAddebitoFatturato[]
-  contatoriFileFatturapa          ContatoreFileFatturapa[]
-  mappatureExportContabile        MappaturaExportContabile[]
-  ritiri                          Ritiro[]
-  comunicazioniConsorzi           ComunicazioneConsorzio[]
-  comunicazioniConsorziMovimenti  ComunicazioneConsorzioMovimento[]
-  regoleConsorzio                 RegolaConsorzio[]
-  datiConsorzioMovimento          DatiConsorzioMovimento[]
-  datiTracciatoMovimento          DatiTracciatoMovimento[]
-  anagraficheComunicazioniSede    AnagraficaComunicazioniSede[]
+  configurazioniSdi           ConfigurazioneSdi[]
+  trasmissioniSdi             TrasmissioneSdi[]
+  notificheSdi                NotificaSdi[]
+  eventiSdiRicevuti           EventoSdiRicevuto[]
+  numerazioniFattura          NumerazioneFattura[]
+  elaborazioniFatturazione    ElaborazioneFatturazione[]
+  documentiFattura            DocumentoFattura[]
+  righeDocumentoFattura       RigaDocumentoFattura[]
+  riepiloghiIvaDocumento      RiepilogoIvaDocumento[]
+  rateDocumentoFattura        RataDocumentoFattura[]
+  marcatoriAddebitiFatturati  MarcatoreAddebitoFatturato[]
+  contatoriFileFatturapa      ContatoreFileFatturapa[]
+  mappatureExportContabile    MappaturaExportContabile[]
+  ritiri                      Ritiro[]
+  comunicazioniConsorzi       ComunicazioneConsorzio[]
+  comunicazioniConsorziMovimenti ComunicazioneConsorzioMovimento[]
+  regoleConsorzio               RegolaConsorzio[]
+  datiConsorzioMovimento        DatiConsorzioMovimento[]
+  datiTracciatoMovimento        DatiTracciatoMovimento[]
+  anagraficheComunicazioniSede  AnagraficaComunicazioniSede[]
   configurazioniComunicazioneSede ConfigurazioneComunicazioneSede[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
@@ -276,16 +276,16 @@ model User {
   signatureCertificateHash String?   @map("signature_certificate_hash") @db.VarChar(64)
   signatureValidUntil      DateTime? @map("signature_valid_until")
 
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  producedFIRs            FIR[]                    @relation("ProducerUser")
-  carrierFIRs             FIR[]                    @relation("CarrierUser")
-  receiverFIRs            FIR[]                    @relation("ReceiverUser")
+  tenant                  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  producedFIRs            FIR[]               @relation("ProducerUser")
+  carrierFIRs             FIR[]               @relation("CarrierUser")
+  receiverFIRs            FIR[]               @relation("ReceiverUser")
   firSignatures           FIRSignature[]
   notifications           Notification[]
   activityLogs            ActivityLog[]
-  createdBackupSchedules  BackupSchedule[]         @relation("CreatedByUser")
-  executedBackupHistories BackupHistory[]          @relation("ExecutedByUser")
-  recordedMovements       WasteMovement[]          @relation("RecordedMovements")
+  createdBackupSchedules  BackupSchedule[]    @relation("CreatedByUser")
+  executedBackupHistories BackupHistory[]     @relation("ExecutedByUser")
+  recordedMovements       WasteMovement[]     @relation("RecordedMovements")
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
   eventiCampo             EventoCampo[]
@@ -361,24 +361,24 @@ model FIR {
   // Assegnato all'emissione (BOZZA → EMESSO): nullable finché il FIR è bozza.
   firNumber String? @map("fir_number") @db.VarChar(50)
 
-  status          FIRStatus @default(DRAFT)
-  workflowVersion Int       @default(1) @map("workflow_version")
+  status             FIRStatus @default(DRAFT)
+  workflowVersion    Int       @default(1) @map("workflow_version")
   // Lock ottimistico (piano D4-D5): il repository la incrementa a ogni scrittura e rifiuta il
   // salvataggio di chi ha letto una versione diversa.
-  versione        Int       @default(1) @map("versione")
+  versione           Int       @default(1) @map("versione")
 
   // F2-10 D9.4: sede scelta per produttore e destinatario (il trasportatore non ha sede sul FIR) e
   // codice fiscale delle tre parti. Senza FK (snapshot: la sede puo' cambiare o disattivarsi);
   // NULL per i FIR creati prima della migration 20261031110200.
-  producerSedeId        String?   @map("producer_sede_id") @db.Uuid
-  receiverSedeId        String?   @map("receiver_sede_id") @db.Uuid
-  producerCodiceFiscale String?   @map("producer_codice_fiscale") @db.VarChar(16)
-  carrierCodiceFiscale  String?   @map("carrier_codice_fiscale") @db.VarChar(16)
-  receiverCodiceFiscale String?   @map("receiver_codice_fiscale") @db.VarChar(16)
-  submittedAt           DateTime? @map("submitted_at")
-  completedAt           DateTime? @map("completed_at")
-  cancelledAt           DateTime? @map("cancelled_at")
-  cancellationReason    String?   @map("cancellation_reason") @db.Text
+  producerSedeId        String? @map("producer_sede_id") @db.Uuid
+  receiverSedeId        String? @map("receiver_sede_id") @db.Uuid
+  producerCodiceFiscale String? @map("producer_codice_fiscale") @db.VarChar(16)
+  carrierCodiceFiscale  String? @map("carrier_codice_fiscale") @db.VarChar(16)
+  receiverCodiceFiscale String? @map("receiver_codice_fiscale") @db.VarChar(16)
+  submittedAt        DateTime? @map("submitted_at")
+  completedAt        DateTime? @map("completed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason") @db.Text
 
   // producerUserId = utente (operatore) che ha creato il FIR (FK obbligatoria a
   // User). producerId = riferimento al registro Produttore da cui è stato preso
@@ -493,34 +493,34 @@ model FIR {
   // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):
   // è la chiave stabile del legame FIR interno ↔ formulario RENTRI, non cambia
   // tra una trasmissione e l'altra. Nullable: valorizzato solo dopo l'aggancio.
-  rentriNumeroFir           String?                @map("rentri_numero_fir") @db.VarChar(50)
+  rentriNumeroFir         String?                @map("rentri_numero_fir") @db.VarChar(50)
   // Identificativo tecnico (transazione_id) restituito dall'ultima chiamata di
   // trasmissione REST verso RENTRI. Cambia ad ogni tentativo: non è una chiave
   // di aggancio, serve solo per correlare la trasmissione con il suo esito
   // (polling GET /{transazione_id}/status) e per il supporto.
-  rentriTransazioneId       String?                @map("rentri_transazione_id") @db.VarChar(100)
+  rentriTransazioneId     String?                @map("rentri_transazione_id") @db.VarChar(100)
   // Transazione di creazione accettata dall'ente e non ancora letta fino all'esito:
   // salvata subito, così un tentativo successivo la riprende invece di creare un doppione.
-  rentriTransazioneInAttesa String?                @map("rentri_transazione_in_attesa") @db.VarChar(100)
+  rentriTransazioneInAttesa String?              @map("rentri_transazione_in_attesa") @db.VarChar(100)
   // Quando un processo ha prenotato la trasmissione (SYNCING): oltre la soglia di stallo
   // la prenotazione è riprendibile e il job di recupero la elenca.
-  rentriSyncAvviatoAt       DateTime?              @map("rentri_sync_avviato_at") @db.Timestamptz(3)
+  rentriSyncAvviatoAt     DateTime?              @map("rentri_sync_avviato_at") @db.Timestamptz(3)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.
-  rentriOrigineLegame       RentriOrigineLegame?   @map("rentri_origine_legame")
+  rentriOrigineLegame     RentriOrigineLegame?   @map("rentri_origine_legame")
   // Numero ufficiale ricevuto da una trasmissione automatica in modalità
   // IBRIDA (Tenant.rentriModalitaLegame) ma NON ancora confermato dall'utente:
   // finché è valorizzato, rentriNumeroFir resta null — il FIR non è "legato"
   // a tutti gli effetti (R1 Task 2, FIR.proporreLegameRENTRI/confermaLegameRENTRI).
-  rentriNumeroFirProposto   String?                @map("rentri_numero_fir_proposto") @db.VarChar(50)
+  rentriNumeroFirProposto String?                @map("rentri_numero_fir_proposto") @db.VarChar(50)
   // Ultimo stato noto del formulario presso l'ente (StatoFormulario del
   // contratto RENTRI). Copia locale in SOLA LETTURA: si aggiorna SOLO
   // leggendo dall'ente (polling/webhook, mai da un'azione locale isolata —
   // v. FIR.applyRentriStato, R3 Task 1). Nullable: un FIR non legato non ce
   // l'ha, e anche un FIR appena legato può non avere ancora ricevuto alcuna
   // lettura.
-  rentriStatoFormulario     RentriStatoFormulario? @map("rentri_stato_formulario")
+  rentriStatoFormulario   RentriStatoFormulario? @map("rentri_stato_formulario")
   // Ultima volta che la riconciliazione periodica (R5 Task 4,
   // RiconciliaStatoRentriUseCase) ha effettivamente interrogato l'ente per
   // QUESTO FIR. Nullable: mai controllato. Serve a campionare, ad ogni
@@ -533,7 +533,7 @@ model FIR {
   // Aggiornato ad OGNI controllo (con o senza divergenza trovata), mai da
   // un'altra operazione: un campo dedicato, distinto da updatedAt (che
   // cambia per qualunque modifica al FIR, non solo per la riconciliazione).
-  rentriLastReconciledAt    DateTime?              @map("rentri_last_reconciled_at")
+  rentriLastReconciledAt  DateTime?              @map("rentri_last_reconciled_at")
 
   /// Byte del QR Code restituiti dall'ente alla vidimazione
   /// (`EfirModel.qr_code_bytes`/`EfirPublicModel.qr_code_bytes`, servizio
@@ -560,14 +560,14 @@ model FIR {
   /// `Json?` parallelo a rappresentare la stessa cosa.
   attachmentUrls Json? @map("attachment_urls")
 
-  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  producerUser        User                     @relation("ProducerUser", fields: [producerUserId], references: [id])
-  carrierUser         User?                    @relation("CarrierUser", fields: [carrierUserId], references: [id])
-  receiverUser        User?                    @relation("ReceiverUser", fields: [receiverUserId], references: [id])
-  signatures          FIRSignature[]
-  activityLogs        ActivityLog[]
-  rentriSyncLogs      RENTRISyncLog[]
-  allegatiRentri      FIRAllegatoRentri[]
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  producerUser   User                @relation("ProducerUser", fields: [producerUserId], references: [id])
+  carrierUser    User?               @relation("CarrierUser", fields: [carrierUserId], references: [id])
+  receiverUser   User?               @relation("ReceiverUser", fields: [receiverUserId], references: [id])
+  signatures     FIRSignature[]
+  activityLogs   ActivityLog[]
+  rentriSyncLogs RENTRISyncLog[]
+  allegatiRentri FIRAllegatoRentri[]
   sessioniFirmaRentri FirSessioneFirmaRentri[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
@@ -953,8 +953,8 @@ model RegistroProgressivoIniziale {
   /// Registro a cui appartiene il progressivo (Fase 2 pezzo 1): uno per registro e anno.
   registroId       String   @map("registro_id") @db.Uuid
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([registroId, anno])
   @@map("registro_progressivi_iniziali")
@@ -995,8 +995,8 @@ model GiacenzaIniziale {
   createdAt       DateTime                    @default(now()) @map("created_at")
   updatedAt       DateTime                    @updatedAt @map("updated_at")
 
-  tenant      Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  registro    RegistroRifiuti            @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
   abbinamenti AbbinamentoCaricoScarico[]
 
   @@unique([id, tenantId])
@@ -1354,25 +1354,25 @@ model Produttore {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
+  partitaIVA     String? @map("partita_iva") @db.VarChar(11) @ignore
 
   // Sede Legale
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
-  dittaId String    @map("ditta_id") @db.Uuid
-  sedeId  String    @map("sede_id") @db.Uuid
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
 
@@ -1398,21 +1398,21 @@ model Trasportatore {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
-  numeroIscrizione      String  @map("numero_iscrizione") @db.VarChar(50)
+  ragioneSocialeStorica   String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA       String? @map("partita_iva") @db.VarChar(11) @ignore
+  numeroIscrizione String @map("numero_iscrizione") @db.VarChar(50)
 
   // Sede Legale
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1423,8 +1423,8 @@ model Trasportatore {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
-  dittaId String    @map("ditta_id") @db.Uuid
-  sedeId  String    @map("sede_id") @db.Uuid
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
 
@@ -1452,21 +1452,21 @@ model Destinatario {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
-  numeroAutorizzazione  String  @map("numero_autorizzazione") @db.VarChar(50)
+  ragioneSocialeStorica       String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA           String? @map("partita_iva") @db.VarChar(11) @ignore
+  numeroAutorizzazione String @map("numero_autorizzazione") @db.VarChar(50)
 
   // Sede
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1477,8 +1477,8 @@ model Destinatario {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
-  dittaId String    @map("ditta_id") @db.Uuid
-  sedeId  String    @map("sede_id") @db.Uuid
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
 
@@ -2090,29 +2090,29 @@ model WasteMovement {
 
   /// Predecessore: stesso registro, azienda e tipo (chiave composta verso l'unico sotto). NoAction:
   /// il controllo e' a fine statement, cosi' una catena intera si cancella in un solo DELETE.
-  rettificato        WasteMovement?               @relation("Correzioni", fields: [movimentoRettificatoId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_rettificato_fkey")
-  correzioni         WasteMovement[]              @relation("Correzioni")
+  rettificato WasteMovement?  @relation("Correzioni", fields: [movimentoRettificatoId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_rettificato_fkey")
+  correzioni  WasteMovement[] @relation("Correzioni")
   /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
-  originale          WasteMovement?               @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
-  catena             WasteMovement[]              @relation("Radice")
+  originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
+  catena      WasteMovement[] @relation("Radice")
   /// F2-9: stato di trasmissione a RENTRI (nessuna riga = non trasmesso).
   trasmissioneRentri MovimentoTrasmissioneRentri?
   /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
   /// toglie movimenti e causali nello stesso statement.
-  causaleAzienda     CausaleRegistroAzienda?      @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
+  causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
   /// Sede della controparte. NoAction, come le altre FK del movimento (la cascata da `tenants` toglie
   /// movimenti e sedi nello stesso statement); le sedi non si cancellano, si disattivano.
-  counterpartSede    SedeDitta?                   @relation("MovimentiControparteSede", fields: [counterpartSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_counterpart_sede_fkey")
+  counterpartSede SedeDitta? @relation("MovimentiControparteSede", fields: [counterpartSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_counterpart_sede_fkey")
 
-  collegamentiAccesso    CollegamentoAccesso[]
-  abbinamentiComeScarico AbbinamentoCaricoScarico[]        @relation("AbbinamentiScarico")
-  abbinamentiComeCarico  AbbinamentoCaricoScarico[]        @relation("AbbinamentiCarico")
+  collegamentiAccesso CollegamentoAccesso[]
+  abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
+  abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
   comunicazioniConsorzi  ComunicazioneConsorzioMovimento[]
   datiConsorzio          DatiConsorzioMovimento[]
   datiTracciato          DatiTracciatoMovimento[]
   /// Solo relazioni inverse (fase 4.3): il legame commerciale non aggiunge colonne al movimento.
-  legamiComeOriginale    LegameMovimento[]                 @relation("LegameOriginale")
-  legamiComeVigente      LegameMovimento[]                 @relation("LegameVigente")
+  legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
+  legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
@@ -2123,11 +2123,11 @@ model WasteMovement {
 
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
-  @@unique([registroId, progressiveYear, progressiveNumber])
-  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
   @@index([causaleAziendaId], map: "waste_movements_causale_azienda_id_idx")
+  @@unique([registroId, progressiveYear, progressiveNumber])
   @@index([registroId, cerCode])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])
@@ -2296,9 +2296,9 @@ model RentriUnitaLocale {
   /// e non cambia se cambia la principale.
   progressivoMud Int?    @map("progressivo_mud")
 
-  tenant                      Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  registri                    RegistroRifiuti[]
-  comunicazioniConsorzi       ComunicazioneConsorzio[]
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registri RegistroRifiuti[]
+  comunicazioniConsorzi ComunicazioneConsorzio[]
   configurazioniComunicazione ConfigurazioneComunicazioneSede[]
 
   @@unique([id, tenantId], map: "rentri_unita_locali_id_tenant_id_key")
@@ -2318,40 +2318,40 @@ model RegistroRifiuti {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  unitaLocaleId             String?   @map("unita_locale_id") @db.Uuid
-  codice                    String    @default("CARICO_SCARICO") @db.VarChar(30)
-  descrizione               String    @db.VarChar(255)
+  unitaLocaleId        String? @map("unita_locale_id") @db.Uuid
+  codice               String  @default("CARICO_SCARICO") @db.VarChar(30)
+  descrizione          String  @db.VarChar(255)
   /// Identificativo del registro assegnato dal RENTRI (formato R + 10 alfanumerici maiuscoli).
-  identificativoRentri      String?   @map("identificativo_rentri") @db.VarChar(100)
-  attivo                    Boolean   @default(true)
+  identificativoRentri String? @map("identificativo_rentri") @db.VarChar(100)
+  attivo               Boolean @default(true)
   /// F2-9: data da cui i movimenti nuovi del registro si trasmettono da soli a RENTRI (NULL = solo
   /// invio manuale). Mai nel passato: attivarlo la imposta a ora (nessun invio retroattivo).
-  invioRentriAutomaticoDal  DateTime? @map("invio_rentri_automatico_dal") @db.Timestamptz(3)
+  invioRentriAutomaticoDal DateTime? @map("invio_rentri_automatico_dal") @db.Timestamptz(3)
   /// eREGI E2: attivita' del registro su RENTRI (contratto anagrafiche: CentroRaccolta, Produzione,
   /// Recupero, Smaltimento, Trasporto, IntermediazioneSenzaDetenzione). Vuota = dettaglio non noto.
   /// CHECK solo in migration (valori ammessi; Recupero/Smaltimento richiedono i codici R/D).
-  rentriAttivita            String[]  @default([]) @map("rentri_attivita") @db.VarChar(40)
+  rentriAttivita           String[]  @default([]) @map("rentri_attivita") @db.VarChar(40)
   /// Codici R1..R13 / D1..D15 delle attivita' di Recupero e Smaltimento.
-  rentriAttivitaRecSmalt    String[]  @default([]) @map("rentri_attivita_rec_smalt") @db.VarChar(4)
+  rentriAttivitaRecSmalt   String[]  @default([]) @map("rentri_attivita_rec_smalt") @db.VarChar(4)
   /// Prenotazione dell'apertura su RENTRI (POST non idempotente): impedisce una seconda apertura e
   /// resta valorizzata finche' l'esito e' incerto. Azzerata a esito noto o al collegamento.
   rentriAperturaRichiestaIl DateTime? @map("rentri_apertura_richiesta_il") @db.Timestamptz(3)
   /// Descrizione richiesta all'apertura: serve a riconoscere il registro dopo un esito incerto.
-  rentriAperturaDescrizione String?   @map("rentri_apertura_descrizione") @db.VarChar(250)
+  rentriAperturaDescrizione String?  @map("rentri_apertura_descrizione") @db.VarChar(250)
   /// Registro chiuso su RENTRI: niente piu' invii. CHECK: richiede l'identificativo.
-  rentriChiusoIl            DateTime? @map("rentri_chiuso_il") @db.Timestamptz(3)
+  rentriChiusoIl           DateTime? @map("rentri_chiuso_il") @db.Timestamptz(3)
   /// Ultima lettura del registro da RENTRI (collegamento o modifica).
-  rentriSincronizzatoIl     DateTime? @map("rentri_sincronizzato_il") @db.Timestamptz(3)
+  rentriSincronizzatoIl    DateTime? @map("rentri_sincronizzato_il") @db.Timestamptz(3)
 
-  tenant                   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unitaLocale              RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
-  movimenti                WasteMovement[]
-  accessiPesa              AccessoPesa[]
-  strumentiPesa            StrumentoPesa[]
-  agentiPesa               AgentePesa[]
-  progressiviIniziali      RegistroProgressivoIniziale[]
-  giacenzeIniziali         GiacenzaIniziale[]
-  soglieDeposito           SogliaDepositoTemporaneo[]
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
+  movimenti           WasteMovement[]
+  accessiPesa         AccessoPesa[]
+  strumentiPesa       StrumentoPesa[]
+  agentiPesa          AgentePesa[]
+  progressiviIniziali RegistroProgressivoIniziale[]
+  giacenzeIniziali    GiacenzaIniziale[]
+  soglieDeposito      SogliaDepositoTemporaneo[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
 
   regoleConsorzio RegolaConsorzio[]
@@ -2398,18 +2398,18 @@ model RentriNumeroVidimato {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Unità locale (num_iscr_sito) su cui è stato vidimato il numero.
-  numIscrSito  String @map("num_iscr_sito") @db.VarChar(30)
+  numIscrSito String @map("num_iscr_sito") @db.VarChar(30)
   /// Codice del blocco virtuale RENTRI su cui è stato vidimato.
   codiceBlocco String @map("codice_blocco") @db.VarChar(50)
   /// Progressivo del numero all'interno del blocco (`EfirPublicModel.progressivo`).
-  progressivo  Int
+  progressivo Int
   /// Numero FIR assegnato dall'ente (`EfirPublicModel.numero_fir`).
-  numeroFir    String @map("numero_fir") @db.VarChar(100)
+  numeroFir String @map("numero_fir") @db.VarChar(100)
   /// Byte firmati dall'ente per il QR (Base64, `EfirPublicModel.qr_code_bytes`)
   /// — v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md` §1: si
   /// decodificano da Base64 e si ricodificano in Base45 per il disegno del
   /// QR (`infrastructure/rentri/qr/`), nessun contenuto costruito da noi.
-  qrCodeBytes  String @map("qr_code_bytes") @db.Text
+  qrCodeBytes String @map("qr_code_bytes") @db.Text
 
   stato RentriNumeroVidimatoStato @default(DISPONIBILE)
 
@@ -2681,18 +2681,18 @@ model SedeDitta {
   principale    Boolean  @default(false)
   attiva        Boolean  @default(true)
 
-  tenant                   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ditta                    Ditta                         @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "sedi_ditte_ditta_fkey")
-  produttori               Produttore[]
-  trasportatori            Trasportatore[]
-  destinatari              Destinatario[]
-  clienti                  Cliente[]
-  agenti                   Agente[]
-  contrattiCliente         ContrattoCliente[]
-  ritiriProduttore         Ritiro[]                      @relation("RitiroProduttoreSede")
-  ritiriDestinatario       Ritiro[]                      @relation("RitiroDestinatarioSede")
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ditta         Ditta           @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "sedi_ditte_ditta_fkey")
+  produttori    Produttore[]
+  trasportatori Trasportatore[]
+  destinatari   Destinatario[]
+  clienti       Cliente[]
+  agenti        Agente[]
+  contrattiCliente ContrattoCliente[]
+  ritiriProduttore   Ritiro[] @relation("RitiroProduttoreSede")
+  ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
   anagraficheComunicazioni AnagraficaComunicazioniSede[]
-  movimentiControparte     WasteMovement[]               @relation("MovimentiControparteSede")
+  movimentiControparte WasteMovement[] @relation("MovimentiControparteSede")
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
@@ -2742,7 +2742,7 @@ model SogliaDepositoTemporaneo {
   createdAt            DateTime                   @default(now()) @map("created_at")
   updatedAt            DateTime                   @updatedAt @map("updated_at")
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "soglie_deposito_temporaneo_registro_fkey")
 
   @@unique([id, tenantId], map: "soglie_deposito_temporaneo_id_tenant_id_key")
@@ -2934,9 +2934,9 @@ model AccessoPesa {
   collegamenti CollegamentoAccesso[]
 
   @@unique([id, tenantId], map: "accessi_pesa_id_tenant_id_key")
+  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
   @@unique([registroId, anno, numero], map: "accessi_pesa_registro_id_anno_numero_key")
   @@unique([id, registroId, tenantId, verso], map: "accessi_pesa_id_registro_tenant_verso_key")
-  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
   @@index([tenantId], map: "accessi_pesa_tenant_id_idx")
   @@map("accessi_pesa")
 }
@@ -3273,10 +3273,10 @@ model AbbinamentoCaricoScarico {
   creatoDa           String?            @map("creato_da") @db.Uuid
   createdAt          DateTime           @default(now()) @map("created_at")
 
-  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "abbinamenti_cs_tenant_id_fkey")
-  registro RegistroRifiuti   @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_registro_fkey")
-  scarico  WasteMovement     @relation("AbbinamentiScarico", fields: [scaricoId, registroId, tenantId, scaricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_scarico_fkey")
-  carico   WasteMovement?    @relation("AbbinamentiCarico", fields: [caricoId, registroId, tenantId, caricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_carico_fkey")
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "abbinamenti_cs_tenant_id_fkey")
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_registro_fkey")
+  scarico  WasteMovement    @relation("AbbinamentiScarico", fields: [scaricoId, registroId, tenantId, scaricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_scarico_fkey")
+  carico   WasteMovement?   @relation("AbbinamentiCarico", fields: [caricoId, registroId, tenantId, caricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_carico_fkey")
   giacenza GiacenzaIniziale? @relation(fields: [giacenzaInizialeId, registroId, tenantId], references: [id, registroId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_giacenza_fkey")
 
   @@unique([scaricoId, caricoId], map: "abbinamenti_cs_scarico_carico_key")
@@ -3374,13 +3374,13 @@ model SpesaAccessoria {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_id_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_id_fkey")
   codiceIva CodiceIva? @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "spese_accessorie_codice_iva_fkey")
 
-  clientiIncasso   Cliente[]          @relation("SpeseIncassoCliente")
-  clientiBollo     Cliente[]          @relation("BolloCliente")
-  contrattiIncasso ContrattoCliente[] @relation("SpeseIncassoContratto")
-  contrattiBollo   ContrattoCliente[] @relation("BolloContratto")
+  clientiIncasso    Cliente[]          @relation("SpeseIncassoCliente")
+  clientiBollo      Cliente[]          @relation("BolloCliente")
+  contrattiIncasso  ContrattoCliente[] @relation("SpeseIncassoContratto")
+  contrattiBollo    ContrattoCliente[] @relation("BolloContratto")
 
   @@unique([id, tenantId], map: "spese_accessorie_id_tenant_id_key")
   @@unique([tenantId, tipo, codice], map: "spese_accessorie_tenant_id_tipo_codice_key")
@@ -3391,12 +3391,12 @@ model SpesaAccessoria {
 
 /// Registro IVA sezionale delle vendite (4.1, D24): codice di due cifre 01-99; `ricevuteSplit` marca il registro delle ricevute split payment.
 model RegistroIva {
-  id             String  @id(map: "registri_iva_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String  @map("tenant_id") @db.Uuid
-  codice         String  @db.VarChar(2)
-  descrizione    String  @db.VarChar(60)
-  ricevuteSplit  Boolean @default(false) @map("ricevute_split")
-  attivo         Boolean @default(true)
+  id            String  @id(map: "registri_iva_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  codice        String  @db.VarChar(2)
+  descrizione   String  @db.VarChar(60)
+  ricevuteSplit Boolean @default(false) @map("ricevute_split")
+  attivo        Boolean @default(true)
   /// Suffisso facoltativo del numero (4.4a, S9, per esempio `/A`).
   suffissoNumero String? @map("suffisso_numero") @db.VarChar(10)
 
@@ -3406,8 +3406,8 @@ model RegistroIva {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "registri_iva_tenant_id_fkey")
 
-  clienti            Cliente[]
-  contrattiCliente   ContrattoCliente[]
+  clienti          Cliente[]
+  contrattiCliente ContrattoCliente[]
   documentiFattura   DocumentoFattura[]
   numerazioniFattura NumerazioneFattura[]
   cedentiPredefiniti CedenteFatturazione[]
@@ -3517,31 +3517,31 @@ model Agente {
 
 /// Cliente (4.1, D2, D3): ruolo su una ditta di F2-10; i suoi campi fiscali sono anche i predefiniti dei contratti (D4). Una riga per ditta. Si disattiva; si cancella solo se nessun contratto lo cita, eliminati compresi.
 model Cliente {
-  id                         String           @id(map: "clienti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                   String           @map("tenant_id") @db.Uuid
-  dittaId                    String           @map("ditta_id") @db.Uuid
-  sedeId                     String           @map("sede_id") @db.Uuid
-  codice                     String?          @db.VarChar(20)
-  nome                       String?          @db.VarChar(60)
-  cognome                    String?          @db.VarChar(60)
-  codiceDestinatario         String?          @map("codice_destinatario") @db.VarChar(7)
-  pecFatturazione            String?          @map("pec_fatturazione") @db.VarChar(255)
-  riferimentoAmministrazione String?          @map("riferimento_amministrazione") @db.VarChar(20)
-  iban                       String?          @db.VarChar(34)
-  contoCorrenteId            String?          @map("conto_corrente_id") @db.Uuid
-  condizionePagamentoId      String?          @map("condizione_pagamento_id") @db.Uuid
-  esigibilitaIva             EsigibilitaIva   @default(IMMEDIATA) @map("esigibilita_iva")
-  registroIvaId              String?          @map("registro_iva_id") @db.Uuid
-  speseIncassoId             String?          @map("spese_incasso_id") @db.Uuid
-  bolloId                    String?          @map("bollo_id") @db.Uuid
-  agenteId                   String?          @map("agente_id") @db.Uuid
-  ritenutaPercentuale        Decimal?         @map("ritenuta_percentuale") @db.Decimal(5, 2)
+  id                         String         @id(map: "clienti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String         @map("tenant_id") @db.Uuid
+  dittaId                    String         @map("ditta_id") @db.Uuid
+  sedeId                     String         @map("sede_id") @db.Uuid
+  codice                     String?        @db.VarChar(20)
+  nome                       String?        @db.VarChar(60)
+  cognome                    String?        @db.VarChar(60)
+  codiceDestinatario         String?        @map("codice_destinatario") @db.VarChar(7)
+  pecFatturazione            String?        @map("pec_fatturazione") @db.VarChar(255)
+  riferimentoAmministrazione String?        @map("riferimento_amministrazione") @db.VarChar(20)
+  iban                       String?        @db.VarChar(34)
+  contoCorrenteId            String?        @map("conto_corrente_id") @db.Uuid
+  condizionePagamentoId      String?        @map("condizione_pagamento_id") @db.Uuid
+  esigibilitaIva             EsigibilitaIva @default(IMMEDIATA) @map("esigibilita_iva")
+  registroIvaId              String?        @map("registro_iva_id") @db.Uuid
+  speseIncassoId             String?        @map("spese_incasso_id") @db.Uuid
+  bolloId                    String?        @map("bollo_id") @db.Uuid
+  agenteId                   String?        @map("agente_id") @db.Uuid
+  ritenutaPercentuale        Decimal?       @map("ritenuta_percentuale") @db.Decimal(5, 2)
   note                       String?
-  attivo                     Boolean          @default(true)
+  attivo                     Boolean        @default(true)
   /// Listino 1-6 del cliente (4.2a, D7, Q3): predefinito della riga, non del contratto. Il CHECK `clienti_listino_ammesso` e' la rete di sicurezza, la regola e il messaggio stanno nel dominio.
-  listino                    Int?             @db.SmallInt
+  listino                    Int?           @db.SmallInt
   /// Provvigione predefinita a cascata (D10). Va insieme a `tipoProvvigionePredefinita`: o tutte e due valorizzate o tutte e due nulle (CHECK `clienti_provvigione_con_tipo`).
-  provvigionePredefinita     String?          @map("provvigione_predefinita") @db.VarChar(20)
+  provvigionePredefinita     String?        @map("provvigione_predefinita") @db.VarChar(20)
   tipoProvvigionePredefinita TipoProvvigione? @map("tipo_provvigione_predefinita")
 
   versione  Int      @default(1)
@@ -3558,9 +3558,9 @@ model Cliente {
   bollo               SpesaAccessoria?     @relation("BolloCliente", fields: [bolloId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_bollo_fkey")
   agente              Agente?              @relation(fields: [agenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_agente_fkey")
 
-  contrattiDelCliente              ContrattoCliente[] @relation("ClienteDelContratto")
-  legami                           LegameMovimento[]
-  contrattiDiFatturazione          ContrattoCliente[] @relation("ClienteDiFatturazione")
+  contrattiDelCliente     ContrattoCliente[] @relation("ClienteDelContratto")
+  legami                  LegameMovimento[]
+  contrattiDiFatturazione ContrattoCliente[] @relation("ClienteDiFatturazione")
   documentiComeCliente             DocumentoFattura[] @relation("DocumentoCliente")
   documentiComeClienteFatturazione DocumentoFattura[] @relation("DocumentoClienteFatturazione")
 
@@ -3739,10 +3739,10 @@ model CodiceIva {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant          Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codici_iva_tenant_id_fkey")
-  addebiti        Addebito[]
-  righe           RigaAddebito[]
-  righeLegame     RigaLegameMovimento[]
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codici_iva_tenant_id_fkey")
+  addebiti    Addebito[]
+  righe       RigaAddebito[]
+  righeLegame RigaLegameMovimento[]
   righeDocumento  RigaDocumentoFattura[]
   speseAccessorie SpesaAccessoria[]
 
@@ -3767,11 +3767,11 @@ model CodificaAddebito {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_addebito_tenant_id_fkey")
 
-  addebitiGruppo         Addebito[]     @relation("GruppoAddebito")
-  addebitiCategoria      Addebito[]     @relation("CategoriaAddebito")
-  addebitiCategoriaStat1 Addebito[]     @relation("CategoriaStatistica1Addebito")
-  addebitiCategoriaStat2 Addebito[]     @relation("CategoriaStatistica2Addebito")
-  addebitiCentroRicavo   Addebito[]     @relation("CentroRicavoAddebito")
+  addebitiGruppo         Addebito[] @relation("GruppoAddebito")
+  addebitiCategoria      Addebito[] @relation("CategoriaAddebito")
+  addebitiCategoriaStat1 Addebito[] @relation("CategoriaStatistica1Addebito")
+  addebitiCategoriaStat2 Addebito[] @relation("CategoriaStatistica2Addebito")
+  addebitiCentroRicavo   Addebito[] @relation("CentroRicavoAddebito")
   righeCategoria         RigaAddebito[] @relation("CategoriaRigaAddebito")
   righeCentroRicavo      RigaAddebito[] @relation("CentroRicavoRigaAddebito")
 
@@ -3906,9 +3906,9 @@ model ElencoAddebiti {
   tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "elenchi_addebiti_tenant_id_fkey")
   contratto ContrattoCliente @relation(fields: [contrattoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "elenchi_addebiti_contratto_fkey")
 
-  righe            RigaAddebito[]
-  allegati         AllegatoElencoAddebiti[]
-  legami           LegameMovimento[]
+  righe    RigaAddebito[]
+  allegati AllegatoElencoAddebiti[]
+  legami   LegameMovimento[]
   documentiFattura DocumentoFattura[]
 
   @@unique([id, tenantId], map: "elenchi_addebiti_id_tenant_id_key")
@@ -3993,9 +3993,9 @@ model RigaAddebito {
   categoria    CodificaAddebito? @relation("CategoriaRigaAddebito", fields: [categoriaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_categoria_fkey")
   centroRicavo CodificaAddebito? @relation("CentroRicavoRigaAddebito", fields: [centroRicavoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_centro_ricavo_fkey")
 
-  scaglioni          ScaglioneRigaAddebito[]
-  scadenze           ScadenzaRigaAddebito[]
-  righeLegame        RigaLegameMovimento[]
+  scaglioni   ScaglioneRigaAddebito[]
+  scadenze    ScadenzaRigaAddebito[]
+  righeLegame RigaLegameMovimento[]
   righeDocumento     RigaDocumentoFattura[]
   marcatoriFatturati MarcatoreAddebitoFatturato[]
 
@@ -4136,7 +4136,7 @@ model LegameMovimento {
 
   documento DocumentoFattura? @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_documento_fkey")
 
-  righe          RigaLegameMovimento[]
+  righe RigaLegameMovimento[]
   righeDocumento RigaDocumentoFattura[]
 
   @@unique([tenantId, movimentoOriginaleId], map: "legami_movimento_tenant_id_movimento_originale_id_key")
@@ -4197,15 +4197,15 @@ model RigaLegameMovimento {
 
 /// Impostazione "fatturazione da" dell'azienda (4.3, decisione 11, §4.9): una riga per azienda. Senza riga o con data vuota la fatturazione e' spenta. Tabella propria perche' `tenants` non ha RLS ed e' scrivibile dal ruolo applicativo.
 model ImpostazioneFatturazione {
-  id               String    @id(map: "impostazioni_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String    @map("tenant_id") @db.Uuid
-  fatturazioneDa   DateTime? @map("fatturazione_da") @db.Date
+  id             String    @id(map: "impostazioni_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  fatturazioneDa DateTime? @map("fatturazione_da") @db.Date
   /// Interruttore delle definitive (4.4a, decisione 13): spento = niente definitive. Un'azienda senza riga e' spenta. Non e' esposto dai DTO della 4.3.
   definitiveAttive Boolean   @default(false) @map("definitive_attive")
-  versione         Int       @default(1)
-  modificatoDa     String?   @map("modificato_da") @db.Uuid
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  versione       Int       @default(1)
+  modificatoDa   String?   @map("modificato_da") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "impostazioni_fatturazione_tenant_id_fkey")
 
@@ -4413,12 +4413,12 @@ model DocumentoFattura {
   elenco              ElencoAddebiti?           @relation(fields: [elencoId, contrattoId, tenantId], references: [id, contrattoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_elenco_fkey")
   documentoOrigine    DocumentoFattura?         @relation("DocumentoStorno", fields: [documentoOrigineId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_origine_fkey")
 
-  storni          DocumentoFattura[]           @relation("DocumentoStorno")
-  righe           RigaDocumentoFattura[]
-  riepiloghi      RiepilogoIvaDocumento[]
-  rate            RataDocumentoFattura[]
-  marcatori       MarcatoreAddebitoFatturato[]
-  legami          LegameMovimento[]
+  storni     DocumentoFattura[]           @relation("DocumentoStorno")
+  righe      RigaDocumentoFattura[]
+  riepiloghi RiepilogoIvaDocumento[]
+  rate       RataDocumentoFattura[]
+  marcatori  MarcatoreAddebitoFatturato[]
+  legami     LegameMovimento[]
   /// Stato SDI in tabella separata (4.5a): nessuna colonna sulla testata, il trigger di immutabilita' la vieterebbe sul DEFINITIVO.
   trasmissioniSdi TrasmissioneSdi[]
 
@@ -4758,10 +4758,10 @@ model EventoCampo {
   esito           EsitoEventoCampo
   motivoConflitto String?          @map("motivo_conflitto") @db.VarChar(40)
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ritiro   Ritiro          @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_ritiro_fkey")
-  autista  Autista         @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_autista_fkey")
-  utente   User            @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_utente_fkey")
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_ritiro_fkey")
+  autista Autista @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_autista_fkey")
+  utente  User    @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_utente_fkey")
   allegati AllegatoCampo[]
 
   @@unique([id, tenantId], map: "eventi_campo_id_tenant_id_key")
@@ -4803,56 +4803,56 @@ enum EsitoEventoCampo {
 }
 
 model Ritiro {
-  id                      String              @id(map: "ritiri_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                String              @map("tenant_id") @db.Uuid
-  dataPrevista            DateTime            @map("data_prevista") @db.Date
-  fascia                  FasciaRitiro?
-  ordineGiro              Int?                @map("ordine_giro") @db.SmallInt
-  produttoreId            String              @map("produttore_id") @db.Uuid
-  produttoreSedeId        String              @map("produttore_sede_id") @db.Uuid
-  trasportatoreId         String              @map("trasportatore_id") @db.Uuid
-  destinatarioId          String              @map("destinatario_id") @db.Uuid
-  destinatarioSedeId      String              @map("destinatario_sede_id") @db.Uuid
-  automezzoId             String?             @map("automezzo_id") @db.Uuid
+  id                  String               @id(map: "ritiri_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String               @map("tenant_id") @db.Uuid
+  dataPrevista        DateTime             @map("data_prevista") @db.Date
+  fascia              FasciaRitiro?
+  ordineGiro          Int?                 @map("ordine_giro") @db.SmallInt
+  produttoreId        String               @map("produttore_id") @db.Uuid
+  produttoreSedeId    String               @map("produttore_sede_id") @db.Uuid
+  trasportatoreId     String               @map("trasportatore_id") @db.Uuid
+  destinatarioId      String               @map("destinatario_id") @db.Uuid
+  destinatarioSedeId  String               @map("destinatario_sede_id") @db.Uuid
+  automezzoId         String?              @map("automezzo_id") @db.Uuid
   /// Autista assegnato (app campo, P1): facoltativo, FK composita col tenant.
-  autistaId               String?             @map("autista_id") @db.Uuid
-  cerCode                 String              @map("cer_code") @db.VarChar(10)
-  descrizione             String              @db.VarChar(500)
-  statoFisico             String?             @map("stato_fisico") @db.VarChar(50)
-  caratteristichePericolo String?             @map("caratteristiche_pericolo") @db.Text
-  numeroColli             Int?                @map("numero_colli")
-  quantitaPresunta        Decimal             @map("quantita_presunta") @db.Decimal(10, 2)
-  unita                   String              @default("KG") @db.VarChar(10)
-  tipoOperazione          WasteOperationType  @map("tipo_operazione")
-  codiceOperazione        String?             @map("codice_operazione") @db.VarChar(10)
-  provenienza             ProvenienzaRifiuto?
-  tipoTratta              TipoTratta?         @map("tipo_tratta")
+  autistaId           String?              @map("autista_id") @db.Uuid
+  cerCode             String               @map("cer_code") @db.VarChar(10)
+  descrizione         String               @db.VarChar(500)
+  statoFisico         String?              @map("stato_fisico") @db.VarChar(50)
+  caratteristichePericolo String?          @map("caratteristiche_pericolo") @db.Text
+  numeroColli         Int?                 @map("numero_colli")
+  quantitaPresunta    Decimal              @map("quantita_presunta") @db.Decimal(10, 2)
+  unita               String               @default("KG") @db.VarChar(10)
+  tipoOperazione      WasteOperationType   @map("tipo_operazione")
+  codiceOperazione    String?              @map("codice_operazione") @db.VarChar(10)
+  provenienza         ProvenienzaRifiuto?
+  tipoTratta          TipoTratta?          @map("tipo_tratta")
   /// Va sul FIR (campo 17).
-  annotazioni             String?             @db.Text
+  annotazioni         String?              @db.Text
   /// Solo per l'operatore: non finisce sul FIR.
-  noteInterne             String?             @map("note_interne") @db.Text
-  stato                   StatoRitiro         @default(PROGRAMMATO)
+  noteInterne         String?              @map("note_interne") @db.Text
+  stato               StatoRitiro          @default(PROGRAMMATO)
   /// Obbligatorio se NON_ESEGUITO o ANNULLATO, vietato altrimenti (CHECK).
-  motivo                  String?             @db.VarChar(500)
-  serieId                 String?             @map("serie_id") @db.Uuid
-  chiaveIdempotenza       String?             @map("chiave_idempotenza") @db.Uuid
-  versione                Int                 @default(1)
-  creatoDa                String              @map("creato_da") @db.Uuid
-  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  annullatoDa             String?             @map("annullato_da") @db.Uuid
-  annullatoIl             DateTime?           @map("annullato_il") @db.Timestamptz(3)
+  motivo              String?              @db.VarChar(500)
+  serieId             String?              @map("serie_id") @db.Uuid
+  chiaveIdempotenza   String?              @map("chiave_idempotenza") @db.Uuid
+  versione            Int                  @default(1)
+  creatoDa            String               @map("creato_da") @db.Uuid
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  annullatoDa         String?              @map("annullato_da") @db.Uuid
+  annullatoIl         DateTime?            @map("annullato_il") @db.Timestamptz(3)
 
-  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "ritiri_tenant_id_fkey")
-  produttore       Produttore    @relation(fields: [produttoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_fkey")
-  produttoreSede   SedeDitta     @relation("RitiroProduttoreSede", fields: [produttoreSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_sede_fkey")
-  trasportatore    Trasportatore @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_trasportatore_fkey")
-  destinatario     Destinatario  @relation(fields: [destinatarioId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_fkey")
-  destinatarioSede SedeDitta     @relation("RitiroDestinatarioSede", fields: [destinatarioSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_sede_fkey")
-  automezzo        Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
-  autista          Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
-  firs             FIR[]
-  eventiCampo      EventoCampo[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "ritiri_tenant_id_fkey")
+  produttore   Produttore    @relation(fields: [produttoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_fkey")
+  produttoreSede   SedeDitta @relation("RitiroProduttoreSede", fields: [produttoreSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_sede_fkey")
+  trasportatore Trasportatore @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_trasportatore_fkey")
+  destinatario Destinatario  @relation(fields: [destinatarioId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_fkey")
+  destinatarioSede SedeDitta @relation("RitiroDestinatarioSede", fields: [destinatarioSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_sede_fkey")
+  automezzo    Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
+  autista      Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
+  firs         FIR[]
+  eventiCampo  EventoCampo[]
 
   @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
   @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")
@@ -4927,9 +4927,9 @@ model ComunicazioneConsorzioMovimento {
   quantitaKg      Decimal           @map("quantita_kg") @db.Decimal(14, 3)
   createdAt       DateTime          @default(now()) @map("created_at")
 
-  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "comunicazioni_consorzi_movimenti_tenant_id_fkey")
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "comunicazioni_consorzi_movimenti_tenant_id_fkey")
   comunicazione ComunicazioneConsorzio @relation(fields: [comunicazioneId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "comunicazioni_consorzi_movimenti_comunicazione_fkey")
-  movimento     WasteMovement          @relation(fields: [movimentoId, registroId, tenantId, movimentoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "comunicazioni_consorzi_movimenti_movimento_fkey")
+  movimento    WasteMovement          @relation(fields: [movimentoId, registroId, tenantId, movimentoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "comunicazioni_consorzi_movimenti_movimento_fkey")
 
   @@unique([comunicazioneId, movimentoId], map: "comunicazioni_consorzi_movimenti_unico_key")
   @@index([movimentoId], map: "comunicazioni_consorzi_movimenti_movimento_idx")
@@ -5019,23 +5019,23 @@ model DatiTracciatoMovimento {
 /// ISTAT, codice ARPA, estremi Albo, legale rappresentante. Una riga per sede. CHECK solo in
 /// migration: `anagrafica_comunicazioni_sede_istat_formato`, `_ateco_formato`, `_orso_formato`.
 model AnagraficaComunicazioniSede {
-  id                          String    @id(map: "anagrafica_comunicazioni_sede_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                    String    @map("tenant_id") @db.Uuid
-  sedeDittaId                 String    @map("sede_ditta_id") @db.Uuid
-  eComune                     Boolean   @default(false) @map("e_comune")
-  codiceIstatComune           String?   @map("codice_istat_comune") @db.VarChar(6)
-  codiceAteco                 String?   @map("codice_ateco") @db.VarChar(8)
-  codiceOrso                  String?   @map("codice_orso") @db.VarChar(9)
+  id                          String   @id(map: "anagrafica_comunicazioni_sede_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String   @map("tenant_id") @db.Uuid
+  sedeDittaId                 String   @map("sede_ditta_id") @db.Uuid
+  eComune                     Boolean  @default(false) @map("e_comune")
+  codiceIstatComune           String?  @map("codice_istat_comune") @db.VarChar(6)
+  codiceAteco                 String?  @map("codice_ateco") @db.VarChar(8)
+  codiceOrso                  String?  @map("codice_orso") @db.VarChar(9)
   alboDataIscrizione          DateTime? @map("albo_data_iscrizione") @db.Date
-  alboClassi                  String?   @map("albo_classi") @db.VarChar(30)
+  alboClassi                  String?  @map("albo_classi") @db.VarChar(30)
   autorizzazioneData          DateTime? @map("autorizzazione_data") @db.Date
-  legaleRappresentanteCognome String?   @map("legale_rappresentante_cognome") @db.VarChar(25)
-  legaleRappresentanteNome    String?   @map("legale_rappresentante_nome") @db.VarChar(25)
-  esclusaOrr                  Boolean   @default(false) @map("esclusa_orr")
-  createdAt                   DateTime  @default(now()) @map("created_at")
-  updatedAt                   DateTime  @updatedAt @map("updated_at")
+  legaleRappresentanteCognome String?  @map("legale_rappresentante_cognome") @db.VarChar(25)
+  legaleRappresentanteNome    String?  @map("legale_rappresentante_nome") @db.VarChar(25)
+  esclusaOrr                  Boolean  @default(false) @map("esclusa_orr")
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "anagrafica_comunicazioni_sede_tenant_id_fkey")
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "anagrafica_comunicazioni_sede_tenant_id_fkey")
   sedeDitta SedeDitta @relation(fields: [sedeDittaId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "anagrafica_comunicazioni_sede_sede_fkey")
 
   @@unique([tenantId, sedeDittaId], map: "anagrafica_comunicazioni_sede_unica_key")
@@ -5109,13 +5109,13 @@ model LottoImport {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Fase 3 (3.1): record che portano la provenienza di questo lotto.
-  movimentiImportati     WasteMovement[]
-  firImportati           FIR[]
-  ditteImportate         Ditta[]
-  sediImportate          SedeDitta[]
-  produttoriImportati    Produttore[]
-  trasportatoriImportati Trasportatore[]
-  destinatariImportati   Destinatario[]
+  movimentiImportati       WasteMovement[]
+  firImportati             FIR[]
+  ditteImportate           Ditta[]
+  sediImportate            SedeDitta[]
+  produttoriImportati      Produttore[]
+  trasportatoriImportati   Trasportatore[]
+  destinatariImportati     Destinatario[]
 
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
