@@ -46,6 +46,48 @@ describe('annullabilita (funzione pura, ordine di Q9)', () => {
       'NOTA_DI_CREDITO'
     )
   })
+  describe('emesso scartato dallo SDI (4.5d, D3)', () => {
+    const emesso = { ...base, emessoIl: '2026-03-01T10:00:00.000Z' }
+    it('emesso e scartato senza trasmissioni vive: annullabile', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: true, trasmissioneViva: false })).toEqual({
+        annullabile: true,
+        motivo: null,
+      })
+    })
+    it('emesso scartato con un numero non ultimo: annullabile (il numero resta consumato, niente NON_ULTIMO)', () => {
+      expect(
+        annullabilita({ ...emesso, ultimoNumero: 9, scartatoSdi: true, trasmissioneViva: false })
+          .annullabile
+      ).toBe(true)
+    })
+    it('emesso scartato ma con una trasmissione viva: TRASMISSIONE_SDI_VIVA', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: true, trasmissioneViva: true }).motivo).toBe(
+        'TRASMISSIONE_SDI_VIVA'
+      )
+    })
+    it('emesso non scartato (anche con trasmissione viva): EMESSO', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: false, trasmissioneViva: true }).motivo).toBe(
+        'EMESSO'
+      )
+      expect(annullabilita(emesso).motivo).toBe('EMESSO')
+    })
+    it('lo scarto non scavalca gli altri motivi: NON_DEFINITIVO, NOTA_DI_CREDITO, STORNATO vengono prima', () => {
+      const scarto = { scartatoSdi: true, trasmissioneViva: false }
+      expect(annullabilita({ ...emesso, ...scarto, stato: 'ANNULLATO', numero: null }).motivo).toBe(
+        'NON_DEFINITIVO'
+      )
+      expect(annullabilita({ ...emesso, ...scarto, tipoDocumento: 'TD04' }).motivo).toBe(
+        'NOTA_DI_CREDITO'
+      )
+      expect(annullabilita({ ...emesso, ...scarto, haStorno: true }).motivo).toBe('STORNATO')
+    })
+    it('non emesso: scarto e trasmissioni non cambiano nulla (NON_ULTIMO resta)', () => {
+      expect(
+        annullabilita({ ...base, ultimoNumero: 6, scartatoSdi: true, trasmissioneViva: false })
+          .motivo
+      ).toBe('NON_ULTIMO')
+    })
+  })
   it('BOZZA con TD04 e storno: NON_DEFINITIVO per primo', () => {
     expect(
       annullabilita({ ...base, stato: 'BOZZA', tipoDocumento: 'TD04', haStorno: true }).motivo

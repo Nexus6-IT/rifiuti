@@ -109,7 +109,10 @@ describe('SDI 4.5d: annullo di un emesso scartato (Postgres reale)', () => {
 
   const annulla = (s: Scenario) =>
     comeApp(s.t, tx =>
-      tx.$executeRawUnsafe(`UPDATE documenti_fattura SET ${ANNULLO} WHERE id = $1::uuid`, s.documentoId)
+      tx.$executeRawUnsafe(
+        `UPDATE documenti_fattura SET ${ANNULLO} WHERE id = $1::uuid`,
+        s.documentoId
+      )
     )
 
   const statoDocumento = async (s: Scenario) =>

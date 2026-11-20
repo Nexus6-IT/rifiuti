@@ -95,12 +95,13 @@ export class DocumentiFatturaController {
   @ApiOperation({ summary: "Annulla l'ultimo numero del registro, se non e` emesso" })
   @ApiResponse({
     status: 409,
-    description: 'ANNULLO_NON_AMMESSO (details.motivo), VERSIONE_SUPERATA',
+    description: 'ANNULLO_NON_AMMESSO (details.motivo), PROBABILMENTE_GIA_INVIATA, VERSIONE_SUPERATA',
   })
   annulla(@Req() req: any, @Param() p: DocumentoParamDto, @Body() dto: AnnullaDto) {
     return this.annullo.annulla(requireRequestTenantId(req), req.user.id, p.id, {
       motivo: dto.motivo,
       versione: dto.versione,
+      confermaGiaInviata: dto.confermaGiaInviata,
     })
   }
 

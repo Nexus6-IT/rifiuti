@@ -1,7 +1,16 @@
 /** Corpo di `POST /documenti-fattura/:id/annulla` (4.4b1, §11): motivo da 1 a 200 caratteri dopo trim. */
 import { ApiProperty } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
-import { IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator'
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator'
 
 export const MOTIVO_MAX = 200
 
@@ -22,4 +31,12 @@ export class AnnullaDto {
   @Min(1)
   @Max(2_147_483_647)
   versione: number
+
+  @ApiProperty({
+    required: false,
+    description: "Conferma l'annullo di uno scarto SDI «duplicato» (00404)",
+  })
+  @IsOptional()
+  @IsBoolean()
+  confermaGiaInviata?: boolean
 }

@@ -247,6 +247,98 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
       expect((await b.documento(d.id)).stato).toBe('DEFINITIVO')
     })
 
+    describe('emesso scartato dallo SDI (4.5d, D3)', () => {
+      /** Trasmissione portata a SCARTATA, con la notifica NS e i codici indicati. */
+      async function scarta(az: AziendaT18, documentoId: string, codici: string[]) {
+        await owner.$executeRawUnsafe(
+          `UPDATE documenti_fattura SET emesso_il = now() WHERE id = $1::uuid`,
+          documentoId
+        )
+        const [t] = await owner.$queryRawUnsafe<{ id: string }[]>(
+          `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
+             xml_sha256, stato, updated_at)
+           VALUES ($1::uuid, $2::uuid, 'fake', 'SANDBOX', 'IT01234567890_00001.xml', $3,
+             'DA_INVIARE', now()) RETURNING id::text AS id`,
+          az.tenantId,
+          documentoId,
+          'a'.repeat(64)
+        )
+        for (const passo of ['IN_INVIO', 'INVIATA', 'SCARTATA']) {
+          await owner.$executeRawUnsafe(
+            `UPDATE trasmissioni_sdi SET stato = $2::stato_trasmissione_sdi, id_provider = 'p1',
+               updated_at = now() WHERE id = $1::uuid`,
+            t.id,
+            passo
+          )
+        }
+        await owner.$executeRawUnsafe(
+          `INSERT INTO notifiche_sdi (tenant_id, trasmissione_id, tipo, fonte, chiave_dedup, codici_errore)
+           VALUES ($1::uuid, $2::uuid, 'NS', 'WEBHOOK', 'ns-1', $3::text[])`,
+          az.tenantId,
+          t.id,
+          codici
+        )
+        return t.id
+      }
+
+      it('numero intermedio scartato: si annulla, il numero resta consumato, i legami tornano confermabili', async () => {
+        const az = await b.t19.azienda()
+        const [d1] = await b.definitivi(az, 2)
+        await scarta(az, d1.id, ['00311'])
+        const dettaglio = await b.annullaCorrente(az, d1.id, 'Scarto SDI n. 00311')
+        expect(dettaglio).toMatchObject({ id: d1.id, stato: 'ANNULLATO' })
+        const doc = await b.documento(d1.id)
+        expect(doc).toMatchObject({
+          stato: 'ANNULLATO',
+          numero: 1,
+          motivo_annullo: 'Scarto SDI n. 00311',
+        })
+        expect(doc.emesso_il).not.toBeNull()
+        // Il numero NON torna alla serie: la prossima fattura prende il successivo.
+        expect((await numerazione(az)).ultimo_numero).toBe(2)
+        expect((await b.legami([d1.legameId]))[0]).toMatchObject({
+          stato: 'CONFERMATO',
+          documento_id: null,
+        })
+      })
+
+      it('scartato con un nuovo invio vivo: 409 con motivo TRASMISSIONE_SDI_VIVA, nulla scritto', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00311'])
+        await owner.$executeRawUnsafe(
+          `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
+             xml_sha256, stato, updated_at)
+           VALUES ($1::uuid, $2::uuid, 'fake', 'SANDBOX', 'IT01234567890_00002.xml', $3,
+             'DA_INVIARE', now())`,
+          az.tenantId,
+          d.id,
+          'b'.repeat(64)
+        )
+        const r = await esito(b.annulla(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toEqual({
+          status: 409,
+          codice: 'ANNULLO_NON_AMMESSO',
+          details: { motivo: 'TRASMISSIONE_SDI_VIVA' },
+        })
+        expect((await b.documento(d.id)).stato).toBe('DEFINITIVO')
+      })
+
+      it('scarto «duplicato» (00404): senza conferma 409 PROBABILMENTE_GIA_INVIATA, con conferma si annulla', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00404'])
+        const r = await esito(b.annulla(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toEqual({ status: 409, codice: 'PROBABILMENTE_GIA_INVIATA', details: undefined })
+        expect((await b.documento(d.id)).stato).toBe('DEFINITIVO')
+        await b.annulla(az, d.id, {
+          versione: await b.versioneDi(d.id),
+          confermaGiaInviata: true,
+        })
+        expect((await b.documento(d.id)).stato).toBe('ANNULLATO')
+      })
+    })
+
     it('origine stornata con TD04 datato nell’anno dopo (origine ancora ultima del suo anno, non emessa): annullo 409 con motivo STORNATO, nulla scritto, legami invariati (Q9)', async () => {
       const az = await b.t19.azienda()
       const [d] = await b.definitivi(az, 1)
