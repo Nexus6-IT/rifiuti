@@ -521,7 +521,11 @@ export async function pulisciTenantDiTest(
     console.error(
       `pulisciTenantDiTest: aziende rimaste (id esatti) ${JSON.stringify(rimaste.map(t => t.id))}; errori ${JSON.stringify(errori)}`
     )
-    // Un fallimento non si nasconde: la pulizia che lascia aziende fa fallire lo spec.
+  }
+  // Un fallimento non si nasconde: la pulizia che lascia aziende fa fallire lo spec. Un passo
+  // intermedio in errore (es. timeout sui volumi grandi) resta nel log ma non basta: se l'azienda
+  // non c'e' piu', la cascata ha portato via il resto.
+  if (rimaste.length > 0) {
     throw new Error(
       `pulisciTenantDiTest: pulizia incompleta (${rimaste.length} aziende rimaste, ${errori.length} errori)`
     )

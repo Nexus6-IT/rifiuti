@@ -7,6 +7,7 @@
  *   WASTEFLOW_TEST_CLI_COMPILATA=1 npx jest -c jest.postgres.config.js carica-cli-compilata
  */
 import { PrismaClient } from '@prisma/client'
+import { cancellaAziendaDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
 import { mkdtemp, rm } from 'fs/promises'
@@ -46,7 +47,7 @@ const run = promisify(execFile)
       ).id
     })
     afterAll(async () => {
-      await owner.tenant.deleteMany({ where: { id: tenantId } })
+      if (tenantId) await cancellaAziendaDiProva(owner, tenantId)
       await owner.$disconnect()
       await rm(radice, { recursive: true, force: true })
     })
