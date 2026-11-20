@@ -36,9 +36,108 @@ WW00012026/
 Un file JSON Lines per fase: una riga = un oggetto JSON (UTF-8, `\n`, U+2028/2029 escapati) nella
 forma dei modelli di WasteFlow, con `legacyKey` (stesse chiavi di `chiavi-legacy.ts`).
 
-Fasi definite oggi: `ANAGRAFICHE/ditte` con record `{ legacyKey, ragioneSociale, partitaIva|null,
-codiceFiscale|null }`. Sedi, ruoli, FIR, registro e giacenze arrivano con i pezzi I4-I7 senza cambiare
-il formato (si aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`).
+Fasi definite oggi, tutte di ambito `ANAGRAFICHE`, caricate in quest'ordine (le parti si legano
+per chiave legacy, non per id): `ditte`, `sedi`, `produttori`, `trasportatori`, `destinatari`,
+`automezzi`. Le fasi vuote non si scrivono (tranne `ditte`): un pacchetto di sole ditte (pezzo I2)
+si carica ancora. Registro e giacenze arrivano con i pezzi I6-I7 senza cambiare il formato (si
+aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`). Dal pezzo I5 c'e' anche
+l'ambito `FIR` (vedi sotto), da caricare DOPO ANAGRAFICHE.
+
+| Fase | Record | Chiave legacy |
+|---|---|---|
+| `ditte` | `{ legacyKey, ragioneSociale, partitaIva\|null, codiceFiscale\|null }` | `ditta\|FISC\|<P.IVA o CF>` |
+| `sedi` | `{ legacyKey, dittaKey, dittaId\|null, denominazione\|null, via, civico, cap, comune, provincia, telefono\|null, principale }` | `ditta\|PRECOD\|COD\|UL`; UL riservate: `SL` sede legale, `S2` seconda sede di CLIFOR |
+| `produttori` | `{ legacyKey, dittaKey, dittaId\|null, sedeKey }` | `ditta\|PRECOD\|COD` (soggetto) |
+| `trasportatori` | come i produttori + `numeroIscrizione`, `scadenzaIscrizione\|null` | idem |
+| `destinatari` | come i produttori + `numeroAutorizzazione`, `scadenzaAutorizzazione\|null` | idem |
+| `automezzi` | `{ legacyKey, targa, trasportatoreKey\|null, taraKg\|null, note\|null }` | `ditta\|MEZ\|<PRECOD>\|<COD>` |
+
+`dittaId` e' valorizzato solo per una **ditta agganciata** (P.IVA gia' in WasteFlow, vedi `agganci`
+della mappa): l'id deve coincidere con quello della mappa, altrimenti la riga e' rifiutata. Le sedi di
+una ditta agganciata non sono mai principali (la ditta esistente ha gia' la sua).
+
+### Ambito `FIR` (I5)
+
+Fasi: `fir` (si carica) e `fir-digitali` (solo elenco: il server la conosce ma non la carica, vedi
+`FASI_SOLO_ELENCO`). Da `FORMULARI` (+ `AUTOMEZZI` per la targa, `XRENTRIFIRTRASMESSI` per l'IDRENTRI).
+
+| Fase | Record | Chiave legacy |
+|---|---|---|
+| `fir` | `{ legacyKey, firNumber, stato, dataTrasporto, dataFine\|null, cerCode, pericoloso, descrizione, quantitaKg, targa, operazione, produttore, trasportatore\|null, destinatario }` | `ditta\|anno\|FORMULARI\|COD` |
+| `fir-senza-peso` | `{ legacyKey, firNumber, produttoreKey\|null }` (solo elenco, numero + chiave CLIFOR) | idem |
+| `fir-digitali` | `{ legacyKey, numeroFir, idRentri\|null, unitaLocaleId\|null }` | idem (la riga sorgente) |
+
+Una parte e' `{ tipo: 'ditta', dittaKey, dittaId\|null, sedeKey\|null, ruoloKey\|null }` oppure
+`{ tipo: 'propria', sedeId }` (unita' locale dell'azienda stessa, dalla mappa). Nome, partita IVA e
+indirizzo dello snapshot si leggono dal database al caricamento (la ditta puo' essere un aggancio).
+
+Regole (tutte con fixture SINTETICHE: nessun `.bak` era disponibile, forme dei campi PRESUNTE):
+
+- **`firNumber` = `FORMU` com'e'**, mai rinominato. Un numero ripetuto nel pacchetto
+  (`FIR_NUMBER_DUPLICATO_NEL_PACCHETTO`) o gia' in azienda e non importato (`FIR_NUMBER_GIA_PRESENTE`)
+  e BLOCCANTE in `--verifica` e in `carica`; `prepara` lo segnala come avviso `FIR_NUMBER_DUPLICATO`.
+- `C7`: vuoto, `R`, `9` sono FIR; `A` (`FIR_ANNULLATO`) e richieste del portale (`RICHIESTA_PORTALE`) sono scarti.
+- **FIR digitali** (`C6` = `DIGITALE` / `INVIATO A RENTRI ...`): non si copiano; vanno in `fir-digitali` e
+  nel rapporto di `prepara` (`fir-digitale <numero> <idRentri|->`). Si riacquisiscono da RENTRI con
+  `migrazione:riacquisisci-fir`.
+- Stato dedotto: `COMPLETED` con data di fine trasporto (`DATF`) e peso a destino, altrimenti
+  `AWAITING_RECEIVER`. Anche CER, data, quantita', targa, recupero/smaltimento sono dedotti o presi
+  dai campi del FIR; stato fisico, provenienza e caratteristiche di pericolo restano vuoti (non si inventano).
+- Scarti per FIR: `PRODUTTORE|DESTINATARIO|TRASPORTATORE_NON_RISOLTO/_AMBIGUO/_PROPRIO_NON_IN_MAPPA`,
+  `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
+  senza sede importata ripiega sulla sede predefinita della ditta (avviso `SEDE_NON_RISOLTA`).
+- **FIR in viaggio senza peso a destino (`NETTO` assente o 0): BLOCCANTE** (`FIR_IN_VIAGGIO_SENZA_PESO`) in `--verifica` e in `carica`, mai importato ne' scartato in silenzio. `prepara` e la CLI di caricamento stampano l'elenco `fir-senza-peso <numero> <chiave CLIFOR>` (nessun dato personale) e l'indicazione: completare i FIR in WinWaste prima dell'estrazione, poi rifare staging e pacchetto. Vale anche se e' l'unico FIR (non e' mai «nulla da caricare»).
+- Ogni FIR importato nasce `bloccato_invio` e senza legame RENTRI: non si trasmette mai prima della riconciliazione (3.6).
+- L'operatore (`--operatore <uuid>`, utente dell'azienda) e' obbligatorio per l'ambito FIR:
+  `producer_user_id` e' una FK a `users`. `--verifica`: `OPERATORE_ASSENTE` / `OPERATORE_INESISTENTE`.
+- ANAGRAFICHE devono essere gia' caricate: `RIFERIMENTO_DITTA_NON_CARICATO`, `RIFERIMENTO_SEDE_NON_CARICATO`.
+- La chiave della sede di un riferimento `PROD/TRAS/SMAL` usa la STESSA regola di `prepara` (UL), in
+  `chiaveSedeDaSoggettoUnita` (`domain/migrazione/chiavi-legacy.ts`).
+
+#### `migrazione:riacquisisci-fir`
+
+```
+node dist/cli/migrazione-riacquisisci-fir.js --tenant <uuid> --pacchetto <cartella> --utente <uuid> [--esegui] [--pausa-ms N] [--massimo N]
+```
+
+Senza `--esegui` e' una simulazione (RENTRI non si contatta). Con `--esegui`: SOLA LETTURA verso l'ente
+(`leggiFormulario`); mai `creaFormulario`, mai `acquisisciVisibilita` (e' una scrittura sull'ente: se la
+visibilita' manca l'esito e' `VISIBILITA_NON_ACQUISITA` e si risolve a mano). Limite di frequenza:
+pausa fra le chiamate (default 3 s, minimo 1 s), massimo per esecuzione (default 25, tetto 500), stop
+al primo errore transitorio dell'ente. Un FIR riacquisito nasce senza provenienza e non bloccato (Q5);
+un numero gia' presente nel database non si richiede. Uscite: 0 ok, 1 interrotto/falliti, 2 pacchetto o
+utente rifiutati, 64 uso errato.
+
+### Regole di trasformazione (I4)
+
+- **Duplicati segnalati, mai fusi in silenzio**: `DITTA_DUPLICATA` (stessa P.IVA o CF), `TARGA_DUPLICATA`,
+  `CHIAVE_DUPLICATA` (AUTOMEZZI non ha PK), `SEDE_DUPLICATA`. Il rapporto riporta la chiave scartata e
+  quella tenuta (chiavi WinWaste, mai P.IVA, CF o nomi).
+- **Sedi**: la sede legale viene da `SEDI LEGALI` (se c'e') altrimenti dall'indirizzo di `CLIFOR`;
+  la seconda sede di `CLIFOR` (`IND2`...) e' `S2`; ogni `UNITA LOCALI` e' una sede con la sua UL.
+  Servono via, comune, CAP (5 cifre) e provincia (2 lettere); il civico mancante diventa `SNC`. Un
+  indirizzo incompleto non si inventa: `SEDE_LEGALE_INCOMPLETA` / `INDIRIZZO_INCOMPLETO` (la ditta entra,
+  la sede no). Senza sede legale la prima unita' locale e' la principale (avviso `SEDE_PRINCIPALE_DEDOTTA`).
+- **Ruoli dedotti**: produttore/trasportatore/destinatario da come il soggetto compare in `PROD`/`TRAS`/
+  `SMAL` di `MOVIMENTI` e `FORMULARI`. Il numero di iscrizione/autorizzazione (obbligatorio in
+  WasteFlow) e' quello della riga `AUTORIZZAZIONI` piu' usata nei movimenti (`AUTT`/`AUTS`); senza
+  numero il ruolo non si crea (`NUMERO_ASSENTE`). Senza `MOVIMENTI` ne `FORMULARI` nessun ruolo si
+  inventa (`RUOLI_NON_DEDUCIBILI`). `INTE` (intermediario) non ha un modello: `INTERMEDIARIO_SENZA_MODELLO`.
+  Un soggetto che compare come cliente e fornitore con P.IVA diverse (stesso `COD`) e' `SOGGETTO_AMBIGUO`:
+  non si indovina.
+- **Unita' locali dell'azienda stessa** (sito `X<sede>.<ul>`, VERSIS XRENTRI): non sono anagrafiche, non
+  diventano sedi, ruoli ne destinatari (`UNITA_LOCALE_PROPRIA`); vanno nella mappa (`unitaLocali`).
+- **Automezzi**: targa normalizzata (`^[A-Z0-9]{2,15}$`), tara in kg come tara DICHIARATA. I rimorchi
+  (`RIMORCHIO` valorizzato) non si importano come automezzi (`RIMORCHIO_NON_IMPORTATO`): la coppia
+  motrice/rimorchio e' per movimento e la ricostruira' I5/I7. Il proprietario e' il ruolo trasportatore
+  del soggetto; il parco proprio (e i proprietari senza ruolo) restano senza trasportatore (avvisi
+  `PROPRIETARIO_*`). `creato_da` e' l'operatore del lotto o, senza, l'utente tecnico
+  `00000000-0000-4000-8000-000000000002` (diverso dall'id della piattaforma).
+- **Mai dati personali nella mappa**; nel pacchetto sono in chiaro (vedi sopra). `NOM`/`COG`
+  (referente) delle unita' locali NON si importano.
+- **Forma presunta** (da riverificare sul primo `.bak`): `PRECOD` di `UNITA LOCALI` = soggetto
+  (6 caratteri, o 7 con il C/F davanti); `PRECOD` di `AUTORIZZAZIONI`/`AUTOMEZZI` e `PROD`/`TRAS`/`SMAL` =
+  `soggetto.unita'`; `RIMORCHIO` vuoto/`0`/`N` = motrice; `AUTORIZZAZIONI.COD` = valore di `AUTP`/`AUTT`/`AUTS`.
 
 ## Verifica in apertura (`apriPacchetto`)
 
@@ -92,7 +191,7 @@ partita IVA degli agganci (con cifra di controllo valida).
 npm run migrazione:prepara -- <cartella-staging> --mappa <mappa-import.json> --destinazione <cartella> [--forza]
 
 # server, dentro l'immagine del backend (compilato, niente ts-node)
-node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella> --ambito <AMBITO> [--verifica] [--dimensione-blocco N]
+node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella> --ambito <AMBITO> [--operatore <uuid>] [--verifica] [--dimensione-blocco N]
 ```
 
 | Uscita | `migrazione:prepara` | `migrazione:carica` |
@@ -109,9 +208,11 @@ Output e log: solo codici, id tecnici e conteggi. Mai valori dei record.
 Gira in una transazione con `transaction_read_only = on`: se per errore una query scrivesse, il
 database la rifiuterebbe (SQLSTATE 25006). Non apre lotti. Controlla: registri, sedi e unita' locali
 della mappa esistenti nell'azienda; causali esistenti (catalogo di sistema o proprie dell'azienda) e
-confermate; agganci esistenti con quella P.IVA; collisioni di P.IVA e codice fiscale con ditte non
-agganciate; lotto gia' `IN_CORSO` per (archivio, ambito); record non validi. Le collisioni di
-`firNumber` e dei progressivi si aggiungono con I5 e I7.
+confermate; agganci esistenti con quella P.IVA; **azienda (tenant) della mappa esistente** (`TENANT_INESISTENTE`:
+l'import non crea mai aziende, si usa il flusso `admin/tenants`); collisioni di P.IVA e codice fiscale
+con ditte non agganciate; **targhe gia' in azienda e non importate** (`TARGA_GIA_PRESENTE_NON_IMPORTATA`); lotto gia' `IN_CORSO` per (archivio, ambito); record non validi. Per l'ambito FIR anche
+l'operatore, le ditte e le sedi gia' caricate e le collisioni di `firNumber` (vedi sopra). Le collisioni
+dei progressivi si aggiungono con I7.
 
 ### Il client e' solo quello applicativo
 
