@@ -239,9 +239,14 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
     expect(dopo.doc).toEqual(prima.doc)
     expect(dopo.hash).toBe(prima.hash)
     expect((await nelTenant(() => verifica.execute({ firId, tenantId }))).allValid).toBe(true)
-    expect((await h.eventi.elenca(tenantId, firId)).map(e => e.operazione).sort()).toEqual([
-      'AcquisizioneFirmaAnnotazione',
-      'Annotazione',
+    // Ciclo di vita dell'invio (R1): INVIATA prima del POST, poi l'esito, poi la firma, in quest'ordine
+    // anche rileggendo da Postgres (la riconciliazione guarda la riga piu' recente).
+    expect(
+      (await h.eventi.elenca(tenantId, firId)).reverse().map(e => [e.operazione, e.esito])
+    ).toEqual([
+      ['Annotazione', 'INVIATA'],
+      ['Annotazione', 'ACCETTATA'],
+      ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
     ])
   })
 
