@@ -34,6 +34,18 @@ const TRANSIZIONE_TRASPORTO: Readonly<Record<string, string>> = {
   InserimentoTrasportoIniziale: 'FirmaProduttoreTrasportatoreIniziale',
 }
 
+/**
+ * Firme di partenza (FIR in viaggio, P3): `acquisizione-firma` senza operazione pendente nella fase
+ * iniziale. Ipotesi dedotta dai NOMI degli stati (FEDELTA.md §8.2, da verificare sulla demo): la firma
+ * unica di produttore e trasportatore (o del solo trasportatore) apre il viaggio; quella del solo
+ * produttore lascia la firma del trasportatore.
+ */
+const TRANSIZIONE_FIRMA_PARTENZA: Readonly<Record<string, string>> = {
+  FirmaProduttoreTrasportatoreIniziale: 'InserimentoAccettazione',
+  FirmaTrasportatoreIniziale: 'InserimentoAccettazione',
+  FirmaProduttore: 'FirmaTrasportatoreIniziale',
+}
+
 export interface Formulario {
   numero_fir: string
   stato: string
@@ -88,7 +100,8 @@ export interface Formulario {
    */
   ultimaFirma?: {
     statoPrecedente: string
-    pending: NonNullable<Formulario['pendingOperazione']>
+    /** Assente per le firme di partenza (P3): non c'era un'operazione in attesa da ripristinare. */
+    pending?: NonNullable<Formulario['pendingOperazione']>
   }
   /**
    * Testo delle note di annullamento (R3 Task 5), impostato
@@ -704,7 +717,14 @@ export class Archivio {
 
     if (contesto.operazione === 'AcquisizioneFirma') {
       const pendente = formulario.pendingOperazione
-      if (!pendente) return
+      if (!pendente) {
+        const successivo = TRANSIZIONE_FIRMA_PARTENZA[formulario.stato]
+        if (successivo) {
+          formulario.ultimaFirma = { statoPrecedente: formulario.stato }
+          formulario.stato = successivo
+        }
+        return
+      }
 
       if (pendente.tipo === 'Accettazione') {
         formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }

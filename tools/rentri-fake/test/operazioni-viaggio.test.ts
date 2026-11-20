@@ -551,6 +551,85 @@ describe('Quantita e trasporto: fase iniziale del formulario (FIR in viaggio, P2
   })
 })
 
+describe('Firme di partenza: acquisizione-firma nella fase iniziale (FIR in viaggio, P3)', () => {
+  async function firma(app: ReturnType<typeof creaApp>): Promise<void> {
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/acquisizione-firma`,
+      headers: await intestazioniAutenticate(),
+      payload: { certificato: 'c', token: 't', firma: 'f' },
+    })
+    expect(avvio.statusCode).toBe(202)
+    const esito = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: false },
+    })
+    expect(esito.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  // Ipotesi dedotta dai NOMI degli stati (FEDELTA.md §8.2): da verificare sulla demo.
+  it.each([
+    ['FirmaProduttoreTrasportatoreIniziale', 'InserimentoAccettazione'],
+    ['FirmaTrasportatoreIniziale', 'InserimentoAccettazione'],
+    ['FirmaProduttore', 'FirmaTrasportatoreIniziale'],
+  ])('da %s, acquisita la firma, il formulario passa a %s', async (partenza, atteso) => {
+    const app = creaApp()
+    await seminaFormulario(app, partenza)
+
+    await firma(app)
+
+    expect(await stato(app)).toBe(atteso)
+  })
+
+  it('dopo la firma di partenza il rollback-firma riporta alla firma precedente', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'FirmaProduttoreTrasportatoreIniziale')
+    await firma(app)
+
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/rollback-firma`,
+      headers: await intestazioniAutenticate(),
+    })
+    expect(avvio.statusCode).toBe(202)
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: false },
+    })
+
+    expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+
+  it('una firma rifiutata dall\'ente lascia lo stato invariato', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'FirmaProduttoreTrasportatoreIniziale')
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/acquisizione-firma`,
+      headers: await intestazioniAutenticate(),
+      payload: { certificato: 'c', token: 't', firma: 'f' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: true },
+    })
+
+    expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+})
+
 describe('POST / : stato iniziale dedotto da quantita e trasporto di partenza (FIR in viaggio, P2)', () => {
   async function crea(corpo: Record<string, unknown>): Promise<string> {
     const app = creaApp()
