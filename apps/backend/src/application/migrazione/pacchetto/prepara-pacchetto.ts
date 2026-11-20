@@ -36,6 +36,8 @@ export interface RapportoPrepara {
    * IDRENTRI sono identificativi dell'ente, non dati personali.
    */
   readonly firDigitali: ReadonlyArray<{ numero: string; idRentri: string | null }>
+  /** FIR senza peso a destino: bloccanti per il caricamento (numero FIR e chiave CLIFOR, nessun dato personale). */
+  readonly firSenzaPeso: ReadonlyArray<{ numero: string; produttoreKey: string | null }>
   /** Ditte gia' presenti in WasteFlow (agganci della mappa): non vanno nel pacchetto. */
   readonly agganciate: number
   /** Righe scartate come duplicate, con quella tenuta: chiavi legacy, mai valori. `tabella` assente = CLIFOR. */
@@ -78,6 +80,7 @@ export async function preparaPacchetto(
       [
         ['fir', f.fir],
         ['fir-digitali', f.firDigitali],
+        ['fir-senza-peso', f.firSenzaPeso],
       ] as const
     )
       .filter(([, record]) => record.length > 0)
@@ -97,5 +100,9 @@ export async function preparaPacchetto(
     scarti: [...r.scarti, ...f.scarti],
     avvisi: [...r.avvisi, ...f.avvisi],
     firDigitali: f.firDigitali.map(d => ({ numero: d.numeroFir, idRentri: d.idRentri })),
+    firSenzaPeso: f.firSenzaPeso.map(d => ({
+      numero: d.firNumber,
+      produttoreKey: d.produttoreKey,
+    })),
   }
 }

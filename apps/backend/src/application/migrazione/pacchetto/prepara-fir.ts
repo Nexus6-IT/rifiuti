@@ -23,6 +23,7 @@
 import {
   chiaveAutomezzo,
   chiaveSedeDaSoggettoUnita,
+  chiaveSoggetto,
 } from '../../../domain/migrazione/chiavi-legacy'
 import { esRimorchio, normalizzaTarga } from '../../../domain/migrazione/winwaste/anagrafica'
 import { deduciStatoFir } from '../../../domain/migrazione/winwaste/fir'
@@ -33,7 +34,7 @@ import { parsaFormulari } from '../staging/parser/formulari'
 import { sorgenteDa } from '../staging/parser/scarti'
 import { MappaImport } from './mappa-import'
 import { IndiceAnagrafiche, VoceConteggio } from './prepara-anagrafiche'
-import { ParteFir, RecordFir, RecordFirDigitale } from './record-fir'
+import { ParteFir, RecordFir, RecordFirDigitale, RecordFirSenzaPeso } from './record-fir'
 
 export type CodiceAvvisoFir =
   | 'FIR_NUMBER_DUPLICATO'
@@ -46,6 +47,8 @@ export type CodiceAvvisoFir =
 export interface RisultatoFir {
   readonly fir: readonly RecordFir[]
   readonly firDigitali: readonly RecordFirDigitale[]
+  /** FIR senza peso a destino (in viaggio al taglio): bloccanti, da completare in WinWaste. */
+  readonly firSenzaPeso: readonly RecordFirSenzaPeso[]
   /** Codici di scarto dei FIR (e quelli del parser di FORMULARI), con la tabella. */
   readonly scarti: ReadonlyArray<VoceConteggio<string>>
   readonly avvisi: ReadonlyArray<VoceConteggio<CodiceAvvisoFir>>
@@ -88,8 +91,9 @@ export async function preparaFir(
   const avvisi = new Contatori<CodiceAvvisoFir>()
   const fir: RecordFir[] = []
   const firDigitali: RecordFirDigitale[] = []
+  const firSenzaPeso: RecordFirSenzaPeso[] = []
   if (!staging.ha('FORMULARI')) {
-    return { fir, firDigitali, scarti: [], avvisi: [] }
+    return { fir, firDigitali, firSenzaPeso, scarti: [], avvisi: [] }
   }
   const { indice } = anagrafiche
 
@@ -222,11 +226,22 @@ export async function preparaFir(
       continue
     }
     const netto = rec.nettoKg === null ? null : Math.round(rec.nettoKg * 100) / 100
-    // FIR senza peso a destino (tipicamente in viaggio al taglio): NON importato, con codice dedicato.
-    // `firs.quantity` e' NOT NULL e l'aggregato rifiuta quantita' <= 0: importarlo 'senza quantita'
-    // richiede una decisione di modello (nullable) o un segnaposto. Da registrare a mano (runbook).
+    // FIR senza peso a destino (tipicamente in viaggio al taglio): NON si importa e NON si scarta in
+    // silenzio. E' un BLOCCANTE del caricamento (decisione di Graziano, 20/11): va completato in
+    // WinWaste prima dell'estrazione. `firs.quantity` e' NOT NULL e l'aggregato rifiuta <= 0.
     if (netto === null || netto <= 0) {
-      scarti.conta('FORMULARI', 'FIR_IN_VIAGGIO_SENZA_PESO')
+      let produttoreKey: string | null = null
+      if (rec.produttore) {
+        const ris = indice.risolvi(rec.produttore.codice)
+        if (ris.tipo === 'ok') {
+          try {
+            produttoreKey = chiaveSoggetto(mappa.ditta, ris.tenuto.prec, ris.tenuto.cod)
+          } catch {
+            produttoreKey = null
+          }
+        }
+      }
+      firSenzaPeso.push({ legacyKey: rec.legacyKey, firNumber: rec.formu, produttoreKey })
       continue
     }
     if (netto >= 100_000_000) {
@@ -287,5 +302,5 @@ export async function preparaFir(
   }
   for (const n of contaNumeri.values())
     for (let i = 1; i < n; i++) avvisi.conta('FORMULARI', 'FIR_NUMBER_DUPLICATO')
-  return { fir, firDigitali, scarti: scarti.elenco(), avvisi: avvisi.elenco() }
+  return { fir, firDigitali, firSenzaPeso, scarti: scarti.elenco(), avvisi: avvisi.elenco() }
 }

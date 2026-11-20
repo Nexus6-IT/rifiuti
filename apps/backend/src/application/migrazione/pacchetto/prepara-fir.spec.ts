@@ -107,11 +107,18 @@ describe('I5 T1: FORMULARI -> record fir e fir-digitali (trasformazione pura, fi
 
   it('scarti tipati e contati, mai con valori', () => {
     expect(scarto('PRODUTTORE_NON_RISOLTO')).toBe(1) // 8
-    expect(scarto('FIR_IN_VIAGGIO_SENZA_PESO')).toBe(1) // 9
+    expect(scarto('FIR_IN_VIAGGIO_SENZA_PESO')).toBe(0) // non e uno scarto: e un bloccante (elenco)
     expect(scarto('DESTINATARIO_AMBIGUO')).toBe(1) // 11
     expect(scarto('DESTINATARIO_PROPRIO_NON_IN_MAPPA')).toBe(1) // 14
     expect(scarto('FORMU_ASSENTE')).toBe(1) // 16
     expect(JSON.stringify(r.scarti)).not.toMatch(/IMBALLAGGI|ZZZZZZ|\d{11}/)
+  })
+
+  it('FIR in viaggio senza peso: elenco (numero + chiave CLIFOR del produttore), non importati', () => {
+    expect(r.firSenzaPeso).toEqual([
+      { legacyKey: '0001|2026|FORMULARI|9', firNumber: 'A0009/26', produttoreKey: '0001|C|000001' },
+    ])
+    expect(r.fir.some(f => f.firNumber === 'A0009/26')).toBe(false)
   })
 
   it('digitali: non copiati, numero e IDRENTRI dal registro delle trasmissioni, unita locale dalla mappa', () => {
@@ -178,8 +185,11 @@ describe('I5: migrazione:prepara scrive le fasi FIR nel pacchetto', () => {
       expect(codice).toBe(0)
       expect(out).toContain('FIR/fir: 7 righe')
       expect(out).toContain('FIR/fir-digitali: 2 righe')
+      expect(out).toContain('FIR/fir-senza-peso: 1 righe')
       expect(out).toContain('fir-digitale ABCDE1234567 ID-RENTRI-0001')
       expect(out).toContain('fir-digitale FGHIJ7654321 -')
+      expect(out).toContain('fir-senza-peso A0009/26 0001|C|000001')
+      expect(out.some(l => l.includes('completare'))).toBe(true)
       expect(out.some(l => l.startsWith('scarto FORMULARI FIR_ANNULLATO'))).toBe(true)
       const manifest = JSON.parse(
         await readFile(join(radice, 'pacchetti', 'WW00012026', 'manifest.json'), 'utf8')

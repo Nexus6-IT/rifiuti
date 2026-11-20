@@ -64,6 +64,7 @@ Fasi: `fir` (si carica) e `fir-digitali` (solo elenco: il server la conosce ma n
 | Fase | Record | Chiave legacy |
 |---|---|---|
 | `fir` | `{ legacyKey, firNumber, stato, dataTrasporto, dataFine\|null, cerCode, pericoloso, descrizione, quantitaKg, targa, operazione, produttore, trasportatore\|null, destinatario }` | `ditta\|anno\|FORMULARI\|COD` |
+| `fir-senza-peso` | `{ legacyKey, firNumber, produttoreKey\|null }` (solo elenco, numero + chiave CLIFOR) | idem |
 | `fir-digitali` | `{ legacyKey, numeroFir, idRentri\|null, unitaLocaleId\|null }` | idem (la riga sorgente) |
 
 Una parte e' `{ tipo: 'ditta', dittaKey, dittaId\|null, sedeKey\|null, ruoloKey\|null }` oppure
@@ -83,8 +84,9 @@ Regole (tutte con fixture SINTETICHE: nessun `.bak` era disponibile, forme dei c
   `AWAITING_RECEIVER`. Anche CER, data, quantita', targa, recupero/smaltimento sono dedotti o presi
   dai campi del FIR; stato fisico, provenienza e caratteristiche di pericolo restano vuoti (non si inventano).
 - Scarti per FIR: `PRODUTTORE|DESTINATARIO|TRASPORTATORE_NON_RISOLTO/_AMBIGUO/_PROPRIO_NON_IN_MAPPA`,
-  `FIR_IN_VIAGGIO_SENZA_PESO`, `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
+  `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
   senza sede importata ripiega sulla sede predefinita della ditta (avviso `SEDE_NON_RISOLTA`).
+- **FIR in viaggio senza peso a destino (`NETTO` assente o 0): BLOCCANTE** (`FIR_IN_VIAGGIO_SENZA_PESO`) in `--verifica` e in `carica`, mai importato ne' scartato in silenzio. `prepara` e la CLI di caricamento stampano l'elenco `fir-senza-peso <numero> <chiave CLIFOR>` (nessun dato personale) e l'indicazione: completare i FIR in WinWaste prima dell'estrazione, poi rifare staging e pacchetto. Vale anche se e' l'unico FIR (non e' mai «nulla da caricare»).
 - Ogni FIR importato nasce `bloccato_invio` e senza legame RENTRI: non si trasmette mai prima della riconciliazione (3.6).
 - L'operatore (`--operatore <uuid>`, utente dell'azienda) e' obbligatorio per l'ambito FIR:
   `producer_user_id` e' una FK a `users`. `--verifica`: `OPERATORE_ASSENTE` / `OPERATORE_INESISTENTE`.

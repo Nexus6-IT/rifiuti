@@ -226,11 +226,14 @@ async function collisioniFir(tx: Tx, tenantId: string, righe: readonly RecordFir
  * l'elenco dei FIR da riacquisire da RENTRI (`migrazione:riacquisisci-fir`): i FIR digitali non si
  * copiano (Q5 del 14/11).
  */
+/** Elenco dei FIR in viaggio senza peso a destino: BLOCCANTE (mai caricato). */
+export const FASE_FIR_SENZA_PESO = 'fir-senza-peso'
+
 export const FASI_SOLO_ELENCO: Readonly<Record<AmbitoPacchetto, readonly string[]>> = {
   ANAGRAFICHE: [],
   REGISTRO: [],
   GIACENZE: [],
-  FIR: ['fir-digitali'],
+  FIR: ['fir-digitali', FASE_FIR_SENZA_PESO],
 }
 
 export const FASI_AMBITO: Readonly<Record<AmbitoPacchetto, ReadonlyArray<DefinizioneFase<any>>>> = {

@@ -1,7 +1,12 @@
 import { PacchettoError } from './errori-pacchetto'
 import { mappaValida, T_PROVA, U2 } from '../../../test-support/migrazione/mappa-di-prova'
 import { validaMappa } from './mappa-import'
-import { RecordFir, validaRecordFir, validaRecordFirDigitale } from './record-fir'
+import {
+  RecordFir,
+  validaRecordFir,
+  validaRecordFirDigitale,
+  validaRecordFirSenzaPeso,
+} from './record-fir'
 
 const mappa = validaMappa({
   ...mappaValida(),
@@ -141,6 +146,30 @@ describe('validaRecordFirDigitale', () => {
     ['unita locale non UUID', 'unitaLocaleId', 'x'],
   ])('rifiuta: %s', (_n, campo, valore) => {
     expect(() => validaRecordFirDigitale({ ...dig(), [campo]: valore }, mappa)).toThrow(
+      PacchettoError
+    )
+  })
+})
+
+describe('validaRecordFirSenzaPeso', () => {
+  const r = () => ({
+    legacyKey: '0001|2026|FORMULARI|9',
+    firNumber: 'A0009/26',
+    produttoreKey: '0001|C|000001',
+  })
+  it('valido, anche senza produttore', () => {
+    expect(validaRecordFirSenzaPeso(r(), mappa)).toEqual(r())
+    expect(
+      validaRecordFirSenzaPeso({ ...r(), produttoreKey: null }, mappa).produttoreKey
+    ).toBeNull()
+  })
+  it.each([
+    ['chiave di un altro anno', 'legacyKey', '0001|2025|FORMULARI|9'],
+    ['numero vuoto', 'firNumber', ''],
+    ['chiave CLIFOR di un altra ditta', 'produttoreKey', '0002|C|000001'],
+    ['chiave CLIFOR con unita', 'produttoreKey', '0001|C|000001|0001'],
+  ])('rifiuta: %s', (_n, campo, valore) => {
+    expect(() => validaRecordFirSenzaPeso({ ...r(), [campo]: valore }, mappa)).toThrow(
       PacchettoError
     )
   })

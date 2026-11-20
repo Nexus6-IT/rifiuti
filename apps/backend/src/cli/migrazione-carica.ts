@@ -95,6 +95,20 @@ export function leggiArgomenti(argv: readonly string[]): Argomenti | null {
   }
 }
 
+/** Elenchi di identificativi dei bloccanti (numero FIR e chiave CLIFOR), con l'indicazione da seguire. */
+function scriviElenchi(
+  uscita: UscitaCli,
+  elenchi: Readonly<Record<string, readonly string[]>> | undefined
+): void {
+  for (const [codice, voci] of Object.entries(elenchi ?? {})) {
+    for (const v of voci) uscita.errore(`${codice} ${v}`)
+    if (codice === 'FIR_IN_VIAGGIO_SENZA_PESO')
+      uscita.errore(
+        'completare i FIR in WinWaste prima dell estrazione, poi rifare staging e pacchetto'
+      )
+  }
+}
+
 export async function eseguiCli(
   argv: readonly string[],
   uscita: UscitaCli,
@@ -119,6 +133,7 @@ export async function eseguiCli(
       const rapporto = await servizio.verifica(richiesta)
       for (const [k, v] of Object.entries(rapporto.informazioni)) uscita.scrivi(`${k}: ${v}`)
       for (const b of rapporto.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
+      scriviElenchi(uscita, rapporto.elenchi)
       if (rapporto.bloccanti.length > 0) return 2
       uscita.scrivi('verifica: nessun bloccante')
       return 0
@@ -142,6 +157,7 @@ export async function eseguiCli(
     }
     if (e instanceof BloccantiVerificaError) {
       for (const b of e.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
+      scriviElenchi(uscita, e.elenchi)
       return 2
     }
     if (e instanceof NullaDaCaricareError) {

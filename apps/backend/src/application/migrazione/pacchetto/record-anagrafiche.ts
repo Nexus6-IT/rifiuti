@@ -57,7 +57,7 @@ export interface RecordAutomezzo {
   readonly note: string | null
 }
 
-export type Fase = 'sede' | 'ruolo' | 'automezzo' | 'fir' | 'fir-digitale'
+export type Fase = 'sede' | 'ruolo' | 'automezzo' | 'fir' | 'fir-digitale' | 'fir-senza-peso'
 
 function riga(fase: Fase, campo: string): never {
   throw new PacchettoError('RIGA_NON_VALIDA', `${fase}: ${campo}`)

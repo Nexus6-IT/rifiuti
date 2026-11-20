@@ -63,12 +63,24 @@ export interface RecordFirDigitale {
   readonly unitaLocaleId: string | null
 }
 
+/**
+ * FIR in viaggio senza peso a destino al taglio (fase `fir-senza-peso`, solo elenco): BLOCCANTE in
+ * `--verifica` e in `carica` finche' non viene completato in WinWaste e il pacchetto rifatto. Solo
+ * identificativi: numero del FIR e chiave CLIFOR del produttore, nessun dato personale.
+ */
+export interface RecordFirSenzaPeso {
+  readonly legacyKey: string
+  readonly firNumber: string
+  /** `ditta|C/F|COD` del produttore in CLIFOR, `null` se non risolto. */
+  readonly produttoreKey: string | null
+}
+
 const re = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // eslint-disable-next-line no-control-regex
 const CONTROLLO = /[\u0000-\u001f\u007f]/
 
-type FaseFir = 'fir' | 'fir-digitale'
+type FaseFir = 'fir' | 'fir-digitale' | 'fir-senza-peso'
 
 function riga(fase: FaseFir, campo: string): never {
   throw new PacchettoError('RIGA_NON_VALIDA', `${fase}: ${campo}`)
@@ -218,4 +230,18 @@ export function validaRecordFirDigitale(valore: unknown, mappa: MappaImport): Re
     idRentri,
     unitaLocaleId: ul === null ? null : (ul as string).toLowerCase(),
   }
+}
+
+export function validaRecordFirSenzaPeso(valore: unknown, mappa: MappaImport): RecordFirSenzaPeso {
+  const o = oggetto(valore, 'fir-senza-peso', ['legacyKey', 'firNumber', 'produttoreKey'])
+  const legacyKey = chiaveFirValida(o.legacyKey, 'fir-senza-peso', mappa)
+  const firNumber = testo(o.firNumber, 'fir-senza-peso', 'NUMERO', 1, 50)
+  const k = o.produttoreKey
+  if (
+    k !== null &&
+    (typeof k !== 'string' || !new RegExp(`^${re(mappa.ditta)}\\|[CF]\\|[0-9A-Za-z]{1,6}$`).test(k))
+  ) {
+    riga('fir-senza-peso', 'PRODUTTORE')
+  }
+  return { legacyKey, firNumber, produttoreKey: k as string | null }
 }

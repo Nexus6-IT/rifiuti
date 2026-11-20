@@ -41,8 +41,8 @@ import { CaricaPacchettoService } from './carica-pacchetto.service'
 import { MOTIVO_BLOCCO_FIR_IMPORTATO } from './inserisci-fir'
 import { LottiImportService } from './lotti-import.service'
 
-/** Senza il FIR 10 (stesso numero del 1): e' il caso della collisione, provato a parte. */
-const CASI_CARICABILI = CASI_FIR.filter(c => c.cod !== 10)
+/** Senza il FIR 10 (stesso numero del 1) e il 9 (senza peso): sono bloccanti, provati a parte. */
+const CASI_CARICABILI = CASI_FIR.filter(c => c.cod !== 10 && c.cod !== 9)
 /** FIR cartacei che il pacchetto deve contenere: 1, 2, 3, 12, 13, 15. */
 const ATTESI = 6
 
@@ -317,7 +317,7 @@ describe('Pezzo I5 T1-T3: carica FIR — Postgres reale, ruolo wasteflow_app', (
     })
 
     it('T2: stesso firNumber nel pacchetto: bloccante, mai rinominato, nessun lotto', async () => {
-      const { az, p } = await nuova(CASI_FIR)
+      const { az, p } = await nuova(CASI_FIR.filter(c => c.cod !== 9))
       expect(await eseguiCli(argomenti(az, p, 'ANAGRAFICHE'), uscita().u, servizio)).toBe(0)
       const u = uscita()
       expect(
@@ -445,5 +445,42 @@ describe('Pezzo I5 T1-T3: carica FIR — Postgres reale, ruolo wasteflow_app', (
     expect(await owner.lottoImport.count({ where: { tenantId: az.tenantId, ambito: 'FIR' } })).toBe(
       0
     )
+  })
+
+  describe('FIR in viaggio senza peso: bloccante', () => {
+    it('--verifica e carica escono 2 con FIR_IN_VIAGGIO_SENZA_PESO, elenco (numero + chiave CLIFOR) e indicazione; nessun lotto', async () => {
+      const { az, p } = await nuova([
+        { cod: 1, formu: 'A0001/26' },
+        { cod: 9, formu: 'A0009/26', netto: '0' },
+      ])
+      expect(await eseguiCli(argomenti(az, p, 'ANAGRAFICHE'), uscita().u, servizio)).toBe(0)
+      for (const extra of [['--verifica'], []]) {
+        const u = uscita()
+        expect(
+          await eseguiCli(argomenti(az, p, 'FIR', ...conOperatore(az), ...extra), u.u, servizio)
+        ).toBe(2)
+        const err = u.err.join('\n')
+        expect(err).toContain('BLOCCANTE FIR_IN_VIAGGIO_SENZA_PESO: 1')
+        expect(err).toContain('FIR_IN_VIAGGIO_SENZA_PESO A0009/26 0001|C|000001')
+        expect(err).toContain('completare i FIR in WinWaste prima dell estrazione')
+        expect(err).not.toMatch(/PRODUTTORE UNO|IMBALLAGGI/)
+      }
+      expect(await owner.fIR.count({ where: { tenantId: az.tenantId } })).toBe(0)
+      expect(
+        await owner.lottoImport.count({ where: { tenantId: az.tenantId, ambito: 'FIR' } })
+      ).toBe(0)
+    })
+
+    it('anche quando e l unico FIR (e con i digitali): non e mai «nulla da caricare»', async () => {
+      const { az, p } = await nuova([
+        { cod: 9, formu: 'A0009/26', netto: '0' },
+        { cod: 4, formu: 'ABCDE1234567', c6: 'DIGITALE' },
+      ])
+      expect(await eseguiCli(argomenti(az, p, 'ANAGRAFICHE'), uscita().u, servizio)).toBe(0)
+      const u = uscita()
+      expect(await eseguiCli(argomenti(az, p, 'FIR', ...conOperatore(az)), u.u, servizio)).toBe(2)
+      expect(u.err.join('\n')).toContain('BLOCCANTE FIR_IN_VIAGGIO_SENZA_PESO: 1')
+      expect(u.out.join('\n')).not.toContain('nulla da caricare')
+    })
   })
 })

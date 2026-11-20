@@ -87,6 +87,13 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
       uscita.scrivi(`avviso ${a.tabella} ${a.codice}: ${a.conteggio}`)
     for (const d of rapporto.firDigitali)
       uscita.scrivi(`fir-digitale ${d.numero} ${d.idRentri ?? '-'}`)
+    for (const d of rapporto.firSenzaPeso)
+      uscita.scrivi(`fir-senza-peso ${d.numero} ${d.produttoreKey ?? '-'}`)
+    if (rapporto.firSenzaPeso.length > 0)
+      uscita.scrivi(
+        `ATTENZIONE: ${rapporto.firSenzaPeso.length} FIR in viaggio senza peso a destino bloccano il caricamento: ` +
+          'completare i FIR in WinWaste prima dell estrazione e rifare lo staging e il pacchetto'
+      )
     return 0
   } catch (e) {
     if (e instanceof PacchettoError || e instanceof StagingError) {
