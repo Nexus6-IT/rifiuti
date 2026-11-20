@@ -134,6 +134,8 @@ describe('validaRecordFirDigitale', () => {
   it.each([
     ['numero vuoto', 'numeroFir', ''],
     ['numero con spazi', 'numeroFir', 'AB CD'],
+    ['numero che esce dal percorso', 'numeroFir', '../x'],
+    ['numero con query', 'numeroFir', 'AB?x=1'],
     ['legacyKey di un altro anno', 'legacyKey', '0001|2025|FORMULARI|20'],
     ['idRentri con controllo', 'idRentri', 'a\u0000'],
     ['unita locale non UUID', 'unitaLocaleId', 'x'],

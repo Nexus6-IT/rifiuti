@@ -206,7 +206,8 @@ export function validaRecordFirDigitale(valore: unknown, mappa: MappaImport): Re
   const o = oggetto(valore, 'fir-digitale', ['legacyKey', 'numeroFir', 'idRentri', 'unitaLocaleId'])
   const legacyKey = chiaveFirValida(o.legacyKey, 'fir-digitale', mappa)
   const numeroFir = testo(o.numeroFir, 'fir-digitale', 'NUMERO', 1, 50)
-  if (/\s/.test(numeroFir)) riga('fir-digitale', 'NUMERO')
+  // Va nel percorso della GET verso l'ente: solo caratteri innocui (mai `/`, `?`, `..`, spazi).
+  if (!/^[A-Za-z0-9_-]{1,50}$/.test(numeroFir)) riga('fir-digitale', 'NUMERO')
   const idRentri =
     o.idRentri === null ? null : testo(o.idRentri, 'fir-digitale', 'ID_RENTRI', 1, 255)
   const ul = o.unitaLocaleId
