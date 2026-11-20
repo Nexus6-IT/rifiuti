@@ -19,6 +19,9 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
 import { CandidatiRegistroRentriUseCase } from './candidati-registro-rentri.use-case'
 import { CollegaRegistroRentriUseCase } from './collega-registro-rentri.use-case'
 import { ApriRegistroRentriUseCase } from './apri-registro-rentri.use-case'
+import { ModificaRegistroRentriUseCase } from './modifica-registro-rentri.use-case'
+import { ChiudiRegistroRentriUseCase } from './chiudi-registro-rentri.use-case'
+import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-registro-rentri.use-case'
 
 /**
  * Trasmissione a RENTRI del registro di carico/scarico (F2-9).
@@ -50,6 +53,9 @@ import { ApriRegistroRentriUseCase } from './apri-registro-rentri.use-case'
     CandidatiRegistroRentriUseCase,
     CollegaRegistroRentriUseCase,
     ApriRegistroRentriUseCase,
+    ModificaRegistroRentriUseCase,
+    ChiudiRegistroRentriUseCase,
+    AbbandonaAperturaRegistroRentriUseCase,
     RentriRegistroTrasmissioneJob,
   ],
   exports: [
