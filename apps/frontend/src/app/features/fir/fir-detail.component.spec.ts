@@ -2854,12 +2854,14 @@ describe('FirDetailComponent', () => {
       expect(el().querySelector(DICHIARA)).toBeFalsy()
     })
 
-    it('un FIR non legato (cartaceo) e un VIEWER non la vedono', () => {
+    it('un FIR non legato (cartaceo) non la vede', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(baseFIR))
       fixture.detectChanges()
       expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
 
+    it('un VIEWER non la vede', () => {
       preparaFirLegato('VIEWER', firLegato, 'SostaTecnica')
       fixture.detectChanges()
       expect(el().querySelector(DICHIARA)).toBeFalsy()
@@ -2930,22 +2932,28 @@ describe('FirDetailComponent', () => {
       })
     }
 
-    it('dopo un Reset accettato, un invio RIFIUTATO o una sosta gia firmata il banner non compare', () => {
-      const casi: EventoFirRentri[][] = [
-        [{ ...eventoSosta(), id: 'ev-r', operazione: 'Reset', payload: null }, eventoSosta()],
-        [{ ...eventoSosta(), esito: 'RIFIUTATA' }],
-        [
+    const casiSenzaBanner: [string, () => EventoFirRentri[]][] = [
+      [
+        'dopo un Reset accettato',
+        () => [{ ...eventoSosta(), id: 'ev-r', operazione: 'Reset', payload: null }, eventoSosta()],
+      ],
+      ['un invio chiuso come RIFIUTATO', () => [{ ...eventoSosta(), esito: 'RIFIUTATA' }]],
+      [
+        'una sosta gia firmata',
+        () => [
           { ...eventoSosta(), id: 'ev-f', operazione: 'AcquisizioneFirmaSostaTecnica' },
           eventoSosta(),
         ],
-      ]
-      for (const eventi of casi) {
+      ],
+    ]
+    for (const [nome, eventi] of casiSenzaBanner) {
+      it(`${nome}: il banner di firma non compare`, () => {
         preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaSostaTecnica', 'Reset')
-        rentriFirLifecycleService.eventi.and.returnValue(of({ eventi }))
+        rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: eventi() }))
         fixture.detectChanges()
         expect(el().querySelector(BANNER)).toBeFalsy()
-      }
-    })
+      })
+    }
 
     it('validazione del dialog: luogo 1..1000, due date, ripresa dopo la sospensione', () => {
       preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
