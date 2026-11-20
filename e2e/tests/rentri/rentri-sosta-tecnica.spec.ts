@@ -100,14 +100,15 @@ test.describe('RENTRI — sosta tecnica del FIR in viaggio (come trasportatore)'
 
     // L'azienda dell'utente potrebbe non essere il trasportatore del FIR: in quel caso l'invio non parte e il
     // dialog lo dice. Non e' un difetto: lo scenario non e' applicabile a questo FIR.
-    const esito = await Promise.race([
-      detail.firmaInAttesa.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'firma'),
-      detail.sostaErrore.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'errore'),
-    ])
-    if (esito === 'errore') {
+    // Un solo localizzatore (`or`), non due `waitFor` in gara: quello perdente resterebbe appeso e
+    // fallirebbe dopo la fine del test.
+    await expect(detail.firmaInAttesa.or(detail.sostaErrore)).toBeVisible({ timeout: 30_000 })
+    if (await detail.sostaErrore.isVisible()) {
       const messaggio = (await detail.sostaErrore.textContent()) ?? ''
+      // Solo il 409 SOSTA_TECNICA_SOGGETTO_NON_NEL_FIR (nessuna scrittura sull'ente): un rifiuto dell'ente che
+      // nomina il trasportatore resta un fallimento.
       test.skip(
-        /trasportator/i.test(messaggio),
+        /non compare fra i trasportatori/i.test(messaggio),
         `L'azienda di test non e' il trasportatore di questo FIR: ${messaggio}`
       )
       throw new Error(`Invio della sosta tecnica rifiutato: ${messaggio}`)
