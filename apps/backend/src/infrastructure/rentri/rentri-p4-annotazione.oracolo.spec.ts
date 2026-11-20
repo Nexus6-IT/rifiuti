@@ -163,6 +163,7 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
     numero_fir: string
     stato: string
     identificativo_soggetto: string
+    dati_annotazioni?: unknown[]
   }): Promise<unknown> {
     return app.inject({
       method: 'POST',
@@ -329,11 +330,17 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
   const DIGEST = Buffer.from('digest-oracolo-p4').toString('base64')
   const TOKEN = 'token-oracolo-p4'
 
-  async function preparaFirDaFirmare(numeroFir: string, tenantId: string, stato: string) {
+  async function preparaFirDaFirmare(
+    numeroFir: string,
+    tenantId: string,
+    stato: string,
+    datiAnnotazioni?: unknown[]
+  ) {
     await seminaFormulario({
       numero_fir: numeroFir,
       stato,
       identificativo_soggetto: CF,
+      ...(datiAnnotazioni && { dati_annotazioni: datiAnnotazioni }),
     })
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -466,7 +473,8 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
     const { fir, client, annotazione, eventi } = await preparaFirDaFirmare(
       numeroFir,
       tenantId,
-      'FirmaAnnotazione'
+      'FirmaAnnotazione',
+      [{ annotazione: TESTO, identificativo_soggetto: CF, dati_firma: null }]
     )
     // L'annotazione e' nostra: lo storico locale ne conserva testo e CF.
     await eventi.registra({
@@ -832,4 +840,51 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       }
     }, 60000)
   })
+
+  it('R4: la nostra annotazione tolta dal portale (reset) e una nuova di un ALTRO soggetto: firma() risponde 409 senza authorize', async () => {
+    const tenantId = 'tenant-oracolo-p4-r4'
+    const numeroFir = 'BCDFGH00060ZW'
+    const { fir, client, annotazione } = await preparaFirDaFirmare(
+      numeroFir,
+      tenantId,
+      'InserimentoAccettazione'
+    )
+    const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+    const completatore = avviaCompletatore()
+
+    try {
+      // A1 nostra: accettata, firma ancora da confermare sul telefono.
+      const a1 = await annotazione.invia({
+        firId: fir.id,
+        tenantId,
+        testo: TESTO,
+        intervalloPollingMs: 5,
+        attesaMassimaMs: 50,
+      })
+      expect(a1.firma.esito).toBe('IN_ATTESA')
+      expect(authorize).toHaveBeenCalledTimes(1)
+
+      // Reset fatto dal portale RENTRI (nessuna traccia nel nostro storico), poi A2 di un altro soggetto.
+      await client.resetStato(tenantId, numeroFir, { intervalloMs: 5 })
+      await client.inviaAnnotazione(
+        tenantId,
+        numeroFir,
+        {
+          annotazione: 'Annotazione del trasportatore',
+          identificativo_soggetto: 'VRDLGU70A01H501X',
+        },
+        { intervalloMs: 5 }
+      )
+      expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(
+        'FirmaAnnotazione'
+      )
+
+      await expect(
+        annotazione.firma({ firId: fir.id, tenantId, nuovaSessione: true, ...TEMPI })
+      ).rejects.toMatchObject({ metadata: { rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' } })
+      expect(authorize).toHaveBeenCalledTimes(1)
+    } finally {
+      completatore.ferma()
+    }
+  }, 60000)
 })

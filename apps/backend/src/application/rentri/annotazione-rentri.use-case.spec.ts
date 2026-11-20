@@ -91,11 +91,27 @@ describe('AnnotazioneRentriUseCase', () => {
       leggiStato: jest
         .fn()
         .mockResolvedValue({ versione: 3, stato_formulario: 'FirmaAnnotazione' }),
-      // Dettaglio del formulario: le annotazioni dell'ente (R1, riconciliazione di un invio senza esito).
-      leggiFormulario: jest.fn().mockResolvedValue({
+      // Dettaglio del formulario: le annotazioni dell'ente. Di default rispecchia lo storico: l'ultima
+      // annotazione nostra ACCETTATA e' presso l'ente, firmata solo dopo una chiamata al ciclo di firma.
+      leggiFormulario: jest.fn().mockImplementation(async () => ({
         stato_formulario: 'FirmaAnnotazione',
-        dati_annotazioni: opzioni.annotazioniEnte ?? [],
-      }),
+        dati_annotazioni: opzioni.annotazioniEnte ?? annotazioniDaStorico(),
+      })),
+      leggiStatoTransazione: jest.fn().mockResolvedValue({ stato: 'NON_TROVATA' }),
+    }
+    function annotazioniDaStorico() {
+      const accettata = eventi.righe
+        .slice()
+        .reverse()
+        .find(r => r.operazione === 'Annotazione' && r.esito === 'ACCETTATA')
+      if (!accettata) return []
+      const firmata = completa.execute.mock.calls.length > 0
+      return [
+        {
+          ...(accettata.payload as Record<string, unknown>),
+          dati_firma: firmata ? { data_firma: '2026-11-20T10:00:00Z' } : null,
+        },
+      ]
     }
     const completa = {
       execute: jest
@@ -906,6 +922,181 @@ describe('AnnotazioneRentriUseCase', () => {
         operazione: 'Annotazione',
         esito: 'ACCETTATA',
       })
+    })
+  })
+
+  describe('terza verifica: R4 (firma solo se l ente conferma), R5, R6, R7', () => {
+    const sha = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex')
+    const ente = (testo: string, cf = CF_TENANT, firmata = false) => ({
+      annotazione: testo,
+      identificativo_soggetto: cf,
+      dati_firma: firmata ? { data_firma: '2026-11-20T09:00:00Z' } : null,
+    })
+    const firma = (a: ReturnType<typeof ambiente>) =>
+      a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+
+    it.each([
+      [
+        'l annotazione in attesa e di un altro soggetto',
+        [ente('Testo del trasportatore', '99999999990')],
+      ],
+      ['nostro soggetto ma testo diverso da quello mostrato', [ente('Un altro testo')]],
+      [
+        'due annotazioni non firmate',
+        [ente('Annotazione in sospeso'), ente('Annotazione in sospeso')],
+      ],
+      ['nessuna annotazione non firmata', [ente('Annotazione in sospeso', CF_TENANT, true)]],
+    ])('R4: %s -> 409 ANNOTAZIONE_DI_ALTRO_SOGGETTO senza authorize', async (_n, presso) => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'], annotazioniEnte: presso })
+      await annotazioneNostraInSospeso(a)
+
+      await expect(firma(a)).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('R4: dopo un Reset la nostra annotazione non e piu in sospeso, anche se lo storico la dava ACCETTATA', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [ente('Annotazione in sospeso')],
+      })
+      await annotazioneNostraInSospeso(a)
+      await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'Reset',
+        payload: null,
+        transazioneId: null,
+        esito: 'ACCETTATA',
+        dettaglioEnte: null,
+        statoFormularioDopo: 'InserimentoAccettazione',
+        utenteId: 'u1',
+      })
+
+      await expect(firma(a)).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('R4: annotazione confermata dall ente (soggetto e hash): si firma una volta, legame con l hash del testo', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [ente('Vecchia firmata', CF_TENANT, true), ente('Annotazione in sospeso')],
+      })
+      await annotazioneNostraInSospeso(a)
+
+      await firma(a)
+
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[0].payload).toEqual(
+        expect.objectContaining({ testoSha256: sha('Annotazione in sospeso') })
+      )
+    })
+
+    async function incerta(a: ReturnType<typeof ambiente>, creato: Date) {
+      const riga = await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'Annotazione',
+        payload: { annotazione: 'Senza esito', identificativo_soggetto: CF_TENANT },
+        transazioneId: 'tx-incerta',
+        esito: 'INCERTA',
+        dettaglioEnte: 'polling esaurito',
+        statoFormularioDopo: null,
+        utenteId: 'u1',
+      })
+      riga.createdAt = creato
+    }
+
+    it('R5: transazione ancora in elaborazione presso l ente: 409 ANNOTAZIONE_IN_VERIFICA anche fuori dalla finestra, nessun POST', async () => {
+      const a = ambiente({ annotazioniEnte: [] })
+      a.client.leggiStatoTransazione.mockResolvedValue({ stato: 'IN_ELABORAZIONE' })
+      await incerta(a, new Date(Date.now() - 24 * 3600_000))
+
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_IN_VERIFICA' }),
+      })
+      expect(a.client.leggiStatoTransazione).toHaveBeenCalledWith(TENANT, 'tx-incerta')
+      expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['non trovata', { stato: 'NON_TROVATA' }],
+      ['completata in errore', { stato: 'COMPLETATA', esito: { errore: true, validazione: [] } }],
+    ])(
+      'R5: transazione %s: assente subito (senza aspettare la finestra), si reinvia',
+      async (_n, statoTx) => {
+        const a = ambiente({ annotazioniEnte: [] })
+        a.client.leggiStatoTransazione.mockResolvedValue(statoTx)
+        await incerta(a, new Date())
+
+        await a.useCase.invia(comando())
+
+        expect(a.client.inviaAnnotazione).toHaveBeenCalledTimes(1)
+        const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
+        expect(storico[1]).toMatchObject({ operazione: 'Annotazione', esito: 'RIFIUTATA' })
+      }
+    )
+
+    it('R5: un invio incerto con transazione nota salva il transazione_id nella riga INCERTA', async () => {
+      const a = ambiente()
+      a.client.inviaAnnotazione.mockRejectedValue(
+        new TrasmissioneRentriIncertaError(
+          'ESITO_NON_DISPONIBILE',
+          undefined,
+          'annotazione',
+          'tx-9'
+        )
+      )
+      await a.useCase.invia(comando()).catch(() => undefined)
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[0]).toMatchObject({
+        esito: 'INCERTA',
+        transazioneId: 'tx-9',
+      })
+    })
+
+    it('R6: firma COMPLETATA ma l ente non mostra dati_firma: la riga della firma lo segnala', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [ente('Annotazione in sospeso')],
+      })
+      await annotazioneNostraInSospeso(a)
+
+      await firma(a)
+
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[0].dettaglioEnte).toContain('dati_firma')
+    })
+
+    it('R6: firma COMPLETATA e annotazione firmata presso l ente: nessuna segnalazione', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await annotazioneNostraInSospeso(a)
+
+      await firma(a)
+
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[0].dettaglioEnte).toBeNull()
+    })
+
+    it('R7: firma() mentre un altro processo sta inviando: 409 SESSIONE_FIRMA_IN_CORSO senza riconciliare (nessuna ACCETTATA doppia)', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [ente('Senza esito')],
+      })
+      await incerta(a, new Date())
+      await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: 'ANNOTAZIONE_INVIO',
+        scadenza: new Date(Date.now() + 60_000),
+      })
+
+      await expect(firma(a)).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'SESSIONE_FIRMA_IN_CORSO' }),
+      })
+      expect(a.client.leggiFormulario).not.toHaveBeenCalled()
+      expect(await a.eventi.elenca(TENANT, FIR_ID)).toHaveLength(1)
+      expect(a.completa.execute).not.toHaveBeenCalled()
     })
   })
 })

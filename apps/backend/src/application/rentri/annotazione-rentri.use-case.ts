@@ -6,7 +6,11 @@ import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.int
 import { DomainException } from '../../domain/shared/domain-exception'
 import { normalizzaCodiceFiscaleSoggetto } from '../../domain/shared/codice-fiscale-soggetto'
 import { LoggerService } from '../../core/logger/logger.service'
-import { EsitoFormulario, RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import {
+  EsitoFormulario,
+  RENTRIApiClient,
+  TrasmissioneRentriIncertaError,
+} from '../../infrastructure/rentri/rentri-api.client'
 import {
   RentriApiError,
   RispostaRentriInattesaError,
@@ -65,6 +69,8 @@ export const FINESTRA_RICONCILIAZIONE_ANNOTAZIONE_MS = DURATA_MASSIMA_FASE_ENTE_
 
 const OPERAZIONE_INVIO = 'Annotazione'
 const OPERAZIONE_FIRMA = 'AcquisizioneFirmaAnnotazione'
+/** Operazioni dello storico dopo le quali un'annotazione ACCETTATA precedente non e' piu' «in sospeso». */
+const OPERAZIONI_CHE_AZZERANO: readonly string[] = ['Reset', 'RollbackFirma']
 
 export interface ComandoAnnotazione {
   firId: string
@@ -311,13 +317,15 @@ export class AnnotazioneRentriUseCase {
         })
         throw this.rifiutata(numeroFir, dettaglio)
       }
-      // Rete, timeout o resilienza esaurita: non si sa se l'ente abbia registrato.
+      // Rete, timeout o resilienza esaurita: non si sa se l'ente abbia registrato. Se la transazione e' nota
+      // (202 ricevuto, esito non arrivato) la si conserva: la riconciliazione ne interroga lo stato (R5).
       await this.registraEvento({
         tenantId,
         firId,
         operazione: OPERAZIONE_INVIO,
         payload: corpo,
-        transazioneId: null,
+        transazioneId:
+          errore instanceof TrasmissioneRentriIncertaError ? (errore.transazioneId ?? null) : null,
         esito: 'INCERTA',
         dettaglioEnte: errore instanceof Error ? errore.message : String(errore),
         statoFormularioDopo: null,
@@ -380,6 +388,19 @@ export class AnnotazioneRentriUseCase {
     const fir = await this.leggiFirLegato(firId, tenantId)
     await this.verificaModulo(tenantId)
 
+    // R7: un invio in corso in un altro processo (prenotazione viva) ha la precedenza: niente riconciliazione
+    // concorrente (eviterebbe due righe ACCETTATA per la stessa annotazione) e niente firma.
+    const aperta = await this.sessioni.trovaAperta(tenantId, firId)
+    if (
+      aperta?.tipoOperazione === TIPO_PRENOTAZIONE_INVIO &&
+      aperta.scadenza.getTime() > Date.now()
+    ) {
+      throw DomainException.businessRuleViolation(
+        'SESSIONE_FIRMA_IN_CORSO',
+        "Un'annotazione è in invio all'ente su questo formulario: attendi qualche secondo e riprova la firma."
+      )
+    }
+
     // R1: un nostro invio senza esito si riconcilia con l'ente PRIMA di qualunque authorize. Nessuna
     // prenotazione qui: una sessione di firma ANNOTAZIONE puo' essere aperta (ripresa), e un invio in corso
     // (INVIATA recente, non ancora presso l'ente) da' 409 grazie alla finestra, senza scrivere nulla.
@@ -409,11 +430,32 @@ export class AnnotazioneRentriUseCase {
       )
     }
     // M1: la firma si lega al testo che si firma (transazione dell'annotazione e hash del testo).
+    const testoSospeso = String(
+      (sospesa.payload as { annotazione?: string } | null)?.annotazione ?? ''
+    )
     const legame = {
       transazioneIdAnnotazione: sospesa.transazioneId,
-      testoSha256: sha256(
-        String((sospesa.payload as { annotazione?: string } | null)?.annotazione ?? '')
-      ),
+      testoSha256: sha256(testoSospeso),
+    }
+
+    // R4: lo storico locale non basta (un reset dal banner o dal portale e una nuova annotazione di un altro
+    // soggetto lo renderebbero falso). Prima di ogni authorize l'ente deve mostrare UNA sola annotazione non
+    // firmata, con il nostro codice fiscale e lo stesso hash del testo che mostriamo e leghiamo.
+    const dettaglio = await this.rentriApiClient.leggiFormulario(
+      tenantId,
+      fir.rentriNumeroFir as string
+    )
+    const nonFirmate = annotazioniDelDettaglio(dettaglio.dati_annotazioni).filter(a => !a.firmata)
+    const confermata =
+      nonFirmate.length === 1 &&
+      normalizzaCodiceFiscaleSoggetto(nonFirmate[0].identificativoSoggetto) === cf &&
+      sha256(nonFirmate[0].testo) === legame.testoSha256
+    if (!confermata) {
+      throw DomainException.businessRuleViolation(
+        'ANNOTAZIONE_DI_ALTRO_SOGGETTO',
+        "L'annotazione in attesa di firma presso l'ente non è quella inserita dalla tua azienda (soggetto o testo " +
+          "diversi): la deve firmare chi l'ha inserita. Nessuna firma è stata richiesta."
+      )
     }
 
     let firma: EsitoCompletamentoFirma
@@ -446,13 +488,18 @@ export class AnnotazioneRentriUseCase {
       throw errore
     }
 
+    const evento = eventoDaEsitoFirma(firma)
+    if (firma.esito === 'COMPLETATA') {
+      const anomalia = await this.verificaFirmaPressoEnte(fir, tenantId, cf, legame.testoSha256)
+      if (anomalia) evento.dettaglioEnte = anomalia
+    }
     await this.registraEvento({
       tenantId,
       firId,
       operazione: OPERAZIONE_FIRMA,
       payload: legame,
       transazioneId: null,
-      ...eventoDaEsitoFirma(firma),
+      ...evento,
       utenteId: utenteId ?? null,
     })
     this.logger.info("Firma dell'annotazione RENTRI", {
@@ -501,6 +548,43 @@ export class AnnotazioneRentriUseCase {
   }
 
   /**
+   * R6: dopo una firma accettata l'ente deve mostrare la nostra annotazione con `dati_firma`. Se non e' cosi'
+   * (o il dettaglio non si legge) la firma resta valida (l'esito e' dell'ente) ma la riga dello storico lo
+   * segnala: e' l'ipotesi FEDELTA §8.3 su cui poggiano riconciliazione e R4.
+   */
+  private async verificaFirmaPressoEnte(
+    fir: FIR,
+    tenantId: string,
+    cf: string,
+    testoSha256: string
+  ): Promise<string | null> {
+    try {
+      const dettaglio = await this.rentriApiClient.leggiFormulario(
+        tenantId,
+        fir.rentriNumeroFir as string
+      )
+      const nostre = annotazioniDelDettaglio(dettaglio.dati_annotazioni).filter(
+        a =>
+          normalizzaCodiceFiscaleSoggetto(a.identificativoSoggetto) === cf &&
+          sha256(a.testo) === testoSha256
+      )
+      if (nostre.some(a => a.firmata) && !nostre.some(a => !a.firmata)) return null
+      this.logger.warn("Firma dell'annotazione accettata ma senza dati_firma presso l'ente", {
+        firId: fir.id,
+        tenantId,
+      })
+      return "firma accettata, ma il dettaglio dell'ente non mostra dati_firma sull'annotazione: da verificare"
+    } catch (errore) {
+      this.logger.warn("Verifica di dati_firma dopo la firma dell'annotazione non riuscita", {
+        firId: fir.id,
+        tenantId,
+        causa: errore instanceof Error ? errore.message : String(errore),
+      })
+      return "firma accettata; verifica di dati_firma presso l'ente non riuscita"
+    }
+  }
+
+  /**
    * Il nostro ultimo invio rimasto senza esito: la riga `Annotazione` piu' recente (dopo l'ultima firma
    * accettata di un'annotazione) se e' `INVIATA` o `INCERTA`. Una riga successiva `ACCETTATA`/`RIFIUTATA`
    * (esito o riconciliazione) lo chiude.
@@ -542,19 +626,37 @@ export class AnnotazioneRentriUseCase {
         ? normalizzaCodiceFiscaleSoggetto(inviato.identificativo_soggetto)
         : null
 
+    // R5: se la transazione e' nota se ne chiede lo stato all'ente invece di affidarsi solo al tempo: in
+    // elaborazione = ancora da decidere; non trovata o completata = decisione possibile subito.
+    let statoTransazioneNoto = false
+    if (pendente.transazioneId) {
+      const transazione = await this.rentriApiClient.leggiStatoTransazione(
+        tenantId,
+        pendente.transazioneId
+      )
+      if (transazione.stato === 'IN_ELABORAZIONE') {
+        throw DomainException.businessRuleViolation(
+          'ANNOTAZIONE_IN_VERIFICA',
+          "L'ultima annotazione inviata è ancora in elaborazione presso l'ente: riprova fra qualche minuto. " +
+            'Nessuna operazione è stata inviata.'
+        )
+      }
+      statoTransazioneNoto = true
+    }
+
     const dettaglio = await this.rentriApiClient.leggiFormulario(
       tenantId,
       fir.rentriNumeroFir as string
     )
+    // Al massimo una annotazione non firmata alla volta (`FirmaAnnotazione`): se l'ente ne mostra piu' d'una
+    // non si sa quale sia la nostra (per esempio `dati_firma` non valorizzato), e non si adotta nulla.
+    const nonFirmate = annotazioniDelDettaglio(dettaglio.dati_annotazioni).filter(a => !a.firmata)
     const presente =
       testo !== null &&
       soggetto !== null &&
-      annotazioniDelDettaglio(dettaglio.dati_annotazioni).some(
-        a =>
-          a.firmata === false &&
-          normalizzaCodiceFiscaleSoggetto(a.identificativoSoggetto) === soggetto &&
-          sha256(a.testo) === sha256(testo)
-      )
+      nonFirmate.length === 1 &&
+      normalizzaCodiceFiscaleSoggetto(nonFirmate[0].identificativoSoggetto) === soggetto &&
+      sha256(nonFirmate[0].testo) === sha256(testo)
 
     const base = {
       tenantId,
@@ -581,7 +683,10 @@ export class AnnotazioneRentriUseCase {
       return
     }
 
-    if (Date.now() - pendente.createdAt.getTime() < FINESTRA_RICONCILIAZIONE_ANNOTAZIONE_MS) {
+    if (
+      !statoTransazioneNoto &&
+      Date.now() - pendente.createdAt.getTime() < FINESTRA_RICONCILIAZIONE_ANNOTAZIONE_MS
+    ) {
       throw DomainException.businessRuleViolation(
         'ANNOTAZIONE_IN_VERIFICA',
         "L'ultima annotazione inviata è ancora senza esito e l'ente non la mostra: potrebbe essere ancora in " +
@@ -685,6 +790,8 @@ export class AnnotazioneRentriUseCase {
     const storico = await this.eventi.elenca(tenantId, firId) // dal piu' recente
     for (const e of storico) {
       if (e.operazione === OPERAZIONE_FIRMA && e.esito === 'ACCETTATA') return null
+      // Un reset o un rollback accettati cambiano cio' che c'e' presso l'ente: lo storico precedente non vale.
+      if (OPERAZIONI_CHE_AZZERANO.includes(e.operazione) && e.esito === 'ACCETTATA') return null
       if (e.operazione === OPERAZIONE_INVIO && e.esito === 'ACCETTATA') {
         const soggetto = (e.payload as { identificativo_soggetto?: string } | null)
           ?.identificativo_soggetto

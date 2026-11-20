@@ -8,7 +8,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
-import { gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
+import { gestisciRispostaErroreRentri, attendiMs, RentriApiError } from './rentri-http-resilienza'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 
@@ -762,8 +762,49 @@ export class RENTRIApiClient {
     }
 
     // La transazione resta nell'esito: finisce nello storico (`fir_eventi_rentri.transazione_id`).
-    const esito = await this.attendiEsito(tenantId, transazioneId, opzioni)
+    let esito: EsitoFormulario
+    try {
+      esito = await this.attendiEsito(tenantId, transazioneId, opzioni)
+    } catch (errore) {
+      // Annotazione: l'ente ha la transazione ma l'esito non e' arrivato (polling esaurito, rete). Si porta
+      // l'identificativo nell'errore incerto, cosi' la riconciliazione ne interroga lo stato. Un rifiuto
+      // definitivo (4xx non ritentabile) resta tale.
+      const definitivo = errore instanceof RentriApiError && !errore.retryable
+      if (operazione === 'annotazione' && !definitivo) {
+        throw new TrasmissioneRentriIncertaError(
+          'ESITO_NON_DISPONIBILE',
+          undefined,
+          'annotazione',
+          transazioneId
+        )
+      }
+      throw errore
+    }
     return { ...esito, transazioneId }
+  }
+
+  /**
+   * Stato attuale di una transazione NONBLOCK_PULL, con UNA sola interrogazione (niente polling): serve a
+   * riconciliare una scrittura rimasta senza esito. `/status` 200 = in elaborazione; 404 = l'ente non la
+   * conosce; 303 = esito pronto (letto da `/result`; un 400 di «richiesta anticipata» vale come in elaborazione).
+   */
+  async leggiStatoTransazione(
+    tenantId: string,
+    transazioneId: string
+  ): Promise<
+    | { stato: 'IN_ELABORAZIONE' }
+    | { stato: 'NON_TROVATA' }
+    | { stato: 'COMPLETATA'; esito: EsitoFormulario }
+  > {
+    try {
+      const stato = await this.interrogaStatoTransazione(tenantId, transazioneId)
+      if (!stato.pronto) return { stato: 'IN_ELABORAZIONE' }
+      const esito = await this.leggiEsitoTransazione(tenantId, stato.urlEsito, transazioneId)
+      return esito === null ? { stato: 'IN_ELABORAZIONE' } : { stato: 'COMPLETATA', esito }
+    } catch (errore) {
+      if (errore instanceof TransazioneRentriNonTrovataError) return { stato: 'NON_TROVATA' }
+      throw errore
+    }
   }
 
   /** POST asincrona senza corpo di dominio + attesa dell'esito (`rollback-firma`, `reset`). */
@@ -1730,17 +1771,28 @@ export { RentriApiError } from './rentri-http-resilienza'
  */
 export class TrasmissioneRentriIncertaError extends Error {
   constructor(
-    readonly causa: 'HTTP_5XX' | 'NESSUNA_RISPOSTA' | 'RISPOSTA_SENZA_TRANSAZIONE',
+    readonly causa:
+      | 'HTTP_5XX'
+      | 'NESSUNA_RISPOSTA'
+      | 'RISPOSTA_SENZA_TRANSAZIONE'
+      | 'ESITO_NON_DISPONIBILE',
     readonly status?: number,
     /** Cosa si stava scrivendo (default: la creazione del formulario). */
-    readonly oggetto: string = 'creazione del formulario'
+    readonly oggetto: string = 'creazione del formulario',
+    /**
+     * Transazione gia' assegnata dall'ente, se nota (`ESITO_NON_DISPONIBILE`: 202 ricevuto, esito non arrivato):
+     * permette di interrogarne lo stato in seguito invece di indovinare.
+     */
+    readonly transazioneId?: string
   ) {
     super(
       causa === 'HTTP_5XX'
         ? `RENTRI ha risposto ${status} alla ${oggetto}: esito della trasmissione incerto`
         : causa === 'NESSUNA_RISPOSTA'
           ? `Nessuna risposta da RENTRI alla ${oggetto}: esito della trasmissione incerto`
-          : `RENTRI ha risposto alla ${oggetto} senza transazione_id: esito della trasmissione incerto`
+          : causa === 'ESITO_NON_DISPONIBILE'
+            ? `Esito della ${oggetto} non disponibile (transazione ${transazioneId}): esito della trasmissione incerto`
+            : `RENTRI ha risposto alla ${oggetto} senza transazione_id: esito della trasmissione incerto`
     )
     this.name = 'TrasmissioneRentriIncertaError'
   }
