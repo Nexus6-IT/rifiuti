@@ -69,6 +69,13 @@ export class FirDetailPage {
   readonly firmaAnnullaRichiesta: Locator
   readonly firmaPartenzaBanner: Locator
   readonly firmaPartenza: Locator
+  readonly aggiungiAnnotazione: Locator
+  readonly annotazioneDialog: Locator
+  readonly annotazioneTesto: Locator
+  readonly annotazioneContatore: Locator
+  readonly annotazioneConferma: Locator
+  readonly annotazioneErrore: Locator
+  readonly firmaAnnotazioneBanner: Locator
   readonly indicaQuantita: Locator
   readonly indicaTrasporto: Locator
   readonly quantitaDialog: Locator
@@ -171,6 +178,13 @@ export class FirDetailPage {
     this.firmaAnnullaRichiesta = page.getByTestId('fir-detail-firma-annulla-richiesta')
     this.firmaPartenzaBanner = page.getByTestId('fir-detail-firma-partenza-banner')
     this.firmaPartenza = page.getByTestId('fir-detail-firma-partenza')
+    this.aggiungiAnnotazione = page.getByTestId('fir-detail-rentri-aggiungi-annotazione')
+    this.annotazioneDialog = page.getByTestId('fir-detail-rentri-annotazione-dialog')
+    this.annotazioneTesto = page.getByTestId('fir-detail-rentri-annotazione-testo')
+    this.annotazioneContatore = page.getByTestId('fir-detail-rentri-annotazione-contatore')
+    this.annotazioneConferma = page.getByTestId('fir-detail-rentri-annotazione-confirm')
+    this.annotazioneErrore = page.getByTestId('fir-detail-rentri-annotazione-errore')
+    this.firmaAnnotazioneBanner = page.getByTestId('fir-detail-firma-annotazione-banner')
     this.indicaQuantita = page.getByTestId('fir-detail-rentri-indica-quantita')
     this.indicaTrasporto = page.getByTestId('fir-detail-rentri-indica-trasporto')
     this.quantitaDialog = page.getByTestId('fir-detail-rentri-quantita-dialog')

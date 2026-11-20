@@ -6,7 +6,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 // test non serve animare — serve solo che l'animazione non sia un errore.
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
-import { of, Subject, throwError } from 'rxjs'
+import { NEVER, of, Subject, throwError } from 'rxjs'
 import { FirDetailComponent } from './fir-detail.component'
 import { FirService } from './fir.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -98,6 +98,8 @@ describe('FirDetailComponent', () => {
       'inviaQuantita',
       'inviaTrasporto',
       'firmaPartenza',
+      'aggiungiAnnotazione',
+      'firmaAnnotazione',
       'eventi',
       'ultimoTrasporto',
     ])
@@ -2479,6 +2481,231 @@ describe('FirDetailComponent', () => {
           jasmine.objectContaining({ summary: 'Presa in carico registrata' })
         )
       })
+    })
+  })
+
+  describe('Annotazione (FIR in viaggio P4)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000777',
+    }
+    const azioni = (...operazioni: string[]) =>
+      of({
+        stato: 'InserimentoAccettazione',
+        versione: 1,
+        azioni: operazioni.map(operazione => ({ operazione, verbo: operazione })),
+      })
+    const el = (): HTMLElement => fixture.nativeElement
+    const AGGIUNGI = '[data-testid="fir-detail-rentri-aggiungi-annotazione"]'
+    const BANNER = '[data-testid="fir-detail-firma-annotazione-banner"]'
+    const FIRMA = '[data-testid="fir-detail-firma-annotazione"]'
+    let messageService: MessageService
+
+    function preparaFirLegato(role: string, fir: FIR, ...operazioni: string[]): void {
+      setup({ role })
+      firService.getFIRById.and.returnValue(of(fir))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni(...operazioni))
+      messageService = fixture.debugElement.injector.get(MessageService)
+    }
+
+    it("il pulsante «Aggiungi un'annotazione» nasce SOLO dall'azione Annotazione dell'ente", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione', 'SostaTecnica')
+      fixture.detectChanges()
+      expect(el().querySelector(AGGIUNGI)).toBeTruthy()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+    })
+
+    it('senza Annotazione fra le azioni (stato locale qualunque) non compare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Accettazione', 'Annulla')
+      fixture.detectChanges()
+      expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+    })
+
+    it('un FIR non legato (cartaceo) e un VIEWER non la vedono', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+      expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+
+      preparaFirLegato('VIEWER', firLegato, 'Annotazione')
+      fixture.detectChanges()
+      expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+    })
+
+    it("con una firma gia in attesa non si puo aggiungere un'altra annotazione", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({
+          sessione: {
+            id: 's1',
+            tipoOperazione: 'ANNOTAZIONE',
+            scadenza: new Date(Date.now() + 90_000).toISOString(),
+            stato: 'IN_ATTESA' as const,
+            scaduta: false,
+          },
+        })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+      expect(el().querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeTruthy()
+    })
+
+    it("«Firma l'annotazione» compare solo se l'ente propone AcquisizioneFirmaAnnotazione, e chiama la rotta", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+      rentriFirLifecycleService.firmaAnnotazione.and.returnValue(
+        of({ esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)?.textContent).toContain('Firma RENTRI da completare')
+      expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+      const aggiungi = spyOn(messageService, 'add')
+
+      ;(el().querySelector(FIRMA) as HTMLElement).querySelector('button')?.click()
+
+      expect(rentriFirLifecycleService.firmaAnnotazione).toHaveBeenCalledOnceWith('fir-1')
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('il testo non puo essere vuoto, di soli spazi o oltre 10.000 caratteri', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      fixture.detectChanges()
+      component.apriDialogAnnotazione()
+
+      expect(component.annotazioneValida()).toBeFalse()
+      component['annotazioneTesto'] = '   \n '
+      expect(component.annotazioneValida()).toBeFalse()
+      component['annotazioneTesto'] = 'x'.repeat(10000)
+      expect(component.annotazioneValida()).toBeTrue()
+      component['annotazioneTesto'] = 'x'.repeat(10001)
+      expect(component.annotazioneValida()).toBeFalse()
+    })
+
+    it('conferma: invia il testo, avvisa, chiude il dialog e ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
+        of({
+          operazione: 'Annotazione' as const,
+          statoFormulario: 'FirmaAnnotazione',
+          firma: { esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'Carico pesato due volte'
+
+      component.confermaAnnotazione()
+
+      expect(rentriFirLifecycleService.aggiungiAnnotazione).toHaveBeenCalledOnceWith(
+        'fir-1',
+        'Carico pesato due volte'
+      )
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Annotazione inviata a RENTRI' })
+      )
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(component['annotazioneDialogVisible']()).toBeFalse()
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it("annotazione registrata ma firma da completare: avviso, nessun errore, l'annotazione non si perde", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
+        of({
+          operazione: 'Annotazione' as const,
+          statoFormulario: 'FirmaAnnotazione',
+          firma: {
+            esito: 'DA_COMPLETARE' as const,
+            avviso: "Firma RENTRI da completare: puoi riprovare da «Firma l'annotazione».",
+          },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'x'
+
+      component.confermaAnnotazione()
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Firma RENTRI da completare',
+          detail: jasmine.stringContaining("Firma l'annotazione"),
+        })
+      )
+    })
+
+    it('firma in attesa sul telefono: messaggio informativo, nessuna doppia richiesta', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
+        of({
+          operazione: 'Annotazione' as const,
+          statoFormulario: 'FirmaAnnotazione',
+          firma: {
+            esito: 'IN_ATTESA' as const,
+            handle: 'h',
+            scadenzaAutorizzazione: new Date().toISOString(),
+          },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'x'
+
+      component.confermaAnnotazione()
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'info', summary: 'Firma non ancora confermata' })
+      )
+      expect(rentriFirLifecycleService.firmaAnnotazione).not.toHaveBeenCalled()
+    })
+
+    it('errore 409 (CF fuori dal FIR): il messaggio resta nel dialog, il testo scritto non si perde', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { message: 'Il codice fiscale della tua azienda non compare fra i soggetti.' },
+        }))
+      )
+      fixture.detectChanges()
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'Testo da non perdere'
+
+      component.confermaAnnotazione()
+
+      expect(component['annotazioneErrore']()).toContain('non compare fra i soggetti')
+      expect(component['annotazioneTesto']).toBe('Testo da non perdere')
+      expect(component['annotazioneDialogVisible']()).toBeTrue()
+      expect(component['annotazioneInCorso']()).toBeFalse()
+    })
+
+    it('non invia due volte mentre la richiesta e in corso', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(NEVER)
+      fixture.detectChanges()
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'x'
+
+      component.confermaAnnotazione()
+      component.confermaAnnotazione()
+
+      expect(rentriFirLifecycleService.aggiungiAnnotazione).toHaveBeenCalledTimes(1)
+    })
+
+    it("lo storico nomina l'annotazione e la sua firma", () => {
+      preparaFirLegato('OPERATOR', firLegato)
+      fixture.detectChanges()
+      expect(component.etichettaEvento('Annotazione')).toBe('Annotazione aggiunta')
+      expect(component.etichettaEvento('AcquisizioneFirmaAnnotazione')).toBe('Annotazione firmata')
     })
   })
 })

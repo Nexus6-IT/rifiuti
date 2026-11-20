@@ -70,6 +70,22 @@ export const OPERAZIONI_FIRMA_PARTENZA: readonly string[] = [
   'AcquisizioneFirmaTrasportatore',
 ]
 
+/** Esito della firma proposta subito dopo l'annotazione: quelli del ciclo comune, piu' «da completare». */
+export type EsitoFirmaAnnotazione =
+  | EsitoFirmaRemota
+  | { esito: 'DA_COMPLETARE'; codice?: string; avviso: string }
+
+/** Esito di `POST /rentri/fir/:id/annotazione` (FIR in viaggio, P4). */
+export interface EsitoAnnotazione {
+  operazione: 'Annotazione'
+  /** Stato riletto dall'ente dopo l'invio (`FirmaAnnotazione`); null se la rilettura non e' riuscita. */
+  statoFormulario: string | null
+  firma: EsitoFirmaAnnotazione
+}
+
+/** Limite del contratto RENTRI per il testo di un'annotazione (caratteri). */
+export const ANNOTAZIONE_RENTRI_MAX = 10000
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
@@ -230,6 +246,22 @@ export class RentriFirLifecycleService {
     payload: { nuovaSessione?: boolean } = {}
   ): Observable<EsitoFirmaPartenza> {
     return this.http.post<EsitoFirmaPartenza>(`${this.API_URL}/${firId}/firma-partenza`, payload)
+  }
+
+  /**
+   * «Aggiungi un'annotazione» (FIR in viaggio, P4): il testo si firma subito con la firma remota. Il codice
+   * fiscale del soggetto e' sempre quello dell'azienda selezionata (lo mette il backend).
+   */
+  aggiungiAnnotazione(firId: string, testo: string): Observable<EsitoAnnotazione> {
+    return this.http.post<EsitoAnnotazione>(`${this.API_URL}/${firId}/annotazione`, { testo })
+  }
+
+  /** «Firma l'annotazione»: ripresa della firma di un'annotazione gia' registrata presso l'ente. */
+  firmaAnnotazione(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaRemota> {
+    return this.http.post<EsitoFirmaRemota>(`${this.API_URL}/${firId}/firma-annotazione`, payload)
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

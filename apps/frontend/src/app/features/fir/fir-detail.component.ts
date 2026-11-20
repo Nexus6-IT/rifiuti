@@ -48,6 +48,7 @@ import {
   EsitoFirmaRemota,
   EventoFirRentri,
   OPERAZIONI_FIRMA_PARTENZA,
+  ANNOTAZIONE_RENTRI_MAX,
   SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -387,6 +388,28 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 </div>
               </div>
             }
+            @if (canFirmareAnnotazione(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-annotazione-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: l'annotazione è stata registrata presso l'ente ma non
+                  è ancora firmata.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Firma l'annotazione"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaAnnotazione(f)"
+                    data-testid="fir-detail-firma-annotazione"
+                  />
+                </div>
+              </div>
+            }
             @if (sessioneFirma(); as sessione) {
               <div
                 class="firma-in-attesa"
@@ -665,6 +688,18 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canAggiungereAnnotazione(f)) {
+                <p-button
+                  label="Aggiungi un'annotazione"
+                  icon="pi pi-comment"
+                  [outlined]="true"
+                  (onClick)="apriDialogAnnotazione()"
+                  data-testid="fir-detail-rentri-aggiungi-annotazione"
+                  [attr.aria-label]="
+                    'Aggiungi un'annotazione al FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
               @if (canAnnullareRentri(f)) {
                 <p-button
                   label="Annulla il formulario"
@@ -894,6 +929,57 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           [loading]="quantitaInCorso()"
           (onClick)="confermaQuantita()"
           data-testid="fir-detail-rentri-quantita-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Annotazione (FIR in viaggio, P4) -->
+    <p-dialog
+      header="Aggiungi un'annotazione"
+      [(visible)]="annotazioneDialogVisible"
+      [modal]="true"
+      [style]="{ width: '34rem' }"
+      data-testid="fir-detail-rentri-annotazione-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="annotazione-testo">Testo dell'annotazione *</label>
+          <textarea
+            id="annotazione-testo"
+            pInputTextarea
+            rows="6"
+            [attr.maxlength]="annotazioneMax"
+            [(ngModel)]="annotazioneTesto"
+            data-testid="fir-detail-rentri-annotazione-testo"
+          ></textarea>
+          <small class="text-tertiary" data-testid="fir-detail-rentri-annotazione-contatore"
+            >{{ annotazioneTesto.length }} / {{ annotazioneMax }} caratteri. L'annotazione è a nome
+            della tua azienda e va firmata sull'app RENTRI FIR Digitale.</small
+          >
+        </div>
+        @if (annotazioneErrore()) {
+          <small
+            class="form-error"
+            role="alert"
+            data-testid="fir-detail-rentri-annotazione-errore"
+            >{{ annotazioneErrore() }}</small
+          >
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="annotazioneDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-annotazione-cancel"
+        />
+        <p-button
+          label="Invia e firma"
+          [disabled]="!annotazioneValida()"
+          [loading]="annotazioneInCorso()"
+          (onClick)="confermaAnnotazione()"
+          data-testid="fir-detail-rentri-annotazione-confirm"
         />
       </ng-template>
     </p-dialog>
@@ -1447,6 +1533,13 @@ export class FirDetailComponent implements OnInit {
   // --- Annullamento del formulario, con nota (R3 Task 5) ---
   protected readonly annullamentoDialogVisible = signal(false)
 
+  // --- Annotazione (FIR in viaggio, P4) ---
+  protected readonly annotazioneMax = ANNOTAZIONE_RENTRI_MAX
+  protected readonly annotazioneDialogVisible = signal(false)
+  protected readonly annotazioneInCorso = signal(false)
+  protected readonly annotazioneErrore = signal<string | null>(null)
+  protected annotazioneTesto = ''
+
   // --- Quantita' e dati di trasporto (FIR in viaggio, P2) ---
   protected readonly unitaQuantita = [
     { label: 'kg', value: 'kg' },
@@ -1871,6 +1964,8 @@ export class FirDetailComponent implements OnInit {
       this.canRilasciareLegameRentri(fir) ||
       this.canAccettareCarico(fir) ||
       this.canFirmarePartenza(fir) ||
+      this.canAggiungereAnnotazione(fir) ||
+      this.canFirmareAnnotazione(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
@@ -1974,6 +2069,97 @@ export class FirDetailComponent implements OnInit {
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, 'Impossibile firmare la partenza su RENTRI'),
+        })
+        this.reload()
+      },
+    })
+  }
+
+  // --- Annotazione (FIR in viaggio, P4) ---
+
+  /** Il pulsante nasce SOLO da `/azioni` (`Annotazione`), per un FIR legato, un ruolo abilitato e senza una firma gia' in attesa. */
+  canAggiungereAnnotazione(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('Annotazione') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  /** Un'annotazione gia' registrata presso l'ente e non ancora firmata: lo dice `/azioni`, mai lo stato locale. */
+  canFirmareAnnotazione(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaAnnotazione') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  apriDialogAnnotazione(): void {
+    this.annotazioneTesto = ''
+    this.annotazioneErrore.set(null)
+    this.annotazioneDialogVisible.set(true)
+  }
+
+  /** Almeno un carattere che non sia spazio, al massimo 10.000 (limite del contratto). */
+  annotazioneValida(): boolean {
+    return (
+      this.annotazioneTesto.trim().length > 0 && this.annotazioneTesto.length <= this.annotazioneMax
+    )
+  }
+
+  confermaAnnotazione(): void {
+    const fir = this.fir()
+    if (!fir || !this.annotazioneValida() || this.annotazioneInCorso()) return
+    this.annotazioneInCorso.set(true)
+    this.annotazioneErrore.set(null)
+    this.rentriFirLifecycleService.aggiungiAnnotazione(fir.id, this.annotazioneTesto).subscribe({
+      next: esito => {
+        this.annotazioneInCorso.set(false)
+        this.annotazioneDialogVisible.set(false)
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Annotazione inviata a RENTRI',
+          detail: "L'ente ha registrato l'annotazione.",
+        })
+        if (esito.firma.esito === 'DA_COMPLETARE') {
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Firma RENTRI da completare',
+            detail: esito.firma.avviso,
+          })
+        } else {
+          this.mostraEsitoFirma(esito.firma)
+        }
+        this.reload()
+      },
+      error: err => {
+        this.annotazioneInCorso.set(false)
+        // Il messaggio resta nel dialog: il testo scritto non si perde.
+        this.annotazioneErrore.set(
+          this.extractError(err, "Errore nell'invio dell'annotazione a RENTRI")
+        )
+        this.reload()
+      },
+    })
+  }
+
+  firmaAnnotazione(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaAnnotazione(fir.id).subscribe({
+      next: esito => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(esito)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, "Impossibile firmare l'annotazione su RENTRI"),
         })
         this.reload()
       },
@@ -2269,6 +2455,10 @@ export class FirDetailComponent implements OnInit {
         return 'Richiesta annullata'
       case 'RollbackFirma':
         return 'Firma annullata'
+      case 'Annotazione':
+        return 'Annotazione aggiunta'
+      case 'AcquisizioneFirmaAnnotazione':
+        return 'Annotazione firmata'
       default:
         return operazione
     }

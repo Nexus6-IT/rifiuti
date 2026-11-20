@@ -31,15 +31,12 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
-import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
 import { FIR, FIRStato, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
 import { DigitalSignatureService } from '../signatures/digital-signature.service'
 import { VerifySignaturesUseCase } from '../signatures/verify-signatures.use-case'
 import { EmettiFIRUseCase } from '../fir/use-cases/emetti-fir.use-case'
 import { EmettiFIRCommand } from '../fir/commands/emetti-fir.command'
-import { PresaInCaricoFIRUseCase } from '../fir/use-cases/presa-in-carico-fir.use-case'
-import { PresaInCaricoFIRCommand } from '../fir/commands/presa-in-carico-fir.command'
 import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
 
@@ -48,7 +45,6 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
   let app: PrismaService
   let sistema: PrismaSistemaService
   let repo: FIRPrismaRepository
-  let dati: DatiViaggioFirRepository
   let cripto: SignatureFIRRepository
   let firma: DigitalSignatureService
   let emetti: EmettiFIRUseCase
@@ -78,7 +74,6 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
     await app.onModuleInit()
     sistema = new PrismaSistemaService()
     repo = new FIRPrismaRepository(app, sistema)
-    dati = new DatiViaggioFirRepository(app)
     cripto = new SignatureFIRRepository(app, sistema, logger())
     firma = new DigitalSignatureService(logger())
     const rentri = { eseguiSeAutomatica: jest.fn().mockResolvedValue(undefined) } as any
