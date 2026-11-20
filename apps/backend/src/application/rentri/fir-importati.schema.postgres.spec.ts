@@ -7,6 +7,7 @@
 import { PrismaClient } from '@prisma/client'
 import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe("Fase 3 (3.1): blocco all'invio dei FIR importati (Postgres reale)", () => {
   const owner = new PrismaClient()
   const tenantCreati: string[] = []
@@ -97,7 +98,7 @@ describe("Fase 3 (3.1): blocco all'invio dei FIR importati (Postgres reale)", ()
   }
 
   afterAll(async () => {
-    for (const t of tenantCreati) await owner.tenant.delete({ where: { id: t } })
+    for (const t of tenantCreati) await cancellaAziendeDiProva(owner, t)
     await owner.$disconnect()
   })
 

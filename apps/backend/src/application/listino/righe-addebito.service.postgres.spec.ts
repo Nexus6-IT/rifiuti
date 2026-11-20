@@ -39,6 +39,7 @@ import {
 } from '../../test-support/listino-di-test'
 import { RigheAddebitoService } from './righe-addebito.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 async function errore(p: Promise<unknown>): Promise<any> {
   try {
     await p
@@ -93,7 +94,7 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     if (rentriCreati.length > 0) {
       await owner.rentriCodificaSemplice.deleteMany({ where: { id: { in: rentriCreati } } })

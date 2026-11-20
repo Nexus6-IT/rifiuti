@@ -28,6 +28,7 @@ import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaMovimentoDiTest } from '../../test-support/legami-di-test'
 import { ImpostazioniFatturazioneService } from './impostazioni-fatturazione.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -51,7 +52,7 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
       await owner.wasteMovement.deleteMany({ where: { tenantId: ids } })
       await owner.activityLog.deleteMany({ where: { tenantId: ids } })
       await owner.user.deleteMany({ where: { tenantId: ids } })
-      await owner.tenant.deleteMany({ where: { id: ids } })
+      await cancellaAziendeDiProva(owner, ids)
     }
     await owner.$disconnect()
     await app?.$disconnect()

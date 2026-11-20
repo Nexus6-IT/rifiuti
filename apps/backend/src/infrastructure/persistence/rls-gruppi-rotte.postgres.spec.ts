@@ -58,6 +58,7 @@ import { BillingService } from '../../application/billing/billing.service'
 import { SpidStrategy } from '../../auth/strategies/spid.strategy'
 import { SignatureAuditHandler } from '../../application/signatures/signature-audit.handler'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const logger = { setContext() {}, info() {}, warn() {}, error() {}, debug() {}, log() {} } as never
 const SEGRETO_JWT = 'segreto-di-prova-gruppi-rotte'
 
@@ -189,7 +190,7 @@ describe('RLS: gruppi, cambio azienda e rotte pubbliche col ruolo applicativo (P
       await owner.consultantTenantAssociation.deleteMany({ where: dove })
       await owner.role.deleteMany({ where: dove })
       await owner.user.deleteMany({ where: dove })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+      await cancellaAziendeDiProva(owner, tenantIds)
     }
     await owner.accessRequest.deleteMany({ where: { email: `gruppi-ar-${run}@example.it` } })
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])

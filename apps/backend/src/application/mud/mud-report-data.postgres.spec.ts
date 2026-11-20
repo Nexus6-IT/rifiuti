@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { aggiornaReportData } from './mud-report-data'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Scritture concorrenti di `MUDReport.reportData`, contro un **Postgres reale**.
  *
@@ -43,7 +44,7 @@ describe('aggiornaReportData — concorrenza su Postgres reale', () => {
     // cancellerebbe l'intera tabella: senza id non si cancella nulla.
     if (tenantId) {
       await prisma.mUDReport.deleteMany({ where: { tenantId } })
-      await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined)
+      await cancellaAziendeDiProva(prisma, tenantId).catch(() => undefined)
     }
     await prisma.$disconnect()
   })

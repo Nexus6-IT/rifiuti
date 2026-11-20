@@ -27,6 +27,7 @@ import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { RegistroProviderSdi } from '../fatturazione/sdi/registro-provider-sdi'
 import { ConfigurazioneSdiService, hashToken } from './configurazione-sdi.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const CHIAVE = 'chiave-di-cifratura-di-prova'
 const SEGRETO_CREDENZIALE = 'apikey-SEGRETISSIMA-12345'
 const SEGRETO_WEBHOOK = 'wh_sec_SEGRETISSIMO'
@@ -56,7 +57,7 @@ describe('ConfigurazioneSdiService — Postgres reale, ruolo wasteflow_app', () 
       const ids = { in: tenantCreati }
       await owner.activityLog.deleteMany({ where: { tenantId: ids } })
       await owner.user.deleteMany({ where: { tenantId: ids } })
-      await owner.tenant.deleteMany({ where: { id: ids } })
+      await cancellaAziendeDiProva(owner, ids)
     }
     await owner.$disconnect()
     await app?.$disconnect()

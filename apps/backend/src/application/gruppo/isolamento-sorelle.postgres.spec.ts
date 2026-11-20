@@ -12,6 +12,7 @@ import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import { TenantContext } from '../../core/context/tenant-context'
 import { rlsExtension } from '../../infrastructure/persistence/prisma-rls.extension'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const base = new PrismaClient()
 const db = base.$extends(rlsExtension)
 
@@ -109,7 +110,7 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
 
     // onDelete: Cascade sui dati operativi; le figlie prima della madre.
     for (const id of [alfaId, betaId, madreId]) {
-      await base.tenant.delete({ where: { id } }).catch(err => {
+      await cancellaAziendeDiProva(base, id).catch(err => {
         // Non deve passare inosservato: se la cancellazione fallisce restano
         // dati sporchi nel database fra un'esecuzione e l'altra.
         // eslint-disable-next-line no-console

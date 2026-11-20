@@ -36,6 +36,7 @@ import { RegistriService } from './registri.service'
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_app', () => {
@@ -191,7 +192,7 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
     await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     if (cerPericolosoCreato)
       await owner.cERCode.deleteMany({ where: { code: CER_PERICOLOSO_TEST } })

@@ -46,6 +46,7 @@ import type { AnnotazionePerRentri } from './mappa-registrazione-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 import { VerificaTrasmissioneRentriUseCase } from './verifica-trasmissione-rentri.use-case'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const ID_MOV = (n: number) => `M${String(n).padStart(19, '0')}`
 
 /** Client RENTRI finto: restituisce o lancia quello che il test configura, e conta le chiamate. */
@@ -267,7 +268,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

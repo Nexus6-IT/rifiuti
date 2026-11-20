@@ -13,6 +13,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Valore = string | number | boolean | null
 
 describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
@@ -137,7 +138,7 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
   afterAll(async () => {
     for (const t of tenantCreati) {
       try {
-        await owner.tenant.delete({ where: { id: t } })
+        await cancellaAziendeDiProva(owner, t)
       } catch (e) {
         console.error(`pulizia ritiri-migration: azienda ${t} non cancellata`, e)
       }

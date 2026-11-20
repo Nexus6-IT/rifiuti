@@ -28,6 +28,7 @@ import { formattaQuantita } from '../../core/format/formatta-quantita'
 import * as lettore from './lettore-abbinamenti'
 import { ricalcolaAbbinamenti, salvaAbbinamentoManuale } from './abbinamenti-scrittura'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo wasteflow_app', () => {
@@ -178,7 +179,7 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       if (userId) await owner.user.deleteMany({ where: { id: userId } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()

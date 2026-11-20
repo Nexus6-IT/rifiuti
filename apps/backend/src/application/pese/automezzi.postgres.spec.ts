@@ -26,6 +26,7 @@ import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafi
 import { AutomezziService } from './automezzi.service'
 import { AutomezzoDuplicatoError, TrasportatoreNonTrovatoError } from './errori-pese'
 import { StrumentiPesaService } from './strumenti-pesa.service'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   creaAgenteAttivoDiProva,
   creaLetturaDiProva,
@@ -90,7 +91,7 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
 
   afterAll(async () => {
     if (tenantCreati.length) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.$disconnect()
     await owner.$disconnect()

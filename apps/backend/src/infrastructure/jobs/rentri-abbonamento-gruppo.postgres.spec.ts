@@ -29,6 +29,7 @@ import { DeadlineCheckerService } from '../../application/notifications/deadline
 import { EvidenzeDbService } from '../../application/admin/system-health/evidenze-db.service'
 import { RentriRiconciliazioneJob } from './rentri-riconciliazione.job'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Stato = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'
 
 describe('Job RENTRI: abbonamento del gruppo — Postgres reale', () => {
@@ -47,7 +48,7 @@ describe('Job RENTRI: abbonamento del gruppo — Postgres reale', () => {
 
   afterAll(async () => {
     // Prima le figlie (FK `Restrict` sulla madre), solo per id esatti.
-    for (const id of [...creati].reverse()) await owner.tenant.deleteMany({ where: { id } })
+    for (const id of [...creati].reverse()) await cancellaAziendeDiProva(owner, id)
     await app.$disconnect()
     await sistema.$disconnect()
     await owner.$disconnect()

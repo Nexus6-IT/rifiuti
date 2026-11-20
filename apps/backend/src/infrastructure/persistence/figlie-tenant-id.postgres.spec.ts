@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * RLS pezzo 3, Task 2: `tenant_id` sulle quattro tabelle figlie (firme, trasportatori,
  * allegati RENTRI, discariche delle autorizzazioni), coerente col padre.
@@ -74,7 +75,7 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
       await prisma.fIR.deleteMany({ where: { tenantId: t } })
       await prisma.autorizzazioneImpianto.deleteMany({ where: { tenantId: t } })
       await prisma.user.deleteMany({ where: { tenantId: t } })
-      await prisma.tenant.deleteMany({ where: { id: t } })
+      await cancellaAziendeDiProva(prisma, t)
     }
     await prisma.$disconnect()
   })

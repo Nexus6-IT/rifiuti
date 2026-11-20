@@ -25,6 +25,7 @@ import {
 import { RegistroNonTrovatoError } from '../registro/registri.service'
 import { SoglieDepositoService } from './soglie-deposito.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('SoglieDepositoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -91,7 +92,7 @@ describe('SoglieDepositoService — Postgres reale, ruolo wasteflow_app', () => 
     await owner.sogliaDepositoTemporaneo.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
   })

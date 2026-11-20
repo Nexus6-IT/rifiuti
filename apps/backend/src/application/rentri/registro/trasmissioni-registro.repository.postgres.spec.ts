@@ -27,6 +27,7 @@ import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import type { CandidataLotto } from './selezione-lotto-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const IDENT_MOV = 'M0000000000000000001'
 
 describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app', () => {
@@ -134,7 +135,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       // Cascata dell'azienda: righe di trasmissione, movimenti e registri (id esatti creati qui).
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

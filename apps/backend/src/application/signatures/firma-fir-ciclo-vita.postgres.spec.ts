@@ -43,6 +43,7 @@ import { EmettiFIRCommand } from '../fir/commands/emetti-fir.command'
 import { PresaInCaricoFIRCommand } from '../fir/commands/presa-in-carico-fir.command'
 import { ConfermaConsegnaFIRCommand } from '../fir/commands/conferma-consegna-fir.command'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Firme FIR lungo il ciclo di vita (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -106,7 +107,7 @@ describe('Firme FIR lungo il ciclo di vita (Postgres reale, ruolo wasteflow_app)
       await owner.fIRSignature.deleteMany({ where: { fir: { tenantId } } })
       await owner.fIR.deleteMany({ where: { tenantId } })
       await owner.user.deleteMany({ where: { tenantId } })
-      await owner.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(owner, tenantId)
     }
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })
