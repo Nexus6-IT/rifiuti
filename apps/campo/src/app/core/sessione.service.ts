@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { ArchivioGiro } from './archivio-giro';
 import { Observable, catchError, finalize, map, of, shareReplay, tap, throwError } from 'rxjs';
 
 export const CHIAVE_SESSIONE = 'wasteflow.campo.sessione';
@@ -19,10 +20,13 @@ interface Token {
 @Injectable({ providedIn: 'root' })
 export class SessioneService {
   private readonly http = inject(HttpClient);
+  private readonly archivio = inject(ArchivioGiro);
   private readonly token = signal<Token | null>(this.leggi());
   private rinnovoInCorso: Observable<string> | null = null;
 
   readonly autenticato = computed(() => this.token() !== null);
+  /** Identita (`sub`) letta dall'access token, senza verifica: serve solo ad abbinare lo snapshot. */
+  readonly utenteId = computed(() => idDaToken(this.token()?.accessToken));
 
   accessToken(): string | null {
     return this.token()?.accessToken ?? null;
@@ -34,6 +38,8 @@ export class SessioneService {
     const accessToken = p.get('accessToken');
     const refreshToken = p.get('refreshToken');
     if (!accessToken || !refreshToken) return false;
+    // Nuovo accesso: la copia del giro del precedente non deve sopravvivere.
+    void this.archivio.cancella().catch(() => undefined);
     this.imposta({ accessToken, refreshToken });
     return true;
   }
@@ -78,6 +84,7 @@ export class SessioneService {
 
   pulisci(): void {
     this.token.set(null);
+    void this.archivio.cancella().catch(() => undefined);
     try {
       localStorage.removeItem(CHIAVE_SESSIONE);
     } catch {
@@ -105,5 +112,18 @@ export class SessioneService {
     } catch {
       return null;
     }
+  }
+}
+
+function idDaToken(token: string | undefined): string | null {
+  const corpo = token?.split('.')[1];
+  if (!corpo) return null;
+  try {
+    const b64 = corpo.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub;
+    return typeof sub === 'string' && sub ? sub : null;
+  } catch {
+    return null;
   }
 }

@@ -2,16 +2,18 @@ import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso } from '../core/giro.service';
 import type { RitiroVista } from '../core/modelli';
+import { StatoGiro } from '../core/stato-giro';
 
 /** Dettaglio di un ritiro del giro (`id` dal percorso, `withComponentInputBinding`). */
 @Component({
   selector: 'app-ritiro',
-  imports: [RouterLink],
+  imports: [RouterLink, StatoGiro],
   template: `
     <header class="testata">
       <a routerLink="/" class="indietro" data-testid="indietro">‹ Giro</a>
     </header>
     <main class="pagina">
+      <app-stato-giro />
       @if (ritiro(); as r) {
         <h1>{{ r.produttore.nome }}</h1>
         <dl class="dettaglio" data-testid="dettaglio">

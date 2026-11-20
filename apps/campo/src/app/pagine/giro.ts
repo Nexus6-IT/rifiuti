@@ -1,12 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { GiroService, dataLocaleIso } from '../core/giro.service';
+import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
 import { SessioneService } from '../core/sessione.service';
+import { StatoGiro } from '../core/stato-giro';
 
 @Component({
   selector: 'app-giro',
-  imports: [RouterLink],
+  imports: [RouterLink, StatoGiro],
   template: `
     <header class="testata">
       <div>
@@ -14,6 +15,7 @@ import { SessioneService } from '../core/sessione.service';
         @if (giro.corrente(); as g) {
           <p class="sotto">{{ g.autista.nome }} {{ g.autista.cognome }} · {{ g.data }}</p>
         }
+        <app-stato-giro />
       </div>
       <button type="button" class="secondario" (click)="esci()" data-testid="esci">Esci</button>
     </header>
@@ -80,7 +82,8 @@ export class GiroPagina implements OnInit {
 
 export function messaggioErrore(e: unknown): string {
   if (e instanceof HttpErrorResponse) {
-    if (e.status === 0) return 'Nessuna connessione: il giro richiede la rete.';
+    if (nonRaggiungibile(e))
+      return 'Nessuna connessione e nessun giro salvato su questo telefono: collegati a internet almeno una volta oggi.';
     const messaggio = (e.error as { message?: unknown } | null)?.message;
     if (typeof messaggio === 'string' && e.status < 500) return messaggio;
   }
