@@ -18,6 +18,7 @@ import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
 import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
 import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
+import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
 import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-automezzo.use-case'
 import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
@@ -136,6 +137,8 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(InviaDatiViaggioFirRentriUseCase)).toBeDefined()
     expect(moduleRef.get(ElencaEventiFirRentriUseCase)).toBeDefined()
     expect(moduleRef.get(TrovaUltimoTrasportoAutomezzoUseCase)).toBeDefined()
+    // FIR in viaggio P3: firma di partenza (stesso controller, un use case in piu').
+    expect(moduleRef.get(FirmaPartenzaRentriUseCase)).toBeDefined()
     expect(moduleRef.get(IDatiViaggioFirRepository)).toBeDefined()
     expect(moduleRef.get(IEventiFirRentriRepository)).toBeDefined()
 

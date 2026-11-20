@@ -47,6 +47,7 @@ import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-a
 import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
 import { EventiFirRentriRepository } from '../../infrastructure/persistence/eventi-fir-rentri.repository'
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
+import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
 import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -471,6 +472,24 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         IEventiFirRentriRepository,
       ],
     },
+    // FIR in viaggio P3: firme di partenza (rotta dedicata e legame con «Emetti» / «Presa in carico»).
+    {
+      provide: FirmaPartenzaRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        completa: CompletaOperazioneConFirmaUseCase,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService
+      ) => new FirmaPartenzaRentriUseCase(firRepo, getAzioni, completa, eventi, logger),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        CompletaOperazioneConFirmaUseCase,
+        IEventiFirRentriRepository,
+        LoggerService,
+      ],
+    },
     // FIR in viaggio P2: quantita' e dati di trasporto (`/quantita`, `/trasporto`) e storico delle operazioni.
     {
       provide: InviaDatiViaggioFirRentriUseCase,
@@ -671,6 +690,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     AnnullaFIRRentriUseCase,
     GestisciAllegatiFIRUseCase,
     ScaricaPdfFirUseCase,
+    // FIR in viaggio P3: «Emetti» e «Presa in carico» (modulo `fir`) propongono la firma di partenza.
+    FirmaPartenzaRentriUseCase,
     // FIR in viaggio P2: la creazione del FIR salva i dati noti del viaggio (modulo `fir`).
     IDatiViaggioFirRepository,
     RentriRifornimentoScortaJob,

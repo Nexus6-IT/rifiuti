@@ -57,6 +57,11 @@ import {
 import { ElencaEventiFirRentriUseCase } from '../../application/rentri/elenca-eventi-fir-rentri.use-case'
 import { EventoFirRentri } from '../../application/rentri/eventi-fir-rentri.port'
 import { TrovaUltimoTrasportoAutomezzoUseCase } from '../../application/rentri/trova-ultimo-trasporto-automezzo.use-case'
+import {
+  EsitoFirmaPartenza,
+  FirmaPartenzaRentriUseCase,
+} from '../../application/rentri/firma-partenza-rentri.use-case'
+import { FirmaPartenzaFirRentriDto } from './dto/firma-partenza-fir-rentri.dto'
 import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
 import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
 import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
@@ -107,6 +112,7 @@ const RULE_DATI_VIAGGIO = new Set([
 
 const RULE_CONFLITTO = new Set([
   'OPERAZIONE_NON_DISPONIBILE',
+  'FIRMA_PARTENZA_NON_DISPONIBILE',
   'SESSIONE_FIRMA_IN_CORSO',
   'SESSIONE_FIRMA_NON_ATTIVA',
 ])
@@ -148,7 +154,8 @@ export class RentriFirLifecycleController {
     private readonly sessioneFirmaUseCase: GestisciSessioneFirmaRentriUseCase,
     private readonly inviaDatiViaggioUseCase: InviaDatiViaggioFirRentriUseCase,
     private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase,
-    private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase
+    private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase,
+    private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -731,6 +738,49 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Trasporto RENTRI non riuscito', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma di partenza (FIR in viaggio, P3): produttore e/o trasportatore firmano l'avvio del viaggio. L'operazione
+   * la sceglie `/azioni`; la firma passa dal ciclo comune (una sola richiesta sul telefono, ripresa della
+   * sessione aperta), e lo stato di viaggio e' RILETTO dall'ente.
+   */
+  @Post(':id/firma-partenza')
+  @ApiOperation({
+    summary: 'Firma la partenza su RENTRI',
+    description:
+      "Verifica /azioni (firma di produttore e/o trasportatore), chiede la firma remota e, a conferma, rilegge lo stato di viaggio. " +
+      'Esiti: COMPLETATA, IN_ATTESA (conferma sul telefono), SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Operazione scelta ed esito della firma' })
+  @ApiResponse({ status: 400, description: 'FIR non legato a RENTRI o firma rifiutata' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'FIRMA_PARTENZA_NON_DISPONIBILE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaPartenza(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoFirmaPartenza> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma di partenza RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.firmaPartenzaUseCase.execute({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma di partenza RENTRI non riuscita', error, { firId, tenantId })
       throw this.mappaErroreDominio(error)
     }
   }
