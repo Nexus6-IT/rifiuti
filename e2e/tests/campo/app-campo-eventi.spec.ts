@@ -230,14 +230,14 @@ test.describe('App campo P4: esiti con la rete che va e viene', () => {
     const server = nuovoServer()
     await preparaApi(page, server)
     await entra(page, 'u1')
-    await reteSpenta(page, server, true)
+    // Il server non risponde (il telefono non sa se e' la rete: nessun evento «online» in arrivo).
+    server.spenta = true
     await esitoNonEseguito(page, 'Rossi Srl', 'Strada chiusa')
     await expect(page.getByTestId('da-inviare')).toBeVisible()
 
     // Il collega entra sullo stesso telefono (sessione di un altro utente). Il server e la rete
     // ci sono, ma l'esito di u1 non deve partire col token di u2.
     server.spenta = false
-    await page.context().setOffline(false)
     await page.evaluate(
       ([k, v]) => localStorage.setItem(k, v),
       ['wasteflow.campo.sessione', sessione('u2')]

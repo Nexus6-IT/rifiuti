@@ -57,7 +57,13 @@ export function spiegaConflitto(motivo: string | null): string {
     }
     @if (coda.diAltriUtenti() > 0) {
       <p class="avviso-offline" role="status" data-testid="altri-utenti">
-        Sul telefono ci sono {{ coda.diAltriUtenti() }} esiti non inviati di un altro utente.
+        {{
+          coda.diAltriUtenti() === 1
+            ? "Sul telefono c'è 1 esito non inviato di un altro utente."
+            : 'Sul telefono ci sono ' +
+              coda.diAltriUtenti() +
+              ' esiti non inviati di un altro utente.'
+        }}
         Partiranno quando quell'utente rientra.
         <button type="button" class="link" (click)="scarta()" data-testid="scarta-altri">
           Scartali
