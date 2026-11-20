@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	RENTRI
+	rentri-movimento-1.0.xsd
+
+	16/04/2024 - Versione 1.0   - Primo rilascio
+	12/06/2024 - Versione 1.0.1 - Aggiunto Indirizzo in alternativa a IndirizzoItaliano per DatiProduttore
+	10/09/2024 - Versione 1.0.2 - Modificato maxOccurs a "unbounded" per l'elemento Intermediari per il tipo Movimento
+	                            - Inserito minOccurs a 0 per NumAutorizzazione per il tipo DatiDestinatario
+	13/12/2024 - Versione 1.0.3 - Inserito minOccurs a 0 per NumIscrizioneAlbo per il tipo DatiTrasportatore						
+-->
+<xs:schema xmlns:mov="urn:it:rentri:movimenti:1.0" xmlns:com="urn:it:rentri:common:1.0" xmlns:enum="urn:it:rentri:enum:1.0" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:it:rentri:movimenti:1.0" elementFormDefault="qualified">
+	<xs:import namespace="urn:it:rentri:enum:1.0" schemaLocation="rentri-enum-1.0.xsd"/>
+	<xs:import namespace="urn:it:rentri:common:1.0" schemaLocation="rentri-common-1.0.xsd"/>
+	<xs:complexType name="OperazioneMovimentoBase" abstract="true">
+		<xs:sequence>
+			<xs:element name="Autore" type="xs:string"/>
+			<xs:element name="IdentificativoTemporale" type="xs:dateTime"/>
+			<xs:element name="CampiCustom" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="Campo" minOccurs="0" maxOccurs="unbounded">
+							<xs:complexType>
+								<xs:simpleContent>
+									<xs:extension base="xs:string">
+										<xs:attribute name="Nome" type="xs:string" use="required"/>
+									</xs:extension>
+								</xs:simpleContent>
+							</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+				</xs:complexType>
+				<xs:unique name="NomeCampoUnivoco">
+					<xs:selector xpath="mov:Campo"/>
+					<xs:field xpath="@Nome"/>
+				</xs:unique>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AnnullamentoMovimento" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:OperazioneMovimentoBase">
+				<xs:sequence>
+					<xs:element name="NumeroRegistrazione" type="mov:IdentificativoMovimento"/>
+					<xs:element name="DataOraRegistrazione" type="xs:dateTime"/>
+					<xs:element name="NumeroRegistrazioneAnnullata" type="mov:IdentificativoMovimento"/>
+					<xs:element name="Annotazioni" type="xs:string" minOccurs="0"/>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="Movimento" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:OperazioneMovimentoBase">
+				<xs:sequence>
+					<xs:element name="Riferimenti" type="mov:DatiRiferimenti"/>
+					<xs:element name="Rifiuto" type="mov:DatiRifiuto" minOccurs="0"/>
+					<xs:element name="Materiali" type="mov:DatiMateriali" minOccurs="0"/>
+					<xs:element name="IntegrazioneFir" type="mov:DatiIntegrazioneFir" minOccurs="0"/>
+					<xs:element name="Esito" type="mov:DatiEsito" minOccurs="0"/>
+					<xs:element name="Produttore" type="mov:DatiProduttore" minOccurs="0"/>
+					<xs:element name="Trasportatore" type="mov:DatiTrasportatore" minOccurs="0"/>
+					<xs:element name="Destinatario" type="mov:DatiDestinatario" minOccurs="0"/>
+					<xs:element name="Intermediario" type="mov:DatiIntermediario" minOccurs="0" maxOccurs="unbounded"/>
+					<xs:element name="Annotazioni" type="xs:string" minOccurs="0"/>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="DatiRiferimenti">
+		<xs:sequence>
+			<xs:element name="NumeroRegistrazione" type="mov:IdentificativoMovimento"/>
+			<xs:element name="DataOraRegistrazione" type="xs:dateTime"/>
+			<xs:element name="NumeroRegistrazioneRettifica" type="mov:IdentificativoMovimento" minOccurs="0"/>
+			<xs:element name="CausaleOperazione" type="enum:CausaliOperazione" minOccurs="0"/>
+			<xs:element name="StoccaggioIstantaneo" type="xs:dateTime" minOccurs="0"/>
+			<xs:element name="RiferimentoOperazione" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="IdentificativoMovimento" type="mov:IdentificativoMovimento" nillable="true" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="IdentificativoMovimento">
+		<xs:sequence>
+			<xs:element name="Anno" type="xs:short"/>
+			<xs:element name="Progressivo" type="xs:int"/>
+			<xs:element name="IdentificativoRentri" type="xs:string" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiRifiuto">
+		<xs:sequence>
+			<xs:element name="CodiceEer" type="xs:string"/>
+			<xs:element name="DescrizioneEer" type="xs:string" minOccurs="0"/>
+			<xs:element name="Provenienza" type="enum:ProvenienzaRifiuto" minOccurs="0"/>
+			<xs:element name="CaratteristichePericolo" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="CaratteristicaPericolo" type="enum:CaratteristichePericolo" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="StatoFisico" type="enum:StatiFisici"/>
+			<xs:element name="Quantita" type="mov:Quantita"/>
+			<xs:element name="DestinatoAttivita" type="enum:DestinazioniRifiuto" minOccurs="0"/>
+			<xs:element name="CategorieAee" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="CategoriaAee" type="enum:CategorieAee" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="VeicoloFuoriUso" type="xs:boolean" minOccurs="0"/>
+			<xs:element name="VeicoloFuoriUsoRegPubblicaSicurezza" type="mov:VeicoloFuoriUsoRegPubblicaSicurezza" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="Quantita">
+		<xs:sequence>
+			<xs:element name="Valore" type="xs:decimal"/>
+			<xs:element name="UnitaMisura" type="enum:UnitaMisura"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="VeicoloFuoriUsoRegPubblicaSicurezza">
+		<xs:sequence>
+			<xs:element name="Numero" type="xs:string"/>
+			<xs:element name="Data" type="xs:dateTime" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiMateriali">
+		<xs:sequence>
+			<xs:element name="Materiale" type="enum:Materiali"/>
+			<xs:element name="DescrizioneMateriale" type="xs:string" minOccurs="0"/>
+			<xs:element name="Quantita" type="mov:QuantitaPeso" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="QuantitaPeso">
+		<xs:sequence>
+			<xs:element name="Valore" type="xs:decimal"/>
+			<xs:element name="UnitaMisura" type="enum:UnitaMisuraPeso"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiIntegrazioneFir">
+		<xs:sequence>
+			<xs:element name="NumeroFir" type="xs:string" minOccurs="0"/>
+			<xs:element name="TrasportoTransfrontaliero" type="xs:boolean" minOccurs="0"/>
+			<xs:element name="TipoTrasportoTransfrontaliero" type="enum:TipiTrasportoTransfrontaliero" minOccurs="0"/>
+			<xs:element name="DataInizioTrasporto" type="xs:dateTime" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiEsito">
+		<xs:sequence>
+			<xs:element name="DataFineTrasporto" type="xs:dateTime" minOccurs="0"/>
+			<xs:element name="PesoVerificatoDestino" type="xs:decimal" minOccurs="0"/>
+			<xs:element name="Respingimento" type="mov:DatiRespingimento" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiRespingimento">
+		<xs:sequence>
+			<xs:element name="Tipo" type="enum:TipiRespingimento"/>
+			<xs:element name="Quantita" type="mov:Quantita" minOccurs="0"/>
+			<xs:element name="Causale" type="enum:CausaliRespingimento" minOccurs="0"/>
+			<xs:element name="CausaleAltro" type="xs:string" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiSoggetto" abstract="true">
+		<xs:sequence>
+			<xs:element name="NazioneId" type="xs:string" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DatiProduttore" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:DatiSoggetto">
+				<xs:sequence>
+					<xs:element name="Denominazione" type="xs:string" minOccurs="0"/>
+					<xs:element name="CodiceFiscale" type="com:CodiceFiscale" minOccurs="0"/>
+					<xs:element name="Indirizzo" type="mov:IndirizzoBase"/>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="DatiDestinatario" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:DatiSoggetto">
+				<xs:sequence>
+					<xs:element name="Denominazione" type="xs:string"/>
+					<xs:element name="CodiceFiscale" type="com:CodiceFiscale"/>
+					<xs:element name="NumAutorizzazione" type="xs:string" minOccurs="0"/>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="DatiTrasportatore" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:DatiSoggetto">
+				<xs:sequence>
+					<xs:element name="Denominazione" type="xs:string"/>
+					<xs:element name="CodiceFiscale" type="com:CodiceFiscale"/>
+					<xs:element name="NumIscrizioneAlbo" type="xs:string" minOccurs="0"/>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="DatiIntermediario" mixed="false">
+		<xs:complexContent mixed="false">
+			<xs:extension base="mov:DatiTrasportatore"/>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="IndirizzoBase" abstract="true">
+		<xs:sequence>
+			<xs:element name="Indirizzo" type="xs:string"/>
+			<xs:element name="Civico" type="xs:string" minOccurs="0"/>
+			<xs:element name="Cap" type="xs:string" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="IndirizzoItaliano">
+		<xs:complexContent>
+			<xs:extension base="mov:IndirizzoBase">
+				<xs:sequence>
+					<xs:element name="Citta">
+						<xs:complexType>
+							<xs:attribute name="ComuneId" type="xs:string"/>
+						</xs:complexType>
+					</xs:element>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="IndirizzoEstero">
+		<xs:complexContent>
+			<xs:extension base="mov:IndirizzoBase">
+				<xs:sequence>
+					<xs:element name="Citta">
+						<xs:complexType>
+							<xs:attribute name="NazioneId" type="xs:string"/>
+							<xs:attribute name="NomeCitta" type="xs:string"/>
+						</xs:complexType>
+					</xs:element>
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+</xs:schema>

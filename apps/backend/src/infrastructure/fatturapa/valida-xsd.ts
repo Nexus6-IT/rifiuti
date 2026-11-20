@@ -20,7 +20,7 @@ const NOME_XSD_DSIG = 'xmldsig-core-schema.xsd'
 const DIR_XSD = join(__dirname, 'xsd')
 
 /** Massimo di messaggi restituiti: una fattura rotta può generarne migliaia. */
-const MAX_ERRORI = 50
+export const MAX_ERRORI = 50
 
 interface SchemiCaricati {
   schema: XMLFileInfo
@@ -51,7 +51,7 @@ function caricaSchemi(): SchemiCaricati {
  * del campo (`The value '...' is not accepted`): qui contiene dati del cliente e non deve finire
  * nei log né nelle risposte. Si usa una lista di categorie, non una sostituzione dei valori.
  */
-function messaggioSenzaValori(messaggio: string): string {
+export function messaggioSenzaValori(messaggio: string): string {
   const nome = /Element '(?:\{[^}]*\})?([A-Za-z0-9_.:-]+)'/.exec(messaggio)?.[1] ?? 'documento'
   let categoria = 'non conforme allo schema'
   const facet = /\[facet '([A-Za-z]+)'\]/.exec(messaggio)?.[1]
@@ -69,7 +69,7 @@ function messaggioSenzaValori(messaggio: string): string {
 }
 
 /** Toglie la riga riassuntiva «<file> fails to validate», che non è un errore dell'XSD. */
-function erroriUtili(errori: ReadonlyArray<XMLValidationError>): XMLValidationError[] {
+export function erroriUtili(errori: ReadonlyArray<XMLValidationError>): XMLValidationError[] {
   return errori.filter(e => e.loc !== null || !/ fails to validate\s*$/.test(e.rawMessage))
 }
 
