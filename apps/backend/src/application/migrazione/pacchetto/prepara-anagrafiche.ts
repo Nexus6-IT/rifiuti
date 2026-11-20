@@ -27,6 +27,7 @@ import {
   chiaveAutomezzo,
   chiaveDitta,
   chiaveSede,
+  chiaveSedeDaSoggettoUnita,
   chiaveSoggetto,
 } from '../../../domain/migrazione/chiavi-legacy'
 import {
@@ -361,16 +362,13 @@ export async function preparaAnagrafiche(
       scarti.conta('UNITA LOCALI', 'INDIRIZZO_INCOMPLETO')
       continue
     }
-    // Soggetto della RIGA: C/F dal PRECOD (7 caratteri) o l'unico PRECOD con quel COD; se C e F
-    // hanno lo stesso COD (stessa ditta) si usa la riga tenuta.
-    const precRiga =
-      sep.precod ??
-      ([...(precPerCod.get(sep.soggetto) ?? [])].length === 1
-        ? [...precPerCod.get(sep.soggetto)!][0]
-        : r.tenuto.prec)
+    // Soggetto della RIGA: regola unica in `chiavi-legacy` (la usano anche FIR e registro).
     let legacyKey: string
     try {
-      legacyKey = chiaveSede(mappa.ditta, precRiga, sep.soggetto, ul)
+      legacyKey = chiaveSedeDaSoggettoUnita(mappa.ditta, sep, ul, {
+        precPerCod: precPerCod.get(sep.soggetto),
+        precTenuto: r.tenuto.prec,
+      })
     } catch {
       scarti.conta('UNITA LOCALI', 'CHIAVE_NON_VALIDA')
       continue
