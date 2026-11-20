@@ -19,11 +19,18 @@ una le corrispondenze `OPER` -> causale `dedotta` (`confermata: true`).
 1. PostgreSQL usa e getta con le migration e i ruoli:
    `bash scripts/ci/postgres-job.sh avvia` (o un container `postgres:16-alpine`), poi
    `npx prisma migrate deploy` e `bash ops/db-ruoli.sh` (ruoli `wasteflow_app` e `wasteflow_sistema`).
-2. Creare un'azienda di prova (con registri/sedi della mappa).
+2. Creare un'azienda di prova (con registri/sedi della mappa). **Le aziende dell'import non si creano
+   mai da qui: il tenant va creato col flusso di amministrazione esistente (`admin/tenants`) e il suo id
+   va in `mappa.tenantId`; `--verifica` esce 2 con `TENANT_INESISTENTE` se l'azienda non c'e'.**
+   Le ditte con P.IVA gia' in azienda si dichiarano in `agganci` (altrimenti `--verifica` segnala la collisione).
 3. Preparare il pacchetto:
    `npm run migrazione:prepara -- ~/staging-winwaste/WW00012026 --mappa mappa-import.json --destinazione ~/pacchetti-winwaste`
 4. Verifica: `DATABASE_URL=<url del ruolo wasteflow_app> npm run migrazione:carica -- --tenant <uuid> --pacchetto ~/pacchetti-winwaste/WW00012026 --ambito ANAGRAFICHE --verifica`
    (uscita 2 = ci sono bloccanti: leggere i codici, correggere mappa o dati, ripetere).
+   Il rapporto di preparazione elenca anche scarti (`scarto <tabella> <codice>: n`), duplicati (chiavi
+   WinWaste) e avvisi (`avviso ...`: scelte dedotte da controllare, vedi `formato-pacchetto.md` §I4):
+   vanno letti con l'operatore prima di caricare. Il pacchetto di I4 contiene ditte, sedi, ruoli
+   (produttori, trasportatori, destinatari) e automezzi.
 5. Caricare (stesso comando senza `--verifica`), poi **ricaricare**: la seconda volta deve dire
    `inserite: 0` e `saltate` = `lette`.
 6. Il rapporto di destinazione della prova va al cliente insieme al rapporto sorgente.
