@@ -68,7 +68,11 @@ test.describe('App campo P2: PWA su telefono', () => {
     await expect(page).toHaveURL(/\/campo\/login$/)
     const accedi = page.getByTestId('accedi')
     await expect(accedi).toBeVisible()
-    await expect(accedi).toHaveAttribute('href', '/api/v1/auth/spid/login?RelayState=campo')
+    // RelayState `campo.<nonce>`: il nonce anti login-CSRF e' generato dal browser a ogni apertura.
+    await expect(accedi).toHaveAttribute(
+      'href',
+      /^\/api\/v1\/auth\/spid\/login\?RelayState=campo\.[A-Za-z0-9_-]{22}$/
+    )
     // Bersaglio toccabile da dito: almeno 44 px.
     expect((await accedi.boundingBox())?.height).toBeGreaterThanOrEqual(44)
   })
@@ -77,10 +81,12 @@ test.describe('App campo P2: PWA su telefono', () => {
     let richiestaLogin = ''
     await page.route('**/api/v1/auth/spid/login**', route => {
       richiestaLogin = route.request().url()
+      // Come il backend: il nonce del RelayState torna nel fragment.
+      const nonce = new URL(richiestaLogin).searchParams.get('RelayState')?.split('.')[1] ?? ''
       return route.fulfill({
         status: 302,
         headers: {
-          location: '/campo/accesso#accessToken=tok-a&refreshToken=tok-r&expiresIn=900',
+          location: `/campo/accesso#accessToken=tok-a&refreshToken=tok-r&expiresIn=900&nonce=${nonce}`,
         },
       })
     })
@@ -90,11 +96,26 @@ test.describe('App campo P2: PWA su telefono', () => {
     await page.getByTestId('accedi').click()
 
     await expect(page.getByTestId('elenco')).toBeVisible()
-    expect(richiestaLogin).toContain('RelayState=campo')
+    expect(richiestaLogin).toContain('RelayState=campo.')
     await expect(page).toHaveURL(/\/campo\/$/)
     expect(page.url()).not.toContain('accessToken')
     await expect(page.getByTestId('ritiro')).toHaveCount(2)
     await expect(page.getByTestId('ritiro').first()).toContainText('Rossi Srl')
+  })
+
+  test('un link con i token e un nonce che il browser non ha generato non apre nessuna sessione', async ({
+    page,
+  }) => {
+    await page.route('**/api/v1/campo/giro**', route => json(route, GIRO))
+    // Nessun passaggio dal login: il nonce non c'e'. Poi un nonce sbagliato dopo un login iniziato.
+    await page.goto(
+      '/campo/accesso#accessToken=altrui&refreshToken=altrui&nonce=AAAAAAAAAAAAAAAAAAAAAA'
+    )
+    await expect(page).toHaveURL(/\/campo\/login$/)
+    expect(await page.evaluate(() => localStorage.getItem('wasteflow.campo.sessione'))).toBeNull()
+    await page.goto('/campo/accesso#accessToken=altrui&refreshToken=altrui')
+    await expect(page).toHaveURL(/\/campo\/login$/)
+    expect(await page.evaluate(() => localStorage.getItem('wasteflow.campo.sessione'))).toBeNull()
   })
 
   test('giro, dettaglio, ritorno e uscita; niente scroll orizzontale', async ({ page }) => {
