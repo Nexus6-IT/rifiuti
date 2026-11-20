@@ -991,6 +991,14 @@ model GiacenzaIniziale {
   createdAt       DateTime                    @default(now()) @map("created_at")
   updatedAt       DateTime                    @updatedAt @map("updated_at")
 
+  /// Fase 3 (I6): provenienza di un'apertura importata (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261123120000_giacenze_iniziali_provenienza_import`; unico parziale solo SQL).
+  /// Chi importa scrive anche `provenienza = IMPORTAZIONE`.
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "giacenze_iniziali_lotto_import_fkey")
+
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
   abbinamenti AbbinamentoCaricoScarico[]
@@ -5053,6 +5061,7 @@ model LottoImport {
   trasportatoriImportati   Trasportatore[]
   destinatariImportati     Destinatario[]
   automezziImportati       Automezzo[]
+  giacenzeImportate        GiacenzaIniziale[]
 
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
