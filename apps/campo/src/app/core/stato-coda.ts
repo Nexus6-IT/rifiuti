@@ -15,6 +15,8 @@ export function spiegaConflitto(motivo: string | null): string {
       return 'il ritiro era già stato chiuso in ufficio';
     case 'RITIRO_CON_FIR':
       return 'il ritiro ha già un FIR';
+    case 'ESITO_GIA_REGISTRATO':
+      return "per questo ritiro c'era già un esito";
     default:
       return 'serve un controllo';
   }
@@ -38,6 +40,11 @@ export function spiegaConflitto(motivo: string | null): string {
         <button type="button" class="link" (click)="coda.invia()" data-testid="invia-ora">
           Invia ora
         </button>
+      </p>
+    }
+    @if (coda.bloccata(); as b) {
+      <p class="errore" role="alert" data-testid="bloccata">
+        Gli esiti non partono: {{ b }} Contatta l'ufficio, poi tocca «Invia ora».
       </p>
     }
     @if (coda.rifiutati() > 0) {
@@ -79,7 +86,7 @@ export class StatoCoda {
   protected scarta(): void {
     if (
       window.confirm(
-        'Scartare gli esiti non inviati di un altro utente? Non potranno più essere inviati.',
+        "Scartare gli esiti non inviati di un altro utente? Andranno persi e l'ufficio non li riceverà mai.",
       )
     ) {
       void this.coda.scartaDiAltriUtenti();

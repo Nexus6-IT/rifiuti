@@ -184,7 +184,11 @@ export class GiroService {
     try {
       const s = await this.archivio.leggi();
       if (s) {
-        if (this.valido(s.utenteId, s.data, data)) {
+        // Snapshot di prima di P4 (senza `versione`): non serve a registrare esiti, si scarta.
+        if (
+          this.valido(s.utenteId, s.data, data) &&
+          s.giro.ritiri.every((r) => typeof r.versione === 'number')
+        ) {
           this.impostaDaArchivio(s.giro, s.aggiornatoIl);
           return s.giro;
         }

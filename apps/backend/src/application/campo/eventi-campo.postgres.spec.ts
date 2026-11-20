@@ -210,15 +210,16 @@ describe('Eventi dal campo P4 — Postgres reale, ruolo wasteflow_app', () => {
       expect(await righe(a)).toHaveLength(2)
     })
 
-    it('ritiro modificato in ufficio (versione diversa): il non eseguito va da riconciliare, l eseguito si registra', async () => {
+    it('ritiro modificato in ufficio (versione diversa): sia il non eseguito sia l eseguito vanno da riconciliare', async () => {
       const a = await azienda()
       const r = await creaRitiroCampo(owner, a, a.autista1)
       await owner.ritiro.update({ where: { id: r }, data: { versione: 4, ordineGiro: 3 } })
       const n = await registra(a, a.utente1, nonEseguito(r, { versioneVista: 1 }))
       expect(n).toMatchObject({ esito: 'DA_RICONCILIARE', motivoConflitto: 'RITIRO_MODIFICATO' })
       expect(await ritiroDb(r)).toMatchObject({ stato: 'PROGRAMMATO', versione: 4 })
+      // Anche l'eseguito su un ritiro modificato (spostato) va da riconciliare.
       const e = await registra(a, a.utente1, evento(r, { versioneVista: 1 }))
-      expect(e.esito).toBe('APPLICATO')
+      expect(e).toMatchObject({ esito: 'DA_RICONCILIARE', motivoConflitto: 'RITIRO_MODIFICATO' })
       // Con la versione corrente il non eseguito si applica.
       const ok = await registra(a, a.utente1, nonEseguito(r, { versioneVista: 4 }))
       expect(ok.esito).toBe('APPLICATO')
@@ -271,6 +272,60 @@ describe('Eventi dal campo P4 — Postgres reale, ruolo wasteflow_app', () => {
       expect([x.esito, y.esito].sort()).toEqual(['APPLICATO', 'DA_RICONCILIARE'])
       expect(await ritiroDb(r)).toMatchObject({ stato: 'NON_ESEGUITO', versione: 2 })
       expect(await righe(a)).toHaveLength(2)
+    })
+  })
+
+  describe('un solo esito applicato per ritiro', () => {
+    it('eseguito poi non eseguito (anche dopo logout/altro telefono): il secondo va da riconciliare, ritiro intatto', async () => {
+      const a = await azienda()
+      const r = await creaRitiroCampo(owner, a, a.autista1)
+      expect((await registra(a, a.utente1, evento(r))).esito).toBe('APPLICATO')
+      const n = await registra(a, a.utente1, nonEseguito(r))
+      expect(n).toMatchObject({ esito: 'DA_RICONCILIARE', motivoConflitto: 'ESITO_GIA_REGISTRATO' })
+      expect(await ritiroDb(r)).toMatchObject({ stato: 'PROGRAMMATO', versione: 1 })
+      expect(await righe(a)).toHaveLength(2)
+    })
+
+    it('eseguito due volte: il duplicato e registrato da riconciliare', async () => {
+      const a = await azienda()
+      const r = await creaRitiroCampo(owner, a, a.autista1)
+      await registra(a, a.utente1, evento(r))
+      const d = await registra(a, a.utente1, evento(r))
+      expect(d.motivoConflitto).toBe('ESITO_GIA_REGISTRATO')
+    })
+
+    it('un esito da riconciliare non blocca quello successivo corretto', async () => {
+      const a = await azienda()
+      const r = await creaRitiroCampo(owner, a, a.autista2) // riassegnato: il primo e da riconciliare
+      await registra(a, a.utente1, evento(r))
+      await owner.ritiro.update({ where: { id: r }, data: { autistaId: a.autista1 } })
+      expect((await registra(a, a.utente1, evento(r))).esito).toBe('APPLICATO')
+    })
+
+    it('stesso uuid con ritiro o tipo diversi: risponde con la riga originale, nessuna nuova riga', async () => {
+      const a = await azienda()
+      const r1 = await creaRitiroCampo(owner, a, a.autista1)
+      const r2 = await creaRitiroCampo(owner, a, a.autista1)
+      const e = evento(r1)
+      const prima = await registra(a, a.utente1, e)
+      const seconda = await registra(a, a.utente1, nonEseguito(r2, { id: e.id }))
+      expect(seconda).toEqual(prima)
+      expect(await righe(a)).toHaveLength(1)
+      expect(await ritiroDb(r2)).toMatchObject({ stato: 'PROGRAMMATO' })
+    })
+
+    it('ritiro con FIR attivo: il non eseguito va da riconciliare e il ritiro non cambia', async () => {
+      const a = await azienda()
+      const r = await creaRitiroCampo(owner, a, a.autista1)
+      const finto = new EventiCampoService(app, {
+        bloccaPerId: async () => ({ id: r, stato: 'PROGRAMMATO', versione: 1 }),
+        autistaDelRitiro: async () => a.autista1,
+        firAttivo: async () => ({ id: 'f', numero: null, status: 'DRAFT' }),
+        impostaStato: jest.fn(),
+      } as unknown as RitiriRepository)
+      const esito = await nelTenant(a.t, () => finto.registra(a.t, a.utente1, nonEseguito(r)))
+      expect(esito).toMatchObject({ esito: 'DA_RICONCILIARE', motivoConflitto: 'RITIRO_CON_FIR' })
+      expect(await ritiroDb(r)).toMatchObject({ stato: 'PROGRAMMATO', versione: 1 })
     })
   })
 

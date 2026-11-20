@@ -222,6 +222,25 @@ describe('CodaEventi (coda di uscita)', () => {
     expect(coda.daInviare()).toBe(1);
   });
 
+  it('403 permanente: i tentativi automatici si fermano e lo dice; «Invia ora» riprova', async () => {
+    accedi('u1');
+    await coda.registra(eseguito());
+    await rispondi((r) =>
+      r.flush({ message: 'Autista non collegato.' }, { status: 403, statusText: 'x' }),
+    );
+    expect(coda.bloccata()).toContain('non collegato');
+    window.dispatchEvent(new Event('online'));
+    await coda.avvia().catch(() => undefined);
+    http.match(URL_EVENTI).forEach((r) => r.flush({}, { status: 403, statusText: 'x' }));
+    await flush();
+    void coda.invia();
+    const req = http.expectOne(URL_EVENTI);
+    req.flush(ok(req.request.body.id));
+    await flush();
+    expect(coda.bloccata()).toBeNull();
+    expect(coda.daInviare()).toBe(0);
+  });
+
   it('sopravvive al riavvio: un nuovo servizio rilegge dall archivio e invia', async () => {
     accedi('u1');
     const e = await coda.registra(eseguito());

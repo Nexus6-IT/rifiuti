@@ -47,6 +47,8 @@ export function spiegaConflitto(motivo: string | null): string {
       return 'Il ritiro era già stato chiuso o riprogrammato in ufficio.'
     case 'RITIRO_CON_FIR':
       return 'Il ritiro ha già un FIR attivo: l’esito non è stato applicato.'
+    case 'ESITO_GIA_REGISTRATO':
+      return 'Per questo ritiro risulta già un esito dal campo: questo è un duplicato o una contraddizione.'
     default:
       return 'Serve un controllo in ufficio.'
   }

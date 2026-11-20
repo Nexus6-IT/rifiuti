@@ -70,13 +70,15 @@ export class CodaEventi {
   private readonly _tutti = signal<EventoInCoda[]>([]);
   private readonly _nonSalvato = signal(false);
   private readonly _inInvio = signal(false);
+  private readonly _bloccata = signal<string | null>(null);
   private catena: Promise<unknown> = Promise.resolve();
   private cicloInCorso: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private avviata = false;
-  private readonly alRitornoRete = () => void this.invia();
+  private readonly alRitornoRete = () => void this.inviaAuto();
   private readonly allaRipresa = () => {
-    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void this.invia();
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden')
+      void this.inviaAuto();
   };
 
   /** Eventi dell'utente collegato, dal piu' vecchio. */
@@ -94,6 +96,8 @@ export class CodaEventi {
   /** `true` se almeno un evento esiste solo in memoria (il telefono non puo' scrivere l'archivio). */
   readonly nonSalvato = this._nonSalvato.asReadonly();
   readonly inInvio = this._inInvio.asReadonly();
+  /** Messaggio del 403 che ha fermato i tentativi automatici (es. autista non collegato), o null. */
+  readonly bloccata = this._bloccata.asReadonly();
 
   constructor() {
     // Fine sessione / nuovo accesso: via i promemoria confermati, restano gli eventi da inviare.
@@ -108,9 +112,10 @@ export class CodaEventi {
       window.addEventListener('online', this.alRitornoRete);
       document.addEventListener('visibilitychange', this.allaRipresa);
       this.timer = setInterval(() => {
-        if (this.daInviare() > 0) void this.invia();
+        if (this.daInviare() > 0) void this.inviaAuto();
       }, INTERVALLO_MS);
     }
+    this._bloccata.set(null); // nuovo avvio/accesso: un tentativo si fa
     void this.invia();
   }
 
@@ -162,12 +167,23 @@ export class CodaEventi {
       motivoConflitto: null,
     };
     await this.scrivi(evento);
-    void this.invia();
+    void this.inviaAuto();
     return evento;
   }
 
-  /** Spedisce, in ordine, gli eventi dell'utente collegato. Un solo ciclo alla volta. */
+  /** Tentativo automatico (rete, ripresa, intervallo): si ferma se il server ha risposto 403. */
+  private inviaAuto(): Promise<void> {
+    return this._bloccata() ? Promise.resolve() : this.invia();
+  }
+
+  /** Invio voluto dall'autista («Invia ora») o all'avvio: riprova anche dopo un 403. */
   invia(): Promise<void> {
+    this._bloccata.set(null);
+    return this.avviaCiclo();
+  }
+
+  /** Spedisce, in ordine, gli eventi dell'utente collegato. Un solo ciclo alla volta. */
+  private avviaCiclo(): Promise<void> {
     this.cicloInCorso ??= this.ciclo().finally(() => (this.cicloInCorso = null));
     return this.cicloInCorso;
   }
@@ -205,6 +221,8 @@ export class CodaEventi {
 
   /** Spedisce un evento. `true` se si puo' proseguire con il successivo, `false` se ci si ferma. */
   private async spedisci(e: EventoInCoda): Promise<boolean> {
+    // Difesa in profondita': il token inviato e' quello corrente, l'evento deve essere suo.
+    if (e.utenteId !== this.sessione.utenteId()) return false;
     try {
       const r = await firstValueFrom(
         this.http
@@ -237,6 +255,10 @@ export class CodaEventi {
           errore: messaggio ?? 'Il server non ha accettato questo esito.',
         });
         return true;
+      }
+      if (stato === 403) {
+        // Permanente finche' l'ufficio non interviene: niente martellamento ogni 20 s.
+        this._bloccata.set(messaggio ?? "Accesso non consentito: contatta l'ufficio.");
       }
       // Rete assente, timeout, 401 (sessione finita), 403, 429, 5xx: l'evento resta, si riprova.
       await this.scrivi({ ...e, tentativi: e.tentativi + 1, errore: messaggio });

@@ -31,6 +31,7 @@ export type MotivoConflittoEvento =
   | 'RITIRO_STATO_CAMBIATO'
   | 'RITIRO_MODIFICATO'
   | 'RITIRO_CON_FIR'
+  | 'ESITO_GIA_REGISTRATO'
 
 /** Risposta al telefono: identica a ogni reinvio dello stesso evento. */
 export interface RispostaEventoCampo {
@@ -183,7 +184,7 @@ export class EventiCampoService {
   /**
    * Tabella dei conflitti (ritiro gia' bloccato FOR UPDATE). Il non eseguito scrive sul ritiro, quindi
    * vuole la versione che l'autista ha visto; l'eseguito non cambia il ritiro (non esiste uno stato
-   * «eseguito» sul ritiro: lo chiude il FIR) e si registra anche se l'ufficio ha toccato altri campi.
+   * «eseguito» sul ritiro: lo chiude il FIR) ma anch'esso vuole la versione vista.
    */
   private async decidi(
     tx: Tx,
@@ -198,11 +199,20 @@ export class EventiCampoService {
       motivoConflitto: m,
     })
     if (autistaDelRitiro !== autistaId) return conflitto('RITIRO_RIASSEGNATO')
+    // Un solo esito applicato per ritiro (anche da un altro telefono o dopo un logout): un secondo,
+    // magari contraddittorio, non si applica mai ma non si perde. Siamo sotto il FOR UPDATE.
+    const precedente = await tx.eventoCampo.findFirst({
+      where: { tenantId, ritiroId: ev.ritiroId, esito: 'APPLICATO' },
+      select: { id: true },
+    })
+    if (precedente) return conflitto('ESITO_GIA_REGISTRATO')
     if (ritiro.stato === 'ANNULLATO') return conflitto('RITIRO_ANNULLATO')
     if (ritiro.stato !== 'PROGRAMMATO') return conflitto('RITIRO_STATO_CAMBIATO')
+    // Versione diversa = l'ufficio ha toccato il ritiro (data, mezzo...): «eseguito» su un ritiro
+    // spostato e' un conflitto di fatto, anche se l'esito non scrive sul ritiro.
+    if (ritiro.versione !== ev.versioneVista) return conflitto('RITIRO_MODIFICATO')
     if (ev.tipo === 'RITIRO_ESEGUITO') return { esito: 'APPLICATO', motivoConflitto: null }
 
-    if (ritiro.versione !== ev.versioneVista) return conflitto('RITIRO_MODIFICATO')
     if (await this.repo.firAttivo(tx, tenantId, ev.ritiroId)) return conflitto('RITIRO_CON_FIR')
     const motivo = ev.dati.motivo as string
     return {
