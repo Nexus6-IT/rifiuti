@@ -100,12 +100,12 @@ class Risolutore {
   private async ditta(id: string) {
     const noto = this.ditte.get(id)
     if (noto) return noto
-    const [d] = await this.tx.$queryRaw<
+    const [riga] = await this.tx.$queryRaw<
       Array<{ ragione_sociale: string; partita_iva: string | null; codice_fiscale: string | null }>
     >`SELECT "ragione_sociale", "partita_iva", "codice_fiscale" FROM "ditte"
       WHERE "id" = ${id}::uuid AND "tenant_id" = ${this.tenantId}::uuid`
-    if (!d) throw new RiferimentoNonRisoltoError('ditta')
-    const v = { id, nome: d.ragione_sociale, piva: d.partita_iva, cf: d.codice_fiscale }
+    if (!riga) throw new RiferimentoNonRisoltoError('ditta')
+    const v = { id, nome: riga.ragione_sociale, piva: riga.partita_iva, cf: riga.codice_fiscale }
     this.ditte.set(id, v)
     return v
   }
