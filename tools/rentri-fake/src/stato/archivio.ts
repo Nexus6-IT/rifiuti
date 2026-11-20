@@ -93,6 +93,7 @@ export interface Formulario {
     | { tipo: 'Accettazione'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'Annulla'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'Annotazione'; corpo: Record<string, unknown>; statoPrecedente: string }
+    | { tipo: 'SostaTecnica'; corpo: Record<string, unknown>; statoPrecedente: string }
   /**
    * Ultima firma apposta con successo e non ancora annullata: serve a
    * `rollback-firma` (formulari.yaml riga 2079) per tornare allo stato di
@@ -107,6 +108,17 @@ export interface Formulario {
   dati_annotazioni?: {
     annotazione: string
     identificativo_soggetto: string
+    dati_firma: { data_firma: string } | null
+  }[]
+  /**
+   * Soste tecniche del formulario (`DettaglioFormulario.dati_soste_tecniche`, `DatiSostaTecnicaResultModel`):
+   * una nuova sosta accettata entra con `dati_firma: null`; la firma la valorizza, il `reset` toglie quella non
+   * firmata, il `rollback-firma` la riporta a non firmata.
+   */
+  dati_soste_tecniche?: {
+    luogo_stazionamento: string
+    data_ora_sospensione: string
+    data_ora_ripresa: string
     dati_firma: { data_firma: string } | null
   }[]
   ultimaFirma?: {
@@ -738,6 +750,27 @@ export class Archivio {
       return
     }
 
+    // Sosta tecnica (FIR in viaggio, P5): stessa macchina dell'annotazione, con la firma del trasportatore
+    // (`FirmaSostaTecnica`). Ipotesi dedotta dai nomi degli stati (FEDELTA.md §8.4, da verificare sulla demo).
+    if (contesto.operazione === 'SostaTecnica') {
+      formulario.pendingOperazione = {
+        tipo: 'SostaTecnica',
+        corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
+      }
+      formulario.stato = 'FirmaSostaTecnica'
+      formulario.dati_soste_tecniche = [
+        ...(formulario.dati_soste_tecniche ?? []),
+        {
+          luogo_stazionamento: String(contesto.corpo?.luogo_stazionamento ?? ''),
+          data_ora_sospensione: String(contesto.corpo?.data_ora_sospensione ?? ''),
+          data_ora_ripresa: String(contesto.corpo?.data_ora_ripresa ?? ''),
+          dati_firma: null,
+        },
+      ]
+      return
+    }
+
     if (contesto.operazione === 'NoteAnnullamento') {
       const note = contesto.corpo?.note
       if (typeof note === 'string') {
@@ -779,6 +812,15 @@ export class Archivio {
         if (daFirmare) daFirmare.dati_firma = { data_firma: new Date().toISOString() }
         return
       }
+
+      if (pendente.tipo === 'SostaTecnica') {
+        formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
+        formulario.stato = pendente.statoPrecedente
+        formulario.pendingOperazione = undefined
+        const daFirmare = ultimaSostaNonFirmata(formulario)
+        if (daFirmare) daFirmare.dati_firma = { data_firma: new Date().toISOString() }
+        return
+      }
     }
 
     // `reset`: cancella i dati inseriti e non ancora firmati, tornando allo
@@ -793,6 +835,12 @@ export class Archivio {
         const daTogliere = ultimaAnnotazioneNonFirmata(formulario)
         formulario.dati_annotazioni = formulario.dati_annotazioni?.filter(a => a !== daTogliere)
       }
+      if (pendente.tipo === 'SostaTecnica') {
+        const daTogliere = ultimaSostaNonFirmata(formulario)
+        formulario.dati_soste_tecniche = formulario.dati_soste_tecniche?.filter(
+          x => x !== daTogliere
+        )
+      }
       return
     }
 
@@ -806,6 +854,11 @@ export class Archivio {
       formulario.ultimaFirma = undefined
       if (ultima.pending?.tipo === 'Annotazione') {
         const firmate = (formulario.dati_annotazioni ?? []).filter(a => a.dati_firma !== null)
+        const ultimaFirmata = firmate[firmate.length - 1]
+        if (ultimaFirmata) ultimaFirmata.dati_firma = null
+      }
+      if (ultima.pending?.tipo === 'SostaTecnica') {
+        const firmate = (formulario.dati_soste_tecniche ?? []).filter(x => x.dati_firma !== null)
         const ultimaFirmata = firmate[firmate.length - 1]
         if (ultimaFirmata) ultimaFirmata.dati_firma = null
       }
@@ -824,8 +877,8 @@ export class Archivio {
       return
     }
 
-    // Sosta tecnica, trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica
-    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P5-P8).
+    // Trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica ancora alcuna
+    // transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P6-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito
@@ -1216,4 +1269,11 @@ function ultimaAnnotazioneNonFirmata(
   formulario: Formulario
 ): NonNullable<Formulario['dati_annotazioni']>[number] | undefined {
   return [...(formulario.dati_annotazioni ?? [])].reverse().find(a => a.dati_firma === null)
+}
+
+/** L'ultima sosta tecnica ancora senza firma (al massimo una: `FirmaSostaTecnica` blocca le successive). */
+function ultimaSostaNonFirmata(
+  formulario: Formulario
+): NonNullable<Formulario['dati_soste_tecniche']>[number] | undefined {
+  return [...(formulario.dati_soste_tecniche ?? [])].reverse().find(x => x.dati_firma === null)
 }

@@ -683,6 +683,37 @@ sarebbe mai adottata (fail-closed: si sblocca con il `reset`).
 Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
 sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
 
+### 8.4 Sosta tecnica (2026-11-23, FIR in viaggio, P5)
+
+`sosta-tecnica` completata con successo: il formulario passa a `FirmaSostaTecnica` e la fake ricorda lo stato
+di prima (`pendingOperazione` di tipo `SostaTecnica`); `acquisizione-firma` completata lo riporta a quello
+stato (gli stati di viaggio `InserimentoAccettazione` e `InserimentoTrasportoSuccessivo`, i soli in cui il
+contratto ammette la sosta, `formulari.yaml` `/{numero_fir}/sosta-tecnica`); `reset` in `FirmaSostaTecnica`
+annulla la sosta non firmata; `rollback-firma` la riporta a non firmata. Ipotesi dedotta dai NOMI degli stati,
+da verificare sulla demo. Il corpo e' validato con `DatiSostaTecnicaModel` (`luogo_stazionamento` 1..1000,
+`data_ora_sospensione` e `data_ora_ripresa` date-time) e, oltre al contratto, con ripresa > sospensione.
+
+Soste nel dettaglio (`GET /{numero_fir}`): `dati_soste_tecniche` (`DatiSostaTecnicaResultModel`: luogo, date,
+`dati_firma`, `trasportatore_id`). Una sosta accettata entra con `dati_firma: null`; la firma la valorizza (la
+fake mette solo `data_firma`); la fake NON valorizza `trasportatore_id`. WasteFlow ci riconcilia un invio rimasto
+senza esito (INCERTA, o INVIATA di un processo morto) e ci verifica, prima di ogni authorize, che ci sia UNA sola
+sosta non firmata con lo stesso luogo e gli stessi istanti di quella dichiarata da noi (le date si confrontano come
+istanti, non come stringhe: l'ente puo' rinormalizzare il formato).
+
+Limiti noti della fake (stessi dell'annotazione, §8.3): controlla lo stato solo al POST (la transizione avviene
+all'elaborazione: per questo WasteFlow serializza gli invii con una prenotazione locale), non verifica che la
+sosta sia dichiarata dal trasportatore che ha in carico il rifiuto (il contratto dice cosi': WasteFlow controlla
+prima dell'invio che il CF del tenant sia di un trasportatore del FIR, principale o aggiuntivo; non puo' sapere
+quale dei trasportatori abbia in carico il rifiuto, lo decide l'ente con 403) e non modella «copia gia'
+restituita con accettazione totale -> non consentita». Il POST `/sosta-tecnica` non si ritenta mai su
+5xx/timeout (esito incerto, come la creazione: la sosta si AGGIUNGE).
+
+Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' soste consecutive sono
+ammesse (la fake le ammette tutte, una alla volta), se il dettaglio riporta le soste non ancora firmate con il
+luogo identico a quello inviato, se la firma `AcquisizioneFirmaSostaTecnica` e' sempre del trasportatore che ha
+in carico il rifiuto (e quindi se l'utenza con visibilita' su un trasportatore diverso viene rifiutata), come
+l'ente tratta le date con frazioni di secondo.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in

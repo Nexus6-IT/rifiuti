@@ -745,6 +745,123 @@ describe('Annotazione: FirmaAnnotazione e ritorno allo stato di prima (FIR in vi
   })
 })
 
+describe('Sosta tecnica: FirmaSostaTecnica e ritorno allo stato di prima (FIR in viaggio, P5)', () => {
+  const CORPO = corpoSostaTecnicaValido()
+  const FIRMA = { certificato: 'c', token: 't', firma: 'f' }
+
+  async function completa(
+    app: ReturnType<typeof creaApp>,
+    segmento: string,
+    corpo: Record<string, unknown>,
+    errore = false
+  ): Promise<void> {
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/${segmento}`,
+      headers: await intestazioniAutenticate(),
+      payload: corpo,
+    })
+    expect(avvio.statusCode).toBe(202)
+    const esito = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore },
+    })
+    expect(esito.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  async function dettaglio(app: ReturnType<typeof creaApp>): Promise<Record<string, unknown>> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json()
+  }
+
+  it.each(['InserimentoAccettazione', 'InserimentoTrasportoSuccessivo'])(
+    'da %s: sosta -> FirmaSostaTecnica -> firma -> stato di prima',
+    async partenza => {
+      const app = creaApp()
+      await seminaFormulario(app, partenza)
+
+      await completa(app, 'sosta-tecnica', CORPO)
+      expect(await stato(app)).toBe('FirmaSostaTecnica')
+
+      await completa(app, 'acquisizione-firma', FIRMA)
+      expect(await stato(app)).toBe(partenza)
+    }
+  )
+
+  it('il dettaglio espone dati_soste_tecniche: non firmata, firmata, annullata dal reset', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'sosta-tecnica', CORPO)
+    expect((await dettaglio(app)).dati_soste_tecniche).toEqual([{ ...CORPO, dati_firma: null }])
+
+    await completa(app, 'acquisizione-firma', FIRMA)
+    expect((await dettaglio(app)).dati_soste_tecniche).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+
+    await completa(app, 'sosta-tecnica', {
+      ...CORPO,
+      luogo_stazionamento: 'Seconda sosta',
+    })
+    expect((await dettaglio(app)).dati_soste_tecniche).toHaveLength(2)
+    await completa(app, 'reset', {})
+    expect((await dettaglio(app)).dati_soste_tecniche).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+  })
+
+  it("una sosta rifiutata dall'ente non lascia traccia; una firma rifiutata lascia FirmaSostaTecnica", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'sosta-tecnica', CORPO, true)
+    expect(await stato(app)).toBe('InserimentoAccettazione')
+
+    await completa(app, 'sosta-tecnica', CORPO)
+    await completa(app, 'acquisizione-firma', FIRMA, true)
+    expect(await stato(app)).toBe('FirmaSostaTecnica')
+  })
+
+  it('il rollback-firma riporta la sosta a non firmata e a FirmaSostaTecnica', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+    await completa(app, 'sosta-tecnica', CORPO)
+    await completa(app, 'acquisizione-firma', FIRMA)
+
+    await completa(app, 'rollback-firma', {})
+
+    expect(await stato(app)).toBe('FirmaSostaTecnica')
+    expect((await dettaglio(app)).dati_soste_tecniche).toEqual([{ ...CORPO, dati_firma: null }])
+  })
+
+  it('una sosta con la ripresa prima della sospensione e respinta (400)', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/sosta-tecnica`,
+      headers: await intestazioniAutenticate(),
+      payload: { ...CORPO, data_ora_ripresa: '2026-11-18T09:00:00Z' },
+    })
+    expect(risposta.statusCode).toBe(400)
+  })
+})
+
 describe('POST / : stato iniziale dedotto da quantita e trasporto di partenza (FIR in viaggio, P2)', () => {
   async function crea(corpo: Record<string, unknown>): Promise<string> {
     const app = creaApp()
