@@ -58,7 +58,7 @@ export interface StagingAperto {
   /** Nome della cartella = database d'origine (`WW00012026`). */
   readonly archivio: string
   readonly manifest: ManifestStaging
-  /** SHA-256 del `manifest.json` (finisce in `lotti_import.hash_staging`). */
+  /** SHA-256 del `manifest.json` (finisce nel manifest del pacchetto come `hashStaging`). */
   readonly hashManifest: string
   readonly avvisi: readonly AvvisoStaging[]
   /** Tabelle presenti nel manifest. */
