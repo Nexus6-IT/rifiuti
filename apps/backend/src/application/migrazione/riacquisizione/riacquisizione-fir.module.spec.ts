@@ -39,7 +39,8 @@ describe('RiacquisizioneFirModule', () => {
       {},
       {
         get: (_t, nome) => {
-          if (nome === 'then' || /^on(Module|Application)/.test(String(nome))) return undefined
+          if (nome === 'then' || /^(on|before)(Module|Application)/.test(String(nome)))
+            return undefined
           throw new Error(`client di sistema toccato: ${String(nome)}`)
         },
       }
