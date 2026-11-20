@@ -8,6 +8,7 @@ import { PrismaClient, UserRole } from '@prisma/client'
 import { TenantService } from './tenant.service'
 import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55444/wasteflow_ci?schema=public'
@@ -17,7 +18,7 @@ describe('TenantService.impostaSimulazionePese (Postgres reale)', () => {
   const creati: string[] = []
 
   afterAll(async () => {
-    if (creati.length) await owner.tenant.deleteMany({ where: { id: { in: creati } } })
+    if (creati.length) await cancellaAziendeDiProva(owner, creati)
     await owner.$disconnect()
   })
 

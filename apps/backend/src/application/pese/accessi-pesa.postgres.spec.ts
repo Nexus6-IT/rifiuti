@@ -31,6 +31,7 @@ import { AutomezziService } from './automezzi.service'
 import { AlibiGiaUsatoError, RegolaPesataError, StatoAccessoNonValidoError } from './errori-pese'
 import { StrumentiPesaService } from './strumenti-pesa.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Azienda = Awaited<ReturnType<typeof creaAzienda>>
 
 let n = 0
@@ -108,7 +109,7 @@ describe('Accessi di pesa — Postgres reale, ruolo wasteflow_app', () => {
   })
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await app.$disconnect()
     await owner.$disconnect()
   })

@@ -29,6 +29,7 @@ import { RegistraMovimentoCommand } from '../registro/commands/registra-moviment
 import { CorreggiMovimentoUseCase } from '../registro/use-cases/correggi-movimento.use-case'
 import { leggiAmbitiAbbinamento, radiceScarico, righeDelCarico } from './lettore-abbinamenti'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
@@ -182,7 +183,7 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
       })
       await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()

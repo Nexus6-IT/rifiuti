@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { MudPresentazioneService } from './mud-presentazione.service'
 import { MudVersionRegistry } from './export/mud-version.registry'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Segnatura della presentazione contro un Postgres reale: due segnature concorrenti dello
  * stesso anno non passano entrambe. Il controllo «già presentato» gira sotto il lock del report,
@@ -72,7 +73,7 @@ describe('MudPresentazioneService — Postgres reale', () => {
       await prisma.activityLog.deleteMany({ where: { tenantId } })
       await prisma.mUDReport.deleteMany({ where: { tenantId } })
       await prisma.user.deleteMany({ where: { tenantId } })
-      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(prisma, tenantId)
     }
     await prisma.$disconnect()
   })

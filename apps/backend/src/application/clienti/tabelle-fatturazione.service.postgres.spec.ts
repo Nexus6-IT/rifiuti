@@ -27,6 +27,7 @@ import { CodificheContrattoService } from './codifiche-contratto.service'
 import { RegistriIvaService } from './registri-iva.service'
 import { TestiFatturazioneService } from './testi-fatturazione.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -57,7 +58,7 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app?.$disconnect()

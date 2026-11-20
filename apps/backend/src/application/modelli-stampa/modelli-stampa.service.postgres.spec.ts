@@ -24,6 +24,7 @@ import {
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { ModelliStampaService } from './modelli-stampa.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 // 1x1 reale: il logo si prova davvero con il motore PDF (revisione I1).
 const PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -54,7 +55,7 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.companyTemplate.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

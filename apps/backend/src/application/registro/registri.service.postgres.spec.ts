@@ -28,6 +28,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { RegistriService } from './registri.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('RegistriService — Postgres reale, ruolo wasteflow_app', () => {
@@ -72,7 +73,7 @@ describe('RegistriService — Postgres reale, ruolo wasteflow_app', () => {
     await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })

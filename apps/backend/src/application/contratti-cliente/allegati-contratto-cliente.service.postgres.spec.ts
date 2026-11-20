@@ -26,6 +26,7 @@ import {
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { AllegatiContrattoClienteService } from './allegati-contratto-cliente.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const pdf = (testo: string) => Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from(testo)])
 const file = (testo = 'uno', nome = 'contratto.pdf') => {
   const buffer = pdf(testo)
@@ -58,7 +59,7 @@ describe('AllegatiContrattoClienteService — Postgres reale, ruolo wasteflow_ap
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

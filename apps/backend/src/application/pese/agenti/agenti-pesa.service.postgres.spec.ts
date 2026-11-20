@@ -38,6 +38,7 @@ import { BattitoAgenteService } from './battito-agente.service'
 import { LetturePesaService } from './letture-pesa.service'
 import { RisoluzioneAgenteService } from './risoluzione-agente.service'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('AgentiPesaService e LetturePesaService (Postgres reale)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   const sistema = clientComeRuolo(
@@ -63,7 +64,7 @@ describe('AgentiPesaService e LetturePesaService (Postgres reale)', () => {
     abbinamento = new AbbinamentoAgenteService(app, risoluzione)
   })
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), sistema.$disconnect(), app.$disconnect()])
   })
 

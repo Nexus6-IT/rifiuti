@@ -32,6 +32,7 @@ import {
 import { MS_MASSIMI_LOTTO, IngressoLettureService } from './ingresso-letture.service'
 import { LottoOltreTempoError } from '../errori-pese'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('IngressoLettureService (Postgres reale)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -47,7 +48,7 @@ describe('IngressoLettureService (Postgres reale)', () => {
   })
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), app.$disconnect()])
   })
 

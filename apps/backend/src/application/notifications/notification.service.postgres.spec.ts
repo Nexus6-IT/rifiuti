@@ -21,6 +21,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { NotificationService } from './notification.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('NotificationService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -55,7 +56,7 @@ describe('NotificationService — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     await owner.notification.deleteMany({ where: { tenantId } })
     await owner.user.deleteMany({ where: { tenantId } })
-    await owner.tenant.deleteMany({ where: { id: tenantId } })
+    await cancellaAziendeDiProva(owner, tenantId)
     await owner.$disconnect()
     await app.$disconnect()
   })
@@ -177,7 +178,7 @@ describe('NotificationService — Postgres reale, ruolo wasteflow_app', () => {
         },
       })
       await owner.user.deleteMany({ where: { id: { in: [stessoTenant.id, utenteAltro.id] } } })
-      await owner.tenant.deleteMany({ where: { id: altroTenant.id } })
+      await cancellaAziendeDiProva(owner, altroTenant.id)
     }
   })
 })

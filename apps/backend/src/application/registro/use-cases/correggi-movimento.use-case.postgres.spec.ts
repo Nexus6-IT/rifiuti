@@ -32,6 +32,7 @@ import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import { CorreggiMovimentoUseCase, DatiRettifica } from './correggi-movimento.use-case'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () => {
@@ -255,7 +256,7 @@ describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () =>
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
     if (userId) await owner.user.deleteMany({ where: { id: userId } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreati.length) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()
     await app2.onModuleDestroy()

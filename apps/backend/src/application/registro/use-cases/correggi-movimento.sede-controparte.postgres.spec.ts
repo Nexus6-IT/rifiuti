@@ -32,6 +32,7 @@ import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import { CorreggiMovimentoUseCase, DatiRettifica } from './correggi-movimento.use-case'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Correzioni con sede della controparte: Postgres reale, ruolo wasteflow_app', () => {
@@ -146,7 +147,7 @@ describe('Correzioni con sede della controparte: Postgres reale, ruolo wasteflow
     await owner.mUDReport.deleteMany({ where: dove })
     await owner.registroProgressivoIniziale.deleteMany({ where: dove })
     await owner.registroRifiuti.deleteMany({ where: dove })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await app.onModuleDestroy()
     await owner.$disconnect()

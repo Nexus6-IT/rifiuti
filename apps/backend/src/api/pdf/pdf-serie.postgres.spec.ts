@@ -26,6 +26,7 @@ import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { PdfController } from './pdf.controller'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('PdfController — serie di FIR e modelli, Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -57,7 +58,7 @@ describe('PdfController — serie di FIR e modelli, Postgres reale, ruolo wastef
       await owner.fIR.deleteMany({ where: filtro })
       await owner.companyTemplate.deleteMany({ where: filtro })
       await owner.user.deleteMany({ where: filtro })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app?.$disconnect()

@@ -48,6 +48,7 @@ import { TrasmettiFIRSecondoModalitaUseCase } from '../rentri/trasmetti-fir-seco
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { GeneraFirDaRitiriService } from './genera-fir-da-ritiri.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Modalita = 'AUTOMATICA' | 'MANUALE'
 const N = 20
 
@@ -245,7 +246,7 @@ describe('Emissione in serie dei FIR da ritiri — Postgres reale, ruolo wastefl
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
       await owner.user.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await Promise.all([owner.$disconnect(), app?.onModuleDestroy(), sistema?.onModuleDestroy()])
   })

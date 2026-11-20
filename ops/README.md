@@ -375,6 +375,13 @@ documenti non in bozza: il trigger li protegge anche dalla cascata. Nei test si 
 `pulisciTenantDiTest` (`SET LOCAL session_replication_role = replica`, serve un superuser: e' il
 proprietario del database di test).
 
+**Cancellazione di un'azienda con registro (I3, migration `20261121110000_tenants_registro_protetto`).**
+Il trigger `tenants_registro_protetto` rifiuta (`23514`, messaggio senza dati) `DELETE FROM tenants` se
+l'azienda ha movimenti, FIR o lotti di import. Per una pulizia voluta (solo ambienti di prova) il
+proprietario superuser imposta nella transazione `SET LOCAL app.consenti_cancellazione_azienda = 'on'`;
+da `wasteflow_app` e `wasteflow_sistema` il flag non ha effetto. Nei test: `cancellaAziendeDiProva`.
+Rollback: `DROP TRIGGER tenants_registro_protetto ON tenants; DROP FUNCTION tenants_registro_protetto_fn();`.
+
 ### 4.4c mappature dell'export contabile e indice degli scostamenti: rilascio e rollback
 
 Migration `20261107100000_fatturazione_mappature`, additiva: una tabella nuova e vuota
