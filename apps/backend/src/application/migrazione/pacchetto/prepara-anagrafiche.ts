@@ -113,6 +113,8 @@ function ragioneSociale(c: Campi): string {
     .slice(0, 255)
 }
 
+// eslint-disable-next-line no-control-regex
+const CONTROLLO = /[\u0000-\u001f\u007f]/
 const TELEFONO = /^[0-9+ ./()-]{3,20}$/
 const telefono = (v: string | null | undefined): string | null =>
   TELEFONO.test(T(v)) ? T(v) : null
@@ -549,7 +551,7 @@ export async function preparaAnagrafiche(
       targa,
       trasportatoreKey,
       taraKg: decodificaTaraKg(c.TARA),
-      note: nota !== '' && !/[\u0000-\u001f\u007f]/.test(nota) ? nota : null,
+      note: nota !== '' && !CONTROLLO.test(nota) ? nota : null,
     })
   }
 
