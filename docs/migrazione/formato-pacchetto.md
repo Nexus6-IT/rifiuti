@@ -145,7 +145,7 @@ modalita' G e P del passaggio d'anno. Le righe di compensazione (`UL` che cominc
   `CARICO_SENZA_PROTOCOLLO`; oltre 200 origini la quantita' si carica e le origini si omettono
   (`ORIGINI_OLTRE_IL_LIMITE`).
 - **Segnalati e non contati**: carichi dopo il taglio (`CARICO_DOPO_IL_TAGLIO`, sono di I7), carichi senza
-  classe di giacenza (OPER 16, 26), operazioni ENTRAMBI (13, 15, 24: non si sa se creino giacenza), deposito
+  carichi di OPER 15, 24, 16, 26 su un'ALTRA unita' locale (`POS2`, decisione Q2: restano FUORI dalla giacenza; avviso `CARICO_ALTRA_UL_FUORI_GIACENZA` e righe `carico-altra-ul <COD> OPER <n> protocollo <n|->` nel rapporto, da inserire a mano se servono; OPER 13 invece e' sempre un carico R/D), deposito
   del produttore `G0`/classe X (vive in `[Schede produttori]`, non nello staging), carico scaricato oltre il
   netto, residuo iniziale negativo non compensabile (`GIACENZA_INIZIALE_NEGATIVA`: non si carica a zero in
   silenzio), moda R/D non riconosciuta (scarto), quantita' sotto il centesimo (trascurate).
