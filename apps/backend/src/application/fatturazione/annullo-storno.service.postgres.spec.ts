@@ -249,7 +249,12 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
 
     describe('emesso scartato dallo SDI (4.5d, D3)', () => {
       /** Trasmissione portata a SCARTATA, con la notifica NS e i codici indicati. */
-      async function scarta(az: AziendaT18, documentoId: string, codici: string[]) {
+      async function scarta(
+        az: AziendaT18,
+        documentoId: string,
+        codici: string[],
+        ambiente = 'PRODUZIONE'
+      ) {
         await owner.$executeRawUnsafe(
           `UPDATE documenti_fattura SET emesso_il = now() WHERE id = $1::uuid`,
           documentoId
@@ -257,11 +262,12 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
         const [t] = await owner.$queryRawUnsafe<{ id: string }[]>(
           `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
              xml_sha256, stato, updated_at)
-           VALUES ($1::uuid, $2::uuid, 'fake', 'SANDBOX', 'IT01234567890_00001.xml', $3,
+           VALUES ($1::uuid, $2::uuid, 'fake', $4, 'IT01234567890_00001.xml', $3,
              'DA_INVIARE', now()) RETURNING id::text AS id`,
           az.tenantId,
           documentoId,
-          'a'.repeat(64)
+          'a'.repeat(64),
+          ambiente
         )
         for (const passo of ['IN_INVIO', 'INVIATA', 'SCARTATA']) {
           await owner.$executeRawUnsafe(
@@ -322,6 +328,71 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
           details: { motivo: 'TRASMISSIONE_SDI_VIVA' },
         })
         expect((await b.documento(d.id)).stato).toBe('DEFINITIVO')
+      })
+
+      it('emesso scartato: non e stornabile (vista) e lo storno e respinto SCARTATO_SDI; l annullo resta ammesso', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00311'])
+        const vista = await new DocumentiFatturaService(app).dettaglio(az.tenantId, d.id)
+        expect(vista).toMatchObject({ stornabile: false, annullabile: true })
+        const r = await esito(b.storna(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toEqual({
+          status: 409,
+          codice: 'STORNO_NON_AMMESSO',
+          details: { motivo: 'SCARTATO_SDI' },
+        })
+        expect(await conteggioStorni(az)).toBe(0)
+        await b.annullaCorrente(az, d.id)
+        expect((await b.documento(d.id)).stato).toBe('ANNULLATO')
+      })
+
+      it('scartato ma con un nuovo invio vivo: lo storno resta ammesso (il nuovo invio vale)', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00311'])
+        await owner.$executeRawUnsafe(
+          `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
+             xml_sha256, stato, updated_at)
+           VALUES ($1::uuid, $2::uuid, 'fake', 'PRODUZIONE', 'IT01234567890_00003.xml', $3,
+             'DA_INVIARE', now())`,
+          az.tenantId,
+          d.id,
+          'c'.repeat(64)
+        )
+        const vista = await new DocumentiFatturaService(app).dettaglio(az.tenantId, d.id)
+        expect(vista.stornabile).toBe(true)
+      })
+
+      it('scarto in SANDBOX: non sblocca l annullo dell emesso (EMESSO) ne chiude lo storno', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00311'], 'SANDBOX')
+        const r = await esito(b.annulla(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toEqual({
+          status: 409,
+          codice: 'ANNULLO_NON_AMMESSO',
+          details: { motivo: 'EMESSO' },
+        })
+        expect(
+          (await new DocumentiFatturaService(app).dettaglio(az.tenantId, d.id)).stornabile
+        ).toBe(true)
+      })
+
+      it('l audit dell annullo registra la conferma dello scarto duplicato', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        await scarta(az, d.id, ['00404'])
+        await b.annulla(az, d.id, {
+          versione: await b.versioneDi(d.id),
+          confermaGiaInviata: true,
+        })
+        const [log] = await owner.$queryRawUnsafe<{ metadata: Record<string, unknown> }[]>(
+          `SELECT metadata FROM activity_logs WHERE tenant_id = $1::uuid
+            AND action = 'DOCUMENTO_FATTURA_ANNULLATO' ORDER BY created_at DESC LIMIT 1`,
+          az.tenantId
+        )
+        expect(log.metadata).toMatchObject({ scartoSdi: true, confermaGiaInviata: true })
       })
 
       it('scarto «duplicato» (00404): senza conferma 409 PROBABILMENTE_GIA_INVIATA, con conferma si annulla', async () => {

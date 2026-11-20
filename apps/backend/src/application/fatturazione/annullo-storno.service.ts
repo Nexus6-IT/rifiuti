@@ -45,7 +45,7 @@ import {
 } from './numerazione'
 
 /** = Task 14 (Q33). */
-export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO'
+export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO' | 'SCARTATO_SDI'
 
 export interface RichiestaAnnullo {
   motivo: string
@@ -84,6 +84,7 @@ const MESSAGGI_ANNULLO: Readonly<Record<MotivoNonAnnullabile, string>> = {
 const MESSAGGI_STORNO: Readonly<Record<MotivoNonStornabile, string>> = {
   NON_DEFINITIVO: 'Si può stornare solo un documento definitivo.',
   NOTA_DI_CREDITO: 'Una nota di credito non si storna.',
+  SCARTATO_SDI: 'Lo SDI ha scartato la fattura: non si storna, si annulla e si rifattura.',
 }
 
 /** Indice unico parziale dello storno (migration 4.4a): un solo TD04 non annullato per origine. */
@@ -316,7 +317,12 @@ export class AnnulloStornoService {
                 numero: d.numeroTesto,
                 totale: d.totaleDocumento,
                 legami,
-                ...(scartoEmesso ? { scartoSdi: true } : {}),
+                ...(scartoEmesso
+                  ? {
+                      scartoSdi: true,
+                      ...(sdi.probabilmenteGiaInviata ? { confermaGiaInviata: true } : {}),
+                    }
+                  : {}),
               } as Prisma.InputJsonValue,
             },
           })
@@ -371,6 +377,10 @@ export class AnnulloStornoService {
             throw this.stornoNonAmmesso('NON_DEFINITIVO')
           }
           if (o.tipoDocumento === 'TD04') throw this.stornoNonAmmesso('NOTA_DI_CREDITO')
+          // Scartato dallo SDI e senza un nuovo invio vivo: la fattura non esiste fiscalmente, si annulla
+          // (D3). Uno storno la «rettificherebbe» e poi bloccherebbe l'annullo (STORNATO).
+          const sdi = await this.leggiScartoSdi(tx, tenantId, documentoId)
+          if (sdi.scartato && !sdi.viva) throw this.stornoNonAmmesso('SCARTATO_SDI')
           // m2: il registro si controlla solo sul DEFINITIVO (immutabile): una BOZZA spostata da
           // un ricalcolo ha gia` risposto NON_DEFINITIVO.
           if (o.registroIvaId !== prima.registroIvaId) {
@@ -525,7 +535,7 @@ export class AnnulloStornoService {
     documentoId: string
   ): Promise<{ scartato: boolean; viva: boolean; probabilmenteGiaInviata: boolean }> {
     const [r] = await tx.$queryRaw<{ scartato: boolean; viva: boolean }[]>`
-      SELECT COALESCE(bool_or(stato = 'SCARTATA'), false) AS scartato,
+      SELECT COALESCE(bool_or(stato = 'SCARTATA' AND direzione = 'EMESSA' AND ambiente = 'PRODUZIONE'), false) AS scartato,
              COALESCE(bool_or(stato NOT IN ('ERRORE_INVIO', 'SCARTATA')), false) AS viva
       FROM trasmissioni_sdi
       WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${documentoId}::uuid`
@@ -536,7 +546,8 @@ export class AnnulloStornoService {
         FROM notifiche_sdi n
         JOIN trasmissioni_sdi t ON t.id = n.trasmissione_id AND t.tenant_id = n.tenant_id
         WHERE n.tenant_id = ${tenantId}::uuid AND t.documento_id = ${documentoId}::uuid
-          AND t.stato = 'SCARTATA' AND n.tipo = 'NS'`
+          AND t.stato = 'SCARTATA' AND t.direzione = 'EMESSA' AND t.ambiente = 'PRODUZIONE'
+          AND n.tipo = 'NS'`
       duplicato = ns.some(x => avvisiScarto(x.codici ?? []).includes('PROBABILMENTE_GIA_INVIATA'))
     }
     return { ...r, probabilmenteGiaInviata: duplicato }

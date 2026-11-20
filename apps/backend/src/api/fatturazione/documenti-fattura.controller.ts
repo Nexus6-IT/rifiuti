@@ -92,7 +92,10 @@ export class DocumentiFatturaController {
   @Post(':id/annulla')
   @HttpCode(200)
   @Roles(...RUOLI_AMMINISTRATORI)
-  @ApiOperation({ summary: "Annulla l'ultimo numero del registro, se non e` emesso" })
+  @ApiOperation({
+    summary:
+      "Annulla l'ultimo numero del registro, se non e` emesso, o un emesso scartato dallo SDI",
+  })
   @ApiResponse({
     status: 409,
     description:

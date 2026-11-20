@@ -559,7 +559,7 @@ export class DocumentiFatturaService {
       { documento: string; stato: StatoTrasmissioneSdi; scartato: boolean; viva: boolean }[]
     >`
       SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato,
-             bool_or(t2.stato = 'SCARTATA') OVER (PARTITION BY t2.documento_id) AS scartato,
+             bool_or(t2.stato = 'SCARTATA' AND t2.direzione = 'EMESSA' AND t2.ambiente = 'PRODUZIONE') OVER (PARTITION BY t2.documento_id) AS scartato,
              bool_or(t2.stato NOT IN ('ERRORE_INVIO', 'SCARTATA')) OVER (PARTITION BY t2.documento_id) AS viva
       FROM "trasmissioni_sdi" t2
       WHERE t2.tenant_id = ${tenantId}::uuid AND ${inLista('t2.documento_id', lista)}
@@ -618,7 +618,12 @@ export class DocumentiFatturaService {
       emessoIl: t.emessoIl,
       annullabile,
       motivoNonAnnullabile: motivo,
-      stornabile: t.stato === 'DEFINITIVO' && t.tipoDocumento !== 'TD04' && !haStorno,
+      // Un emesso scartato dallo SDI senza nuovo invio vivo si annulla, non si storna (4.5d, D3).
+      stornabile:
+        t.stato === 'DEFINITIVO' &&
+        t.tipoDocumento !== 'TD04' &&
+        !haStorno &&
+        !((c.scarti.get(t.id)?.scartato ?? false) && !(c.scarti.get(t.id)?.viva ?? false)),
       statoSdi,
       esitoFiscale: statoSdi === null ? null : esitoFiscale(statoSdi),
     }

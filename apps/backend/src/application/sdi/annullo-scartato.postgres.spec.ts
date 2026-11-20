@@ -64,12 +64,12 @@ describe('SDI 4.5d: annullo di un emesso scartato (Postgres reale)', () => {
       { timeout: 15_000 }
     )
 
-  const inserisci = (tx: Tx, s: Scenario, stato = 'DA_INVIARE') =>
+  const inserisci = (tx: Tx, s: Scenario, stato = 'DA_INVIARE', ambiente = 'PRODUZIONE') =>
     tx.$queryRawUnsafe<{ id: string }[]>(
       `INSERT INTO trasmissioni_sdi
          (tenant_id, documento_id, provider, ambiente, nome_file, xml_sha256, stato, id_provider,
           ultimo_errore_codice, updated_at)
-       VALUES ($1::uuid, $2::uuid, 'fake', 'SANDBOX', 'IT01234567890_00001.xml', $3,
+       VALUES ($1::uuid, $2::uuid, 'fake', $7, 'IT01234567890_00001.xml', $3,
           $4::stato_trasmissione_sdi, $5, $6, now())
        RETURNING id::text AS id`,
       s.t,
@@ -77,12 +77,17 @@ describe('SDI 4.5d: annullo di un emesso scartato (Postgres reale)', () => {
       sha('xml'),
       stato,
       ['DA_INVIARE', 'IN_INVIO', 'INCERTA', 'ERRORE_INVIO'].includes(stato) ? null : 'prov-1',
-      stato === 'ERRORE_INVIO' ? 'E1' : null
+      stato === 'ERRORE_INVIO' ? 'E1' : null,
+      ambiente
     )
 
   /** Una trasmissione portata allo stato finale `stato` (le transizioni intermedie le fa il proprietario). */
-  async function trasmissione(s: Scenario, stato: string): Promise<string> {
-    const [t] = await comeApp(s.t, tx => inserisci(tx, s))
+  async function trasmissione(
+    s: Scenario,
+    stato: string,
+    ambiente = 'PRODUZIONE'
+  ): Promise<string> {
+    const [t] = await comeApp(s.t, tx => inserisci(tx, s, 'DA_INVIARE', ambiente))
     if (stato === 'DA_INVIARE') return t.id
     if (stato === 'ERRORE_INVIO') {
       await owner.$executeRawUnsafe(
@@ -164,6 +169,31 @@ describe('SDI 4.5d: annullo di un emesso scartato (Postgres reale)', () => {
       s.documentoId
     )
     expect(d.emesso).toBe(true)
+  })
+
+  it('scarto in SANDBOX: non sblocca l annullo di un emesso', async () => {
+    const s = await scenario()
+    await trasmissione(s, 'SCARTATA', 'SANDBOX')
+    await expect(annulla(s)).rejects.toThrow(/un documento emesso non si annulla/)
+  })
+
+  it('scarto di una trasmissione RICEVUTA: non sblocca l annullo', async () => {
+    const s = await scenario()
+    const id = await trasmissione(s, 'SCARTATA')
+    await owner.$executeRawUnsafe(
+      `ALTER TABLE trasmissioni_sdi DISABLE TRIGGER trasmissioni_sdi_transizioni`
+    )
+    try {
+      await owner.$executeRawUnsafe(
+        `UPDATE trasmissioni_sdi SET direzione = 'RICEVUTA' WHERE id = $1::uuid`,
+        id
+      )
+    } finally {
+      await owner.$executeRawUnsafe(
+        `ALTER TABLE trasmissioni_sdi ENABLE TRIGGER trasmissioni_sdi_transizioni`
+      )
+    }
+    await expect(annulla(s)).rejects.toThrow(/un documento emesso non si annulla/)
   })
 
   it('scartato ma con una nuova trasmissione viva: respinto', async () => {
