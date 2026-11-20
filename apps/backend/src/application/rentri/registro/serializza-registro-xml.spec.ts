@@ -119,8 +119,12 @@ function registro(voci: VoceRegistro[], extra: Partial<GruppoRegistrazioni> = {}
   })
 }
 
-function voce(a: AnnotazionePerRentri): VoceRegistro {
-  return { corpo: corpo(a), autore: AUTORE, identificativoTemporale: TS }
+function voce(a: AnnotazionePerRentri, progressivo = 1, anno = 2026): VoceRegistro {
+  return {
+    corpo: corpo({ ...a, numero: { anno, progressivo } }),
+    autore: AUTORE,
+    identificativoTemporale: TS,
+  }
 }
 
 /** Le 6 forme di causale + rettifica + annullamento + riferimenti: ognuna con un caso. */
@@ -318,7 +322,7 @@ describe('serializzaRegistro', () => {
           progressivoDa: 8,
           progressivoA: 9,
           dataCreazione: '2026-04-01T00:00:00.000Z',
-          voci: [voce(CASI.DT), voce(CASI.NP)],
+          voci: [voce(CASI.DT, 8), voce(CASI.NP, 9)],
         },
       ],
     })
@@ -346,7 +350,7 @@ describe('serializzaRegistro', () => {
   })
 
   it("e' XML ben formato (parser indipendente) con escape corretto di tutti i testi", () => {
-    const xml = registro([voce(CASI.eer99), voce(CASI.annullamento)])
+    const xml = registro([voce(CASI.eer99, 1), voce(CASI.annullamento, 2)])
     const errori: string[] = []
     new DOMParser({ onError: (_l: string, m: string) => errori.push(m) }).parseFromString(
       xml,
@@ -365,7 +369,7 @@ describe('serializzaRegistro', () => {
           progressivoDa: 40,
           progressivoA: 40,
           dataCreazione: TS,
-          voci: [voce(CASI.DT)],
+          voci: [voce(CASI.DT, 40, 2025)],
         },
         { anno: 2026, progressivoDa: 1, progressivoA: 1, dataCreazione: TS, voci: [voce(CASI.NP)] },
       ],
@@ -403,6 +407,102 @@ describe('serializzaRegistro', () => {
     )
   })
 
+  describe('coerenza fra intestazione del gruppo e voci (I1)', () => {
+    const gr = (g: Partial<GruppoRegistrazioni>[]) =>
+      serializzaRegistro({
+        eregXml: EREGI,
+        riferimenti: [],
+        registrazioni: g.map(x => ({
+          anno: 2026,
+          progressivoDa: 1,
+          progressivoA: 1,
+          dataCreazione: TS,
+          voci: [voce(CASI.DT)],
+          ...x,
+        })),
+      })
+
+    it('anno della voce diverso da quello del gruppo: errore', () => {
+      expect(() => gr([{ anno: 2025, progressivoDa: 40, progressivoA: 40 }])).toThrow(
+        /numeri delle voci/
+      )
+    })
+    it('progressivo saltato: errore', () => {
+      expect(() => gr([{ progressivoA: 2, voci: [voce(CASI.DT, 1), voce(CASI.NP, 3)] }])).toThrow(
+        /numeri delle voci/
+      )
+    })
+    it('voci in ordine invertito: errore', () => {
+      expect(() => gr([{ progressivoA: 2, voci: [voce(CASI.DT, 2), voce(CASI.NP, 1)] }])).toThrow(
+        /numeri delle voci/
+      )
+    })
+    it("annullamento: il numero si legge dal corpo dell'annullamento", () => {
+      expect(() => gr([{ voci: [voce(CASI.annullamento, 5)] }])).toThrow(/numeri delle voci/)
+      expect(
+        gr([{ progressivoDa: 5, progressivoA: 5, voci: [voce(CASI.annullamento, 5)] }])
+      ).toContain('ProgressivoDa="5"')
+    })
+    it('gruppi sovrapposti o con anno non crescente: errore', () => {
+      expect(() => gr([{ voci: [voce(CASI.DT, 1)] }, { voci: [voce(CASI.NP, 1)] }])).toThrow(
+        /ordine/
+      )
+      expect(() =>
+        gr([
+          { anno: 2026, voci: [voce(CASI.DT, 1)] },
+          { anno: 2025, voci: [voce(CASI.NP, 1, 2025)] },
+        ])
+      ).toThrow(/ordine/)
+    })
+    it('stesso anno, gruppi contigui in ordine: ammessi', () => {
+      expect(() =>
+        gr([
+          { progressivoDa: 1, progressivoA: 1, voci: [voce(CASI.DT, 1)] },
+          { progressivoDa: 2, progressivoA: 2, voci: [voce(CASI.NP, 2)] },
+        ])
+      ).not.toThrow()
+    })
+  })
+
+  describe('rifiuti di valori e date (M1-M4)', () => {
+    it('M1: valore troppo piccolo o negativo: errore, mai 0', () => {
+      const c = corpo(CASI.DT) as { rifiuto: { quantita: { valore: number } } }
+      c.rifiuto.quantita.valore = 1e-11
+      expect(() => serializzaMovimento(c, AUTORE, TS)).toThrow(XmlRegistroNonSerializzabileError)
+      c.rifiuto.quantita.valore = -1e-11
+      expect(() => serializzaMovimento(c, AUTORE, TS)).toThrow(XmlRegistroNonSerializzabileError)
+    })
+    it('M2: data senza fuso rifiutata, con offset ammessa', () => {
+      expect(() => serializzaMovimento(corpo(CASI.DT), AUTORE, '2026-03-01T10:00:00')).toThrow(
+        /data ISO/
+      )
+      expect(() =>
+        serializzaMovimento(corpo(CASI.DT), AUTORE, '2026-03-01T10:00:00+01:00')
+      ).not.toThrow()
+    })
+    it('M4: tab, a capo e \\r in un attributo diventano riferimenti di carattere', () => {
+      const c = corpo(CASI['T*']) as { produttore: { indirizzo: { citta: { comune_id: string } } } }
+      c.produttore.indirizzo.citta.comune_id = 'a\tb\nc\rd'
+      expect(serializzaMovimento(c, AUTORE, TS)).toContain('ComuneId="a&#9;b&#10;c&#13;d"')
+    })
+  })
+
+  describe('golden delle altre causali (M6)', () => {
+    it('NP, RE (T -> kg), I (R13)', () => {
+      expect(serializzaMovimento(corpo(CASI.NP), AUTORE, TS)).toContain(
+        '<mov:CausaleOperazione>NP</mov:CausaleOperazione>'
+      )
+      const re = serializzaMovimento(corpo(CASI.RE), AUTORE, TS)
+      expect(re).toContain('<mov:CausaleOperazione>RE</mov:CausaleOperazione>')
+      expect(re).toContain(
+        '<mov:Quantita><mov:Valore>1500</mov:Valore><mov:UnitaMisura>kg</mov:UnitaMisura></mov:Quantita>'
+      )
+      const i = serializzaMovimento(corpo(CASI.I), AUTORE, TS)
+      expect(i).toContain('<mov:CausaleOperazione>I</mov:CausaleOperazione>')
+      expect(i).toContain('<mov:DestinatoAttivita>R13</mov:DestinatoAttivita>')
+    })
+  })
+
   describe('validazione XSD', () => {
     it.each(Object.keys(CASI))("caso %s passa l'XSD", async nome => {
       const esito = await validaXmlRegistro(registro([voce(CASI[nome])]))
@@ -415,7 +515,7 @@ describe('serializzaRegistro', () => {
       const voci: VoceRegistro[] = []
       for (let i = 0; i < 50; i++) {
         const base = CASI[nomi[i % nomi.length]]
-        voci.push(voce({ ...base, numero: { anno: 2026, progressivo: i + 1 } }))
+        voci.push(voce(base, i + 1))
       }
       const xml = registro(voci)
       const esito = await validaXmlRegistro(xml)

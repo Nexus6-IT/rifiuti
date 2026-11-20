@@ -22,11 +22,11 @@ export const NS_MOVIMENTI = 'urn:it:rentri:movimenti:1.0'
 export const NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance'
 
 const DICHIARAZIONE_XML = '<?xml version="1.0" encoding="UTF-8"?>'
-const PATTERN_DATA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/
-const PATTERN_DECIMALE = /^-?\d+(\.\d+)?$/
+const PATTERN_DATA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+const PATTERN_DECIMALE = /^\d+(\.\d+)?$/
 /** Tutto cio' che XML 1.0 non ammette (compresi i surrogati spaiati, grazie al flag `u`). */
 // eslint-disable-next-line no-control-regex -- intercettare i controlli C0 e' lo scopo
-const CARATTERI_NON_XML = /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/u
+const CARATTERI_NON_XML = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u
 
 type Oggetto = Record<string, unknown>
 
@@ -67,16 +67,21 @@ function errore(motivo: string): never {
 }
 
 /** Escape del testo e degli attributi (`&`, `<`, `>`, virgolette, `\r` che l'XML normalizzerebbe). */
-export function escapeXml(valore: string, campo: string): string {
+export function escapeXml(valore: string, campo: string, attributo = false): string {
   if (CARATTERI_NON_XML.test(valore))
     errore(`il campo ${campo} contiene caratteri non ammessi da XML`)
-  return valore
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-    .replace(/\r/g, '&#13;')
+  return (
+    valore
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;')
+      .replace(/\r/g, '&#13;')
+      // Nel valore di un attributo il parser normalizza tab e a capo in spazi: vanno protetti.
+      .replace(/\t/g, attributo ? '&#9;' : '\t')
+      .replace(/\n/g, attributo ? '&#10;' : '\n')
+  )
 }
 
 function el(nome: string, contenuto: string): string {
@@ -105,12 +110,20 @@ function intero(valore: unknown, campo: string): string {
 
 /** Decimale in notazione posizionale (mai `1e-7`): `xs:decimal` non ammette l'esponente. */
 function decimale(nome: string, valore: unknown, campo: string): string {
-  if (typeof valore !== 'number' || !Number.isFinite(valore)) {
-    errore(`il campo ${campo} deve essere un numero`)
+  if (
+    typeof valore !== 'number' ||
+    !Number.isFinite(valore) ||
+    valore < 0 ||
+    Object.is(valore, -0)
+  ) {
+    errore(`il campo ${campo} deve essere un numero non negativo`)
   }
   let s = String(valore)
   if (/e/i.test(s)) s = valore.toFixed(10).replace(/0+$/, '').replace(/\.$/, '')
-  if (!PATTERN_DECIMALE.test(s)) errore(`il campo ${campo} non e' un decimale`)
+  // Se la forma posizionale non rappresenta lo stesso numero, si e' perso qualcosa (es. 1e-11 -> 0).
+  if (!PATTERN_DECIMALE.test(s) || Number(s) !== valore) {
+    errore(`il campo ${campo} non e' rappresentabile come decimale senza perdita`)
+  }
   return el(nome, s)
 }
 
@@ -248,7 +261,7 @@ function indirizzo(v: unknown): string {
     testo('mov:Indirizzo', o.indirizzo, 'indirizzo.indirizzo') +
     opz(o.civico, x => testo('mov:Civico', x, 'indirizzo.civico')) +
     opz(o.cap, x => testo('mov:Cap', x, 'indirizzo.cap')) +
-    `<mov:Citta ComuneId="${escapeXml(c.comune_id, 'comune_id')}"/>` +
+    `<mov:Citta ComuneId="${escapeXml(c.comune_id, 'comune_id', true)}"/>` +
     '</mov:Indirizzo>'
   )
 }
@@ -365,11 +378,26 @@ function eregiVerbatim(xml: string): string {
   return s
 }
 
+/** Numero di registrazione della voce: `riferimenti.numero_registrazione` (movimento) o `numero_registrazione` (annullamento). */
+function numeroVoce(corpo: Record<string, unknown>): { anno: unknown; progressivo: unknown } {
+  const sorgente = 'riferimenti' in corpo ? (corpo.riferimenti as Oggetto | null) : corpo
+  const n =
+    sorgente && typeof sorgente === 'object' ? (sorgente as Oggetto).numero_registrazione : null
+  if (typeof n !== 'object' || n === null) errore('una voce non ha il numero di registrazione')
+  return { anno: (n as Oggetto).anno, progressivo: (n as Oggetto).progressivo }
+}
+
 function gruppo(g: GruppoRegistrazioni): string {
   const attesi = g.progressivoA - g.progressivoDa + 1
   if (g.progressivoA < g.progressivoDa || g.voci.length !== attesi) {
     errore("il numero di voci non coincide con l'intervallo di progressivi")
   }
+  g.voci.forEach((v, i) => {
+    const n = numeroVoce(v.corpo)
+    if (n.anno !== g.anno || n.progressivo !== g.progressivoDa + i) {
+      errore("i numeri delle voci non coincidono con l'intervallo del gruppo")
+    }
+  })
   const attributi =
     ` Anno="${intero(g.anno, 'anno')}"` +
     ` ProgressivoDa="${intero(g.progressivoDa, 'progressivoDa')}"` +
@@ -402,6 +430,13 @@ function riferimento(r: RiferimentoPrecedente): string {
  */
 export function serializzaRegistro(input: InputSerializzaRegistro): string {
   if (input.registrazioni.length === 0) errore('nessuna registrazione')
+  // Gruppi in ordine e senza sovrapposizioni: anno crescente, o stesso anno con progressivi successivi.
+  input.registrazioni.forEach((g, i) => {
+    const p = input.registrazioni[i - 1]
+    if (p && (g.anno < p.anno || (g.anno === p.anno && g.progressivoDa <= p.progressivoA))) {
+      errore('i gruppi di registrazioni non sono in ordine o si sovrappongono')
+    }
+  })
   return (
     DICHIARAZIONE_XML +
     `<reg:Registro xmlns:reg="${NS_REGISTRI}" xmlns:mov="${NS_MOVIMENTI}" xmlns:xsi="${NS_XSI}">` +
