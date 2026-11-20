@@ -13,7 +13,27 @@ const jwt = (sub: string) =>
 const giro = (data: string): GiroVista => ({
   data,
   autista: { id: 'a1', nome: 'Mario', cognome: 'Bianchi' },
-  ritiri: [{ id: 'r1', produttore: { nome: 'Rossi Srl' } } as GiroVista['ritiri'][number]],
+  ritiri: [
+    {
+      id: 'r1',
+      dataPrevista: data,
+      fascia: 'MATTINA',
+      ordineGiro: 1,
+      produttore: { id: 'p', nome: 'Rossi Srl', sedeId: 's', indirizzo: 'Via Roma 1' },
+      trasportatore: { id: 't', nome: 'Trasp' },
+      destinatario: { id: 'd', nome: 'Impianto', sedeId: 'sd' },
+      automezzo: null,
+      autista: null,
+      cerCode: '150102',
+      descrizione: 'Imballaggi',
+      quantitaPresunta: '120',
+      unita: 'kg',
+      stato: 'PROGRAMMATO',
+      statoVisibile: 'DA_GENERARE',
+      motivo: null,
+      fir: null,
+    },
+  ],
 });
 
 describe('GiroService offline', () => {
@@ -185,5 +205,58 @@ describe('GiroService offline', () => {
     await archivio.salva({ utenteId: 'u2', data: 'd', aggiornatoIl: 'x', giro: giro('d') });
     TestBed.inject(SessioneService).pulisci();
     await vi.waitFor(() => expect(archivio.corrente).toBeNull());
+  });
+
+  it('snapshot: salva solo i campi noti, scarta quelli estranei (anche annidati)', async () => {
+    accedi('u1');
+    const g = giro('2026-11-20') as unknown as Record<string, unknown>;
+    g['telefonoReferente'] = '333';
+    const r = (g['ritiri'] as Record<string, unknown>[])[0];
+    r['serieId'] = 's';
+    (r['produttore'] as Record<string, unknown>)['codiceFiscale'] = 'CF';
+    giroSvc.carica('2026-11-20').subscribe();
+    http.expectOne((x) => x.url === '/api/v1/campo/giro').flush(g);
+    await vi.waitFor(() => expect(archivio.corrente).not.toBeNull());
+    const testo = JSON.stringify(archivio.corrente);
+    expect(testo).not.toContain('telefonoReferente');
+    expect(testo).not.toContain('serieId');
+    expect(testo).not.toContain('codiceFiscale');
+    expect(testo).toContain('Rossi Srl');
+  });
+
+  it('fine sessione (401): la memoria del giro viene azzerata', () => {
+    accedi('u1');
+    giroSvc.impostaFresco(giro('2026-11-20'), 'x');
+    TestBed.inject(SessioneService).pulisci();
+    expect(giroSvc.corrente()).toBeNull();
+    expect(giroSvc.aggiornatoIl()).toBeNull();
+  });
+
+  it('cambio giorno alla ripresa: svuota memoria e snapshot e chiede il ricaricamento', async () => {
+    accedi('u1');
+    giroSvc.impostaFresco(giro('2026-11-19'), 'x');
+    await archivio.salva({
+      utenteId: 'u1',
+      data: '2026-11-19',
+      aggiornatoIl: 'x',
+      giro: giro('2026-11-19'),
+    });
+    const prima = giroSvc.generazione();
+    expect(await giroSvc.controllaGiorno('2026-11-20')).toBe(true);
+    expect(giroSvc.corrente()).toBeNull();
+    expect(archivio.corrente).toBeNull();
+    expect(giroSvc.generazione()).toBe(prima + 1);
+    // stesso giorno: non tocca nulla
+    giroSvc.impostaFresco(giro('2026-11-20'), 'x');
+    expect(await giroSvc.controllaGiorno('2026-11-20')).toBe(false);
+    expect(giroSvc.corrente()).not.toBeNull();
+  });
+
+  it('senza rete e senza copia ma con il giro gia in memoria: resta visibile come salvato', async () => {
+    accedi('u1');
+    giroSvc.impostaFresco(giro('2026-11-20'), 'x');
+    expect(await caricaSenzaRete('2026-11-20')).toBe('ok');
+    expect(giroSvc.daArchivio()).toBe(true);
+    expect(giroSvc.corrente()).not.toBeNull();
   });
 });

@@ -22,11 +22,17 @@ export class SessioneService {
   private readonly http = inject(HttpClient);
   private readonly archivio = inject(ArchivioGiro);
   private readonly token = signal<Token | null>(this.leggi());
+  private readonly allaChiusuraCb: Array<() => void> = [];
   private rinnovoInCorso: Observable<string> | null = null;
 
   readonly autenticato = computed(() => this.token() !== null);
   /** Identita (`sub`) letta dall'access token, senza verifica: serve solo ad abbinare lo snapshot. */
   readonly utenteId = computed(() => idDaToken(this.token()?.accessToken));
+
+  /** Registra una pulizia da eseguire a fine sessione e a ogni nuovo accesso (cambio utente). */
+  allaChiusura(fn: () => void): void {
+    this.allaChiusuraCb.push(fn);
+  }
 
   accessToken(): string | null {
     return this.token()?.accessToken ?? null;
@@ -39,6 +45,7 @@ export class SessioneService {
     const refreshToken = p.get('refreshToken');
     if (!accessToken || !refreshToken) return false;
     // Nuovo accesso: la copia del giro del precedente non deve sopravvivere.
+    this.allaChiusuraCb.forEach((f) => f());
     void this.archivio.cancella().catch(() => undefined);
     this.imposta({ accessToken, refreshToken });
     return true;
@@ -84,6 +91,7 @@ export class SessioneService {
 
   pulisci(): void {
     this.token.set(null);
+    this.allaChiusuraCb.forEach((f) => f());
     void this.archivio.cancella().catch(() => undefined);
     try {
       localStorage.removeItem(CHIAVE_SESSIONE);

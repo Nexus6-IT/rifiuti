@@ -27,7 +27,19 @@ describe('StatoGiro (indicatore)', () => {
     f.detectChanges();
     const el = f.nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="aggiornato"]')?.textContent).toContain('20/11 07:05');
-    expect(el.querySelector('[data-testid="offline"]')?.textContent).toContain('Offline');
+    expect(el.querySelector('[data-testid="offline"]')?.textContent).toContain(
+      'server non raggiungibile',
+    );
+  });
+
+  it('senza rete del browser il banner dice Offline', () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const f = TestBed.createComponent(StatoGiro);
+    f.detectChanges();
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="offline"]')?.textContent,
+    ).toContain('Offline');
+    vi.restoreAllMocks();
   });
 
   it('con dati freschi: nessun banner offline, ora visibile', () => {

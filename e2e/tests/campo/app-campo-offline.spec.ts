@@ -8,7 +8,15 @@ import { test, expect, devices, type Page, type Route } from '@playwright/test'
  * IndexedDB gestito dall'app: il service worker serve la shell e basta.
  */
 const { viewport, userAgent, isMobile, hasTouch, deviceScaleFactor } = devices['Pixel 7']
-test.use({ viewport, userAgent, isMobile, hasTouch, deviceScaleFactor, serviceWorkers: 'allow' })
+test.use({
+  viewport,
+  userAgent,
+  isMobile,
+  hasTouch,
+  deviceScaleFactor,
+  serviceWorkers: 'allow',
+  timezoneId: 'Europe/Rome',
+})
 
 const OGGI = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date())
 

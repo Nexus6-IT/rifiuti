@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
 import { SessioneService } from '../core/sessione.service';
@@ -49,15 +49,19 @@ import { StatoGiro } from '../core/stato-giro';
     </main>
   `,
 })
-export class GiroPagina implements OnInit {
+export class GiroPagina {
   protected readonly giro = inject(GiroService);
   private readonly sessione = inject(SessioneService);
   private readonly router = inject(Router);
   protected readonly caricamento = signal(false);
   protected readonly errore = signal<string | null>(null);
 
-  ngOnInit(): void {
-    this.carica();
+  constructor() {
+    // Al primo giro e a ogni scarto del giro di ieri (cambio giorno) si ricarica.
+    effect(() => {
+      this.giro.generazione();
+      untracked(() => this.carica());
+    });
   }
 
   protected carica(): void {

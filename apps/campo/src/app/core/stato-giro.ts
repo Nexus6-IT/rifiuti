@@ -12,7 +12,7 @@ import { StatoRete } from './stato-rete';
     }
     @if (giro.daArchivio() || !rete.online()) {
       <p class="avviso-offline" role="status" data-testid="offline">
-        Offline:
+        {{ rete.online() ? 'Offline o server non raggiungibile' : 'Offline' }}:
         {{ giro.daArchivio() ? 'stai vedendo il giro salvato sul telefono' : 'senza rete' }}. I dati
         potrebbero non essere aggiornati.
       </p>
