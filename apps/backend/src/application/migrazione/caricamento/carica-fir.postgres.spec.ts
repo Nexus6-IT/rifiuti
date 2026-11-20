@@ -428,4 +428,22 @@ describe('Pezzo I5 T1-T3: carica FIR — Postgres reale, ruolo wasteflow_app', (
       0
     )
   })
+
+  it('un pacchetto con soli FIR digitali: --ambito FIR (anche --verifica) esce 0 con un messaggio chiaro, nessun lotto', async () => {
+    const { az, p } = await nuova([{ cod: 4, formu: 'ABCDE1234567', c6: 'DIGITALE' }])
+    expect(p.manifest.file.filter(f => f.ambito === 'FIR').map(f => f.fase)).toEqual([
+      'fir-digitali',
+    ])
+    for (const extra of [[], ['--verifica']]) {
+      const u = uscita()
+      expect(
+        await eseguiCli(argomenti(az, p, 'FIR', ...conOperatore(az), ...extra), u.u, servizio)
+      ).toBe(0)
+      expect(u.out.join('\n')).toContain('nulla da caricare; 1 FIR digitali da riacquisire')
+      expect(u.err).toEqual([])
+    }
+    expect(await owner.lottoImport.count({ where: { tenantId: az.tenantId, ambito: 'FIR' } })).toBe(
+      0
+    )
+  })
 })

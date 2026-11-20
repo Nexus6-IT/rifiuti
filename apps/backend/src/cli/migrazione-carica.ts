@@ -24,6 +24,7 @@ import {
   AmbitoNonCaricabileError,
   BloccantiVerificaError,
   CaricaPacchettoService,
+  NullaDaCaricareError,
   RuoloNonApplicativoError,
 } from '../application/migrazione/caricamento/carica-pacchetto.service'
 import { apriPacchetto } from '../application/migrazione/pacchetto/lettore-pacchetto'
@@ -142,6 +143,10 @@ export async function eseguiCli(
     if (e instanceof BloccantiVerificaError) {
       for (const b of e.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
       return 2
+    }
+    if (e instanceof NullaDaCaricareError) {
+      uscita.scrivi(e.message)
+      return 0
     }
     if (e instanceof AmbitoNonCaricabileError) {
       uscita.errore(e.message)

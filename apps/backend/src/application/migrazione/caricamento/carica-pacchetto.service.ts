@@ -47,6 +47,22 @@ export class AmbitoNonCaricabileError extends Error {
   }
 }
 
+/**
+ * L'ambito ha nel pacchetto solo fasi di elenco (es. FIR con soli digitali): non c'e' nulla da
+ * caricare, non e' un errore. Il conteggio e' quello delle righe dell'elenco.
+ */
+export class NullaDaCaricareError extends Error {
+  constructor(
+    readonly ambito: string,
+    readonly daRiacquisire: number
+  ) {
+    super(
+      `Ambito ${ambito}: nulla da caricare; ${daRiacquisire} FIR digitali da riacquisire con migrazione:riacquisisci-fir`
+    )
+    this.name = 'NullaDaCaricareError'
+  }
+}
+
 /** La verifica che precede il caricamento ha trovato bloccanti: nessun lotto aperto. */
 export class BloccantiVerificaError extends Error {
   constructor(readonly bloccanti: readonly Collisione[]) {
@@ -98,7 +114,18 @@ export class CaricaPacchettoService {
       if (!FASI_AMBITO[r.ambito].some(d => d.nome === f))
         throw new AmbitoNonCaricabileError(r.ambito)
     }
-    if (fasi.length === 0) throw new AmbitoNonCaricabileError(r.ambito)
+    if (fasi.length === 0) {
+      const soloElenco = r.pacchetto
+        .fasi(r.ambito)
+        .filter(f => FASI_SOLO_ELENCO[r.ambito].includes(f.fase))
+      if (soloElenco.length > 0 && soloElenco.length === presenti.size) {
+        throw new NullaDaCaricareError(
+          r.ambito,
+          soloElenco.reduce((n, f) => n + f.righe, 0)
+        )
+      }
+      throw new AmbitoNonCaricabileError(r.ambito)
+    }
     return fasi
   }
 

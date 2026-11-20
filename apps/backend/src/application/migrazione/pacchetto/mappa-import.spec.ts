@@ -97,4 +97,29 @@ describe('mappa di import', () => {
     rifiutata({ ...mappaValida(), dataTaglio: '2025-12-31' })
     rifiutata({ ...mappaValida(), anno: 2027 })
   })
+
+  describe('codici unita locale proprie WinWaste (VERSIS XRENTRI:X<sede>.<ul>)', () => {
+    const conUl = (legacy: string) => ({
+      ...mappaValida(),
+      unitaLocali: [{ legacy, sedeId: U2, unitaLocaleId: null }],
+    })
+
+    it('un codice UL lungo con la X davanti e accettato in unitaLocali[].legacy', () => {
+      expect(() => validaMappa(conUl('X123456.0001'))).not.toThrow()
+      expect(() => validaMappa(conUl('X90001.0001'))).not.toThrow()
+    })
+
+    it('un telefono vero nello stesso formato di lunghezza resta rifiutato nello stesso campo', () => {
+      rifiutata(conUl('0612345678.0001'))
+      rifiutata(conUl('06123456.0001'))
+      rifiutata(conUl('+39061234567'))
+    })
+
+    it('negli altri campi liberi il formato X... lungo non e una scorciatoia', () => {
+      rifiutata({
+        ...mappaValida(),
+        registri: [{ legacy: 'X123456.0001', registroId: U1 }],
+      })
+    })
+  })
 })
