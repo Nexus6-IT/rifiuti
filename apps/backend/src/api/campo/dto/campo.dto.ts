@@ -77,3 +77,15 @@ export class EsitiCampoQueryDto {
   @Min(1, { message: 'Pagina non valida.' })
   pagina?: number
 }
+
+/** Campi testuali del multipart di `POST /campo/eventi/:eventoId/foto` (il file e' `foto`). */
+export class FotoCampoDto {
+  @ApiProperty({ description: 'UUID generato dal telefono: chiave di idempotenza della foto' })
+  @IsUUID('all', { message: "L'identificativo della foto non è valido." })
+  id!: string
+
+  @ApiProperty({ description: 'SHA-256 (esadecimale) dei byte inviati' })
+  @IsString({ message: "L'impronta della foto non è valida." })
+  @Matches(/^[0-9a-fA-F]{64}$/, { message: "L'impronta della foto non è valida." })
+  sha256!: string
+}
