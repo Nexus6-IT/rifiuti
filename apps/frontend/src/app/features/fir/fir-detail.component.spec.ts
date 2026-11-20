@@ -2595,6 +2595,32 @@ describe('FirDetailComponent', () => {
       expect(el().querySelector(FIRMA)).toBeFalsy()
     })
 
+    for (const esito of ['INCERTA', 'INVIATA'] as const) {
+      it(`R1: invio ${esito} (esito ignoto) e firma proposta dall'ente: banner con il testo e l'avviso di verifica`, () => {
+        preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [{ ...eventoAnnotazione('Testo con risposta persa'), esito }] })
+        )
+        fixture.detectChanges()
+        expect(
+          el().querySelector('[data-testid="fir-detail-firma-annotazione-testo"]')?.textContent
+        ).toContain('Testo con risposta persa')
+        expect(
+          el().querySelector('[data-testid="fir-detail-firma-annotazione-verifica"]')?.textContent
+        ).toContain('verifica presso l')
+        expect(el().querySelector(FIRMA)).toBeTruthy()
+      })
+    }
+
+    it('R1: un invio chiuso come RIFIUTATA non e da firmare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(
+        of({ eventi: [{ ...eventoAnnotazione(), esito: 'RIFIUTATA' }] })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+    })
+
     it('se l ultima annotazione e gia stata firmata il banner non compare', () => {
       preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione')
       rentriFirLifecycleService.eventi.and.returnValue(

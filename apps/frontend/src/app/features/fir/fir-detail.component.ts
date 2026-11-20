@@ -405,6 +405,16 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 >
                   {{ annotazioneDaFirmare() }}
                 </blockquote>
+                @if (annotazioneDaVerificare()) {
+                  <p
+                    class="firma-in-attesa__testo"
+                    data-testid="fir-detail-firma-annotazione-verifica"
+                  >
+                    <i class="pi pi-info-circle" aria-hidden="true"></i>
+                    L'esito dell'invio non era arrivato: prima di chiedere la firma WasteFlow
+                    verifica presso l'ente che l'annotazione in attesa sia proprio questa.
+                  </p>
+                }
                 <div class="row-actions">
                   <p-button
                     label="Firma l'annotazione"
@@ -2110,12 +2120,28 @@ export class FirDetailComponent implements OnInit {
    * non si firma da qui, perche' non ne conosciamo il testo.
    */
   protected annotazioneDaFirmare(): string | null {
+    const evento = this.annotazioneInSospeso()
+    const testo = (evento?.payload as { annotazione?: unknown } | null | undefined)?.annotazione
+    return typeof testo === 'string' ? testo : null
+  }
+
+  /**
+   * L'annotazione in sospeso ha un esito ignoto (INVIATA/INCERTA): il backend la riconcilia con l'ente prima
+   * della firma (la firma parte solo se l'ente la mostra con il nostro soggetto e lo stesso testo).
+   */
+  protected annotazioneDaVerificare(): boolean {
+    const esito = this.annotazioneInSospeso()?.esito
+    return esito === 'INVIATA' || esito === 'INCERTA'
+  }
+
+  /**
+   * Come il backend: l'ultimo invio dopo l'ultima firma accettata. ACCETTATA = nostra e accettata;
+   * INVIATA/INCERTA = esito ignoto, da riconciliare; RIFIUTATA = chiuso (si guarda l'invio precedente).
+   */
+  private annotazioneInSospeso(): EventoFirRentri | null {
     for (const e of this.eventi()) {
       if (e.operazione === 'AcquisizioneFirmaAnnotazione' && e.esito === 'ACCETTATA') return null
-      if (e.operazione === 'Annotazione' && e.esito === 'ACCETTATA') {
-        const testo = (e.payload as { annotazione?: unknown } | null | undefined)?.annotazione
-        return typeof testo === 'string' ? testo : null
-      }
+      if (e.operazione === 'Annotazione' && e.esito !== 'RIFIUTATA') return e
     }
     return null
   }
