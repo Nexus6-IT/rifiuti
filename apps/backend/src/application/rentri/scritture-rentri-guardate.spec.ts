@@ -23,6 +23,9 @@ const SCRITTURE = [
   'autorizzaFirmaRemota',
   'firmaHashRemoto',
   'inviaAcquisizioneFirma',
+  // FIR in viaggio P1: annullamento dell'ultima firma e reset dei dati non firmati.
+  'rollbackFirma',
+  'resetStato',
   'caricaAllegato',
   'eliminaAllegato',
   'rilasciaVisibilita',
@@ -67,6 +70,7 @@ const ATTESI = [
   'application/rentri/completa-operazione-con-firma.use-case.ts',
   'application/rentri/gestisci-allegati-fir.use-case.ts',
   'application/rentri/rilascia-formulario-rentri.use-case.ts',
+  'application/rentri/rollback-e-reset-fir-rentri.use-case.ts',
   'application/rentri/sync-fir-to-rentri.use-case.ts',
 ]
 

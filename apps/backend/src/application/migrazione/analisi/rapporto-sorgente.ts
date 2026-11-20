@@ -135,7 +135,7 @@ export interface RapportoSorgente {
   readonly ditta: string
   readonly anno: number
   readonly estrattoIl: string
-  /** SHA-256 del manifest (finira' in `lotti_import.hash_staging`). */
+  /** SHA-256 del manifest dello staging (finisce nel manifest del pacchetto come `hashStaging`). */
   readonly hashManifest: string
   readonly avvisiStaging: readonly AvvisoStaging[]
   readonly scartiPerCodice: readonly ConteggioCodice[]

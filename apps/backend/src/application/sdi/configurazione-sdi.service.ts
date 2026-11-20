@@ -27,7 +27,11 @@ import { cifraSegreto, decifraSegreto } from '../../infrastructure/crypto/segret
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import type { CredenzialiSdi, EsitoVerifica } from '../fatturazione/sdi/provider-sdi.port'
+import type {
+  ContestoProvider,
+  CredenzialiSdi,
+  EsitoVerifica,
+} from '../fatturazione/sdi/provider-sdi.port'
 import {
   ProviderSdiNonDisponibileError,
   RegistroProviderSdi,
@@ -84,6 +88,16 @@ interface RigaConfigurazione {
   ultimo_esito_verifica: string | null
   versione: number
   updated_at: Date
+}
+
+/** Configurazione col contesto del provider (credenziali in chiaro): solo per accodamento e job d'invio. Mai nelle risposte API. */
+export interface ConfigurazionePerInvio {
+  provider: CodiceProviderSdi
+  ambiente: AmbienteSdi
+  invioAttivo: boolean
+  verificata: boolean
+  firmaDalProvider: boolean
+  contesto: ContestoProvider
 }
 
 const MSG_VERSIONE_SUPERATA =
@@ -176,6 +190,33 @@ export class ConfigurazioneSdiService {
       const righe = await this.prisma.$queryRaw<RigaConfigurazione[]>`
         SELECT ${COLONNE} FROM "configurazioni_sdi" WHERE tenant_id = ${tenantId}::uuid`
       return vista(righe[0] ?? null)
+    })
+  }
+
+  /**
+   * Configurazione con le credenziali DECIFRATE, per l'accodamento e il job d'invio (4.5b). Null se
+   * l'azienda non ha una configurazione. Le credenziali restano in memoria per la durata della
+   * chiamata: mai loggate, mai restituite da una rotta. `SDI_CREDENZIALI_NON_DECIFRABILI` (409) se
+   * la chiave e' cambiata.
+   */
+  async leggiPerInvio(tenantId: string): Promise<ConfigurazionePerInvio | null> {
+    return nelContestoTenant(tenantId, async () => {
+      const righe = await this.prisma.$queryRaw<RigaConfigurazione[]>`
+        SELECT ${COLONNE} FROM "configurazioni_sdi" WHERE tenant_id = ${tenantId}::uuid`
+      const r = righe[0]
+      if (!r) return null
+      return {
+        provider: r.provider as CodiceProviderSdi,
+        ambiente: r.ambiente as AmbienteSdi,
+        invioAttivo: r.invio_attivo,
+        verificata: r.verificata_il !== null,
+        firmaDalProvider: r.firma_dal_provider,
+        contesto: {
+          ambiente: r.ambiente as AmbienteSdi,
+          credenziali: this.decifraCredenziali(r.credenziali_cifrate),
+          idConfigurazioneProvider: r.id_configurazione_provider,
+        },
+      }
     })
   }
 

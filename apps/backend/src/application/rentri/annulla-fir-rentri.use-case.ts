@@ -15,6 +15,8 @@ export interface ComandoAnnullaFIRRentri {
   firId: string
   tenantId: string
   motivo: string
+  /** Utente che chiede l'operazione: finisce sulla sessione di firma. */
+  utenteId?: string
   correlationId?: string
 }
 
@@ -171,6 +173,7 @@ export class AnnullaFIRRentriUseCase {
       firId,
       tenantId,
       tipoOperazione: 'ANNULLAMENTO',
+      utenteId: comando.utenteId,
       correlationId,
     })
 

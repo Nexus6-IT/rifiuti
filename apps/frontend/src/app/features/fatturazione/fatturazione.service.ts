@@ -2,6 +2,7 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
+import { EsitoAccodamentoSdi, FiltroStatoSdi } from '../sdi/sdi.model'
 import {
   AdattatoreVista,
   DocumentoDettaglio,
@@ -46,6 +47,8 @@ export interface ParametriDocumenti extends ParametriPagina {
   dataDa?: string
   dataA?: string
   elaborazioneId?: string
+  /** Stato SDI dell'ultima trasmissione, oppure `NESSUNA` (mai accodati). */
+  statoSdi?: FiltroStatoSdi
 }
 
 export interface ParametriScostamenti extends ParametriPagina {
@@ -176,10 +179,24 @@ export class FatturazioneService {
           dataDa: opzioni.dataDa,
           dataA: opzioni.dataA,
           elaborazioneId: opzioni.elaborazioneId,
+          statoSdi: opzioni.statoSdi,
         },
         opzioni
       ),
     })
+  }
+
+  /** Accoda i documenti per l'invio allo SDI (202): l'invio vero lo fa il job del backend. */
+  invioSdi(ids: string[], confermaGiaEmesso: boolean): Observable<EsitoAccodamentoSdi> {
+    return this.http.post<EsitoAccodamentoSdi>(`${this.urlDocumenti}/invio-sdi`, {
+      ids,
+      ...(confermaGiaEmesso ? { confermaGiaEmesso: true } : {}),
+    })
+  }
+
+  /** Nuova trasmissione per un documento il cui invio e' finito in errore. */
+  riprovaInvioSdi(id: string): Observable<unknown> {
+    return this.http.post(`${this.urlDocumento(id)}/invio-sdi/riprova`, {})
   }
 
   documento(id: string): Observable<DocumentoDettaglio> {

@@ -119,6 +119,8 @@ const NON_PASSATE: Record<string, string> = {
   STRIPE_PRICE_ID_ENTERPRISE: 'billing non attivo in produzione',
   SDI_CREDENTIAL_ENC_KEY:
     'nessun provider SDI reale in produzione (il fake e rifiutato): da passare con :? alla 4.5f, prima del pilota',
+  SDI_INVII_ATTIVI:
+    'default nel codice: SPENTO (solo il letterale true li accende); si accende al pilota, 4.5f. Passata nuda o con default true lo accenderebbe',
   RENTRI_API_URL: RENTRI_DEMO,
   RENTRI_AUDIENCE: RENTRI_DEMO,
   RENTRI_CERTIFICATE_PEM: RENTRI_DEMO,
