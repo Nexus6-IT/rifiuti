@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -205,7 +206,7 @@ describe('Causali del registro, schema (Postgres reale)', () => {
   afterAll(async () => {
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.$disconnect()
     await owner.$disconnect()
   })
@@ -603,7 +604,7 @@ describe('Causali del registro, schema (Postgres reale)', () => {
       await disattivazione(owner, a.tenantId, 'CESSIONE', 'SCARICO')
       // Il tenant porta via con un solo DELETE registri, movimenti e causali: la chiave esterna del
       // movimento verso la causale e' NoAction (controllo a fine statement), non Restrict.
-      await owner.$executeRawUnsafe(`DELETE FROM tenants WHERE id = $1::uuid`, a.tenantId)
+      await cancellaAziendeDiProva(owner, a.tenantId)
       const [r] = await owner.$queryRawUnsafe<{ n: number }[]>(
         `SELECT count(*)::int AS n FROM causali_registro_azienda WHERE tenant_id = $1::uuid`,
         a.tenantId

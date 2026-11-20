@@ -12,6 +12,7 @@ import { effectiveFeatures } from './feature-catalog'
 import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -27,7 +28,7 @@ describe('Moduli azienda: featureFlags + featureTolte (Postgres reale)', () => {
 
   afterAll(async () => {
     if (creati.length) {
-      await owner.tenant.deleteMany({ where: { id: { in: creati } } })
+      await cancellaAziendeDiProva(owner, creati)
     }
     await owner.$disconnect()
   })

@@ -23,6 +23,7 @@ process.env.DATABASE_URL_SISTEMA = urlComeRuolo(
 
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('roles.seed e azienda piattaforma (Postgres reale)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   const sfx = Date.now().toString().slice(-8)
@@ -56,7 +57,7 @@ describe('roles.seed e azienda piattaforma (Postgres reale)', () => {
     await owner.rolePermission.deleteMany({ where: { roleId: { in: nuovi } } })
     await owner.role.deleteMany({ where: { id: { in: nuovi } } })
     await owner.user.delete({ where: { id: utenteId } })
-    await owner.tenant.delete({ where: { id: clienteId } })
+    await cancellaAziendeDiProva(owner, clienteId)
     await owner.$disconnect()
   })
 

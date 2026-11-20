@@ -56,6 +56,7 @@ import { MudVersionRegistry } from '../../application/mud/export/mud-version.reg
 import { MembershipService } from '../../api/me/membership.service'
 import { JwtStrategy } from '../../auth/strategies/jwt.strategy'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const logger = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} } as never
 
 describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
@@ -181,7 +182,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       await owner.produttore.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.fIR.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+      await cancellaAziendeDiProva(owner, tenantIds)
     }
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])

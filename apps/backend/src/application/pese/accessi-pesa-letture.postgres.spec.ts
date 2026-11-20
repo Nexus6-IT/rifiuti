@@ -45,6 +45,7 @@ import { StrumentiPesaService } from './strumenti-pesa.service'
 import { RettifichePesoService } from './rettifiche-peso.service'
 import { AVVISO_PESO_STRUMENTO_RETTIFICATO } from '../../domain/pese/netto-accesso'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 interface Scenario {
   a: AziendaPesaDiProva
   agente: AgenteDiProva
@@ -79,7 +80,7 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
     rettifiche = new RettifichePesoService(app, new AllegatiPesaService(app))
   })
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), app.$disconnect()])
   })
 

@@ -8,6 +8,7 @@ import { RentriCredentialService } from '../rentri/rentri-credential.service'
 import { CODICE_CERTIFICATO_MANCANTE } from '../rentri/rentri-certificato.costanti'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   FirAnnullatoNelFrattempoError,
   FirNonPiuInBozzaError,
@@ -71,7 +72,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     if (tenantId) {
       await prisma.fIR.deleteMany({ where: { tenantId } })
       await prisma.user.deleteMany({ where: { tenantId } })
-      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(prisma, tenantId)
     }
     await prisma.$disconnect()
   })
@@ -389,7 +390,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       if (!tenantNumeri) return // senza id deleteMany non avrebbe filtro
       await prisma.fIR.deleteMany({ where: { tenantId: tenantNumeri } })
       await prisma.user.deleteMany({ where: { tenantId: tenantNumeri } })
-      await prisma.tenant.deleteMany({ where: { id: tenantNumeri } })
+      await cancellaAziendeDiProva(prisma, tenantNumeri)
     })
 
     function firma(uid: string): FirmaDigitale {
@@ -757,13 +758,9 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         if (creati.length > 0) await prisma.fIR.deleteMany({ where: { id: { in: creati } } })
         // Le figlie prima delle madri (FK `Restrict`), solo per id esatti.
         if (extra.tenant.length > 0) {
-          await prisma.tenant.deleteMany({
-            where: { id: { in: extra.tenant }, parentTenantId: { not: null } },
-          })
-          await prisma.tenant.deleteMany({ where: { id: { in: extra.tenant } } })
+          await cancellaAziendeDiProva(prisma, extra.tenant)
         }
-        if (extra.piattaformaCreata)
-          await prisma.tenant.deleteMany({ where: { id: AZIENDA_PIATTAFORMA_ID } })
+        if (extra.piattaformaCreata) await cancellaAziendeDiProva(prisma, AZIENDA_PIATTAFORMA_ID)
       })
 
       it('PENDING in AUTOMATICA e IBRIDA: elencati con stato PENDING; esclusi MANUALE, legati, annullati, bozze, con avvio, recenti, troppo vecchi', async () => {

@@ -8,6 +8,7 @@
 import { PrismaClient } from '@prisma/client'
 import { partitaIvaUnica, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Prov = { importSource: string; legacyKey: string; lottoImportId: string }
 
 interface Contesto {
@@ -265,7 +266,7 @@ describe('Fase 3 (3.1): provenienza di import su sette tabelle (Postgres reale)'
   })
 
   afterAll(async () => {
-    for (const t of tenantCreati) await owner.tenant.delete({ where: { id: t } })
+    for (const t of tenantCreati) await cancellaAziendeDiProva(owner, t)
     await owner.$disconnect()
   })
 

@@ -29,6 +29,7 @@ import { GiacenzeInizialiService } from '../registro/giacenze-iniziali.service'
 import { GiacenzeService } from './giacenze.service'
 import { SoglieDepositoService } from './soglie-deposito.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('GiacenzeService.getGiacenze con giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
@@ -107,7 +108,7 @@ describe('GiacenzeService.getGiacenze con giacenze iniziali — Postgres reale, 
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
     if (userId) await owner.user.deleteMany({ where: { id: userId } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()
     await owner.$disconnect()

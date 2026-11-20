@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { RentriScortaRepository } from './rentri-scorta.repository'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Consumo concorrente della scorta, contro un **Postgres reale**.
  *
@@ -49,7 +50,7 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
     // cancellerebbe l'intera tabella: senza id non si cancella nulla.
     if (tenantId) {
       await prisma.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
-      await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined)
+      await cancellaAziendeDiProva(prisma, tenantId).catch(() => undefined)
     }
     await prisma.$disconnect()
   })

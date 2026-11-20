@@ -36,6 +36,7 @@ import { MudPresentazioneService } from '../../application/mud/mud-presentazione
 import { MudVersionRegistry } from '../../application/mud/export/mud-version.registry'
 import { RentriScortaRepository } from './rentri-scorta.repository'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlBase =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -150,7 +151,7 @@ describe('Tenant per transazione sui casi reali', () => {
       await admin.rentriUnitaLocale.deleteMany({ where: { tenantId } })
       await admin.fIR.deleteMany({ where: { tenantId } })
       await admin.user.deleteMany({ where: { tenantId } })
-      await admin.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(admin, tenantId)
     }
     if (cerCreato) await admin.cERCode.deleteMany({ where: { code: CER } })
     await admin.$disconnect()

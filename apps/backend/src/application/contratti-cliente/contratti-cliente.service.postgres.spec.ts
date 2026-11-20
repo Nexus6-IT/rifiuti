@@ -37,6 +37,7 @@ import { ClientiService } from '../clienti/clienti.service'
 import { RigheAddebitoService } from '../listino/righe-addebito.service'
 import { ContrattiClienteService } from './contratti-cliente.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -77,7 +78,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     // solo i codici che questo spec ha creato (catalogo globale: mai toccare gli altri)
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })

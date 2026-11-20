@@ -26,6 +26,7 @@ import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-case'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 class RentriFinto {
   transazioni = new Map<string, Array<{ anno: number; progressivo: number }>>()
   ultimaTransazioneId: string | null = null
@@ -167,7 +168,7 @@ describe('TrasmettiLottoRegistroUseCase — Postgres reale + RENTRI finto', () =
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

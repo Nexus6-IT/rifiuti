@@ -7,6 +7,7 @@ import { ModuliAttiviModule } from '../../admin/moduli-attivi.module'
 import { AuthModule } from '../../../auth/auth.module'
 import { RuoloEffettivoModule } from '../../../api/me/ruolo-effettivo.module'
 import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
+import { RentriRegistroCollegamentoController } from '../../../api/rentri/rentri-registro-collegamento.controller'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
@@ -15,6 +16,9 @@ import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-ca
 import { AccodaTrasmissioneRentriUseCase } from './accoda-trasmissione-rentri.use-case'
 import { VerificaTrasmissioneRentriUseCase } from './verifica-trasmissione-rentri.use-case'
 import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registro.service'
+import { CandidatiRegistroRentriUseCase } from './candidati-registro-rentri.use-case'
+import { CollegaRegistroRentriUseCase } from './collega-registro-rentri.use-case'
+import { ApriRegistroRentriUseCase } from './apri-registro-rentri.use-case'
 
 /**
  * Trasmissione a RENTRI del registro di carico/scarico (F2-9).
@@ -34,7 +38,7 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
     // Il job filtra le aziende col modulo `rentri`
     ModuliAttiviModule,
   ],
-  controllers: [RentriRegistroController],
+  controllers: [RentriRegistroController, RentriRegistroCollegamentoController],
   providers: [
     DettaglioTrasmissioneRentriService,
     LettoreAnnotazioniRentri,
@@ -43,6 +47,9 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
     AccodaTrasmissioneRentriUseCase,
     VerificaTrasmissioneRentriUseCase,
     ImpostazioniRentriRegistroService,
+    CandidatiRegistroRentriUseCase,
+    CollegaRegistroRentriUseCase,
+    ApriRegistroRentriUseCase,
     RentriRegistroTrasmissioneJob,
   ],
   exports: [

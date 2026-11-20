@@ -8,6 +8,7 @@ import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistriService } from '../registri.service'
 import type { WasteMovementType } from '../../../domain/waste-movement/waste-movement.entity'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 /**
  * Controllo di giacenza contro un Postgres reale: il lock della giacenza e la
  * serializzazione degli scarichi concorrenti si vedono solo con un database vero
@@ -55,7 +56,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       await prisma.abbinamentoCaricoScarico.deleteMany({ where: { tenantId } })
       await prisma.wasteMovement.deleteMany({ where: { tenantId } })
       await prisma.registroRifiuti.deleteMany({ where: { tenantId } })
-      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+      await cancellaAziendeDiProva(prisma, tenantId)
     }
     if (cerCreato) await prisma.cERCode.deleteMany({ where: { code: CER } })
     await prisma.$disconnect()

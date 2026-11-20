@@ -36,6 +36,7 @@ import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fix
 import { ContractService } from '../../contracts/contract.service'
 import { MudAggregazioneService } from './mud-aggregazione.service'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 type Privati = {
   caricaDestinatari(
     tenantId: string,
@@ -94,7 +95,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
       await owner.destinatario.deleteMany({ where })
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app?.$disconnect()

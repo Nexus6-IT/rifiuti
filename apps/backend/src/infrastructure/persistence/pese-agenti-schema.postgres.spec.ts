@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const HASH = 'a'.repeat(64)
 const HASH2 = 'b'.repeat(64)
 const CHIAVE_B64 = 'A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg='
@@ -186,7 +187,7 @@ describe('Pese 4.8b: agenti e letture (Postgres reale)', () => {
   }
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), app.$disconnect(), sistema.$disconnect()])
   })
 
@@ -607,7 +608,7 @@ describe('Pese 4.8b: agenti e letture (Postgres reale)', () => {
       const a = await azienda()
       const l = await lettura(a)
       await pesataDaLettura(a, await accesso(a), l)
-      await owner.tenant.delete({ where: { id: a.t } })
+      await cancellaAziendeDiProva(owner, a.t)
       for (const t of ['agenti_pesa', 'letture_pesa', 'pesate', 'strumenti_pesa']) {
         const r = await owner.$queryRawUnsafe<{ n: number }[]>(
           `SELECT count(*)::int AS n FROM ${t} WHERE tenant_id = '${a.t}'`

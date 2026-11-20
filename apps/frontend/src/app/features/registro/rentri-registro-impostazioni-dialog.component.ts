@@ -35,6 +35,7 @@ import {
   RentriRegistroService,
   messaggioErroreRentri,
 } from './rentri-registro.service'
+import { RentriRegistroCollegamentoComponent } from './rentri-registro-collegamento.component'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
@@ -51,6 +52,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
     NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
+    RentriRegistroCollegamentoComponent,
   ],
   template: `
     <p-dialog
@@ -63,9 +65,18 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
       [style]="{ width: '640px', maxWidth: '95vw' }"
       closeAriaLabel="Chiudi le impostazioni RENTRI"
     >
+      <app-rentri-registro-collegamento
+        [registro]="registro"
+        (aggiornato)="dopoCollegamento($event)"
+      ></app-rentri-registro-collegamento>
+
+      <hr />
+
       <form [formGroup]="form" (ngSubmit)="salva()" data-testid="rentri-imp-form" novalidate>
         <div class="field">
-          <label for="rentri-imp-identificativo">Identificativo del registro su RENTRI</label>
+          <label for="rentri-imp-identificativo"
+            >Identificativo del registro su RENTRI (inserimento a mano)</label
+          >
           <input
             id="rentri-imp-identificativo"
             type="text"
@@ -333,7 +344,30 @@ export class RentriRegistroImpostazioniDialogComponent implements OnChanges {
     })
   }
 
+  /**
+   * Registro collegato o aperto: il dialog si chiude, cosi' il modulo manuale (con l'identificativo
+   * vecchio) non puo' essere salvato per sbaglio scollegandolo. Con esito incerto resta aperto.
+   */
+  dopoCollegamento(collegato: boolean): void {
+    this.aggiornato.emit()
+    if (collegato) this.visibleChange.emit(false)
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
+    // Il registro cambia sotto il dialog aperto (collegamento riuscito, rilettura): il campo
+    // dell'identificativo segue il valore nuovo.
+    const reg = changes['registro']
+    if (
+      reg &&
+      !reg.firstChange &&
+      this.visible &&
+      reg.previousValue?.identificativoRentri !== reg.currentValue?.identificativoRentri
+    ) {
+      this.form.controls.identificativo.setValue(reg.currentValue?.identificativoRentri ?? '', {
+        emitEvent: false,
+      })
+      this.aggiornaInterruttore(reg.currentValue?.identificativoRentri ?? '')
+    }
     if (changes['visible'] && this.visible) {
       this.form.reset(
         {

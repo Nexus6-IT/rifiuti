@@ -61,6 +61,7 @@ import { ConsentiSelezioneNonValida } from '../decorators/consenti-selezione-non
 import { FIRControllerV2 } from '../../api/fir/fir.controller.v2'
 import { PdfController } from '../../api/pdf/pdf.controller'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const SEGRETO = 'segreto-di-prova-moduli-postgres'
 
 /** Chiavi di modulo dichiarate da un metodo di un controller vero (fallisce se mancano). */
@@ -315,8 +316,8 @@ describe('Moduli attivi: dal JWT all handler su Postgres', () => {
     if (ruoloId) await admin.role.deleteMany({ where: { id: ruoloId } })
     await admin.user.deleteMany({ where: { id: { in: userIds } } })
     // La figlia prima della madre (riferimento parentTenantId).
-    await admin.tenant.deleteMany({ where: { id: figlia } })
-    await admin.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+    await cancellaAziendeDiProva(admin, figlia)
+    await cancellaAziendeDiProva(admin, tenantIds)
     await admin.$disconnect()
   })
 

@@ -42,6 +42,7 @@ import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
 import { ThrottlerAgenteGuard } from './throttler-agente.guard'
 import { FallimentiAutenticazione } from './fallimenti-autenticazione'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 interface Contratto {
   chiavePubblicaB64: string
   payloadB64: string
@@ -164,7 +165,7 @@ describe('Contratto lettura-v1.json contro POST /agenti-pesa/letture (Postgres r
 
   afterAll(async () => {
     await app?.close()
-    if (tenantId) await owner.tenant.deleteMany({ where: { id: tenantId } })
+    if (tenantId) await cancellaAziendeDiProva(owner, tenantId)
     await Promise.all([owner.$disconnect(), sistema.$disconnect(), prisma?.$disconnect()])
   })
 

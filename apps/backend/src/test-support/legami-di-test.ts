@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { StatoLegame } from '../domain/legami-movimento/codici'
+import { GUC_CONSENTI_CANCELLAZIONE_AZIENDA } from './cancella-azienda-di-prova'
 import { creaDittaConRuolo, partitaIvaUnica } from './anagrafiche-di-test'
 import { creaCodiciIvaEcodifiche, creaContrattoConElenco, creaRiga } from './listino-di-test'
 
@@ -435,6 +436,10 @@ export async function pulisciTenantDiTest(
           // proprietario del database di test, in locale e in CI (base 4.4, Task 0). Le FK non
           // scattano in questa modalita': l'ordine dei passi resta quello delle FK.
           if (replica) await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`)
+          // Il trigger `tenants_registro_protetto` (I3) rifiuta l'azienda con registro/FIR/lotti: la
+          // pulizia e' voluta (superuser + flag di transazione), la cascata ripulisce il resto.
+          if (tabella === 'tenants')
+            await tx.$executeRawUnsafe(`SET LOCAL ${GUC_CONSENTI_CANCELLAZIONE_AZIENDA} = 'on'`)
           if (tabella === 'waste_movements') {
             // Le catene di correzione hanno FK NoAction fra loro: un solo statement.
             await tx.$executeRawUnsafe(
@@ -503,6 +508,7 @@ export async function pulisciTenantDiTest(
     ['codifiche', 'codifiche_addebito'],
     ['codici IVA', 'codici_iva'],
     ['FIR', 'firs'],
+    ['lotti di import', 'lotti_import'],
     ['utenti', 'users'],
   ] as const) {
     await passo(nome, tabella)
@@ -514,6 +520,10 @@ export async function pulisciTenantDiTest(
   if (rimaste.length > 0 || errori.length > 0) {
     console.error(
       `pulisciTenantDiTest: aziende rimaste (id esatti) ${JSON.stringify(rimaste.map(t => t.id))}; errori ${JSON.stringify(errori)}`
+    )
+    // Un fallimento non si nasconde: la pulizia che lascia aziende fa fallire lo spec.
+    throw new Error(
+      `pulisciTenantDiTest: pulizia incompleta (${rimaste.length} aziende rimaste, ${errori.length} errori)`
     )
   }
 }

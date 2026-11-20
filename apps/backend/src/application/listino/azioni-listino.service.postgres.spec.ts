@@ -34,6 +34,7 @@ import {
 import { AzioniListinoService } from './azioni-listino.service'
 import { RigheAddebitoService } from './righe-addebito.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 async function errore(p: Promise<unknown>): Promise<any> {
   try {
     await p
@@ -73,7 +74,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     // solo i codici che questo spec ha creato (catalogo globale: mai toccare gli altri)
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })

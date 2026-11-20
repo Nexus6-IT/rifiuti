@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Sede della controparte del movimento: schema (Postgres reale)', () => {
   const owner = new PrismaClient()
   const app = clientComeRuolo('wasteflow_app', process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev')
@@ -68,7 +69,7 @@ describe('Sede della controparte del movimento: schema (Postgres reale)', () => 
   afterAll(async () => {
     for (const t of tenantCreati) {
       try {
-        await owner.tenant.delete({ where: { id: t } })
+        await cancellaAziendeDiProva(owner, t)
       } catch (e) {
         console.error(`pulizia sede-controparte: azienda ${t} non cancellata`, e)
       }

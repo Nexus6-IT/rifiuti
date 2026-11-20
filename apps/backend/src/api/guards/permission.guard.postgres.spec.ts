@@ -42,6 +42,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { ForbiddenException } from '@nestjs/common'
 import { PermissionGuard } from './permission.guard'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const SEGRETO = 'segreto-di-prova-guard'
 
 describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () => {
@@ -178,7 +179,7 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     await owner.rolePermission.deleteMany({ where: { roleId: ruoloId } })
     await owner.role.deleteMany({ where: { id: ruoloId } })
     await owner.user.deleteMany({ where: { id: { in: userIds } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+    await cancellaAziendeDiProva(owner, tenantIds)
     await app.$disconnect()
     await sistema.$disconnect()
     await owner.$disconnect()

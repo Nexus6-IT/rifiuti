@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -108,7 +109,7 @@ describe('Soglie deposito temporaneo, schema (Postgres reale)', () => {
   afterAll(async () => {
     for (const id of tenantCreati) {
       await owner.registroRifiuti.deleteMany({ where: { tenantId: id } })
-      await owner.tenant.delete({ where: { id } }).catch(() => undefined)
+      await cancellaAziendeDiProva(owner, id).catch(() => undefined)
     }
     await owner.$disconnect()
     await app.$disconnect()

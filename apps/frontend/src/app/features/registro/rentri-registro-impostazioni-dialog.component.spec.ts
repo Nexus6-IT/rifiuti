@@ -4,6 +4,8 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { RentriRegistroImpostazioniDialogComponent } from './rentri-registro-impostazioni-dialog.component'
 import { ImpostazioniRegistroRentri, RentriRegistroService } from './rentri-registro.service'
+import { By } from '@angular/platform-browser'
+import { RentriRegistroCollegamentoComponent } from './rentri-registro-collegamento.component'
 import { ToastService } from '../../core/services/toast.service'
 
 function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegistroRentri {
@@ -18,6 +20,11 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     escluse: 0,
     haCertificato: true,
     scadenzaTrasmissione: null,
+    numIscrSito: 'OP0001XX000001-MI0001',
+    rentriAttivita: [],
+    rentriAttivitaRecSmalt: [],
+    aperturaInCorso: false,
+    rentriChiusoIl: null,
     ...p,
   }
 }
@@ -87,6 +94,42 @@ describe('RentriRegistroImpostazioniDialogComponent', () => {
     expect(servizio.imposta).toHaveBeenCalledWith('r1', {
       identificativoRentri: 'RABCDE12345',
       invioAutomatico: true,
+    })
+  })
+
+  describe("dopo il collegamento o l'apertura del registro", () => {
+    const figlio = () =>
+      fixture.debugElement.query(By.directive(RentriRegistroCollegamentoComponent))
+        .componentInstance as RentriRegistroCollegamentoComponent
+
+    it("collegato: il dialog si chiude e la pagina rilegge (Salva non puo' scollegare)", () => {
+      apri(registro())
+      const chiuso = jasmine.createSpy('visibleChange')
+      const agg = jasmine.createSpy('aggiornato')
+      fixture.componentInstance.visibleChange.subscribe(chiuso)
+      fixture.componentInstance.aggiornato.subscribe(agg)
+      figlio().aggiornato.emit(true)
+      expect(agg).toHaveBeenCalledTimes(1)
+      expect(chiuso).toHaveBeenCalledOnceWith(false)
+    })
+
+    it('esito incerto: il dialog resta aperto ma la pagina rilegge', () => {
+      apri(registro())
+      const chiuso = jasmine.createSpy('visibleChange')
+      const agg = jasmine.createSpy('aggiornato')
+      fixture.componentInstance.visibleChange.subscribe(chiuso)
+      fixture.componentInstance.aggiornato.subscribe(agg)
+      figlio().aggiornato.emit(false)
+      expect(agg).toHaveBeenCalledTimes(1)
+      expect(chiuso).not.toHaveBeenCalled()
+    })
+
+    it('se il registro cambia sotto il dialog aperto, il campo identificativo segue', () => {
+      apri(registro())
+      expect(q<HTMLInputElement>('rentri-imp-identificativo')!.value).toBe('')
+      fixture.componentRef.setInput('registro', registro({ identificativoRentri: 'RNUOVO00001' }))
+      fixture.detectChanges()
+      expect(q<HTMLInputElement>('rentri-imp-identificativo')!.value).toBe('RNUOVO00001')
     })
   })
 

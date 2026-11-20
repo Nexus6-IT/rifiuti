@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55442/wasteflow_ci?schema=public'
@@ -145,7 +146,7 @@ describe('Abbinamenti carico-scarico, schema (Postgres reale)', () => {
       await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.giacenzaIniziale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await owner.$disconnect()

@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55444/wasteflow_ci?schema=public'
@@ -36,7 +37,7 @@ describe('BattitoAgenteService (Postgres reale)', () => {
     await app.onModuleInit()
   })
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     await Promise.all([owner.$disconnect(), app.$disconnect()])
   })
 
