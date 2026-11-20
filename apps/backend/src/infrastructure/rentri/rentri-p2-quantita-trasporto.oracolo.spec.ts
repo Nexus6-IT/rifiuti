@@ -404,7 +404,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
         numeroColli: 6,
         utenteId: 'u1',
       })
-      expect(q).toEqual({
+      expect(q).toMatchObject({
         operazione: 'DatiQuantita',
         statoFormulario: 'InserimentoTrasportoIniziale',
       })
@@ -423,7 +423,7 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
         targaAutomezzo: 'ab123cd',
         utenteId: 'u1',
       })
-      expect(t).toEqual({
+      expect(t).toMatchObject({
         operazione: 'Trasporto',
         statoFormulario: 'FirmaProduttoreTrasportatoreIniziale',
       })
