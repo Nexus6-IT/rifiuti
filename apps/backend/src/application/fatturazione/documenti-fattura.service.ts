@@ -553,24 +553,21 @@ export class DocumentiFatturaService {
       SELECT registro_iva_id::text AS registro, anno::int AS anno, ultimo_numero::int AS ultimo
       FROM "numerazioni_fattura"
       WHERE tenant_id = ${tenantId}::uuid AND ${inLista('registro_iva_id', registriIds)}`
-    // Stato SDI: una riga per documento (la trasmissione corrente), una query per tutto l'insieme.
-    const sdi = await tx.$queryRaw<{ documento: string; stato: StatoTrasmissioneSdi }[]>`
-      SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato
+    // Stato SDI: una riga per documento (la trasmissione corrente) + scarto e trasmissioni vive
+    // (annullabilita dell'emesso scartato, 4.5d), una query per tutto l'insieme.
+    const sdi = await tx.$queryRaw<
+      { documento: string; stato: StatoTrasmissioneSdi; scartato: boolean; viva: boolean }[]
+    >`
+      SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato,
+             bool_or(t2.stato = 'SCARTATA') OVER (PARTITION BY t2.documento_id) AS scartato,
+             bool_or(t2.stato NOT IN ('ERRORE_INVIO', 'SCARTATA')) OVER (PARTITION BY t2.documento_id) AS viva
       FROM "trasmissioni_sdi" t2
       WHERE t2.tenant_id = ${tenantId}::uuid AND ${inLista('t2.documento_id', lista)}
       ORDER BY t2.documento_id, ${ORDINE_TRASMISSIONE_CORRENTE}`
-    // Scarto e trasmissioni vive per documento (annullabilita dell'emesso scartato, 4.5d): una query.
-    const scarti = await tx.$queryRaw<{ documento: string; scartato: boolean; viva: boolean }[]>`
-      SELECT t3.documento_id::text AS documento,
-             bool_or(t3.stato = 'SCARTATA') AS scartato,
-             bool_or(t3.stato NOT IN ('ERRORE_INVIO', 'SCARTATA')) AS viva
-      FROM "trasmissioni_sdi" t3
-      WHERE t3.tenant_id = ${tenantId}::uuid AND ${inLista('t3.documento_id', lista)}
-      GROUP BY t3.documento_id`
     return {
       testate,
       sdi: new Map(sdi.map(r => [r.documento, r.stato])),
-      scarti: new Map(scarti.map(r => [r.documento, { scartato: r.scartato, viva: r.viva }])),
+      scarti: new Map(sdi.map(r => [r.documento, { scartato: r.scartato, viva: r.viva }])),
       clienti: new Map(clienti.map(c => [c.id, c.denominazione])),
       contratti: new Map(contratti.map(c => [c.id, c.numero])),
       registri: new Map(registri.map(r => [r.id, r.codice])),
