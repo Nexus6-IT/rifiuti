@@ -162,8 +162,9 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
    */
   function useCase() {
     const statiVisti: string[] = []
+    const inviaAnnotazione = jest.fn()
     const client = {
-      inviaAnnotazione: jest.fn().mockResolvedValue({
+      inviaAnnotazione: inviaAnnotazione.mockResolvedValue({
         errore: false,
         validazione: [],
         transazioneId: 'tr-an-pg',
@@ -171,6 +172,17 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
       leggiStato: jest
         .fn()
         .mockResolvedValue({ versione: 2, stato_formulario: 'FirmaAnnotazione' }),
+      // Dettaglio dell'ente (R4): mostra l'annotazione inviata, non firmata finche' il ciclo di firma non e' passato.
+      leggiFormulario: jest.fn().mockImplementation(async () => {
+        const inviata = inviaAnnotazione.mock.calls[0]?.[2] as Record<string, unknown> | undefined
+        const firmata = completa.execute.mock.calls.length > 0
+        return {
+          stato_formulario: firmata ? 'InserimentoAccettazione' : 'FirmaAnnotazione',
+          dati_annotazioni: inviata
+            ? [{ ...inviata, dati_firma: firmata ? { data_firma: '2026-11-20T10:00:00Z' } : null }]
+            : [],
+        }
+      }),
     }
     const getAzioni = {
       execute: jest
