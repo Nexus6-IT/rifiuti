@@ -60,6 +60,51 @@ type Modo = 'ELENCO' | 'APRI' | null
         dall'elenco, oppure rifai «Apri» tra qualche minuto per far cercare il registro a WasteFlow.
       </p>
 
+      <div
+        *ngIf="registro.aperturaInCorso && !registro.identificativoRentri"
+        class="rentri-col-scelte"
+        data-testid="rentri-col-abbandona-blocco"
+      >
+        <p-button
+          *ngIf="!inAbbandono()"
+          label="Abbandona l'apertura"
+          icon="pi pi-times"
+          [text]="true"
+          (onClick)="inAbbandono.set(true)"
+          data-testid="rentri-col-abbandona"
+          ariaLabel="Abbandona l'apertura del registro su RENTRI rimasta incerta"
+        ></p-button>
+        <div
+          *ngIf="inAbbandono()"
+          class="rentri-col-conferma"
+          role="alertdialog"
+          aria-labelledby="rentri-col-abbandona-testo"
+          (keydown.escape)="inAbbandono.set(false); $event.stopPropagation()"
+        >
+          <p id="rentri-col-abbandona-testo">
+            WasteFlow smette di cercare il registro aperto. Se la richiesta era invece andata a buon
+            fine, il registro resta sul portale e lo potrai collegare dall'elenco. Confermi?
+          </p>
+          <p-button
+            label="Sì, abbandona"
+            severity="danger"
+            size="small"
+            [loading]="lavoro()"
+            (onClick)="abbandona()"
+            data-testid="rentri-col-abbandona-si"
+            ariaLabel="Conferma: abbandona l'apertura"
+          ></p-button>
+          <p-button
+            label="No"
+            [text]="true"
+            size="small"
+            (onClick)="inAbbandono.set(false)"
+            data-testid="rentri-col-abbandona-no"
+            ariaLabel="Non abbandonare l'apertura"
+          ></p-button>
+        </div>
+      </div>
+
       <div *ngIf="registro.numIscrSito && !registro.identificativoRentri" class="rentri-col-scelte">
         <p-button
           label="Scegli dall'elenco di RENTRI"
@@ -278,6 +323,7 @@ export class RentriRegistroCollegamentoComponent {
   readonly errore = signal<string | null>(null)
   readonly avviso = signal<string | null>(null)
   readonly inConferma = signal(false)
+  readonly inAbbandono = signal(false)
   readonly attivita = signal<string[]>([])
   readonly codici = signal('')
   readonly descrizione = signal('')
@@ -320,6 +366,26 @@ export class RentriRegistroCollegamentoComponent {
       },
       error: err => {
         this.lavoro.set(false)
+        this.errore.set(messaggioErroreRentri(err))
+      },
+    })
+  }
+
+  /** Azzera un'apertura rimasta incerta (il backend lo consente solo dopo la soglia di stallo). */
+  abbandona(): void {
+    this.errore.set(null)
+    this.avviso.set(null)
+    this.lavoro.set(true)
+    this.servizio.abbandonaApertura(this.registro.registroId).subscribe({
+      next: () => {
+        this.lavoro.set(false)
+        this.inAbbandono.set(false)
+        this.toast.success('Apertura abbandonata: puoi collegare o aprire un registro.')
+        this.aggiornato.emit(false)
+      },
+      error: err => {
+        this.lavoro.set(false)
+        this.inAbbandono.set(false)
         this.errore.set(messaggioErroreRentri(err))
       },
     })
