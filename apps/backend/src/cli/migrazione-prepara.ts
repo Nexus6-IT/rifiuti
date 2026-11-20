@@ -80,9 +80,11 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
     for (const f of rapporto.manifest.file) uscita.scrivi(`${f.ambito}/${f.fase}: ${f.righe} righe`)
     uscita.scrivi(`ditte agganciate a quelle gia presenti: ${rapporto.agganciate}`)
     for (const d of rapporto.duplicati)
-      uscita.scrivi(`duplicato ${d.scartata} (tenuta ${d.tenuta})`)
+      uscita.scrivi(`duplicato ${d.tabella ?? 'CLIFOR'} ${d.scartata} (tenuta ${d.tenuta})`)
     for (const s of rapporto.scarti)
       uscita.scrivi(`scarto ${s.tabella} ${s.codice}: ${s.conteggio}`)
+    for (const a of rapporto.avvisi)
+      uscita.scrivi(`avviso ${a.tabella} ${a.codice}: ${a.conteggio}`)
     return 0
   } catch (e) {
     if (e instanceof PacchettoError || e instanceof StagingError) {

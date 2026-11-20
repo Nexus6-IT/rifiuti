@@ -1,6 +1,7 @@
-import { mkdtemp, rm } from 'fs/promises'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { eseguiCli } from '../../../cli/migrazione-prepara'
 import { mappaValida, U2 } from '../../../test-support/migrazione/mappa-di-prova'
 import {
   scriviStagingAnagraficheProva,
@@ -188,5 +189,30 @@ describe('I4 T1/T2: trasformazione pura CLIFOR + SEDI LEGALI + UNITA LOCALI + AU
     r.trasportatori.forEach(x => validaRecordTrasportatore(JSON.parse(JSON.stringify(x)), m))
     r.destinatari.forEach(x => validaRecordDestinatario(JSON.parse(JSON.stringify(x)), m))
     r.automezzi.forEach(x => validaRecordAutomezzo(JSON.parse(JSON.stringify(x)), m))
+  })
+
+  it('la CLI scrive le fasi nuove nel pacchetto e riporta scarti e avvisi senza valori', async () => {
+    const mappaFile = join(radice, 'mappa-import.json')
+    await writeFile(
+      mappaFile,
+      JSON.stringify({
+        ...mappaValida(),
+        agganci: [{ partitaIva: prova.piva.agganciata, dittaId: U2 }],
+      })
+    )
+    const out: string[] = []
+    const err: string[] = []
+    const codice = await eseguiCli(
+      [prova.cartella, '--mappa', mappaFile, '--destinazione', join(radice, 'dest')],
+      { scrivi: m => out.push(m), errore: m => err.push(m) }
+    )
+    expect(codice).toBe(0)
+    const testo = out.join('\n')
+    for (const f of ['sedi', 'produttori', 'trasportatori', 'destinatari', 'automezzi'])
+      expect(testo).toContain(`ANAGRAFICHE/${f}:`)
+    expect(testo).toContain('avviso AUTOMEZZI PROPRIETARIO_SENZA_RUOLO: 1')
+    expect(testo).toContain('scarto UNITA LOCALI UNITA_LOCALE_PROPRIA: 1')
+    for (const vietato of ['NAPOLI', 'AB123CD', prova.piva.uno, prova.cfPrivato, 'NA/1234'])
+      expect(testo).not.toContain(vietato)
   })
 })
