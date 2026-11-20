@@ -151,6 +151,7 @@ describe('FIR in viaggio P2 — dati di viaggio, Postgres reale, ruolo wasteflow
       conducenteCognome: 'Rossi',
       targaRimorchio: 'XY987ZW',
       percorso: null,
+      dichiarato: null,
     })
   })
 

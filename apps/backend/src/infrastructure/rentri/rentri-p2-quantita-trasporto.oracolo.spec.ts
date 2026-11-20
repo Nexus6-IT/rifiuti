@@ -409,10 +409,10 @@ describe('P2 — quantita e trasporto contro la fake RENTRI (in-process)', () =>
         statoFormulario: 'InserimentoTrasportoIniziale',
       })
       expect(await statoSullEnte(client, tenantId, numeroFir)).toBe('InserimentoTrasportoIniziale')
+      // il firmato resta quello emesso; l'accettato sta nella copia dichiarata
       expect(dati.righe.get(fir.id)).toMatchObject({
-        quantita: 2.5,
-        unitaMisura: 't',
-        numeroColli: 6,
+        quantita: 100,
+        dichiarato: { quantita: { valore: 2.5, unitaMisura: 't', numeroColli: 6 } },
       })
 
       const t = await useCase.inviaTrasporto({
