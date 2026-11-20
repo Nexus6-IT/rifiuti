@@ -751,7 +751,7 @@ export class RentriFirLifecycleController {
   @ApiOperation({
     summary: 'Firma la partenza su RENTRI',
     description:
-      "Verifica /azioni (firma di produttore e/o trasportatore), chiede la firma remota e, a conferma, rilegge lo stato di viaggio. " +
+      'Verifica /azioni (firma di produttore e/o trasportatore), chiede la firma remota e, a conferma, rilegge lo stato di viaggio. ' +
       'Esiti: COMPLETATA, IN_ATTESA (conferma sul telefono), SCADUTA, RIFIUTATA.',
   })
   @ApiResponse({ status: 201, description: 'Operazione scelta ed esito della firma' })

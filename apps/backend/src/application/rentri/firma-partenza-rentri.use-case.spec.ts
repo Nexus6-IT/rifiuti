@@ -237,7 +237,9 @@ describe('FirmaPartenzaRentriUseCase', () => {
 
       await useCase.execute({ ...comando, nuovaSessione: true })
 
-      expect(completa.execute).toHaveBeenCalledWith(expect.objectContaining({ nuovaSessione: true }))
+      expect(completa.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ nuovaSessione: true })
+      )
     })
 
     it('doppia firma: due richieste in sequenza chiamano due volte il ciclo comune, che e l unico a decidere (sessione unica)', async () => {
@@ -337,7 +339,10 @@ describe('FirmaPartenzaRentriUseCase', () => {
     })
 
     it.each([
-      [{ esito: 'SCADUTA', handle: 'h', sessioneId: 's-2', rilevataDa: 'orologio-locale' }, 'SCADUTA'],
+      [
+        { esito: 'SCADUTA', handle: 'h', sessioneId: 's-2', rilevataDa: 'orologio-locale' },
+        'SCADUTA',
+      ],
       [{ esito: 'RIFIUTATA', handle: 'h', sessioneId: 's-3', dettaglioEnte: 'no' }, 'RIFIUTATA'],
     ])('firma %j: stato %s con avviso e sessione, mai un errore', async (firma, atteso) => {
       const { useCase, completa } = ambiente()
@@ -359,18 +364,25 @@ describe('FirmaPartenzaRentriUseCase', () => {
     })
   })
 
-  describe('eLegatoRentri', () => {
-    it('vero solo per un FIR dell azienda legato a RENTRI', async () => {
-      expect(await ambiente().useCase.eLegatoRentri('fir-1', TENANT)).toBe(true)
-      expect(await ambiente({ legato: false }).useCase.eLegatoRentri('fir-1', TENANT)).toBe(false)
-      expect(await ambiente().useCase.eLegatoRentri('fir-1', 'altro')).toBe(false)
+  describe('tenantSeLegatoRentri e rileggiFir', () => {
+    it('restituisce l azienda solo per un FIR legato a RENTRI', async () => {
+      expect(await ambiente().useCase.tenantSeLegatoRentri('fir-1')).toBe(TENANT)
+      expect(await ambiente({ legato: false }).useCase.tenantSeLegatoRentri('fir-1')).toBeNull()
     })
 
-    it('FIR inesistente: falso (si lascia decidere al flusso locale)', async () => {
+    it('FIR inesistente: null (si lascia decidere al flusso locale)', async () => {
       const { useCase, firRepository } = ambiente()
       firRepository.findById.mockResolvedValue(null)
 
-      expect(await useCase.eLegatoRentri('fir-1', TENANT)).toBe(false)
+      expect(await useCase.tenantSeLegatoRentri('fir-1')).toBeNull()
+    })
+
+    it('rileggiFir: restituisce il FIR, oppure null senza sollevare', async () => {
+      const { useCase, firRepository, fir } = ambiente()
+      expect(await useCase.rileggiFir('fir-1')).toBe(fir)
+
+      firRepository.findById.mockRejectedValue(new Error('db giu'))
+      expect(await useCase.rileggiFir('fir-1')).toBeNull()
     })
   })
 })

@@ -72,23 +72,24 @@ describe('RentriFirLifecycleController — firma di partenza', () => {
     expect(firmaPartenza.execute).not.toHaveBeenCalled()
   })
 
-  it.each(['FIRMA_PARTENZA_NON_DISPONIBILE', 'SESSIONE_FIRMA_IN_CORSO', 'SESSIONE_FIRMA_NON_ATTIVA'])(
-    '%s: 409 con codice stabile',
-    async codice => {
-      firmaPartenza.execute.mockRejectedValue(
-        DomainException.businessRuleViolation(codice, 'Spiegazione per l utente.')
-      )
+  it.each([
+    'FIRMA_PARTENZA_NON_DISPONIBILE',
+    'SESSIONE_FIRMA_IN_CORSO',
+    'SESSIONE_FIRMA_NON_ATTIVA',
+  ])('%s: 409 con codice stabile', async codice => {
+    firmaPartenza.execute.mockRejectedValue(
+      DomainException.businessRuleViolation(codice, 'Spiegazione per l utente.')
+    )
 
-      const errore = await controller.firmaPartenza('f', {}, 'B', 'u1', REQ).catch(e => e)
+    const errore = await controller.firmaPartenza('f', {}, 'B', 'u1', REQ).catch(e => e)
 
-      expect(errore).toBeInstanceOf(ConflictException)
-      expect(errore.getResponse()).toEqual({
-        statusCode: 409,
-        codice,
-        message: 'Spiegazione per l utente.',
-      })
-    }
-  )
+    expect(errore).toBeInstanceOf(ConflictException)
+    expect(errore.getResponse()).toEqual({
+      statusCode: 409,
+      codice,
+      message: 'Spiegazione per l utente.',
+    })
+  })
 
   it('FIR inesistente: 404; FIR non legato: 400', async () => {
     firmaPartenza.execute.mockRejectedValueOnce(DomainException.notFound('FIR', 'f'))

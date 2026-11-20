@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { verificaFirNonBloccato } from '../../domain/fir/guardia-invio-rentri'
-import { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
+import { FIR, StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -68,6 +68,32 @@ export type EsitoFirmaPartenzaDopoAzione =
   /** La firma non e' partita o e' fallita: resta da fare dal pulsante «Firma la partenza su RENTRI». */
   | { stato: 'DA_COMPLETARE'; codice?: string; avviso: string }
 
+/** Traduce l'esito del ciclo di firma nell'esito proposto all'interfaccia dopo un'azione. */
+export function esitoProposta(firma: EsitoCompletamentoFirma): EsitoFirmaPartenzaDopoAzione {
+  switch (firma.esito) {
+    case 'COMPLETATA':
+      return { stato: 'COMPLETATA', statoFormulario: firma.statoFormulario }
+    case 'IN_ATTESA':
+      return {
+        stato: 'IN_ATTESA',
+        ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
+        scadenza: firma.scadenzaAutorizzazione,
+      }
+    case 'SCADUTA':
+      return {
+        stato: 'SCADUTA',
+        ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
+        avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: la richiesta sul telefono è scaduta, puoi chiederla di nuovo.`,
+      }
+    case 'RIFIUTATA':
+      return {
+        stato: 'RIFIUTATA',
+        ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
+        avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: la firma è stata rifiutata, puoi riprovare.`,
+      }
+  }
+}
+
 /**
  * Firme di partenza su RENTRI (FIR in viaggio, P3): porta il formulario da una fase `Firma*Iniziale` allo
  * stato di viaggio.
@@ -115,7 +141,11 @@ export class FirmaPartenzaRentriUseCase {
 
     // --- 2. L'operazione la sceglie /azioni (riconcilia anche lo stato del FIR) ---
 
-    const { azioni } = await this.getAzioniDisponibiliUseCase.execute(firId, tenantId, correlationId)
+    const { azioni } = await this.getAzioniDisponibiliUseCase.execute(
+      firId,
+      tenantId,
+      correlationId
+    )
     const proposte = new Set(azioni.map(a => a.operazione))
     const operazione = OPERAZIONI_FIRMA_PARTENZA.find(o => proposte.has(o))
     if (!operazione) {
@@ -191,28 +221,7 @@ export class FirmaPartenzaRentriUseCase {
       }
 
       const { firma } = await this.execute(comando)
-      switch (firma.esito) {
-        case 'COMPLETATA':
-          return { stato: 'COMPLETATA', statoFormulario: firma.statoFormulario }
-        case 'IN_ATTESA':
-          return {
-            stato: 'IN_ATTESA',
-            ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
-            scadenza: firma.scadenzaAutorizzazione,
-          }
-        case 'SCADUTA':
-          return {
-            stato: 'SCADUTA',
-            ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
-            avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: la richiesta sul telefono è scaduta, puoi chiederla di nuovo.`,
-          }
-        case 'RIFIUTATA':
-          return {
-            stato: 'RIFIUTATA',
-            ...(firma.sessioneId && { sessioneId: firma.sessioneId }),
-            avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: la firma è stata rifiutata, puoi riprovare.`,
-          }
-      }
+      return esitoProposta(firma)
     } catch (errore) {
       const codice =
         errore instanceof DomainException
@@ -239,13 +248,26 @@ export class FirmaPartenzaRentriUseCase {
   }
 
   /**
-   * `true` solo per un FIR dell'azienda legato a RENTRI. Serve a «Presa in carico»: su un FIR legato la
-   * presa in carico locale e' vietata (la firma del trasportatore la riceve l'ente), quindi l'azione e' la
-   * firma di partenza.
+   * L'azienda del FIR se e' legato a RENTRI, altrimenti `null` (anche per un FIR inesistente: lo decide il
+   * flusso locale). Serve a «Presa in carico»: su un FIR legato la presa in carico locale e' vietata (la firma
+   * del trasportatore la riceve l'ente), quindi l'azione e' la firma di partenza.
    */
-  async eLegatoRentri(firId: string, tenantId: string): Promise<boolean> {
+  async tenantSeLegatoRentri(firId: string): Promise<string | null> {
     const fir = await this.firRepository.findById(firId)
-    return !!fir && fir.tenantId === tenantId && !!fir.rentriNumeroFir
+    return fir?.rentriNumeroFir ? (fir.tenantId ?? null) : null
+  }
+
+  /** Rilegge il FIR dopo una firma completata (lo stato e' cambiato su un'altra istanza); `null` se non riesce. */
+  async rileggiFir(firId: string): Promise<FIR | null> {
+    try {
+      return await this.firRepository.findById(firId)
+    } catch (errore) {
+      this.logger.warn('Rilettura del FIR dopo la firma di partenza non riuscita', {
+        firId,
+        causa: errore instanceof Error ? errore.message : String(errore),
+      })
+      return null
+    }
   }
 
   /** Esito dello storico per un'eccezione del ciclo di firma; `null` = non e' un esito dell'ente. */

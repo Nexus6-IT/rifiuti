@@ -12,6 +12,7 @@ import {
   MotivoNonModificabile,
 } from '../../../domain/fir/aggregates/fir.aggregate'
 import { ScostamentoPeso } from '../../../domain/fir/scostamento-peso'
+import type { EsitoFirmaPartenzaDopoAzione } from '../../../application/rentri/firma-partenza-rentri.use-case'
 import {
   traduciErroreRentri,
   RentriAzioneUtente,
@@ -303,6 +304,14 @@ export class FIRResponseDto {
     description: "Motivo del blocco all'invio (null se non bloccato)",
   })
   motivoBloccoInvio: string | null
+
+  @ApiPropertyOptional({
+    description:
+      'FIR in viaggio P3: esito della firma di partenza su RENTRI proposta da «Emetti» o «Presa in carico». ' +
+      "Presente solo se il FIR e' legato a RENTRI. L'azione locale e' riuscita comunque: `DA_COMPLETARE`, " +
+      '`SCADUTA`, `RIFIUTATA` portano un avviso e la firma si completa da «Firma la partenza su RENTRI».',
+  })
+  firmaRentri?: EsitoFirmaPartenzaDopoAzione
 
   static fromDomain(fir: FIR): FIRResponseDto {
     const lastError = fir.rentriSyncStatus.getLastError()

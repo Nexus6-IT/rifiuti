@@ -5,6 +5,7 @@
  * lasci passare al filtro (409/404) e che i corpi di errore non contengano id di tenant.
  */
 
+import { FirmaPartenzaRentriUseCase } from '../../application/rentri/firma-partenza-rentri.use-case'
 import { Test } from '@nestjs/testing'
 import {
   ExecutionContext,
@@ -134,6 +135,10 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
         { provide: PresaInCaricoFIRUseCase, useValue: presa },
         { provide: ConfermaConsegnaFIRUseCase, useValue: conferma },
         { provide: CollegamentiAccessoService, useValue: collegamentiAccesso },
+        {
+          provide: FirmaPartenzaRentriUseCase,
+          useValue: { tenantSeLegatoRentri: jest.fn().mockResolvedValue(null) },
+        },
         { provide: AnnullaFIRUseCase, useValue: annulla },
         { provide: ModificaFIRUseCase, useValue: modifica },
         { provide: GetFIRByIdQueryHandler, useValue: leggi },
