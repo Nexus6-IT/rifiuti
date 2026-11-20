@@ -53,6 +53,7 @@ import { JwtStrategy } from '../../auth/strategies/jwt.strategy'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RedisService } from '../../auth/services/redis.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const SEGRETO = 'segreto-di-prova-tenant-switch-postgres'
 const SENZA_INTERCEPTOR = process.env.TEST_SENZA_INTERCEPTOR === '1'
 
@@ -208,7 +209,7 @@ describe('Cambio azienda: dal middleware all handler su Postgres', () => {
     })
     if (ruoloId) await admin.role.deleteMany({ where: { id: ruoloId } })
     await admin.user.deleteMany({ where: { id: { in: userIds } } })
-    await admin.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+    await cancellaAziendeDiProva(admin, tenantIds)
     await admin.$disconnect()
   })
 

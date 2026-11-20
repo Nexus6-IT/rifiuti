@@ -22,7 +22,48 @@ export interface ImpostazioniRegistroRentri {
    * più vecchia); `null` se non c'è nulla da trasmettere. Indicativo: fonte normativa secondaria.
    */
   scadenzaTrasmissione: ScadenzaTrasmissioneRentri | null
+  /** Numero di iscrizione RENTRI della sede del registro; `null` = nessuna sede (non si può collegare). */
+  numIscrSito: string | null
+  rentriAttivita: string[]
+  rentriAttivitaRecSmalt: string[]
+  /** L'apertura su RENTRI è stata richiesta e l'esito non è ancora noto. */
+  aperturaInCorso: boolean
+  /** Chiusura del registro su RENTRI (ISO), `null` se aperto. */
+  rentriChiusoIl: string | null
 }
+
+/** Registro aperto su RENTRI, proposto per il collegamento. */
+export interface CandidatoRegistroRentri {
+  identificativo: string
+  descrizione: string | null
+  attivita: string[]
+  attivitaRecSmalt: string[]
+  dataCreazione: string | null
+  /** Id del registro locale a cui è già collegato (`null` = libero). */
+  collegatoA: string | null
+  questoRegistro: boolean
+}
+
+export interface DatiApriRegistroRentri {
+  attivita: string[]
+  attivitaRecSmalt: string[]
+  descrizione?: string
+}
+
+/** 201 aperto / ritrovato; 202 `INCERTO`: non riprovare, il backend verifica. */
+export type EsitoAperturaRegistroRentri =
+  | { esito: 'APERTO' | 'COLLEGATO_DOPO_VERIFICA'; impostazioni: ImpostazioniRegistroRentri }
+  | { esito: 'INCERTO'; messaggio: string }
+
+/** Attività ammesse su RENTRI (stesso elenco del backend e dei CHECK del database). */
+export const ATTIVITA_REGISTRO_RENTRI: { valore: string; etichetta: string }[] = [
+  { valore: 'CentroRaccolta', etichetta: 'Centro di raccolta' },
+  { valore: 'Produzione', etichetta: 'Produzione' },
+  { valore: 'Recupero', etichetta: 'Recupero' },
+  { valore: 'Smaltimento', etichetta: 'Smaltimento' },
+  { valore: 'Trasporto', etichetta: 'Trasporto' },
+  { valore: 'IntermediazioneSenzaDetenzione', etichetta: 'Intermediazione senza detenzione' },
+]
 
 export interface ScadenzaTrasmissioneRentri {
   /** Mese dell'annotazione più vecchia, 'AAAA-MM'. */
@@ -105,6 +146,26 @@ export class RentriRegistroService {
   ): Observable<ImpostazioniRegistroRentri> {
     return this.http.put<ImpostazioniRegistroRentri>(
       `${this.base}/registri/${encodeURIComponent(registroId)}`,
+      dati
+    )
+  }
+
+  candidati(registroId: string): Observable<{ candidati: CandidatoRegistroRentri[] }> {
+    return this.http.get<{ candidati: CandidatoRegistroRentri[] }>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/candidati`
+    )
+  }
+
+  collega(registroId: string, identificativo: string): Observable<ImpostazioniRegistroRentri> {
+    return this.http.post<ImpostazioniRegistroRentri>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/collega`,
+      { identificativo }
+    )
+  }
+
+  apri(registroId: string, dati: DatiApriRegistroRentri): Observable<EsitoAperturaRegistroRentri> {
+    return this.http.post<EsitoAperturaRegistroRentri>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/apri`,
       dati
     )
   }

@@ -31,6 +31,7 @@ import { creaContrattoConElenco } from '../../test-support/listino-di-test'
 import { AllegatiElencoService } from './allegati-elenco.service'
 import { ElenchiAddebitiService } from './elenchi-addebiti.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const pdf = (testo: string) => Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from(testo)])
 const file = (testo = 'uno', nome = 'elenco.pdf') => {
   const buffer = pdf(testo)
@@ -66,7 +67,7 @@ describe('AllegatiElencoService — Postgres reale, ruolo wasteflow_app', () => 
       await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

@@ -62,6 +62,24 @@ export interface ImpostazioniRegistro {
    * vedi `scadenza-trasmissione-rentri.ts`.
    */
   scadenzaTrasmissione: ScadenzaTrasmissione | null
+  /** Numero di iscrizione RENTRI della sede del registro (`null` se il registro non ha una sede). */
+  numIscrSito: string | null
+  /** eREGI E2: attivita' e codici R/D del registro su RENTRI (vuote = dettaglio non noto). */
+  rentriAttivita: string[]
+  rentriAttivitaRecSmalt: string[]
+  /** eREGI E2: l'apertura su RENTRI e' stata richiesta e l'esito non e' ancora noto. */
+  aperturaInCorso: boolean
+  /** eREGI E2: registro chiuso su RENTRI (niente piu' invii). */
+  rentriChiusoIl: Date | null
+}
+
+/** Dati letti da RENTRI che il collegamento salva insieme all'identificativo (E2). */
+export interface DatiCollegamentoRentri {
+  attivita: string[]
+  attivitaRecSmalt: string[]
+  sincronizzatoIl: Date
+  /** Per l'audit: come e' avvenuto il collegamento. */
+  origine: 'COLLEGAMENTO' | 'APERTURA' | 'APERTURA_RISOLTA'
 }
 
 export interface Allineamento {
@@ -106,6 +124,11 @@ export class ImpostazioniRentriRegistroService {
           descrizione: true,
           identificativoRentri: true,
           invioRentriAutomaticoDal: true,
+          rentriAttivita: true,
+          rentriAttivitaRecSmalt: true,
+          rentriAperturaRichiestaIl: true,
+          rentriChiusoIl: true,
+          unitaLocale: { select: { numIscrSito: true } },
         },
       })
       const gruppi = await tx.movimentoTrasmissioneRentri.groupBy({
@@ -143,6 +166,11 @@ export class ImpostazioniRentriRegistroService {
           escluse: escluse.find(x => x.registroId === r.id)?._count._all ?? 0,
           haCertificato: credenziale !== null,
           scadenzaTrasmissione: this.termine(r.identificativoRentri, piuVecchie.get(r.id), adesso),
+          numIscrSito: r.unitaLocale?.numIscrSito ?? null,
+          rentriAttivita: r.rentriAttivita,
+          rentriAttivitaRecSmalt: r.rentriAttivitaRecSmalt,
+          aperturaInCorso: r.rentriAperturaRichiestaIl !== null,
+          rentriChiusoIl: r.rentriChiusoIl,
         }
       })
     })
@@ -151,6 +179,9 @@ export class ImpostazioniRentriRegistroService {
   /**
    * @param dati `identificativoRentri`: assente = invariato, `null`/vuoto = toglie.
    *   `invioAutomatico`: assente = invariato.
+   *   `collegamento` (solo use case di E2, identificativo verificato su RENTRI): salva attivita',
+   *   sincronizzazione e azzera la prenotazione dell'apertura. Senza, un cambio di identificativo
+   *   azzera i dati letti da RENTRI (non piu' validi) e, se un'apertura e' in corso, e' rifiutato.
    * @throws RuoloNonAutorizzatoRentriError (403) se il ruolo effettivo non e' ADMIN
    * @throws IdentificativoRegistroNonValidoError (400) formato errato o automatico senza identificativo
    * @throws TrasmissioneNonModificabileError (409) cambio con annotazioni gia' partite
@@ -161,7 +192,11 @@ export class ImpostazioniRentriRegistroService {
     utenteId: string,
     ruolo: string,
     registroId: string,
-    dati: { identificativoRentri?: string | null; invioAutomatico?: boolean }
+    dati: {
+      identificativoRentri?: string | null
+      invioAutomatico?: boolean
+      collegamento?: DatiCollegamentoRentri
+    }
   ): Promise<ImpostazioniRegistro> {
     richiediAmministratore(ruolo)
 
@@ -178,9 +213,18 @@ export class ImpostazioniRentriRegistroService {
 
     try {
       await this.nelTenant(tenantId, async tx => {
+        if (dati.collegamento) {
+          // Stessa chiave della prenotazione di `apri`: collegare a mano, aprire e risolvere un
+          // esito incerto si serializzano (nessuno sovrascrive il collegamento di un altro).
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro-apertura|' + registroId}))`
+        }
         const registro = await tx.registroRifiuti.findFirst({
           where: { id: registroId, tenantId },
-          select: { identificativoRentri: true, invioRentriAutomaticoDal: true },
+          select: {
+            identificativoRentri: true,
+            invioRentriAutomaticoDal: true,
+            rentriAperturaRichiestaIl: true,
+          },
         })
         if (!registro) throw new RegistroNonTrovatoError()
 
@@ -188,7 +232,22 @@ export class ImpostazioniRentriRegistroService {
           nuovoIdentificativo === undefined ? registro.identificativoRentri : nuovoIdentificativo
         const cambia = identificativoFinale !== registro.identificativoRentri
 
+        // L'apertura (o la sua risoluzione) salva solo se la prenotazione e' ancora la nostra: se
+        // nel frattempo qualcuno ha collegato un altro registro non lo si sovrascrive.
+        if (dati.collegamento && dati.collegamento.origine !== 'COLLEGAMENTO' && cambia) {
+          if (registro.rentriAperturaRichiestaIl === null) {
+            throw new TrasmissioneNonModificabileError(
+              'Il registro è stato collegato nel frattempo a un altro registro RENTRI.'
+            )
+          }
+        }
+
         if (cambia) {
+          if (registro.rentriAperturaRichiestaIl !== null && !dati.collegamento) {
+            throw new TrasmissioneNonModificabileError(
+              "L'apertura del registro su RENTRI è in corso o da verificare: usa «Collega» per scegliere il registro, oppure attendi."
+            )
+          }
           // Stessa chiave di `prenota` (bloccante qui): o la prenotazione di un lotto e' gia'
           // committata (e il conteggio la vede), o parte dopo e legge il nuovo identificativo.
           // Senza il lock un lotto potrebbe partire per il vecchio identificativo mentre cambia.
@@ -231,7 +290,28 @@ export class ImpostazioniRentriRegistroService {
 
         await tx.registroRifiuti.updateMany({
           where: { id: registroId, tenantId },
-          data: { identificativoRentri: identificativoFinale, invioRentriAutomaticoDal: dal },
+          data: {
+            identificativoRentri: identificativoFinale,
+            invioRentriAutomaticoDal: dal,
+            ...(dati.collegamento
+              ? {
+                  rentriAttivita: dati.collegamento.attivita,
+                  rentriAttivitaRecSmalt: dati.collegamento.attivitaRecSmalt,
+                  rentriSincronizzatoIl: dati.collegamento.sincronizzatoIl,
+                  rentriAperturaRichiestaIl: null,
+                  rentriAperturaDescrizione: null,
+                  rentriChiusoIl: null,
+                }
+              : cambia
+                ? {
+                    // I dati letti dal vecchio registro non valgono per il nuovo.
+                    rentriAttivita: [],
+                    rentriAttivitaRecSmalt: [],
+                    rentriSincronizzatoIl: null,
+                    rentriChiusoIl: null,
+                  }
+                : {}),
+          },
         })
         await tx.activityLog.create({
           data: {
@@ -246,6 +326,7 @@ export class ImpostazioniRentriRegistroService {
                 invioAutomaticoDal: registro.invioRentriAutomaticoDal,
               },
               dopo: { identificativoRentri: identificativoFinale, invioAutomaticoDal: dal },
+              ...(dati.collegamento ? { origine: dati.collegamento.origine } : {}),
             },
           },
         })

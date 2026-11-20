@@ -14,6 +14,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { rlsExtension } from './prisma-rls.extension'
 import { estensioneTenantTransazione } from './prisma-tenant-transazione'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlBase =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -321,7 +322,7 @@ describe('Valore di current_setting visto da un modello (trigger di prova)', () 
   })
 
   afterAll(async () => {
-    if (tenantCreatoId) await secondo.tenant.deleteMany({ where: { id: tenantCreatoId } })
+    if (tenantCreatoId) await cancellaAziendeDiProva(secondo, tenantCreatoId)
     await secondo.$executeRawUnsafe('DROP TRIGGER IF EXISTS prova_tenant_trg ON "public"."tenants"')
     await secondo.$executeRawUnsafe('DROP FUNCTION IF EXISTS prova_registra_tenant()')
     await secondo.$executeRawUnsafe('DROP TABLE IF EXISTS prova_tenant_set')

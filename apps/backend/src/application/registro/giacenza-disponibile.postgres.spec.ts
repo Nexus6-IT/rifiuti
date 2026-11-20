@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { giacenzaDisponibileAl } from './giacenza-disponibile'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Saldo complessivo e saldo dalla data del movimento, contro un Postgres reale:
  * il raggruppamento per giorno italiano, il fuso e la conversione t -> kg stanno
@@ -60,9 +61,7 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
     await prisma.rentriUnitaLocale.deleteMany({ where: { tenantId } })
-    await prisma.tenant.deleteMany({
-      where: { id: { in: [tenantId, altroTenantId].filter(Boolean) } },
-    })
+    await cancellaAziendeDiProva(prisma, [tenantId, altroTenantId].filter(Boolean))
     await prisma.$disconnect()
   })
 

@@ -48,6 +48,7 @@ import { ModificaFIRCommand } from '../../application/fir/commands/modifica-fir.
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { EmettiFIRCommand } from '../../application/fir/commands/emetti-fir.command'
 import { AcquisisciFormularioRENTRIUseCase } from '../../application/rentri/acquisisci-formulario-rentri.use-case'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
@@ -200,7 +201,7 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
       await owner.activityLog.deleteMany({ where: { tenantId: t } })
       await owner.fIR.deleteMany({ where: { tenantId: t } })
       await owner.user.deleteMany({ where: { tenantId: t } })
-      await owner.tenant.deleteMany({ where: { id: t } })
+      await cancellaAziendeDiProva(owner, t)
     }
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })

@@ -10,6 +10,7 @@ import { ModuliAttiviService } from './moduli-attivi.service'
 import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const url =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -25,7 +26,7 @@ describe('ModuliAttiviService (Postgres reale)', () => {
   })
   afterAll(async () => {
     // Prima le figlie (FK sulla madre), poi le madri: l'ordine inverso di creazione.
-    for (const id of [...creati].reverse()) await owner.tenant.deleteMany({ where: { id } })
+    for (const id of [...creati].reverse()) await cancellaAziendeDiProva(owner, id)
     await owner.$disconnect()
   })
 

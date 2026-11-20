@@ -48,6 +48,7 @@ import {
 } from '../../core/domain/errors'
 import { FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('FIR: origine dal ritiro (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -168,7 +169,7 @@ describe('FIR: origine dal ritiro (Postgres reale, ruolo wasteflow_app)', () => 
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
       await owner.user.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await Promise.all([owner.$disconnect(), app?.onModuleDestroy(), sistema?.onModuleDestroy()])
   })

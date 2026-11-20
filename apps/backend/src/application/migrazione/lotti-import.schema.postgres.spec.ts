@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const HASH = 'a'.repeat(64)
 
 describe('Fase 3 (3.1): lotti_import (Postgres reale)', () => {
@@ -59,7 +60,7 @@ describe('Fase 3 (3.1): lotti_import (Postgres reale)', () => {
     })
 
   afterAll(async () => {
-    for (const t of tenantCreati) await owner.tenant.delete({ where: { id: t } })
+    for (const t of tenantCreati) await cancellaAziendeDiProva(owner, t)
     await owner.$disconnect()
     await app.$disconnect()
     await sistema.$disconnect()
@@ -157,7 +158,7 @@ describe('Fase 3 (3.1): lotti_import (Postgres reale)', () => {
   it('la cascata da tenants (proprietario) riesce con lotti presenti', async () => {
     const a = await azienda()
     await comeApp(a, insertSql(campi(a)))
-    await owner.tenant.delete({ where: { id: a } })
+    await cancellaAziendeDiProva(owner, a)
     tenantCreati.splice(tenantCreati.indexOf(a), 1)
     const [r] = await owner.$queryRawUnsafe<{ n: bigint }[]>(
       `SELECT count(*) AS n FROM lotti_import WHERE tenant_id = '${a}'`

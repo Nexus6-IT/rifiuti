@@ -38,6 +38,7 @@ import { ContrattoGruppoService } from '../../application/billing/contratto-grup
 import { TenantService } from '../../application/admin/tenant.service'
 import { DeadlineCheckerService } from '../../application/notifications/deadline-checker.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const logger = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} } as never
 
 describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
@@ -68,7 +69,7 @@ describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
       where: { id: AZIENDA_PIATTAFORMA_ID },
       data: { subscriptionStatus: 'SUSPENDED' },
     })
-    await owner.tenant.delete({ where: { id: clienteId } })
+    await cancellaAziendeDiProva(owner, clienteId)
     await app.$disconnect()
     await sistema.$disconnect()
     await owner.$disconnect()

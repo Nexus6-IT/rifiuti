@@ -27,6 +27,7 @@ import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { SessioneFirmaGiaApertaError } from './sessioni-firma-rentri.port'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -110,7 +111,7 @@ describe('FIR in viaggio P1 — sessioni di firma RENTRI, Postgres reale, ruolo 
       try {
         await owner.fIR.deleteMany({ where: { tenantId: t } })
         await owner.user.deleteMany({ where: { tenantId: t } })
-        await owner.tenant.delete({ where: { id: t } })
+        await cancellaAziendeDiProva(owner, t)
       } catch (e) {
         console.error(`pulizia sessioni firma: azienda ${t} non cancellata`, e)
       }

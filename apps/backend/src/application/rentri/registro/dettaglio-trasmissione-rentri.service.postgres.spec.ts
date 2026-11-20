@@ -19,6 +19,7 @@ import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { MovimentoNonTrovatoError } from './errori-azioni-rentri-registro'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe('DettaglioTrasmissioneRentriService — Postgres reale', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -106,7 +107,7 @@ describe('DettaglioTrasmissioneRentriService — Postgres reale', () => {
       await owner.wasteMovement.deleteMany({
         where: { tenantId: { in: tenantCreati }, trasmissioneRentri: null },
       })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

@@ -27,6 +27,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { SignatureAuditHandler } from '../../application/signatures/signature-audit.handler'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const logger = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} } as never
 
 describe('RLS: signature-audit.handler col ruolo applicativo (Postgres reale)', () => {
@@ -94,7 +95,7 @@ describe('RLS: signature-audit.handler col ruolo applicativo (Postgres reale)', 
   afterAll(async () => {
     await owner.activityLog.deleteMany({ where: { tenantId } })
     await owner.user.deleteMany({ where: { tenantId } })
-    await owner.tenant.deleteMany({ where: { id: tenantId } })
+    await cancellaAziendeDiProva(owner, tenantId)
     await Promise.all([owner.$disconnect(), app.onModuleDestroy()])
   })
 

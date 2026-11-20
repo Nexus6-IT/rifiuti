@@ -13,6 +13,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import {
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
@@ -790,7 +791,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
         elencoId: s.elencoId,
         righe: [{ rigaAddebitoId: s.rigaId, codiceIvaId: s.ivaId, quantita: '10' }],
       })
-      await owner.tenant.delete({ where: { id: s.t } })
+      await cancellaAziendeDiProva(owner, s.t)
       for (const tabella of [...TRE_TABELLE, 'waste_movements', 'righe_addebito'])
         expect(await conta(tabella, s.t)).toBe(0)
     })
