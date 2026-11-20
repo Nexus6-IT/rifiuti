@@ -33,6 +33,8 @@ import {
   DocumentiFatturaService,
   type DocumentoDettaglio,
   type MotivoNonAnnullabile,
+  type MotivoNonStornabile,
+  stornabilita,
 } from './documenti-fattura.service'
 import {
   bloccaNumerazioni,
@@ -45,7 +47,7 @@ import {
 } from './numerazione'
 
 /** = Task 14 (Q33). */
-export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO' | 'SCARTATO_SDI'
+export type { MotivoNonStornabile }
 
 export interface RichiestaAnnullo {
   motivo: string
@@ -85,6 +87,7 @@ const MESSAGGI_STORNO: Readonly<Record<MotivoNonStornabile, string>> = {
   NON_DEFINITIVO: 'Si può stornare solo un documento definitivo.',
   NOTA_DI_CREDITO: 'Una nota di credito non si storna.',
   SCARTATO_SDI: 'Lo SDI ha scartato la fattura: non si storna, si annulla e si rifattura.',
+  INVIO_SDI_IN_CORSO: "L'invio allo SDI non ha ancora un esito: attendi l'esito dello SDI.",
 }
 
 /** Indice unico parziale dello storno (migration 4.4a): un solo TD04 non annullato per origine. */
@@ -380,7 +383,15 @@ export class AnnulloStornoService {
           // Scartato dallo SDI e senza un nuovo invio vivo: la fattura non esiste fiscalmente, si annulla
           // (D3). Uno storno la «rettificherebbe» e poi bloccherebbe l'annullo (STORNATO).
           const sdi = await this.leggiScartoSdi(tx, tenantId, documentoId)
-          if (sdi.scartato && !sdi.viva) throw this.stornoNonAmmesso('SCARTATO_SDI')
+          const ammessoSdi = stornabilita({
+            stato: o.stato,
+            tipoDocumento: o.tipoDocumento,
+            haStorno: false,
+            scartatoSdi: sdi.scartato,
+            trasmissioneViva: sdi.viva,
+            invioInVolo: sdi.inVolo,
+          })
+          if (ammessoSdi.motivo !== null) throw this.stornoNonAmmesso(ammessoSdi.motivo)
           // m2: il registro si controlla solo sul DEFINITIVO (immutabile): una BOZZA spostata da
           // un ricalcolo ha gia` risposto NON_DEFINITIVO.
           if (o.registroIvaId !== prima.registroIvaId) {
@@ -533,10 +544,16 @@ export class AnnulloStornoService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     documentoId: string
-  ): Promise<{ scartato: boolean; viva: boolean; probabilmenteGiaInviata: boolean }> {
-    const [r] = await tx.$queryRaw<{ scartato: boolean; viva: boolean }[]>`
+  ): Promise<{
+    scartato: boolean
+    viva: boolean
+    inVolo: boolean
+    probabilmenteGiaInviata: boolean
+  }> {
+    const [r] = await tx.$queryRaw<{ scartato: boolean; viva: boolean; inVolo: boolean }[]>`
       SELECT COALESCE(bool_or(stato = 'SCARTATA' AND direzione = 'EMESSA' AND ambiente = 'PRODUZIONE'), false) AS scartato,
-             COALESCE(bool_or(stato NOT IN ('ERRORE_INVIO', 'SCARTATA')), false) AS viva
+             COALESCE(bool_or(stato NOT IN ('ERRORE_INVIO', 'SCARTATA')), false) AS viva,
+             COALESCE(bool_or(stato IN ('DA_INVIARE', 'IN_INVIO', 'INCERTA', 'INVIATA')), false) AS "inVolo"
       FROM trasmissioni_sdi
       WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${documentoId}::uuid`
     let duplicato = false

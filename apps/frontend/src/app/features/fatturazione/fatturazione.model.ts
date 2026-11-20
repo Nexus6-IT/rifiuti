@@ -57,7 +57,11 @@ export type MotivoNonAnnullabile =
   | 'TRASMISSIONE_SDI_VIVA'
   | 'NON_ULTIMO'
 /** Q33 */
-export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO' | 'SCARTATO_SDI'
+export type MotivoNonStornabile =
+  | 'NON_DEFINITIVO'
+  | 'NOTA_DI_CREDITO'
+  | 'SCARTATO_SDI'
+  | 'INVIO_SDI_IN_CORSO'
 
 /** Q3: un documento senza registro non diventa bozza, sta qui. */
 export interface DocumentoNonGenerato {
@@ -153,6 +157,8 @@ export interface DocumentoRiga {
   annullabile: boolean
   motivoNonAnnullabile: MotivoNonAnnullabile | null
   stornabile: boolean
+  /** Motivo di stato/SDI per cui non si storna (`null` se stornabile o per altre ragioni). */
+  motivoNonStornabile: MotivoNonStornabile | null
   /** Stato dell'ultima trasmissione SDI; null = mai accodato (4.5b). */
   statoSdi: StatoTrasmissioneSdi | null
   esitoFiscale: EsitoFiscaleSdi | null
@@ -302,6 +308,7 @@ export const CHIAVI_DOCUMENTO_RIGA: Record<keyof DocumentoRiga, true> = {
   annullabile: true,
   motivoNonAnnullabile: true,
   stornabile: true,
+  motivoNonStornabile: true,
   statoSdi: true,
   esitoFiscale: true,
 }

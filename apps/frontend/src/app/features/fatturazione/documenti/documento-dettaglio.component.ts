@@ -13,13 +13,14 @@ import { formattaGiorno } from '../../giacenze/giorno'
 import { codiceErrore } from '../../listino/errori-azione'
 import { decimaleItaliano, importoItaliano } from '../../listino/listino-calcoli'
 import { erroreDaBlob, salvaFile } from '../download-fatturazione'
-import { DocumentoDettaglio } from '../fatturazione.model'
+import { DocumentoDettaglio, MotivoNonStornabile } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
 import { messaggioDaCodice } from '../messaggio-da-codice'
 import { permessiFatturazione } from '../permessi-fatturazione'
 import {
   ERRORI_HTTP_VOCI,
   MOTIVI_NON_ANNULLABILE_VOCI,
+  MOTIVI_NON_STORNABILE_VOCI,
   SeveritaFatturazione,
   STATI_DOCUMENTO_VOCI,
   TIPI_DOCUMENTO_VOCI,
@@ -163,6 +164,19 @@ type Conferma = 'xml' | 'emesso'
           />
         </div>
       </header>
+
+      <p
+        *ngIf="
+          dettaglio() &&
+          permessi().rendeDefinitiva &&
+          !dettaglio()!.stornabile &&
+          dettaglio()!.motivoNonStornabile as ms
+        "
+        class="text-secondary"
+        data-testid="dd-motivo-storno"
+      >
+        {{ motivoStorno(ms) }}
+      </p>
 
       <p
         *ngIf="dettaglio() && permessi().rendeDefinitiva && motivoNonAnnullabile(dettaglio()!) as m"
@@ -441,6 +455,11 @@ export class DocumentoDettaglioComponent {
   motivoAnnulloIniziale(): string {
     const d = this.dettaglio()
     return d !== null && d.emessoIl !== null ? `Scarto SDI n. ${d.numeroTesto ?? ''}`.trim() : ''
+  }
+
+  /** Perché «Storna» non c'è: motivo di stato o dell'invio SDI. */
+  motivoStorno(m: MotivoNonStornabile): string {
+    return MOTIVI_NON_STORNABILE_VOCI[m]?.etichetta ?? ''
   }
 
   /** Perché «Annulla» è disattivato; `null` se si può annullare. */

@@ -264,6 +264,15 @@ describe('DocumentoDettaglioComponent', () => {
       expect(bottone('dd-annulla')?.textContent).not.toContain('rifattura')
     })
 
+    it('invio SDI in corso: niente «Storna» e il motivo e visibile', async () => {
+      await crea(
+        'ADMIN',
+        dettaglioDocumento({ stornabile: false, motivoNonStornabile: 'INVIO_SDI_IN_CORSO' })
+      )
+      expect(q('dd-storno')).toBeNull()
+      expect(q('dd-motivo-storno')?.textContent).toContain("attendi l'esito dello SDI")
+    })
+
     it('documento non emesso: «Annulla» e nessun testo di scarto', async () => {
       await crea()
       expect(bottone('dd-annulla')?.textContent).toContain('Annulla')

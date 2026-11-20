@@ -152,7 +152,7 @@ describe('vocabolario della fatturazione', () => {
     )
     expect(MOTIVI_NON_ANNULLABILE_VOCI.STORNATO.etichetta.length).toBeGreaterThan(0)
     expect(Object.keys(MOTIVI_NON_STORNABILE_VOCI).sort()).toEqual(
-      ['NON_DEFINITIVO', 'NOTA_DI_CREDITO', 'SCARTATO_SDI'].sort()
+      ['INVIO_SDI_IN_CORSO', 'NON_DEFINITIVO', 'NOTA_DI_CREDITO', 'SCARTATO_SDI'].sort()
     )
     tutteCompilate(MOTIVI_NON_ANNULLABILE_VOCI)
     tutteCompilate(MOTIVI_NON_STORNABILE_VOCI)

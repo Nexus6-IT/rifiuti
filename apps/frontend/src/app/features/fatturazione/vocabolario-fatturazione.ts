@@ -315,6 +315,10 @@ export const MOTIVI_NON_ANNULLABILE_VOCI: Readonly<Record<MotivoNonAnnullabile, 
 export const MOTIVI_NON_STORNABILE_VOCI: Readonly<Record<MotivoNonStornabile, VoceVocabolario>> = {
   NON_DEFINITIVO: v('Solo un documento definitivo si storna.', 'info'),
   NOTA_DI_CREDITO: v('Una nota di credito non si storna.', 'info'),
+  INVIO_SDI_IN_CORSO: v(
+    "L'invio allo SDI non ha ancora un esito: attendi l'esito dello SDI.",
+    'info'
+  ),
   SCARTATO_SDI: v(
     'Lo SDI ha scartato la fattura: non si storna, si annulla e si rifattura.',
     'info'

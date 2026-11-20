@@ -347,7 +347,7 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
         expect((await b.documento(d.id)).stato).toBe('ANNULLATO')
       })
 
-      it('scartato ma con un nuovo invio vivo: lo storno resta ammesso (il nuovo invio vale)', async () => {
+      it('scartato con un nuovo invio in volo: lo storno e respinto INVIO_SDI_IN_CORSO', async () => {
         const az = await b.t19.azienda()
         const [d] = await b.definitivi(az, 1)
         await scarta(az, d.id, ['00311'])
@@ -361,7 +361,73 @@ describe('Annullo e storno — Postgres reale, ruolo wasteflow_app', () => {
           'c'.repeat(64)
         )
         const vista = await new DocumentiFatturaService(app).dettaglio(az.tenantId, d.id)
-        expect(vista.stornabile).toBe(true)
+        expect(vista).toMatchObject({
+          stornabile: false,
+          motivoNonStornabile: 'INVIO_SDI_IN_CORSO',
+        })
+        const r = await esito(b.storna(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toEqual({
+          status: 409,
+          codice: 'STORNO_NON_AMMESSO',
+          details: { motivo: 'INVIO_SDI_IN_CORSO' },
+        })
+      })
+
+      it.each(['CONSEGNATA', 'ACCETTATA', 'NON_CONSEGNATA'])(
+        'trasmissione chiusa (%s): lo storno e ammesso',
+        async stato => {
+          const az = await b.t19.azienda()
+          const [d] = await b.definitivi(az, 1)
+          await owner.$executeRawUnsafe(
+            `UPDATE documenti_fattura SET emesso_il = now() WHERE id = $1::uuid`,
+            d.id
+          )
+          const [t] = await owner.$queryRawUnsafe<{ id: string }[]>(
+            `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
+               xml_sha256, stato, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'fake', 'PRODUZIONE', 'IT01234567890_00009.xml', $3,
+               'DA_INVIARE', now()) RETURNING id::text AS id`,
+            az.tenantId,
+            d.id,
+            'd'.repeat(64)
+          )
+          for (const passo of ['IN_INVIO', 'INVIATA', stato]) {
+            await owner.$executeRawUnsafe(
+              `UPDATE trasmissioni_sdi SET stato = $2::stato_trasmissione_sdi, id_provider = 'p1',
+                 updated_at = now() WHERE id = $1::uuid`,
+              t.id,
+              passo
+            )
+          }
+          const vista = await new DocumentiFatturaService(app).dettaglio(az.tenantId, d.id)
+          expect(vista).toMatchObject({ stornabile: true, motivoNonStornabile: null })
+          const storno = await b.stornaCorrente(az, d.id)
+          expect(storno).toMatchObject({ tipoDocumento: 'TD04' })
+        }
+      )
+
+      it('invio in volo (INVIATA, senza scarto): storno respinto INVIO_SDI_IN_CORSO', async () => {
+        const az = await b.t19.azienda()
+        const [d] = await b.definitivi(az, 1)
+        const [t] = await owner.$queryRawUnsafe<{ id: string }[]>(
+          `INSERT INTO trasmissioni_sdi (tenant_id, documento_id, provider, ambiente, nome_file,
+             xml_sha256, stato, updated_at)
+           VALUES ($1::uuid, $2::uuid, 'fake', 'PRODUZIONE', 'IT01234567890_00008.xml', $3,
+             'DA_INVIARE', now()) RETURNING id::text AS id`,
+          az.tenantId,
+          d.id,
+          'e'.repeat(64)
+        )
+        for (const passo of ['IN_INVIO', 'INVIATA']) {
+          await owner.$executeRawUnsafe(
+            `UPDATE trasmissioni_sdi SET stato = $2::stato_trasmissione_sdi, id_provider = 'p1',
+               updated_at = now() WHERE id = $1::uuid`,
+            t.id,
+            passo
+          )
+        }
+        const r = await esito(b.storna(az, d.id, { versione: await b.versioneDi(d.id) }))
+        expect(r).toMatchObject({ status: 409, details: { motivo: 'INVIO_SDI_IN_CORSO' } })
       })
 
       it('scarto in SANDBOX: non sblocca l annullo dell emesso (EMESSO) ne chiude lo storno', async () => {
