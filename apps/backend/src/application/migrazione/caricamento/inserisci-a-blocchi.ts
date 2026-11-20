@@ -36,7 +36,7 @@ export interface DipendenzeCaricamento {
 
 /**
  * Carica `righe` nel lotto `lottoId` dell'azienda `tenantId`, a blocchi.
- * @returns i conteggi finali del lotto (che a questo punto e' `COMPLETATO`)
+ * @returns i conteggi del lotto dopo l'ultimo blocco (`COMPLETATO`, salvo `concludi: false`)
  * @throws CaricamentoBloccoFallitoError al primo blocco fallito (il lotto e' `FALLITO`)
  */
 export async function inserisciABlocchi<R>(
@@ -95,6 +95,6 @@ export async function inserisciABlocchi<R>(
       throw new CaricamentoBloccoFallitoError(lottoId, numeroBlocco, causa)
     }
   }
-  await dip.lotti.completa(tenantId, lottoId)
+  if (opzioni.concludi ?? true) await dip.lotti.completa(tenantId, lottoId)
   return ultimi
 }

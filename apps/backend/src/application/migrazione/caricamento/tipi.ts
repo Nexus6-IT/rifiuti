@@ -70,6 +70,12 @@ export interface OpzioniInserimento<R> {
    * annullata ma la promise si risolve). Default: la rete dei movimenti importati.
    */
   vincoliDifferiti?: readonly string[]
+  /**
+   * `true` (default): al termine dei blocchi il lotto passa a `COMPLETATO`. `false`: il lotto resta
+   * `IN_CORSO`, perche' un'altra fase (es. ditte -> sedi -> ruoli) prosegue sullo stesso lotto; chi
+   * orchestra le fasi chiama `completa` alla fine (vedi `caricaAmbito`).
+   */
+  concludi?: boolean
 }
 
 export const VINCOLI_DIFFERITI_DEFAULT: readonly string[] = ['waste_movements_importato_bloccato']
