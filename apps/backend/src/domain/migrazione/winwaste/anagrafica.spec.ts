@@ -85,7 +85,11 @@ describe('anagrafica WinWaste: date e riferimenti', () => {
   it('soggetto.unita in 11 caratteri, o solo soggetto', () => {
     expect(separaSoggettoUnita('000123.0002')).toEqual({ soggetto: '000123', unita: '0002' })
     expect(separaSoggettoUnita('000123')).toEqual({ soggetto: '000123', unita: null })
-    expect(separaSoggettoUnita('C000123')).toEqual({ soggetto: '000123', unita: null })
+    expect(separaSoggettoUnita('C000123')).toEqual({
+      soggetto: '000123',
+      unita: null,
+      precod: 'C',
+    })
     expect(separaSoggettoUnita('')).toBeNull()
     expect(separaSoggettoUnita('0')).toBeNull()
     expect(separaSoggettoUnita('a.b.c')).toBeNull()

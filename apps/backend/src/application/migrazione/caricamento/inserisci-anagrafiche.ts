@@ -23,7 +23,8 @@ import type {
 import type { ContestoBlocco, InserisciBlocco, Tx } from './tipi'
 
 /** Utente tecnico di `automezzi.creato_da` (NOT NULL) per i record importati senza operatore. */
-export const CREATO_DA_IMPORTAZIONE = '00000000-0000-4000-8000-000000000001'
+/** Diverso dall'id dell'azienda piattaforma (`...0001`): in audit non si confondono. */
+export const CREATO_DA_IMPORTAZIONE = '00000000-0000-4000-8000-000000000002'
 
 /** Un riferimento fra record del pacchetto non si risolve nel database. Mai valori nel messaggio. */
 export class RiferimentoNonRisoltoError extends Error {

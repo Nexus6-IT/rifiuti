@@ -92,12 +92,13 @@ export function dataAutorizzazione(v: string | null | undefined): DataIso | null
  */
 export function separaSoggettoUnita(
   v: string | null | undefined
-): { soggetto: string; unita: string | null } | null {
+): { soggetto: string; unita: string | null; precod?: 'C' | 'F' } | null {
   const t = pulisci(v)
   if (t === '' || t === '0') return null
   const m = /^([0-9A-Za-z]{1,6})\.([0-9A-Za-z]{1,4})$/.exec(t)
   if (m) return { soggetto: m[1], unita: m[2] }
-  if (/^[CF][0-9A-Za-z]{6}$/.test(t)) return { soggetto: t.slice(1), unita: null }
+  if (/^[CF][0-9A-Za-z]{6}$/.test(t))
+    return { soggetto: t.slice(1), unita: null, precod: t[0] as 'C' | 'F' }
   if (/^[0-9A-Za-z]{1,6}$/.test(t)) return { soggetto: t, unita: null }
   return null
 }

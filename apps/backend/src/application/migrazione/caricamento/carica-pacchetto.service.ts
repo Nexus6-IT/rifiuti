@@ -8,6 +8,7 @@
  * Log e rapporti: solo codici, id tecnici e conteggi. Mai valori dei record.
  */
 import { Injectable } from '@nestjs/common'
+import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 import { TenantContext } from '../../../core/context/tenant-context'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -180,8 +181,9 @@ export class CaricaPacchettoService {
     const aggiungi = (codice: string, conteggio: number) => {
       if (conteggio > 0) out.push({ codice, conteggio })
     }
-    // Mai creazione automatica di tenant: l'azienda della mappa deve esistere gia'.
-    const azienda = await tx.tenant.count({ where: { id: t } })
+    // Mai creazione automatica di tenant: l'azienda della mappa deve esistere gia' e non essere
+    // l'azienda tecnica della piattaforma (non e' un cliente).
+    const azienda = await tx.tenant.count({ where: escludiPiattaforma({ id: t }) })
     aggiungi('TENANT_INESISTENTE', azienda === 0 ? 1 : 0)
     const mancanti = async (
       tabella: 'registri_rifiuti' | 'sedi_ditte' | 'rentri_unita_locali',

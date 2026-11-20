@@ -76,6 +76,7 @@ export type CodiceScartoPrepara =
 export type CodiceAvvisoPrepara =
   | 'SEDE_PRINCIPALE_DEDOTTA'
   | 'RUOLI_NON_DEDUCIBILI'
+  | 'RUOLO_DEDOTTO'
   | 'PROPRIETARIO_SENZA_RUOLO'
   | 'PROPRIETARIO_AMBIGUO'
   | 'PROPRIETARIO_NON_RISOLTO'
@@ -183,6 +184,13 @@ export async function preparaAnagrafiche(
   const tenuti = new Map<string, Tenuto>()
   const perRiga = new Map<string, string>() // `PRECOD|COD` -> dittaKey (anche le righe duplicate)
   const perCod = new Map<string, Set<string>>() // COD -> ditte (C e F con lo stesso COD)
+  const precPerCod = new Map<string, Set<string>>() // COD -> PRECOD delle righe CLIFOR con quel COD
+  const registraCod = (cod: string, prec: string, dittaKey: string) => {
+    if (!perCod.has(cod)) perCod.set(cod, new Set())
+    perCod.get(cod)!.add(dittaKey)
+    if (!precPerCod.has(cod)) precPerCod.set(cod, new Set())
+    precPerCod.get(cod)!.add(prec)
+  }
   const viste = new Map<string, { chiaveRiga: string; dittaKey: string }>()
   const agganci = new Map(mappa.agganci.map(a => [a.partitaIva, a.dittaId]))
   let agganciate = 0
@@ -216,8 +224,7 @@ export async function preparaAnagrafiche(
       scarti.conta('CLIFOR', 'DITTA_DUPLICATA')
       duplicati.push({ scartata: chiaveRiga, tenuta: tenuta.chiaveRiga })
       perRiga.set(`${prec}|${cod}`, tenuta.dittaKey)
-      if (!perCod.has(cod)) perCod.set(cod, new Set())
-      perCod.get(cod)!.add(tenuta.dittaKey)
+      registraCod(cod, prec, tenuta.dittaKey)
       continue
     }
     const v = { chiaveRiga, dittaKey }
@@ -240,8 +247,7 @@ export async function preparaAnagrafiche(
     }
     tenuti.set(dittaKey, { dittaKey, prec, cod, dittaId, clifor: c })
     perRiga.set(`${prec}|${cod}`, dittaKey)
-    if (!perCod.has(cod)) perCod.set(cod, new Set())
-    perCod.get(cod)!.add(dittaKey)
+    registraCod(cod, prec, dittaKey)
   }
 
   // Sito proprio: codice soggetto fuori da CLIFOR che comincia per X, o elencato nella mappa.
@@ -272,16 +278,17 @@ export async function preparaAnagrafiche(
     const ind = indirizzoDi(c)
     if (dittaKey && ind && !legaleDaSediLegali.has(dittaKey)) legaleDaSediLegali.set(dittaKey, ind)
   }
+  /** La chiave sede usa il soggetto WinWaste della RIGA (`prec`/`cod`), mai quello della riga tenuta. */
   const aggiungiSede = (
     t: Tenuto,
-    ul: string,
+    legacyKey: string,
     ind: Indirizzo,
     extra: { denominazione: string | null; telefono: string | null },
     tabella: string
   ): boolean => {
-    const legacyKey = chiaveSede(mappa.ditta, t.prec, t.cod, ul)
     if (chiaviSedi.has(legacyKey)) {
       scarti.conta(tabella, 'SEDE_DUPLICATA')
+      duplicati.push({ tabella, scartata: legacyKey, tenuta: legacyKey })
       return false
     }
     chiaviSedi.add(legacyKey)
@@ -304,7 +311,7 @@ export async function preparaAnagrafiche(
     } else if (
       aggiungiSede(
         t,
-        'SL',
+        chiaveSede(mappa.ditta, t.prec, t.cod, 'SL'),
         ind,
         { denominazione: null, telefono: telefono(t.clifor.TEL) },
         'CLIFOR'
@@ -315,7 +322,13 @@ export async function preparaAnagrafiche(
     const seconda = indirizzoDi(t.clifor, '2')
     if (seconda && !(ind && stessoIndirizzo(ind, seconda))) {
       const den = [T(t.clifor.RAG2), T(t.clifor.EST2)].filter(Boolean).join(' ').slice(0, 255)
-      aggiungiSede(t, 'S2', seconda, { denominazione: den || null, telefono: null }, 'CLIFOR')
+      aggiungiSede(
+        t,
+        chiaveSede(mappa.ditta, t.prec, t.cod, 'S2'),
+        seconda,
+        { denominazione: den || null, telefono: null },
+        'CLIFOR'
+      )
     }
   }
   const unitaDi = new Map<string, string[]>() // dittaKey -> chiavi UL, per la sede predefinita
@@ -348,9 +361,16 @@ export async function preparaAnagrafiche(
       scarti.conta('UNITA LOCALI', 'INDIRIZZO_INCOMPLETO')
       continue
     }
+    // Soggetto della RIGA: C/F dal PRECOD (7 caratteri) o l'unico PRECOD con quel COD; se C e F
+    // hanno lo stesso COD (stessa ditta) si usa la riga tenuta.
+    const precRiga =
+      sep.precod ??
+      ([...(precPerCod.get(sep.soggetto) ?? [])].length === 1
+        ? [...precPerCod.get(sep.soggetto)!][0]
+        : r.tenuto.prec)
     let legacyKey: string
     try {
-      legacyKey = chiaveSede(mappa.ditta, r.tenuto.prec, r.tenuto.cod, ul)
+      legacyKey = chiaveSede(mappa.ditta, precRiga, sep.soggetto, ul)
     } catch {
       scarti.conta('UNITA LOCALI', 'CHIAVE_NON_VALIDA')
       continue
@@ -359,7 +379,7 @@ export async function preparaAnagrafiche(
     if (
       aggiungiSede(
         r.tenuto,
-        ul,
+        legacyKey,
         ind,
         { denominazione: den || null, telefono: telefono(c.TEL) },
         'UNITA LOCALI'
@@ -378,7 +398,11 @@ export async function preparaAnagrafiche(
       sedeDefault.set(t.dittaKey, slKey)
       if (t.dittaId === null) principali.add(slKey)
     } else {
-      const prima = [...(unitaDi.get(t.dittaKey) ?? [])].sort()[0]
+      // solo UL del soggetto tenuto: la sede predefinita di un ruolo e' di quel soggetto
+      const proprie = `${mappa.ditta}|${t.prec}|${t.cod}|`
+      const prima = [...(unitaDi.get(t.dittaKey) ?? [])]
+        .filter(k => k.startsWith(proprie))
+        .sort()[0]
       if (prima) {
         sedeDefault.set(t.dittaKey, prima)
         if (t.dittaId === null) {
@@ -473,7 +497,10 @@ export async function preparaAnagrafiche(
       )
       continue
     }
-    if (u.P) produttori.push({ ...base, sedeKey })
+    if (u.P) {
+      produttori.push({ ...base, sedeKey })
+      avvisi.conta('PRODUTTORI', 'RUOLO_DEDOTTO')
+    }
     if (u.T.size > 0) {
       const a = migliore(u.T)
       if (!a) scarti.conta('AUTORIZZAZIONI', 'NUMERO_ASSENTE')
@@ -485,18 +512,21 @@ export async function preparaAnagrafiche(
           scadenzaIscrizione: a.scadenza,
         })
         chiaveRuolo.set(dittaKey, legacyKey)
+        avvisi.conta('TRASPORTATORI', 'RUOLO_DEDOTTO')
       }
     }
     if (u.S.size > 0) {
       const a = migliore(u.S)
       if (!a) scarti.conta('AUTORIZZAZIONI', 'NUMERO_ASSENTE')
-      else
+      else {
         destinatari.push({
           ...base,
           sedeKey,
           numeroAutorizzazione: a.numero,
           scadenzaAutorizzazione: a.scadenza,
         })
+        avvisi.conta('DESTINATARI', 'RUOLO_DEDOTTO')
+      }
     }
   }
 

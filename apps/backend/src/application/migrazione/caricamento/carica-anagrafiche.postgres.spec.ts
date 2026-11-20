@@ -19,6 +19,7 @@ process.env.DATABASE_URL = urlComeRuolo(
 )
 
 import { eseguiCli } from '../../../cli/migrazione-carica'
+import { AZIENDA_PIATTAFORMA_ID } from '../../../core/context/azienda-piattaforma'
 import { TenantContext } from '../../../core/context/tenant-context'
 import {
   PrismaService,
@@ -320,6 +321,26 @@ describe('Pezzo I4 T3/T4/T5: carica anagrafiche — Postgres reale, ruolo wastef
       expect(await eseguiCli(argomenti(fantasma, pf), uscita().u, servizio)).toBe(2)
       expect(await owner.tenant.count({ where: { id: fantasma } })).toBe(0)
       expect(await owner.lottoImport.count({ where: { tenantId: fantasma } })).toBe(0)
+    })
+
+    it("C-1: l'azienda piattaforma non e' un tenant di import (TENANT_INESISTENTE, nessun lotto)", async () => {
+      const id = AZIENDA_PIATTAFORMA_ID
+      const mappa = validaMappa({
+        ...mappaValida(),
+        tenantId: id,
+        registri: [],
+        unitaLocali: [],
+        causali: [],
+        agganci: [],
+      })
+      const cartella = join(await mkdtemp(join(radice, 'pk-')), 'WW00012026')
+      await preparaPacchetto(await apriStaging(prova.cartella), mappa, cartella)
+      const pf = await apriPacchetto(cartella)
+      const u = uscita()
+      expect(await eseguiCli(argomenti(id, pf, '--verifica'), u.u, servizio)).toBe(2)
+      expect(u.err.join('\n')).toContain('BLOCCANTE TENANT_INESISTENTE: 1')
+      expect(await eseguiCli(argomenti(id, pf), uscita().u, servizio)).toBe(2)
+      expect(await owner.lottoImport.count({ where: { tenantId: id } })).toBe(0)
     })
 
     it('targa gia presente e non importata, ditta con P.IVA non agganciata: bloccanti, uscita 2, nessun lotto', async () => {

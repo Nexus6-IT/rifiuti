@@ -7,6 +7,7 @@ import {
   scriviStagingAnagraficheProva,
   StagingAnagraficheProva,
 } from '../../../test-support/migrazione/staging-anagrafiche-di-prova'
+import { scriviStaging } from '../staging/scrittore-staging'
 import { apriStaging } from '../staging/lettore-staging'
 import { validaMappa } from './mappa-import'
 import { preparaAnagrafiche, RisultatoAnagrafiche } from './prepara-anagrafiche'
@@ -216,5 +217,68 @@ describe('I4 T1/T2: trasformazione pura CLIFOR + SEDI LEGALI + UNITA LOCALI + AU
     expect(testo).toContain('scarto UNITA LOCALI UNITA_LOCALE_PROPRIA: 1')
     for (const vietato of ['NAPOLI', 'AB123CD', prova.piva.uno, prova.cfPrivato, 'NA/1234'])
       expect(testo).not.toContain(vietato)
+  })
+
+  it('ruoli dedotti: avviso con il conteggio per tipo (M-1)', () => {
+    const per = Object.fromEntries(
+      r.avvisi.filter(a => a.codice === 'RUOLO_DEDOTTO').map(a => [a.tabella, a.conteggio])
+    )
+    expect(per).toEqual({ PRODUTTORI: 2, TRASPORTATORI: 1, DESTINATARI: 1 })
+  })
+
+  describe('I-1: unita locali di righe CLIFOR duplicate (stessa P.IVA)', () => {
+    const colCl = ['PRECOD', 'COD', 'DES', 'PIVA', 'IND', 'NUM', 'COM', 'CAP', 'PROV'] as const
+    const colUl = ['PRECOD', 'COD', 'DES', 'IND', 'NUM', 'COM', 'CAP', 'PROV'] as const
+    async function prepara(ordine: 'cf' | 'fc') {
+      const dir = await mkdtemp(join(radice, 'dup-'))
+      const piva = prova.piva.uno
+      const cl = (p: string, c: string) => [
+        p,
+        c,
+        'DITTA',
+        piva,
+        'VIA SEDE',
+        '1',
+        'ROMA',
+        '00100',
+        'RM',
+      ]
+      const ulC = ['000001', '0001', 'UL DEL CLIENTE', 'VIA CLIENTE', '1', 'NAPOLI', '80100', 'NA']
+      const ulF = [
+        '000005',
+        '0001',
+        'UL DEL FORNITORE',
+        'VIA FORNITORE',
+        '2',
+        'MILANO',
+        '20100',
+        'MI',
+      ]
+      const { cartella } = await scriviStaging(
+        dir,
+        { ditta: '0001', anno: 2026, estrattoIl: '2026-11-14T00:00:00.000Z' },
+        [
+          { nome: 'CLIFOR', colonne: colCl, righe: [cl('C', '000001'), cl('F', '000005')] },
+          {
+            nome: 'UNITA LOCALI',
+            colonne: colUl,
+            righe: ordine === 'cf' ? [ulC, ulF] : [ulF, ulC],
+          },
+        ]
+      )
+      return preparaAnagrafiche(await apriStaging(cartella), mappa())
+    }
+    it.each(['cf', 'fc'] as const)(
+      'ordine %s: due sedi distinte, indirizzi giusti, nessun SEDE_DUPLICATA',
+      async ordine => {
+        const x = await prepara(ordine)
+        const c = x.sedi.find(s => s.legacyKey === '0001|C|000001|0001')!
+        const f = x.sedi.find(s => s.legacyKey === '0001|F|000005|0001')!
+        expect(c.comune).toBe('NAPOLI')
+        expect(f.comune).toBe('MILANO')
+        expect(c.dittaKey).toBe(f.dittaKey)
+        expect(x.scarti.find(s => s.codice === 'SEDE_DUPLICATA')).toBeUndefined()
+      }
+    )
   })
 })

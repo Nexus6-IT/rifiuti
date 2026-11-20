@@ -79,7 +79,7 @@ una ditta agganciata non sono mai principali (la ditta esistente ha gia' la sua)
   motrice/rimorchio e' per movimento e la ricostruira' I5/I7. Il proprietario e' il ruolo trasportatore
   del soggetto; il parco proprio (e i proprietari senza ruolo) restano senza trasportatore (avvisi
   `PROPRIETARIO_*`). `creato_da` e' l'operatore del lotto o, senza, l'utente tecnico
-  `00000000-0000-4000-8000-000000000001`.
+  `00000000-0000-4000-8000-000000000002` (diverso dall'id della piattaforma).
 - **Mai dati personali nella mappa**; nel pacchetto sono in chiaro (vedi sopra). `NOM`/`COG`
   (referente) delle unita' locali NON si importano.
 - **Forma presunta** (da riverificare sul primo `.bak`): `PRECOD` di `UNITA LOCALI` = soggetto
