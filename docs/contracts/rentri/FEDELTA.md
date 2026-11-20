@@ -638,6 +638,21 @@ giudicati dal contratto. Non modellato: `numero_colli` obbligatorio se non c'e' 
 solo in prosa; lo impone il client, `mappaQuantitaRifiuto`) e «`caratteristiche_pericolo` se e solo se l'EER e'
 pericoloso».
 
+### 8.2 Firme di partenza (2026-11-22, FIR in viaggio, P3)
+
+`acquisizione-firma` senza operazione in attesa (la firma non segue `accettazione` ne `annulla-fir`) nella fase
+iniziale: ipotesi dedotta dai NOMI degli stati (il contratto non documenta la macchina; da verificare sulla demo,
+punto 1 della checklist):
+- `FirmaProduttoreTrasportatoreIniziale` -> `InserimentoAccettazione` (viaggio);
+- `FirmaTrasportatoreIniziale` -> `InserimentoAccettazione`;
+- `FirmaProduttore` -> `FirmaTrasportatoreIniziale` (resta la firma del trasportatore);
+- il `rollback-firma` successivo riporta allo stato precedente (la fake memorizza `ultimaFirma` senza operazione
+  pendente da ripristinare); una firma rifiutata dall'ente (`errore: true`) lascia lo stato invariato.
+
+Da chiedere alla demo: quale firma propone l'ente quando produttore e trasportatore coincidono (nel codice si
+sceglie quella combinata se presente in `/azioni`), se `FirmaProduttore` precede davvero `FirmaTrasportatoreIniziale`,
+e quale stato segue l'ultima firma di partenza.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in
