@@ -671,6 +671,15 @@ modella «copia gia' restituita con accettazione totale -> non consentita» (r. 
 sia del soggetto che ha inserito l'annotazione (r. 6154: WasteFlow firma solo annotazioni proprie, di cui
 conosce il testo). Il POST `/annotazione` non si ritenta mai su 5xx/timeout (esito incerto, come la creazione).
 
+Annotazioni nel dettaglio (correzione R1, 2026-11-20): `GET /{numero_fir}` espone `dati_annotazioni`
+(`DatiAnnotazioneResultModel`: `annotazione`, `identificativo_soggetto`, `dati_firma`). Un'annotazione accettata
+entra con `dati_firma: null`; la firma la valorizza (la fake mette solo `data_firma`), il `reset` toglie quella non
+firmata, il `rollback-firma` la riporta a non firmata. WasteFlow ci riconcilia un invio rimasto senza esito
+(INCERTA, o INVIATA di un processo morto): propria = non firmata, stesso soggetto, stesso testo (SHA-256). Ipotesi
+da verificare sulla demo: che il dettaglio riporti davvero le annotazioni non ancora firmate e il testo
+identico a quello inviato (senza normalizzazioni); se non lo facesse, un'annotazione con esito ignoto non
+sarebbe mai adottata (fail-closed: si sblocca con il `reset`).
+
 Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
 sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
 

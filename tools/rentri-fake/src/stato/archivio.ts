@@ -99,6 +99,16 @@ export interface Formulario {
    * attesa firma precedente. Mai registrata per la firma di annullamento, che
    * il contratto esclude dal rollback.
    */
+  /**
+   * Annotazioni del formulario (`DettaglioFormulario.dati_annotazioni`, `DatiAnnotazioneResultModel`): esposte
+   * cosi' come sono da `GET /{numero_fir}`. Una nuova annotazione accettata entra con `dati_firma: null`; la
+   * firma la valorizza, il `reset` toglie quella non firmata, il `rollback-firma` la riporta a non firmata.
+   */
+  dati_annotazioni?: {
+    annotazione: string
+    identificativo_soggetto: string
+    dati_firma: { data_firma: string } | null
+  }[]
   ultimaFirma?: {
     statoPrecedente: string
     /** Assente per le firme di partenza (P3): non c'era un'operazione in attesa da ripristinare. */
@@ -717,6 +727,14 @@ export class Archivio {
         statoPrecedente: formulario.stato,
       }
       formulario.stato = 'FirmaAnnotazione'
+      formulario.dati_annotazioni = [
+        ...(formulario.dati_annotazioni ?? []),
+        {
+          annotazione: String(contesto.corpo?.annotazione ?? ''),
+          identificativo_soggetto: String(contesto.corpo?.identificativo_soggetto ?? ''),
+          dati_firma: null,
+        },
+      ]
       return
     }
 
@@ -757,6 +775,8 @@ export class Archivio {
         formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
         formulario.stato = pendente.statoPrecedente
         formulario.pendingOperazione = undefined
+        const daFirmare = ultimaAnnotazioneNonFirmata(formulario)
+        if (daFirmare) daFirmare.dati_firma = { data_firma: new Date().toISOString() }
         return
       }
     }
@@ -769,6 +789,10 @@ export class Archivio {
       if (!pendente) return
       formulario.stato = pendente.statoPrecedente
       formulario.pendingOperazione = undefined
+      if (pendente.tipo === 'Annotazione') {
+        const daTogliere = ultimaAnnotazioneNonFirmata(formulario)
+        formulario.dati_annotazioni = formulario.dati_annotazioni?.filter(a => a !== daTogliere)
+      }
       return
     }
 
@@ -780,6 +804,11 @@ export class Archivio {
       formulario.stato = ultima.statoPrecedente
       formulario.pendingOperazione = ultima.pending
       formulario.ultimaFirma = undefined
+      if (ultima.pending?.tipo === 'Annotazione') {
+        const firmate = (formulario.dati_annotazioni ?? []).filter(a => a.dati_firma !== null)
+        const ultimaFirmata = firmate[firmate.length - 1]
+        if (ultimaFirmata) ultimaFirmata.dati_firma = null
+      }
       return
     }
 
@@ -1180,4 +1209,11 @@ function identificativoSoggettoDa(richiesta: Record<string, unknown>): string | 
     if (typeof soggetto?.num_iscr_sito === 'string') return soggetto.num_iscr_sito
   }
   return undefined
+}
+
+/** L'ultima annotazione ancora senza firma (al massimo una: `FirmaAnnotazione` blocca le successive). */
+function ultimaAnnotazioneNonFirmata(
+  formulario: Formulario
+): NonNullable<Formulario['dati_annotazioni']>[number] | undefined {
+  return [...(formulario.dati_annotazioni ?? [])].reverse().find(a => a.dati_firma === null)
 }

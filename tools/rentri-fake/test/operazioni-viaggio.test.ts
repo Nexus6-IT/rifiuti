@@ -700,6 +700,36 @@ describe('Annotazione: FirmaAnnotazione e ritorno allo stato di prima (FIR in vi
     expect(await stato(app)).toBe('InserimentoAccettazione')
   })
 
+  async function annotazioni(app: ReturnType<typeof creaApp>): Promise<unknown> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().dati_annotazioni
+  }
+
+  it('il dettaglio (GET /{numero_fir}) espone le annotazioni: non firmata, firmata, annullata dal reset', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'annotazione', CORPO)
+    expect(await annotazioni(app)).toEqual([{ ...CORPO, dati_firma: null }])
+
+    await completa(app, 'acquisizione-firma', FIRMA)
+    expect(await annotazioni(app)).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+
+    const seconda = { ...CORPO, annotazione: 'Seconda annotazione' }
+    await completa(app, 'annotazione', seconda)
+    expect(await annotazioni(app)).toHaveLength(2)
+    await completa(app, 'reset', {})
+    expect(await annotazioni(app)).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+  })
+
   it("un'annotazione senza identificativo_soggetto e respinta dal contratto (400)", async () => {
     const app = creaApp()
     await seminaFormulario(app, 'InserimentoAccettazione')
