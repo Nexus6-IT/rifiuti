@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { ArchivioGiro } from './archivio-giro';
+import { consumaNonceAccesso } from './nonce-accesso';
 import { Observable, catchError, finalize, map, of, shareReplay, tap, throwError } from 'rxjs';
 
 export const CHIAVE_SESSIONE = 'wasteflow.campo.sessione';
@@ -36,6 +37,16 @@ export class SessioneService {
 
   accessToken(): string | null {
     return this.token()?.accessToken ?? null;
+  }
+
+  /**
+   * Ritorno SPID/CIE: accetta i token SOLO se il nonce del fragment coincide con quello ricordato
+   * prima della partenza (monouso). Un link con i token di un altro utente non apre nessuna sessione.
+   */
+  accettaRitornoSpid(fragment: string): boolean {
+    const nonce = new URLSearchParams(fragment.replace(/^#/, '')).get('nonce');
+    if (!consumaNonceAccesso(nonce)) return false;
+    return this.salvaDaFragment(fragment);
   }
 
   /** Salva i token dal fragment (`#accessToken=..&refreshToken=..`) del ritorno SPID/CIE. */

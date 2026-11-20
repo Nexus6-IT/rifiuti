@@ -25,8 +25,8 @@ describe('App campo', () => {
     await harness.navigateByUrl('/');
     const el = harness.routeNativeElement as HTMLElement;
     expect(el.querySelector('h1')?.textContent).toContain('WasteFlow campo');
-    expect(el.querySelector('a[data-testid="accedi"]')?.getAttribute('href')).toBe(
-      '/api/v1/auth/spid/login?RelayState=campo',
+    expect(el.querySelector('a[data-testid="accedi"]')?.getAttribute('href')).toMatch(
+      /^\/api\/v1\/auth\/spid\/login\?RelayState=campo\.[A-Za-z0-9_-]{22}$/,
     );
   });
 });

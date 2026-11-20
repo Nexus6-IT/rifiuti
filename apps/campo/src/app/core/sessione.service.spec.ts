@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { SessioneService, CHIAVE_SESSIONE } from './sessione.service';
+import { generaNonceAccesso } from './nonce-accesso';
 
 describe('SessioneService', () => {
   let servizio: SessioneService;
@@ -94,5 +95,25 @@ describe('SessioneService', () => {
     req.flush({}, { status: 500, statusText: 'KO' });
     expect(servizio.autenticato()).toBe(false);
     expect(localStorage.getItem(CHIAVE_SESSIONE)).toBeNull();
+  });
+});
+
+describe('SessioneService.accettaRitornoSpid (nonce)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+  });
+
+  it('con il nonce ricordato apre la sessione; senza o con un altro, no', () => {
+    const s = TestBed.inject(SessioneService);
+    const n = generaNonceAccesso();
+    expect(s.accettaRitornoSpid(`#accessToken=a&refreshToken=r&nonce=${n}`)).toBe(true);
+    expect(s.autenticato()).toBe(true);
+    s.pulisci();
+    generaNonceAccesso();
+    expect(s.accettaRitornoSpid('#accessToken=a&refreshToken=r')).toBe(false);
+    expect(s.autenticato()).toBe(false);
   });
 });
