@@ -75,7 +75,6 @@ const ORIGINI_RILASCIABILI = ['ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE']
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
-/** Etichette italiane per l'origine del legame RENTRI (v. RentriOrigineLegame nel dominio). */
 /** Istante ISO (UTC) mostrato nel fuso del browser, in italiano: «18/11/2026, 11:00». */
 function formattaIstante(iso: string): string {
   const d = new Date(iso)
@@ -84,6 +83,7 @@ function formattaIstante(iso: string): string {
     : d.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+/** Etichette italiane per l'origine del legame RENTRI (v. RentriOrigineLegame nel dominio). */
 const ORIGINE_LEGAME_LABELS: Record<string, string> = {
   TRASMESSO_DA_NOI: 'Trasmesso da noi',
   ACQUISITO_DA_TERZI: 'Acquisito da terzi',
