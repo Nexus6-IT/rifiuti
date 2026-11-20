@@ -57,7 +57,7 @@ export interface RecordAutomezzo {
   readonly note: string | null
 }
 
-type Fase = 'sede' | 'ruolo' | 'automezzo'
+export type Fase = 'sede' | 'ruolo' | 'automezzo' | 'fir' | 'fir-digitale'
 
 function riga(fase: Fase, campo: string): never {
   throw new PacchettoError('RIGA_NON_VALIDA', `${fase}: ${campo}`)
@@ -90,7 +90,7 @@ function testo(
   return t
 }
 
-function riferimentoDitta(
+export function riferimentoDitta(
   o: Record<string, unknown>,
   fase: Fase,
   mappa: MappaImport

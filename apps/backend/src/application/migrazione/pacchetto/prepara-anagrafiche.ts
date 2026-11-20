@@ -88,6 +88,35 @@ export interface VoceConteggio<C extends string> {
   readonly conteggio: number
 }
 
+export type RisoluzioneSoggetto =
+  | { tipo: 'ok'; tenuto: SoggettoTenuto }
+  | { tipo: 'proprio' }
+  | { tipo: 'ambiguo' }
+  | { tipo: 'sconosciuto' }
+
+/** Soggetto CLIFOR tenuto (una riga per ditta): serve a chi deve riagganciare `PROD`/`TRAS`/`SMAL`. */
+export interface SoggettoTenuto {
+  readonly dittaKey: string
+  readonly prec: string
+  readonly cod: string
+  readonly dittaId: string | null
+}
+
+/**
+ * Indice per riagganciare un riferimento WinWaste (`soggetto.unita'`) alle ditte, ai ruoli e alle
+ * sedi del pacchetto: lo usano i FIR (I5) e, dopo, il registro (I7), con la STESSA regola di `prepara`.
+ */
+export interface IndiceAnagrafiche {
+  risolvi(codiceSoggetto: string): RisoluzioneSoggetto
+  /** PRECOD (C/F) delle righe CLIFOR con quel COD. */
+  precPerCod(codiceSoggetto: string): ReadonlySet<string> | undefined
+  /** Chiave del ruolo importato per la ditta (`null` se il pacchetto non ne ha). */
+  ruoloKey(ruolo: 'produttore' | 'trasportatore' | 'destinatario', dittaKey: string): string | null
+  haSede(chiaveSede: string): boolean
+  /** Sede legale (o prima unita' locale) della ditta, se il pacchetto ne ha una. */
+  sedePredefinita(dittaKey: string): string | null
+}
+
 export interface RisultatoAnagrafiche {
   readonly ditte: readonly RecordDitta[]
   readonly sedi: readonly RecordSede[]
@@ -102,6 +131,7 @@ export interface RisultatoAnagrafiche {
   readonly agganciate: number
   /** Righe scartate come duplicate, con quella tenuta: chiavi legacy, mai valori. `tabella` assente = CLIFOR. */
   readonly duplicati: ReadonlyArray<{ tabella?: string; scartata: string; tenuta: string }>
+  readonly indice: IndiceAnagrafiche
 }
 
 type Campi = Readonly<Record<string, string | null>>
@@ -583,6 +613,29 @@ export async function preparaAnagrafiche(
     })
   }
 
+  const chiaviRuoli = {
+    produttore: new Set(produttori.map(r => r.dittaKey)),
+    trasportatore: new Set(trasportatori.map(r => r.dittaKey)),
+    destinatario: new Set(destinatari.map(r => r.dittaKey)),
+  }
+  const indice: IndiceAnagrafiche = {
+    risolvi: cod => {
+      const r = risolvi(cod)
+      if (r.tipo !== 'ok') return r
+      const { dittaKey, prec, cod: c, dittaId } = r.tenuto
+      return { tipo: 'ok', tenuto: { dittaKey, prec, cod: c, dittaId } }
+    },
+    precPerCod: cod => precPerCod.get(cod),
+    ruoloKey: (ruolo, dittaKey) => {
+      const t = tenuti.get(dittaKey)
+      return t && chiaviRuoli[ruolo].has(dittaKey)
+        ? chiaveSoggetto(mappa.ditta, t.prec, t.cod)
+        : null
+    },
+    haSede: chiave => chiaviSedi.has(chiave),
+    sedePredefinita: dittaKey => sedeDefault.get(dittaKey) ?? null,
+  }
+
   return {
     ditte,
     sedi: sediFinali,
@@ -594,5 +647,6 @@ export async function preparaAnagrafiche(
     avvisi: avvisi.elenco(),
     agganciate,
     duplicati,
+    indice,
   }
 }

@@ -10,6 +10,13 @@ import { partitaIvaValida } from '../anagrafiche-di-test'
 
 type Riga = (string | null)[]
 
+/** Tabella aggiuntiva (es. FORMULARI, XRENTRIFIRTRASMESSI) da scrivere nello stesso staging. */
+export interface TabellaStagingExtra {
+  readonly nome: string
+  readonly colonne: readonly string[]
+  readonly righe: Riga[]
+}
+
 export interface StagingAnagraficheProva {
   readonly cartella: string
   readonly piva: Record<'uno' | 'due' | 'tre' | 'agganciata' | 'ambiguaC' | 'ambiguaF', string>
@@ -81,7 +88,7 @@ const cl = (
 export async function scriviStagingAnagraficheProva(
   radice: string,
   seme: number,
-  opzioni: { senzaMovimenti?: boolean } = {}
+  opzioni: { senzaMovimenti?: boolean; tabelleExtra?: readonly TabellaStagingExtra[] } = {}
 ): Promise<StagingAnagraficheProva> {
   const piva = {
     uno: partitaIvaValida(seme),
@@ -158,6 +165,7 @@ export async function scriviStagingAnagraficheProva(
     { nome: 'AUTORIZZAZIONI', colonne: COL_AUT, righe: autorizzazioni },
     { nome: 'AUTOMEZZI', colonne: COL_MEZ, righe: automezzi },
     ...(opzioni.senzaMovimenti ? [] : [{ nome: 'MOVIMENTI', colonne: COL_MOV, righe: movimenti }]),
+    ...(opzioni.tabelleExtra ?? []),
   ]
   const { cartella } = await scriviStaging(
     radice,

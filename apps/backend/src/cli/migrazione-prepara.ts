@@ -85,6 +85,8 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
       uscita.scrivi(`scarto ${s.tabella} ${s.codice}: ${s.conteggio}`)
     for (const a of rapporto.avvisi)
       uscita.scrivi(`avviso ${a.tabella} ${a.codice}: ${a.conteggio}`)
+    for (const d of rapporto.firDigitali)
+      uscita.scrivi(`fir-digitale ${d.numero} ${d.idRentri ?? '-'}`)
     return 0
   } catch (e) {
     if (e instanceof PacchettoError || e instanceof StagingError) {

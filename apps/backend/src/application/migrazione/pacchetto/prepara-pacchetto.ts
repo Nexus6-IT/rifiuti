@@ -4,8 +4,9 @@
  *
  * Fasi prodotte: ANAGRAFICHE/ditte (da CLIFOR, con dedup per P.IVA o CF e agganci della mappa) e, dal
  * pezzo I4, sedi, produttori, trasportatori, destinatari e automezzi (vedi `prepara-anagrafiche.ts`).
- * Le fasi vuote non vengono scritte (tranne `ditte`). Le altre fasi (FIR, registro, giacenze) si
- * aggiungono qui con i pezzi I5-I7: il formato non cambia.
+ * Dal pezzo I5, ambito FIR: `fir` e `fir-digitali` (vedi `prepara-fir.ts`). Le fasi vuote non vengono
+ * scritte (tranne `ditte`). Le altre fasi (registro, giacenze) si aggiungono qui con i pezzi I6-I7: il
+ * formato non cambia.
  *
  * Scarti: tipati e contati per tabella e codice, mai con valori. Un duplicato e' SEGNALATO, mai fuso
  * in silenzio.
@@ -14,6 +15,7 @@ import { StagingAperto } from '../staging/lettore-staging'
 import { PacchettoError } from './errori-pacchetto'
 import { ManifestPacchetto } from './manifest-pacchetto'
 import { MappaImport } from './mappa-import'
+import { CodiceAvvisoFir, preparaFir } from './prepara-fir'
 import {
   CodiceAvvisoPrepara,
   CodiceScartoPrepara,
@@ -22,13 +24,18 @@ import {
 } from './prepara-anagrafiche'
 import { FaseDaScrivere, scriviPacchetto } from './scrittore-pacchetto'
 
-export type { CodiceAvvisoPrepara, CodiceScartoPrepara }
+export type { CodiceAvvisoFir, CodiceAvvisoPrepara, CodiceScartoPrepara }
 
 export interface RapportoPrepara {
   readonly manifest: ManifestPacchetto
-  readonly scarti: ReadonlyArray<VoceConteggio<CodiceScartoPrepara>>
+  readonly scarti: ReadonlyArray<VoceConteggio<CodiceScartoPrepara | string>>
   /** Scelte dedotte e note che non sono scarti: da controllare con l'operatore. */
-  readonly avvisi: ReadonlyArray<VoceConteggio<CodiceAvvisoPrepara>>
+  readonly avvisi: ReadonlyArray<VoceConteggio<CodiceAvvisoPrepara | CodiceAvvisoFir>>
+  /**
+   * FIR digitali: non copiati, da riacquisire da RENTRI (`migrazione:riacquisisci-fir`). Numero e
+   * IDRENTRI sono identificativi dell'ente, non dati personali.
+   */
+  readonly firDigitali: ReadonlyArray<{ numero: string; idRentri: string | null }>
   /** Ditte gia' presenti in WasteFlow (agganci della mappa): non vanno nel pacchetto. */
   readonly agganciate: number
   /** Righe scartate come duplicate, con quella tenuta: chiavi legacy, mai valori. `tabella` assente = CLIFOR. */
@@ -53,6 +60,7 @@ export async function preparaPacchetto(
   if (!staging.ha('CLIFOR'))
     throw new PacchettoError('FILE_ASSENTE', 'lo staging non contiene CLIFOR')
   const r = await preparaAnagrafiche(staging, mappa)
+  const f = await preparaFir(staging, mappa, r)
   const fasi: FaseDaScrivere[] = [
     { ambito: 'ANAGRAFICHE', fase: 'ditte', record: r.ditte },
     ...(
@@ -66,6 +74,14 @@ export async function preparaPacchetto(
     )
       .filter(([, record]) => record.length > 0)
       .map(([fase, record]) => ({ ambito: 'ANAGRAFICHE' as const, fase, record })),
+    ...(
+      [
+        ['fir', f.fir],
+        ['fir-digitali', f.firDigitali],
+      ] as const
+    )
+      .filter(([, record]) => record.length > 0)
+      .map(([fase, record]) => ({ ambito: 'FIR' as const, fase, record })),
   ]
   const manifest = await scriviPacchetto({
     cartella: cartellaPacchetto,
@@ -78,7 +94,8 @@ export async function preparaPacchetto(
     manifest,
     agganciate: r.agganciate,
     duplicati: r.duplicati,
-    scarti: r.scarti,
-    avvisi: r.avvisi,
+    scarti: [...r.scarti, ...f.scarti],
+    avvisi: [...r.avvisi, ...f.avvisi],
+    firDigitali: f.firDigitali.map(d => ({ numero: d.numeroFir, idRentri: d.idRentri })),
   }
 }
