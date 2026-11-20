@@ -17,7 +17,10 @@ import { ManifestPacchetto } from './manifest-pacchetto'
 import { MappaImport } from './mappa-import'
 import { CodiceAvvisoFir, preparaFir } from './prepara-fir'
 import { CodiceAvvisoGiacenze, preparaGiacenze } from './prepara-giacenze'
-import type { DifferenzaGiascar } from '../../../domain/migrazione/winwaste/giacenze-taglio'
+import type {
+  CaricoAltraUl,
+  DifferenzaGiascar,
+} from '../../../domain/migrazione/winwaste/giacenze-taglio'
 import {
   CodiceAvvisoPrepara,
   CodiceScartoPrepara,
@@ -40,6 +43,8 @@ export interface RapportoPrepara {
    * i due valori in kg. Vanno al cliente insieme al rapporto; mai corretti in silenzio.
    */
   readonly differenzeGiascar: readonly DifferenzaGiascar[]
+  /** Carichi su un'altra unita' locale (OPER 15, 24, 16, 26) esclusi dalla giacenza: COD, OPER, protocollo. */
+  readonly caricoAltraUl: readonly CaricoAltraUl[]
   /**
    * FIR digitali: non copiati, da riacquisire da RENTRI (`migrazione:riacquisisci-fir`). Numero e
    * IDRENTRI sono identificativi dell'ente, non dati personali.
@@ -113,6 +118,7 @@ export async function preparaPacchetto(
     scarti: [...r.scarti, ...f.scarti, ...g.scarti],
     avvisi: [...r.avvisi, ...f.avvisi, ...g.avvisi],
     differenzeGiascar: g.differenzeGiascar,
+    caricoAltraUl: g.caricoAltraUl,
     firDigitali: f.firDigitali.map(d => ({ numero: d.numeroFir, idRentri: d.idRentri })),
     firSenzaPeso: f.firSenzaPeso.map(d => ({
       numero: d.firNumber,

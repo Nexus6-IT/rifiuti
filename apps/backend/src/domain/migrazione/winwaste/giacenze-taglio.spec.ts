@@ -347,8 +347,7 @@ describe('I6 T1: giacenza al taglio (ricalcolo indipendente)', () => {
         mov({ cod: 5, oper: '51', relaz: [G(0, 5, 'X')], netto: 5 }),
       ],
     })
-    expect(avviso(r, 'CARICO_SENZA_CLASSE_DI_GIACENZA')).toBe(1)
-    expect(avviso(r, 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')).toBe(1)
+    expect(avviso(r, 'CARICO_ALTRA_UL_FUORI_GIACENZA')).toBe(2)
     expect(scarto(r, 'MODA_NON_RICONOSCIUTA')).toBe(1)
     expect(avviso(r, 'DEPOSITO_PRODUTTORE_APERTURA_NON_NELLO_STAGING')).toBe(1)
     // il carico X (OPER 50) e' contato (classe X, MAG1)
@@ -427,22 +426,42 @@ describe('I6 T1: giacenza al taglio (ricalcolo indipendente)', () => {
     })
     expect(r.famiglie.map(f => [f.registroId, f.quantitaKg])).toEqual([[REG_B, 60]])
     expect(avviso(r, 'SEGMENTO_C_SENZA_CARICO')).toBe(0)
-    expect(avviso(r, 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')).toBe(0)
+    expect(avviso(r, 'CARICO_ALTRA_UL_FUORI_GIACENZA')).toBe(0)
     expect(r.differenzeGiascar).toEqual([])
   })
 
-  it("D1: OPER 15/24 e 16/26 decidono il lato carico da STATO; senza classe resta l'avviso", () => {
+  it('Q2: i carichi di OPER 15/24/16/26 (altra UL) restano FUORI dalla giacenza, con avviso e protocollo nel rapporto', () => {
     const r = calcola({
       movimenti: [
-        mov({ cod: 1, oper: '24', mag2: '001', moda: 'D15', netto: 10, stato: 'D001' }),
+        mov({
+          cod: 1,
+          oper: '24',
+          mag2: '001',
+          moda: 'D15',
+          netto: 10,
+          stato: 'D001',
+          registri: [{ registro: 'REG1', protocollo: 21 }],
+        }),
         mov({ cod: 2, oper: '15', mag1: '001', netto: 20, stato: 'T001' }),
-        mov({ cod: 3, oper: '15', mag1: '001', netto: 30, stato: '' }),
-        mov({ cod: 4, oper: '16', mag1: '001', netto: 5, stato: 'T001' }),
-        mov({ cod: 5, oper: '26', mag1: '001', netto: 7, stato: '' }),
+        mov({
+          cod: 3,
+          oper: '16',
+          mag1: '001',
+          netto: 5,
+          stato: 'T001',
+          registri: [{ registro: 'REG1', protocollo: 22 }],
+        }),
+        mov({ cod: 4, oper: '26', mag1: '001', netto: 7 }),
+        mov({ cod: 5, oper: '13', mag2: '001', moda: 'R13', netto: 3 }),
       ],
     })
-    expect(r.famiglie.map(f => f.quantitaKg)).toEqual([35])
-    expect(avviso(r, 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')).toBe(1)
-    expect(avviso(r, 'CARICO_SENZA_CLASSE_DI_GIACENZA')).toBe(1)
+    expect(r.famiglie.map(f => f.quantitaKg)).toEqual([3])
+    expect(avviso(r, 'CARICO_ALTRA_UL_FUORI_GIACENZA')).toBe(4)
+    expect(r.caricoAltraUl).toEqual([
+      { cod: 1, oper: '24', protocollo: 21 },
+      { cod: 2, oper: '15', protocollo: null },
+      { cod: 3, oper: '16', protocollo: 22 },
+      { cod: 4, oper: '26', protocollo: null },
+    ])
   })
 })

@@ -93,6 +93,13 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
           '(COD, GIASCAR, ricalcolato in kg): il residuo caricato e quello ricalcolato; ' +
           'le differenze vanno al cliente insieme al rapporto'
       )
+    for (const d of rapporto.caricoAltraUl)
+      uscita.scrivi(`carico-altra-ul ${d.cod} OPER ${d.oper} protocollo ${d.protocollo ?? '-'}`)
+    if (rapporto.caricoAltraUl.length > 0)
+      uscita.scrivi(
+        `ATTENZIONE: ${rapporto.caricoAltraUl.length} carichi su un'altra unita locale (OPER 15, 24, 16, 26) ` +
+          'esclusi dalla giacenza importata: inserirli a mano se servono'
+      )
     for (const d of rapporto.firDigitali)
       uscita.scrivi(`fir-digitale ${d.numero} ${d.idRentri ?? '-'}`)
     for (const d of rapporto.firSenzaPeso)

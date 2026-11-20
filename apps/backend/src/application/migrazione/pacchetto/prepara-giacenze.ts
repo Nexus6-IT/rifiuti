@@ -16,6 +16,7 @@ import {
   calcolaGiacenzeAlTaglio,
   CodiceAvvisoGiacenze,
   CodiceScartoGiacenze,
+  CaricoAltraUl,
   DifferenzaGiascar,
 } from '../../../domain/migrazione/winwaste/giacenze-taglio'
 import { StagingAperto } from '../staging/lettore-staging'
@@ -32,6 +33,8 @@ export interface RisultatoGiacenzePacchetto {
   readonly giacenze: readonly RecordGiacenza[]
   /** Carichi per cui `GIASCAR` non coincide col ricalcolo da `RELAZ` (>= 0,001 kg). */
   readonly differenzeGiascar: readonly DifferenzaGiascar[]
+  /** Carichi di OPER 15, 24, 16, 26 su un'altra UL: fuori dalla giacenza (Q2), da inserire a mano se servono. */
+  readonly caricoAltraUl: readonly CaricoAltraUl[]
   readonly scarti: ReadonlyArray<VoceConteggio<string>>
   readonly avvisi: ReadonlyArray<VoceConteggio<CodiceAvvisoGiacenze>>
 }
@@ -41,7 +44,7 @@ export async function preparaGiacenze(
   mappa: MappaImport
 ): Promise<RisultatoGiacenzePacchetto> {
   if (!staging.ha('MOVIMENTI') || !staging.ha('GIACENZE RIFIUTI')) {
-    return { giacenze: [], differenzeGiascar: [], scarti: [], avvisi: [] }
+    return { giacenze: [], differenzeGiascar: [], caricoAltraUl: [], scarti: [], avvisi: [] }
   }
   const contesto = { ditta: mappa.ditta, anno: mappa.anno }
   const movimenti = await parsaMovimenti(sorgenteDa(staging, 'MOVIMENTI'), contesto)
@@ -84,6 +87,7 @@ export async function preparaGiacenze(
   return {
     giacenze,
     differenzeGiascar: esito.differenzeGiascar,
+    caricoAltraUl: esito.caricoAltraUl,
     scarti: [...conta.values()],
     avvisi: esito.avvisi.map(a => ({
       tabella: 'GIACENZE',

@@ -26,16 +26,15 @@ import { DataIso } from './risultato'
  *
  * LIMITI NOTI (si segnalano, non si correggono):
  *  - il deposito del produttore (`G0`, classe `X`) vive in `[Schede produttori]`, non nello staging;
- *  - OPER 13 crea sempre un carico R/D; per 15, 24, 16, 26 il lato carico lo decide `STATO` (senza classe
- *    non si conta e si segnala: `AVANZ` della causale e `POS2` sono altre UL, domanda Q2);
+ *  - OPER 13 crea sempre un carico R/D; i carichi di 15, 24, 16, 26 vanno su un'altra UL (POS2) e restano
+ *    fuori dalla giacenza con avviso e elenco (Q2, decisione di Graziano);
  *  - i m³ non si portano (WasteFlow non li traccia sulle aperture);
  *  - FORMA PRESUNTA, da riverificare sul primo `.bak`: il magazzino di un carico e' `MAG1` per le
  *    classi T e X e `MAG2` per R/D; il magazzino dei segmenti `G` e `P` e' `MAG1` dello scarico.
  */
 export type CodiceAvvisoGiacenze =
   | 'CARICO_DOPO_IL_TAGLIO'
-  | 'CARICO_SENZA_CLASSE_DI_GIACENZA'
-  | 'OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO'
+  | 'CARICO_ALTRA_UL_FUORI_GIACENZA'
   | 'DEPOSITO_PRODUTTORE_APERTURA_NON_NELLO_STAGING'
   | 'CARICO_SCARICATO_OLTRE_IL_NETTO'
   | 'GIACENZA_INIZIALE_NEGATIVA'
@@ -75,6 +74,13 @@ export interface DifferenzaGiascar {
   readonly ricalcolatoKg: number
 }
 
+/** Carico su un'altra unita' locale (OPER 15, 24, 16, 26) escluso dalla giacenza: COD e protocollo, niente dati personali. */
+export interface CaricoAltraUl {
+  readonly cod: number
+  readonly oper: string
+  readonly protocollo: number | null
+}
+
 export interface VoceGiacenze<C extends string> {
   readonly codice: C
   readonly conteggio: number
@@ -91,6 +97,7 @@ export interface IngressiGiacenze {
 export interface RisultatoGiacenze {
   readonly famiglie: readonly FamigliaGiacenza[]
   readonly differenzeGiascar: readonly DifferenzaGiascar[]
+  readonly caricoAltraUl: readonly CaricoAltraUl[]
   readonly avvisi: ReadonlyArray<VoceGiacenze<CodiceAvvisoGiacenze>>
   readonly scarti: ReadonlyArray<VoceGiacenze<CodiceScartoGiacenze>>
 }
@@ -152,21 +159,20 @@ function statoFisicoPulito(v: string): string | null | 'NON_VALIDO' {
 type ClasseCarico = 'T' | 'R_D' | 'X'
 
 /**
- * Classe del carico che un movimento crea, `null` se non ne crea (o non si sa). OPER 13 crea SEMPRE un
- * carico R/D (movimenti.md §2.4). Per gli altri ENTRAMBI (15, 24) e per i CARICO senza classe (16, 26)
- * decide `STATO` (classe T/R/D/X + posizione, `$` se esaurito: la giacenza di WinWaste e' quella dei
- * movimenti con `stato > '0'`); senza classe in `STATO` non si conta e si segnala.
+ * Classe del carico che un movimento crea nel PROPRIO registro, `null` se non ne crea. OPER 13 crea
+ * SEMPRE un carico R/D (movimenti.md §2.4). I carichi di 15, 24 (ENTRAMBI) e 16, 26 (CARICO senza
+ * classe) vanno in `POS2`, cioe' su un'ALTRA unita' locale: decisione di Graziano (Q2), restano FUORI
+ * dalla giacenza importata e si elencano nel rapporto (`caricoAltraUl`) perche' l'operatore li inserisca
+ * a mano se servono.
  */
 function classeCarico(m: RecordMovimento): ClasseCarico | null {
   if (m.oper.tipo === 'CARICO' && m.oper.classe !== null) return m.oper.classe
   if (m.oper.tipo === 'ENTRAMBI' && m.oper.codice === '13') return 'R_D'
-  if (m.oper.tipo === 'ENTRAMBI' || (m.oper.tipo === 'CARICO' && m.oper.classe === null)) {
-    const c = m.stato.trim().charAt(0).toUpperCase()
-    if (c === 'R' || c === 'D') return 'R_D'
-    if (c === 'T' || c === 'X') return c
-  }
   return null
 }
+
+const verteSuAltraUl = (m: RecordMovimento): boolean =>
+  m.oper.tipo === 'ENTRAMBI' || (m.oper.tipo === 'CARICO' && m.oper.classe === null)
 
 export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze {
   const avvisi = new Contatori<CodiceAvvisoGiacenze>()
@@ -273,11 +279,18 @@ export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze 
 
   // 4. carichi aperti dell'anno.
   const differenze: DifferenzaGiascar[] = []
+  const fuori: CaricoAltraUl[] = []
   for (const m of vivi) {
     const classe = classeCarico(m)
     if (classe === null) {
-      if (m.oper.tipo === 'ENTRAMBI') avvisi.conta('OPERAZIONE_ENTRAMBI_NON_CONTATA_COME_CARICO')
-      else if (m.oper.tipo === 'CARICO') avvisi.conta('CARICO_SENZA_CLASSE_DI_GIACENZA')
+      if (verteSuAltraUl(m) && m.data !== null && entroIlTaglio(m.data)) {
+        avvisi.conta('CARICO_ALTRA_UL_FUORI_GIACENZA')
+        fuori.push({
+          cod: m.cod,
+          oper: m.oper.codice,
+          protocollo: m.registri.find(p => p.protocollo !== null)?.protocollo ?? null,
+        })
+      }
       continue
     }
     if (m.cer === null || m.data === null || (m.nettoKg ?? 0) <= 0) continue
@@ -402,6 +415,7 @@ export function calcolaGiacenzeAlTaglio(i: IngressiGiacenze): RisultatoGiacenze 
   return {
     famiglie: out,
     differenzeGiascar: differenze.sort((x, y) => x.cod - y.cod),
+    caricoAltraUl: fuori.sort((x, y) => x.cod - y.cod),
     avvisi: avvisi.elenco(),
     scarti: scarti.elenco(),
   }
