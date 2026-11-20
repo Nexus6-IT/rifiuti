@@ -118,3 +118,38 @@ export class EscludiInvioAutomaticoDto {
   @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
   motivo: string
 }
+
+/** `POST /rentri/registro/registri/:registroId/rentri/collega` (solo amministratori). */
+export class CollegaRegistroRentriDto {
+  @ApiProperty({ example: 'RABCDE12345', description: 'Identificativo del registro su RENTRI.' })
+  @IsString({ message: "L'identificativo del registro deve essere un testo." })
+  @IsNotEmpty({ message: "Indica l'identificativo del registro RENTRI." })
+  @MaxLength(20, { message: "L'identificativo del registro è troppo lungo." })
+  identificativo: string
+}
+
+/** `POST /rentri/registro/registri/:registroId/rentri/apri` (solo amministratori). */
+export class ApriRegistroRentriDto {
+  @ApiProperty({ type: [String], example: ['Produzione'] })
+  @IsArray({ message: 'Le attività devono essere un elenco.' })
+  @ArrayMinSize(1, { message: "Indica almeno un'attività del registro." })
+  @ArrayMaxSize(6, { message: 'Troppe attività indicate.' })
+  @IsString({ each: true, message: 'Ogni attività deve essere un testo.' })
+  attivita: string[]
+
+  @ApiPropertyOptional({ type: [String], example: ['R13'] })
+  @IsOptional()
+  @IsArray({ message: 'I codici di recupero e smaltimento devono essere un elenco.' })
+  @ArrayMaxSize(28, { message: 'Troppi codici di recupero e smaltimento.' })
+  @IsString({ each: true, message: 'Ogni codice deve essere un testo.' })
+  attivitaRecSmalt?: string[]
+
+  @ApiPropertyOptional({
+    maxLength: 250,
+    description: 'Assente = descrizione del registro locale.',
+  })
+  @IsOptional()
+  @IsString({ message: 'La descrizione deve essere un testo.' })
+  @MaxLength(250, { message: 'La descrizione può avere al massimo 250 caratteri.' })
+  descrizione?: string
+}

@@ -26,6 +26,7 @@ import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafic
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { CondizioniPagamentoService } from './condizioni-pagamento.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -52,7 +53,7 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app?.$disconnect()

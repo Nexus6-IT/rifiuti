@@ -25,6 +25,7 @@ import { ModuliAttiviService } from '../../application/admin/moduli-attivi.servi
 import { ContrattoGruppoService } from '../../application/billing/contratto-gruppo.service'
 import { RentriRegistroTrasmissioneJob } from './rentri-registro-trasmissione.job'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -44,7 +45,7 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()

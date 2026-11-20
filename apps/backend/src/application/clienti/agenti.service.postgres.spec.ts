@@ -26,6 +26,7 @@ import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafic
 import { DitteService } from '../registry/ditte/ditte.service'
 import { AgentiService } from './agenti.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -56,7 +57,7 @@ describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

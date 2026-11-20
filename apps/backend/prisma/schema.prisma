@@ -2345,6 +2345,21 @@ model RegistroRifiuti {
   /// F2-9: data da cui i movimenti nuovi del registro si trasmettono da soli a RENTRI (NULL = solo
   /// invio manuale). Mai nel passato: attivarlo la imposta a ora (nessun invio retroattivo).
   invioRentriAutomaticoDal DateTime? @map("invio_rentri_automatico_dal") @db.Timestamptz(3)
+  /// eREGI E2: attivita' del registro su RENTRI (contratto anagrafiche: CentroRaccolta, Produzione,
+  /// Recupero, Smaltimento, Trasporto, IntermediazioneSenzaDetenzione). Vuota = dettaglio non noto.
+  /// CHECK solo in migration (valori ammessi; Recupero/Smaltimento richiedono i codici R/D).
+  rentriAttivita           String[]  @default([]) @map("rentri_attivita") @db.VarChar(40)
+  /// Codici R1..R13 / D1..D15 delle attivita' di Recupero e Smaltimento.
+  rentriAttivitaRecSmalt   String[]  @default([]) @map("rentri_attivita_rec_smalt") @db.VarChar(4)
+  /// Prenotazione dell'apertura su RENTRI (POST non idempotente): impedisce una seconda apertura e
+  /// resta valorizzata finche' l'esito e' incerto. Azzerata a esito noto o al collegamento.
+  rentriAperturaRichiestaIl DateTime? @map("rentri_apertura_richiesta_il") @db.Timestamptz(3)
+  /// Descrizione richiesta all'apertura: serve a riconoscere il registro dopo un esito incerto.
+  rentriAperturaDescrizione String?  @map("rentri_apertura_descrizione") @db.VarChar(250)
+  /// Registro chiuso su RENTRI: niente piu' invii. CHECK: richiede l'identificativo.
+  rentriChiusoIl           DateTime? @map("rentri_chiuso_il") @db.Timestamptz(3)
+  /// Ultima lettura del registro da RENTRI (collegamento o modifica).
+  rentriSincronizzatoIl    DateTime? @map("rentri_sincronizzato_il") @db.Timestamptz(3)
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)

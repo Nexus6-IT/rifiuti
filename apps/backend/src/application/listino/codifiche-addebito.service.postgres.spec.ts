@@ -30,6 +30,7 @@ import {
 
 import { CodificheAddebitoService } from './codifiche-addebito.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -62,7 +63,7 @@ describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () 
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

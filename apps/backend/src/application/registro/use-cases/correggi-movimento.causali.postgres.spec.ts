@@ -30,6 +30,7 @@ import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import { CorreggiMovimentoUseCase, DatiRettifica } from './correggi-movimento.use-case'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Correzioni con le causali - Postgres reale, ruolo wasteflow_app', () => {
@@ -203,7 +204,7 @@ describe('Correzioni con le causali - Postgres reale, ruolo wasteflow_app', () =
     })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await app.onModuleDestroy()
     await owner.$disconnect()

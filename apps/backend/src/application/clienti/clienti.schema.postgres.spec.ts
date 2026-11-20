@@ -28,6 +28,7 @@ import {
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -44,7 +45,7 @@ describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflo
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app?.$disconnect()
@@ -589,7 +590,7 @@ describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflo
   it('cancellare il tenant cancella tutto, tabelle del Task 8 comprese', async () => {
     const t = await azienda()
     await popola(t)
-    await owner.tenant.deleteMany({ where: { id: { in: [t] } } })
+    await cancellaAziendeDiProva(owner, [t])
     tenantCreati.splice(tenantCreati.indexOf(t), 1)
     const where = { tenantId: { in: [t] } }
     expect(

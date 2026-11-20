@@ -28,6 +28,7 @@ import { RegistriService } from './registri.service'
 import { VerificaCatenaRegistroService } from './verifica-catena-registro.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Verifica catena del registro — Postgres reale, ruolo wasteflow_app', () => {
@@ -131,7 +132,7 @@ describe('Verifica catena del registro — Postgres reale, ruolo wasteflow_app',
     })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await app.onModuleDestroy()
     await owner.$disconnect()

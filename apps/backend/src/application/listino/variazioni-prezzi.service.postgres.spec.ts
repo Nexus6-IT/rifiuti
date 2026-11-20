@@ -41,6 +41,7 @@ import {
 import { RigheAddebitoService } from './righe-addebito.service'
 import { VariazioniPrezziService } from './variazioni-prezzi.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 async function errore(p: Promise<unknown>): Promise<any> {
   try {
     await p
@@ -84,7 +85,7 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
       await owner.codificaContratto.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

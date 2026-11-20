@@ -32,6 +32,7 @@ import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
@@ -189,7 +190,7 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     if (userId) await owner.user.deleteMany({ where: { id: userId } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()
     await owner.$disconnect()

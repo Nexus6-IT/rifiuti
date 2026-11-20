@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto'
 import type { PrismaClient } from '@prisma/client'
 import { creaDittaConRuolo } from '../../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 export interface AziendaMud {
   tenantId: string
   registroId: string
@@ -269,5 +270,5 @@ export async function pulisciAziendeMud(client: PrismaClient, tenantIds: string[
   await client.registroRifiuti.deleteMany({ where })
   await client.rentriUnitaLocale.deleteMany({ where })
   await client.user.deleteMany({ where })
-  await client.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+  await cancellaAziendeDiProva(client, tenantIds)
 }

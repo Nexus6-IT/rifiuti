@@ -11,6 +11,7 @@ import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -71,7 +72,7 @@ describe('Contratti, schema (Postgres reale)', () => {
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       await owner.contract.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await owner.$disconnect()
     await app.$disconnect()
@@ -137,7 +138,7 @@ describe('Contratti, schema (Postgres reale)', () => {
   it('cancellare il tenant cancella i suoi contratti', async () => {
     const tenantId = await azienda()
     const [{ id }] = await comeApp(tenantId, tx => inserisci(tx, tenantId))
-    await owner.tenant.delete({ where: { id: tenantId } })
+    await cancellaAziendeDiProva(owner, tenantId)
     expect(await owner.contract.findUnique({ where: { id } })).toBeNull()
   })
 })

@@ -53,6 +53,7 @@ import { AutistaNonTrovatoError } from '../campo/errori-campo'
 import { StampaRitiriService } from './stampa-ritiri.service'
 import { GeneraFirDaRitiriService } from './genera-fir-da-ritiri.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const CER_NON_VALIDO = '99 99 99'
 
 describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
@@ -196,7 +197,7 @@ describe('Stampa dei ritiri — Postgres reale, ruolo wasteflow_app', () => {
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
       await owner.user.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await Promise.all([owner.$disconnect(), app?.onModuleDestroy(), sistema?.onModuleDestroy()])
   })

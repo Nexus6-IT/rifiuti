@@ -21,6 +21,7 @@ import { clientComeRuolo } from '../database/client-come-ruolo'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public'
@@ -187,7 +188,7 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
       await owner.rentriCredential.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.fIR.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+      await cancellaAziendeDiProva(owner, tenantIds)
     }
     await Promise.all([owner.$disconnect(), app.$disconnect(), sistema.$disconnect()])
   })

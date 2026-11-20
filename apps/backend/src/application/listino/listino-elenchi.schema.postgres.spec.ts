@@ -12,6 +12,7 @@ import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const urlProprietario =
   process.env.DATABASE_URL ??
   'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55438/wasteflow_ci?schema=public'
@@ -243,7 +244,7 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
           in_
         )
       }
-      await owner.tenant.deleteMany({ where: { id: { in: in_ } } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app.$disconnect()
@@ -908,7 +909,7 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
       await popola(t)
       // Le FK composite sono NoAction: il controllo e' a fine statement, quindi la cascata del tenant
       // passa in un solo DELETE.
-      await owner.tenant.delete({ where: { id: t } })
+      await cancellaAziendeDiProva(owner, t)
       tenantCreati.splice(tenantCreati.indexOf(t), 1)
       for (const tabella of CINQUE_TABELLE) {
         const r = await owner.$queryRawUnsafe<{ n: number }[]>(

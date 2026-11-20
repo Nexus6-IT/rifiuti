@@ -30,6 +30,7 @@ import { RegistriService } from '../registri.service'
 import { VerificaCatenaRegistroService } from '../verifica-catena-registro.service'
 import { MSG_SEDE_CONTROPARTE_NON_TROVATA } from '../sede-controparte'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('Registrazione con sede della controparte: Postgres reale, ruolo wasteflow_app', () => {
@@ -114,7 +115,7 @@ describe('Registrazione con sede della controparte: Postgres reale, ruolo wastef
     await owner.wasteMovement.deleteMany({ where: dove })
     await owner.registroProgressivoIniziale.deleteMany({ where: dove })
     await owner.registroRifiuti.deleteMany({ where: dove })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await app.onModuleDestroy()
     await owner.$disconnect()

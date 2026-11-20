@@ -40,6 +40,7 @@ import {
 import { AzioniListinoService } from './azioni-listino.service'
 import { ElenchiAddebitiService } from './elenchi-addebiti.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 async function errore(p: Promise<unknown>): Promise<any> {
   try {
     await p
@@ -83,7 +84,7 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
       await owner.user.deleteMany({ where: { tenantId: in_ } })
-      await owner.tenant.deleteMany({ where: { id: in_ } })
+      await cancellaAziendeDiProva(owner, in_)
     }
     await owner.$disconnect()
     await app?.$disconnect()

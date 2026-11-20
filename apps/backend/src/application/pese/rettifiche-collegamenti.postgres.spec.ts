@@ -46,6 +46,7 @@ import {
 } from './rettifiche-peso.service'
 import { StrumentiPesaService } from './strumenti-pesa.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 type Azienda = Awaited<ReturnType<typeof creaAzienda>>
 
 let n = 0
@@ -252,7 +253,7 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
   })
 
   afterAll(async () => {
-    if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (tenantCreati.length) await cancellaAziendeDiProva(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: '20 01 01' } })
     await app.$disconnect()
     await owner.$disconnect()

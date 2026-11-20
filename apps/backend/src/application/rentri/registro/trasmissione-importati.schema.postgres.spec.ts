@@ -23,6 +23,7 @@ import {
 } from '../../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 describe("Fase 3 (3.1): blocco all'invio dei movimenti importati — Postgres reale, ruolo wasteflow_app", () => {
   const CER = '99 99 08'
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -125,7 +126,7 @@ describe("Fase 3 (3.1): blocco all'invio dei movimenti importati — Postgres re
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     await app.onModuleDestroy()
     await owner.$disconnect()
@@ -350,7 +351,7 @@ describe("Fase 3 (3.1): blocco all'invio dei movimenti importati — Postgres re
     expect(
       await errore(owner.movimentoTrasmissioneRentri.delete({ where: { id: rigaId } }))
     ).toContain('non si cancella')
-    await owner.tenant.delete({ where: { id: az.tenantId } })
+    await cancellaAziendeDiProva(owner, az.tenantId)
     tenantCreati.splice(tenantCreati.indexOf(az.tenantId), 1)
     expect(await owner.movimentoTrasmissioneRentri.count({ where: { id: rigaId } })).toBe(0)
   })

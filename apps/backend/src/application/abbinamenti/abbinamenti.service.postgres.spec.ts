@@ -25,6 +25,7 @@ import { RegistraMovimentoUseCase } from '../registro/use-cases/registra-movimen
 import { RegistraMovimentoCommand } from '../registro/commands/registra-movimento.command'
 import { AbbinamentiService } from './abbinamenti.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('AbbinamentiService - Postgres reale, ruolo wasteflow_app', () => {
@@ -142,7 +143,7 @@ describe('AbbinamentiService - Postgres reale, ruolo wasteflow_app', () => {
       await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       if (utentiCreati.length > 0)
         await owner.user.deleteMany({ where: { id: { in: utentiCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy()

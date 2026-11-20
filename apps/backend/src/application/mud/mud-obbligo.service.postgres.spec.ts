@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { MudObbligoService } from './mud-obbligo.service'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 /**
  * Flag "MUD non dovuto" (A-W-10) contro un Postgres reale: le colonne create dalla migration
  * (lette da `information_schema`, così il test fallisce se la migration manca o cambia) e il
@@ -49,7 +50,7 @@ describe('MudObbligoService — Postgres reale', () => {
     // il filtro e cancellerebbe l'intera tabella.
     if (tenantId) await prisma.activityLog.deleteMany({ where: { tenantId } })
     if (userId) await prisma.user.deleteMany({ where: { id: userId } })
-    if (tenantId) await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    if (tenantId) await cancellaAziendeDiProva(prisma, tenantId)
   }
 
   describe('migration 20261022120000_tenant_mud_non_dovuto', () => {

@@ -10,6 +10,7 @@ import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 describe('Fase 3 (3.1): FIR importati e job di ripresa — Postgres reale', () => {
   const prisma = new PrismaClient()
   let repo: FIRPrismaRepository
@@ -111,7 +112,7 @@ describe('Fase 3 (3.1): FIR importati e job di ripresa — Postgres reale', () =
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       await prisma.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await prisma.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(prisma, tenantCreati)
     }
     await prisma.$disconnect()
   })

@@ -27,6 +27,8 @@
 -- esecuzione. I default privileges restano CRUD (valgono per le tabelle future):
 -- una nuova tabella globale in sola lettura va AGGIUNTA a quell'elenco.
 --
+-- `tenants` (I3): un'azienda non si cancella dall'applicazione (nessun codice lo fa); il trigger
+-- `tenants_registro_protetto` protegge il registro anche dal proprietario.
 -- `autisti` (app campo, P1): un autista si disattiva, non si cancella.
 -- `fir_sessioni_firma_rentri` (FIR in viaggio, P1): una sessione di firma chiusa resta come traccia.
 -- `lotti_import` (Fase 3, 3.1): un lotto non si cancella, si annulla: sta in `v_senza_cancellazione`.
@@ -52,7 +54,7 @@ DECLARE
   v_sola_lettura text[] := ARRAY['causali_registro'];
   v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa', 'notifiche_sdi', 'fir_eventi_rentri'];
   v_senza_cancellazione text[] :=
-    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti', 'fir_sessioni_firma_rentri'];
+    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti', 'fir_sessioni_firma_rentri', 'tenants'];
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;

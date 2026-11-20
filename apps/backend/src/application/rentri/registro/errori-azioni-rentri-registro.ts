@@ -58,3 +58,63 @@ export const RUOLI_AMMINISTRATORE_RENTRI: readonly string[] = ['SUPER_ADMIN', 'A
 export function richiediAmministratore(ruolo: string): void {
   if (!RUOLI_AMMINISTRATORE_RENTRI.includes(ruolo)) throw new RuoloNonAutorizzatoRentriError()
 }
+
+/** 400: l'identificativo indicato non esiste su RENTRI (404 dell'ente). */
+export class RegistroRentriNonTrovatoError extends DomainError {
+  constructor() {
+    super("Registro non trovato su RENTRI: controlla l'identificativo.")
+    this.name = 'RegistroRentriNonTrovatoError'
+  }
+}
+
+/** 409: il registro RENTRI non si puo' collegare (altra unita' locale, chiuso). */
+export class RegistroRentriNonCollegabileError extends DomainError {
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RegistroRentriNonCollegabileError'
+  }
+}
+
+/** 409: il registro locale non e' legato a una sede con numero di iscrizione RENTRI. */
+export class RegistroSenzaSedeRentriError extends DomainError {
+  constructor() {
+    super(
+      "Il registro non e' legato a una sede con il numero di iscrizione RENTRI: aggiorna prima le unita' locali dalle impostazioni RENTRI."
+    )
+    this.name = 'RegistroSenzaSedeRentriError'
+  }
+}
+
+/** 409: manca il numero di iscrizione dell'operatore (serve per leggere i registri della sede). */
+export class OperatoreRentriNonConfiguratoError extends DomainError {
+  constructor() {
+    super(
+      'Configura il numero di iscrizione RENTRI della tua azienda: Impostazioni RENTRI, Certificato e credenziali.'
+    )
+    this.name = 'OperatoreRentriNonConfiguratoError'
+  }
+}
+
+/** 409: un'apertura su RENTRI e' gia' in corso o da verificare per questo registro. */
+export class AperturaRegistroInCorsoError extends DomainError {
+  constructor(messaggio = 'Apertura del registro su RENTRI già in corso: attendi qualche minuto.') {
+    super(messaggio)
+    this.name = 'AperturaRegistroInCorsoError'
+  }
+}
+
+/** 409: il registro e' gia' collegato a un registro RENTRI. */
+export class RegistroGiaCollegatoError extends DomainError {
+  constructor() {
+    super('Il registro è già collegato a un registro RENTRI.')
+    this.name = 'RegistroGiaCollegatoError'
+  }
+}
+
+/** 409: dopo un esito incerto il registro aperto non e' stato trovato o non e' univoco. */
+export class AperturaRegistroNonRisoltaError extends DomainError {
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'AperturaRegistroNonRisoltaError'
+  }
+}

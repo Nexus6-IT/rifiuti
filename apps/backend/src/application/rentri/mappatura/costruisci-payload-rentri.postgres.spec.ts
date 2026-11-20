@@ -32,6 +32,7 @@ import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 import { DatiViaggioFirInMemoria } from '../dati-viaggio-fir.in-memoria'
 import { DatoMancantePerRentriError } from './mappa-parti'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 // Comune di prova: la tabella `istat_comuni` e' condivisa e puo' essere vuota nel database di test
 const CODICE_COMUNE = '999901'
 const NOME_COMUNE = 'Comuneprovaf210'
@@ -100,7 +101,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
       await owner.destinatario.deleteMany({ where })
       await owner.sedeDitta.deleteMany({ where })
       await owner.ditta.deleteMany({ where })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+      await cancellaAziendeDiProva(owner, tenantCreati)
     }
     if (comuneCreato) await owner.istatComune.deleteMany({ where: { code: CODICE_COMUNE } })
     await owner.$disconnect()

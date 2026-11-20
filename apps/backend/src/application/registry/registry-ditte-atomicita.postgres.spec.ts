@@ -33,6 +33,7 @@ import {
 import { DitteService, AZIONE_PARTITA_IVA_CORRETTA } from './ditte/ditte.service'
 import { UpdateProduttoreUseCase } from './use-cases/update-produttore.use-case'
 
+import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 const SEDE_MILANO = {
   via: 'Via Milano',
   civico: '9',
@@ -91,7 +92,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
       await owner.sedeDitta.deleteMany({ where: { tenantId } })
       await owner.ditta.deleteMany({ where: { tenantId } })
     }
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
   })

@@ -182,8 +182,8 @@ export async function creaSuperAdminDiTest(
 /**
  * Cancella, per id ESATTI, utenti e azienda creati da `creaAziendaDiTest` (e gli eventuali altri
  * utenti passati in `altriUtenti`). Mai per prefisso. Ritorna i problemi incontrati (un'azienda
- * con dati immutabili, per esempio movimenti del registro, non si cancella: resta nel database
- * di test come per gli altri spec). Le aziende senza dati immutabili spariscono.
+ * con dati immutabili o legati da FK puo' non cancellarsi). Con movimenti, FIR o lotti l'azienda si
+ * cancella lo stesso, col flag di transazione di I3.
  */
 export async function eliminaAziendaDiTest(
   client: PrismaClient,
@@ -204,7 +204,16 @@ export async function eliminaAziendaDiTest(
   )
   await passo('ruoli', () => client.role.deleteMany({ where: { tenantId: azienda.tenantId } }))
   await passo('utenti', () => client.user.deleteMany({ where: { id: { in: utenti } } }))
-  await passo('azienda', () => client.tenant.deleteMany({ where: { id: azienda.tenantId } }))
+  // I3: il trigger `tenants_registro_protetto` rifiuta l'azienda con movimenti, FIR o lotti. Qui la
+  // cancellazione e' voluta (azienda creata dallo spec, database LOCALE, client proprietario: vedi
+  // `clientDbLocale`): il flag di transazione, valido solo per un superuser, lascia fare alla
+  // cascata, che porta via anche ditte, produttori e trasportatori dello spec.
+  await passo('azienda', () =>
+    client.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.consenti_cancellazione_azienda = 'on'`)
+      await tx.tenant.deleteMany({ where: { id: azienda.tenantId } })
+    })
+  )
   return problemi
 }
 

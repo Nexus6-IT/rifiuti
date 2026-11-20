@@ -25,6 +25,7 @@ import { RegistriService } from '../registri.service'
 import { ListMovimentiHandler, MovimentoListItem } from './list-movimenti.handler'
 import { ListMovimentiQuery } from './list-movimenti.query'
 
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
 describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
@@ -137,7 +138,7 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })
