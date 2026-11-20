@@ -53,6 +53,23 @@ export interface SessioneFirmaInAttesa {
   scaduta: boolean
 }
 
+/** Esito di `POST /rentri/fir/:id/firma-partenza` (FIR in viaggio, P3). */
+export interface EsitoFirmaPartenza {
+  /** L'operazione che l'ente ha proposto e che si e' firmata (produttore, trasportatore o entrambi). */
+  operazione:
+    | 'AcquisizioneFirmaProduttoreTrasportatore'
+    | 'AcquisizioneFirmaProduttore'
+    | 'AcquisizioneFirmaTrasportatore'
+  firma: EsitoFirmaRemota
+}
+
+/** Le operazioni di `/azioni` che sono una firma di partenza. */
+export const OPERAZIONI_FIRMA_PARTENZA: readonly string[] = [
+  'AcquisizioneFirmaProduttoreTrasportatore',
+  'AcquisizioneFirmaProduttore',
+  'AcquisizioneFirmaTrasportatore',
+]
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
@@ -202,6 +219,17 @@ export class RentriFirLifecycleService {
       `${this.API_URL}/ultimo-trasporto`,
       { params: { targa } }
     )
+  }
+
+  /**
+   * «Firma la partenza su RENTRI»: l'operazione la sceglie l'ente (`/azioni`), la richiesta di firma e' una sola
+   * (una sessione aperta viene ripresa). Con `nuovaSessione` (solo dopo scadenza o rifiuto) se ne chiede una nuova.
+   */
+  firmaPartenza(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaPartenza> {
+    return this.http.post<EsitoFirmaPartenza>(`${this.API_URL}/${firId}/firma-partenza`, payload)
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

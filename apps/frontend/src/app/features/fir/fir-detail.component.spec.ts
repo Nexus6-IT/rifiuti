@@ -14,7 +14,7 @@ import { RENTRISyncService } from './services/rentri-sync.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
 import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
-import { ConfirmationService } from 'primeng/api'
+import { ConfirmationService, MessageService } from 'primeng/api'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 
 /**
@@ -97,6 +97,7 @@ describe('FirDetailComponent', () => {
       'scaricaPdf',
       'inviaQuantita',
       'inviaTrasporto',
+      'firmaPartenza',
       'eventi',
       'ultimoTrasporto',
     ])
@@ -2197,6 +2198,233 @@ describe('FirDetailComponent', () => {
       fixture.detectChanges()
       expect(rentriFirLifecycleService.eventi).not.toHaveBeenCalled()
       expect(el().querySelector('[data-testid="fir-detail-storico-viaggio"]')).toBeFalsy()
+    })
+  })
+  describe('Firme di partenza su RENTRI (FIR in viaggio P3)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000777',
+    }
+    const azioni = (...operazioni: string[]) =>
+      of({
+        stato: 'FirmaProduttoreTrasportatoreIniziale',
+        versione: 1,
+        azioni: operazioni.map(operazione => ({ operazione, verbo: operazione })),
+      })
+    const el = (): HTMLElement => fixture.nativeElement
+    const BANNER = '[data-testid="fir-detail-firma-partenza-banner"]'
+    const PULSANTE = '[data-testid="fir-detail-firma-partenza"]'
+    let messageService: MessageService
+
+    function preparaFirLegato(...operazioni: string[]): void {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni(...operazioni))
+      messageService = fixture.debugElement.injector.get(MessageService)
+    }
+
+    it("il pulsante e il banner nascono SOLO dalle firme di partenza proposte dall'ente", () => {
+      preparaFirLegato('AcquisizioneFirmaProduttoreTrasportatore')
+      fixture.detectChanges()
+
+      expect(el().querySelector(BANNER)?.textContent).toContain('Firma RENTRI da completare')
+      expect(el().querySelector(PULSANTE)).toBeTruthy()
+    })
+
+    it('anche la firma del solo produttore o del solo trasportatore la fa comparire', () => {
+      preparaFirLegato('AcquisizioneFirmaTrasportatore')
+      fixture.detectChanges()
+      expect(el().querySelector(PULSANTE)).toBeTruthy()
+    })
+
+    it('senza firma di partenza fra le azioni (mancano quantità o trasporto) non compare, nemmeno con stato locale EMESSO', () => {
+      preparaFirLegato('DatiQuantita', 'Annulla')
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+      expect(el().querySelector(PULSANTE)).toBeFalsy()
+    })
+
+    it('la firma di accettazione non e una firma di partenza', () => {
+      preparaFirLegato('AcquisizioneFirmaDestinatario')
+      fixture.detectChanges()
+      expect(el().querySelector(PULSANTE)).toBeFalsy()
+    })
+
+    it('un FIR non legato (flusso cartaceo) non la propone mai', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+      expect(el().querySelector(PULSANTE)).toBeFalsy()
+      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
+    })
+
+    it('un VIEWER non la vede', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firLegato))
+      fixture.detectChanges()
+      expect(el().querySelector(PULSANTE)).toBeFalsy()
+    })
+
+    it('con una richiesta di firma gia in attesa resta il solo banner con «Ho confermato» (nessuna seconda richiesta)', () => {
+      preparaFirLegato('AcquisizioneFirmaProduttoreTrasportatore')
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({
+          sessione: {
+            id: 's1',
+            tipoOperazione: 'PARTENZA',
+            scadenza: new Date(Date.now() + 90_000).toISOString(),
+            stato: 'IN_ATTESA' as const,
+            scaduta: false,
+          },
+        })
+      )
+      fixture.detectChanges()
+
+      expect(el().querySelector(PULSANTE)).toBeFalsy()
+      expect(el().querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeTruthy()
+    })
+
+    it('«Firma la partenza»: chiama la rotta, mostra l esito e ricarica', () => {
+      preparaFirLegato('AcquisizioneFirmaProduttoreTrasportatore')
+      rentriFirLifecycleService.firmaPartenza.and.returnValue(
+        of({
+          operazione: 'AcquisizioneFirmaProduttoreTrasportatore' as const,
+          firma: { esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+
+      ;(el().querySelector(PULSANTE) as HTMLElement).querySelector('button')?.click()
+
+      expect(rentriFirLifecycleService.firmaPartenza).toHaveBeenCalledOnceWith('fir-1')
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('«Firma la partenza»: errore 409 dal backend mostra il messaggio e non lascia il pulsante in caricamento', () => {
+      preparaFirLegato('AcquisizioneFirmaProduttoreTrasportatore')
+      rentriFirLifecycleService.firmaPartenza.and.returnValue(
+        throwError(() => ({ status: 409, error: { message: 'Firma già in corso' } }))
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+
+      component.firmaPartenza(firLegato)
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'error', detail: 'Firma già in corso' })
+      )
+      expect(component['firmaInCorso']()).toBeFalse()
+    })
+
+    describe('«Emetti» e «Presa in carico» propongono la firma', () => {
+      const bozza: FIR = { ...baseFIR, stato: FIRStato.BOZZA }
+
+      it('Emetti chiede anche la firma RENTRI e, se riesce, lo dice', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(bozza))
+        firService.emettiFIR.and.returnValue(
+          of({
+            ...firLegato,
+            firmaRentri: { stato: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' },
+          })
+        )
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.emettiFIR(bozza)
+
+        expect(firService.emettiFIR).toHaveBeenCalledOnceWith('fir-1', { firmaRentri: true })
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ summary: 'FIR emesso', severity: 'success' })
+        )
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ summary: 'Partenza firmata su RENTRI' })
+        )
+      })
+
+      it('Emetti riuscito ma firma RENTRI fallita: il FIR resta emesso e compare l avviso «Firma RENTRI da completare»', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(bozza))
+        const emesso = {
+          ...firLegato,
+          firmaRentri: {
+            stato: 'DA_COMPLETARE' as const,
+            avviso: 'Firma RENTRI da completare: riprova.',
+          },
+        }
+        firService.emettiFIR.and.returnValue(of(emesso))
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.emettiFIR(bozza)
+
+        expect(component['fir']()).toEqual(emesso)
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ summary: 'FIR emesso', severity: 'success' })
+        )
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({
+            summary: 'Firma RENTRI da completare',
+            severity: 'warn',
+            detail: 'Firma RENTRI da completare: riprova.',
+          })
+        )
+      })
+
+      it('Emetti su FIR non legato (flusso cartaceo): nessun messaggio sulla firma RENTRI', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(bozza))
+        firService.emettiFIR.and.returnValue(of({ ...baseFIR, stato: FIRStato.EMESSO }))
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.emettiFIR(bozza)
+
+        expect(aggiungi).toHaveBeenCalledTimes(1)
+      })
+
+      it('Presa in carico su FIR legato: la firma e in attesa del telefono, messaggio dedicato', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(firLegato))
+        firService.presaInCarico.and.returnValue(
+          of({
+            ...firLegato,
+            firmaRentri: {
+              stato: 'IN_ATTESA',
+              sessioneId: 's1',
+              scadenza: new Date().toISOString(),
+            },
+          })
+        )
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.presaInCarico(firLegato)
+
+        expect(aggiungi).toHaveBeenCalledTimes(1)
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ summary: 'Conferma la firma sul telefono' })
+        )
+      })
+
+      it('Presa in carico su FIR non legato: messaggio locale di sempre (non regressione)', () => {
+        setup({ role: 'OPERATOR' })
+        firService.getFIRById.and.returnValue(of(baseFIR))
+        firService.presaInCarico.and.returnValue(of({ ...baseFIR, stato: FIRStato.IN_TRANSITO }))
+        fixture.detectChanges()
+        const aggiungi = spyOn(fixture.debugElement.injector.get(MessageService), 'add')
+
+        component.presaInCarico(baseFIR)
+
+        expect(aggiungi).toHaveBeenCalledOnceWith(
+          jasmine.objectContaining({ summary: 'Presa in carico registrata' })
+        )
+      })
     })
   })
 })

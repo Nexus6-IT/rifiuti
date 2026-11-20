@@ -158,6 +158,14 @@ describe('FirService', () => {
       expect(req.request.body).toEqual({})
       req.flush(emessoFIR)
     })
+
+    it('con firmaRentri chiede al backend anche la firma di partenza su RENTRI', done => {
+      service.emettiFIR('fir-1', { firmaRentri: true }).subscribe({ next: () => done() })
+
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/emetti`)
+      expect(req.request.body).toEqual({ firmaRentri: true })
+      req.flush({ ...mockFIR, stato: FIRStato.EMESSO })
+    })
   })
 
   describe('presaInCarico', () => {

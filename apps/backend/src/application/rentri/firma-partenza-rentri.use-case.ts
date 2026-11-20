@@ -45,6 +45,10 @@ export interface ComandoFirmaPartenza {
   /** Richiesta esplicita di una nuova sessione dopo una scaduta o rifiutata (pulsante del banner). */
   nuovaSessione?: boolean
   correlationId?: string
+  /** Solo per i test: v. `ComandoCompletaOperazioneConFirma.attesaMassimaMs`. */
+  attesaMassimaMs?: number
+  /** Solo per i test: v. `ComandoCompletaOperazioneConFirma.intervalloPollingMs`. */
+  intervalloPollingMs?: number
 }
 
 export interface EsitoFirmaPartenza {
@@ -167,6 +171,8 @@ export class FirmaPartenzaRentriUseCase {
         utenteId,
         nuovaSessione: comando.nuovaSessione,
         correlationId,
+        attesaMassimaMs: comando.attesaMassimaMs,
+        intervalloPollingMs: comando.intervalloPollingMs,
       })
     } catch (errore) {
       const esito = this.esitoDaErrore(errore)

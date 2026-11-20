@@ -67,6 +67,8 @@ export class FirDetailPage {
   readonly firmaRiprendi: Locator
   readonly firmaRichiediDiNuovo: Locator
   readonly firmaAnnullaRichiesta: Locator
+  readonly firmaPartenzaBanner: Locator
+  readonly firmaPartenza: Locator
   readonly indicaQuantita: Locator
   readonly indicaTrasporto: Locator
   readonly quantitaDialog: Locator
@@ -167,6 +169,8 @@ export class FirDetailPage {
     this.firmaRiprendi = page.getByTestId('fir-detail-firma-riprendi')
     this.firmaRichiediDiNuovo = page.getByTestId('fir-detail-firma-richiedi-di-nuovo')
     this.firmaAnnullaRichiesta = page.getByTestId('fir-detail-firma-annulla-richiesta')
+    this.firmaPartenzaBanner = page.getByTestId('fir-detail-firma-partenza-banner')
+    this.firmaPartenza = page.getByTestId('fir-detail-firma-partenza')
     this.indicaQuantita = page.getByTestId('fir-detail-rentri-indica-quantita')
     this.indicaTrasporto = page.getByTestId('fir-detail-rentri-indica-trasporto')
     this.quantitaDialog = page.getByTestId('fir-detail-rentri-quantita-dialog')

@@ -173,6 +173,12 @@ export interface FIR {
    */
   rentriMessaggioErrore?: string | null
   /**
+   * FIR in viaggio P3: esito della firma di partenza su RENTRI proposta da «Emetti» o «Presa in carico».
+   * Presente solo per un FIR legato a RENTRI. L'azione locale e' riuscita comunque: con `DA_COMPLETARE`,
+   * `SCADUTA` o `RIFIUTATA` la risposta porta un avviso e la firma si completa da «Firma la partenza su RENTRI».
+   */
+  firmaRentri?: EsitoFirmaPartenzaDopoAzione
+  /**
    * Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante
    * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
    * nasconde qualunque azione manuale, VERIFICA_SU_RENTRI chiede di controllare
@@ -212,3 +218,11 @@ export interface PaginatedFIRResponse {
   limit: number
   totalPages: number
 }
+
+/** Esito della firma di partenza su RENTRI dopo un'azione locale (v. backend `EsitoFirmaPartenzaDopoAzione`). */
+export type EsitoFirmaPartenzaDopoAzione =
+  | { stato: 'NON_APPLICABILE' }
+  | { stato: 'COMPLETATA'; statoFormulario: string }
+  | { stato: 'IN_ATTESA'; sessioneId?: string; scadenza: string }
+  | { stato: 'SCADUTA' | 'RIFIUTATA'; sessioneId?: string; avviso: string }
+  | { stato: 'DA_COMPLETARE'; codice?: string; avviso: string }

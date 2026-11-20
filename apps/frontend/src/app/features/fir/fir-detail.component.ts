@@ -20,7 +20,13 @@ import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
 import { puoModificareFir } from './fir-permissions'
 import { testoMotivoNonModificabile } from './fir-form'
-import { FIR, FIRStato, ParteFIR, ScostamentoPeso } from '../../shared/models/fir.model'
+import {
+  EsitoFirmaPartenzaDopoAzione,
+  FIR,
+  FIRStato,
+  ParteFIR,
+  ScostamentoPeso,
+} from '../../shared/models/fir.model'
 import { TONO_STATO_FIR, TonoStato } from '../../shared/models/stati-fir'
 import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
 import {
@@ -41,6 +47,7 @@ import {
   AzioneRentri,
   EsitoFirmaRemota,
   EventoFirRentri,
+  OPERAZIONI_FIRMA_PARTENZA,
   SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -357,6 +364,28 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 styleClass="w-full mb-3"
                 data-testid="fir-detail-rentri-messaggio-errore"
               />
+            }
+            @if (canFirmarePartenza(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-partenza-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: la partenza di questo formulario non è ancora firmata
+                  su RENTRI, quindi il viaggio non risulta avviato presso l'ente.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Firma la partenza su RENTRI"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaPartenza(f)"
+                    data-testid="fir-detail-firma-partenza"
+                  />
+                </div>
+              </div>
             }
             @if (sessioneFirma(); as sessione) {
               <div
@@ -1839,13 +1868,16 @@ export class FirDetailComponent implements OnInit {
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
       this.canAccettareCarico(fir) ||
+      this.canFirmarePartenza(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
   }
 
   emettiFIR(fir: FIR): void {
-    this.firService.emettiFIR(fir.id).subscribe({
+    // `firmaRentri`: se il FIR e' legato a RENTRI il backend propone anche la firma di partenza; un suo
+    // fallimento non annulla l'emissione (arriva come avviso in `firmaRentri`).
+    this.firService.emettiFIR(fir.id, { firmaRentri: true }).subscribe({
       next: updated => {
         this.fir.set(updated)
         this.messageService.add({
@@ -1853,6 +1885,7 @@ export class FirDetailComponent implements OnInit {
           summary: 'FIR emesso',
           detail: 'Il formulario è stato emesso correttamente',
         })
+        this.mostraFirmaRentriDopoAzione(updated.firmaRentri)
       },
       error: err => {
         this.messageService.add({
@@ -1860,6 +1893,73 @@ export class FirDetailComponent implements OnInit {
           summary: 'Errore',
           detail: this.extractError(err, "Errore nell'emissione del FIR"),
         })
+      },
+    })
+  }
+
+  /**
+   * Esito della firma di partenza proposta da «Emetti» / «Presa in carico». L'azione locale e' gia'
+   * riuscita (ha il suo messaggio): qui si dice solo cosa resta da fare su RENTRI, e si ricarica per far
+   * comparire il banner (firma in attesa o da completare).
+   */
+  private mostraFirmaRentriDopoAzione(esito: EsitoFirmaPartenzaDopoAzione | undefined): void {
+    if (!esito || esito.stato === 'NON_APPLICABILE') return
+    switch (esito.stato) {
+      case 'COMPLETATA':
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Partenza firmata su RENTRI',
+          detail: 'RENTRI ha registrato la firma: il viaggio è avviato.',
+        })
+        break
+      case 'IN_ATTESA':
+        this.messageService.add({
+          severity: 'info',
+          summary: 'Conferma la firma sul telefono',
+          detail:
+            "Apri l'app RENTRI FIR Digitale e conferma la richiesta, poi premi «Ho confermato, controlla».",
+        })
+        break
+      default:
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Firma RENTRI da completare',
+          detail: esito.avviso,
+        })
+    }
+    this.reload()
+  }
+
+  /**
+   * «Firma la partenza su RENTRI» compare solo per un FIR legato quando l'ente propone una firma di
+   * partenza fra le azioni (mai dedotta dallo stato locale) e non c'e' gia' una richiesta in attesa
+   * (che ha il suo banner con «Ho confermato, controlla»).
+   */
+  canFirmarePartenza(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      OPERAZIONI_FIRMA_PARTENZA.some(o => this.haOperazioneRentri(o)) &&
+      !this.sessioneFirma()
+    )
+  }
+
+  firmaPartenza(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaPartenza(fir.id).subscribe({
+      next: r => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(r.firma)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile firmare la partenza su RENTRI'),
+        })
+        this.reload()
       },
     })
   }
@@ -1900,6 +2000,11 @@ export class FirDetailComponent implements OnInit {
     this.firService.presaInCarico(fir.id).subscribe({
       next: updated => {
         this.fir.set(updated)
+        // FIR legato a RENTRI: la presa in carico e' la firma di partenza del trasportatore (`firmaRentri`).
+        if (updated.firmaRentri) {
+          this.mostraFirmaRentriDopoAzione(updated.firmaRentri)
+          return
+        }
         this.messageService.add({
           severity: 'success',
           summary: 'Presa in carico registrata',

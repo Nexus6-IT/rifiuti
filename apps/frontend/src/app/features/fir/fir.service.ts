@@ -125,8 +125,10 @@ export class FirService {
    * produce invocando il sottosistema crittografico e la persiste (task 4,
    * pipeline P3). Il frontend chiede solo di firmare, non firma da sé.
    */
-  emettiFIR(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {})
+  emettiFIR(id: string, opzioni: { firmaRentri?: boolean } = {}): Observable<FIR> {
+    // `firmaRentri`: se il FIR e' legato a RENTRI, dopo l'emissione il backend propone la firma di
+    // partenza (un suo fallimento non annulla l'emissione: v. `FIR.firmaRentri`).
+    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, opzioni)
   }
 
   /**
