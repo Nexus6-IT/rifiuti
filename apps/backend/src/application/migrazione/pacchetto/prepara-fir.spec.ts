@@ -107,7 +107,7 @@ describe('I5 T1: FORMULARI -> record fir e fir-digitali (trasformazione pura, fi
 
   it('scarti tipati e contati, mai con valori', () => {
     expect(scarto('PRODUTTORE_NON_RISOLTO')).toBe(1) // 8
-    expect(scarto('QUANTITA_ASSENTE')).toBe(1) // 9
+    expect(scarto('FIR_IN_VIAGGIO_SENZA_PESO')).toBe(1) // 9
     expect(scarto('DESTINATARIO_AMBIGUO')).toBe(1) // 11
     expect(scarto('DESTINATARIO_PROPRIO_NON_IN_MAPPA')).toBe(1) // 14
     expect(scarto('FORMU_ASSENTE')).toBe(1) // 16

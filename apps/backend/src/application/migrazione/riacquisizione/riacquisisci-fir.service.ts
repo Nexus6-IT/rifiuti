@@ -19,6 +19,7 @@
 import { LoggerService } from '../../../core/logger/logger.service'
 import { DomainException } from '../../../domain/shared/domain-exception'
 import { RentriApiError } from '../../../infrastructure/rentri/rentri-http-resilienza'
+import { TenantSenzaCertificatoRentriError } from '../../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriRateLimitTimeoutError } from '../../../infrastructure/rentri/rentri-rate-limiter.service'
 import type {
   AcquisisciFormularioRENTRIInput,
@@ -35,7 +36,9 @@ export type EsitoRiacquisizione =
   | 'SIMULATO'
   | 'RINVIATO'
   | 'VISIBILITA_NON_ACQUISITA'
+  | 'NON_TROVATO_SU_RENTRI'
   | 'INTERROTTO_ENTE'
+  | 'INTERROTTO_CREDENZIALE'
   | 'FALLITO'
 
 export interface PortaAcquisizioneFir {
@@ -65,7 +68,12 @@ export interface RichiestaRiacquisizione {
 }
 
 export interface RapportoRiacquisizione {
-  readonly esiti: ReadonlyArray<{ numeroFir: string; esito: EsitoRiacquisizione }>
+  readonly esiti: ReadonlyArray<{
+    numeroFir: string
+    esito: EsitoRiacquisizione
+    /** Solo per `FALLITO`: codice stabile (`HTTP_<status>` o nome della classe d'errore). */
+    codice?: string
+  }>
   readonly conteggi: Readonly<Partial<Record<EsitoRiacquisizione, number>>>
   /** `true` se un errore transitorio dell'ente ha fermato l'esecuzione. */
   readonly interrotto: boolean
@@ -92,16 +100,18 @@ export class RiacquisisciFirService {
   }
 
   async esegui(r: RichiestaRiacquisizione): Promise<RapportoRiacquisizione> {
+    let ruoloUtente = 'OPERATOR'
     if (r.esegui) {
       const ruolo = await this.archivio.ruoloUtente(r.tenantId, r.userId)
       if (ruolo === null || !(RUOLI_SCRITTURA_RENTRI as readonly string[]).includes(ruolo)) {
         throw new UtenteNonAbilitatoError()
       }
+      ruoloUtente = ruolo
     }
-    const esiti: Array<{ numeroFir: string; esito: EsitoRiacquisizione }> = []
+    const esiti: Array<{ numeroFir: string; esito: EsitoRiacquisizione; codice?: string }> = []
     const conteggi: Partial<Record<EsitoRiacquisizione, number>> = {}
-    const registra = (numeroFir: string, esito: EsitoRiacquisizione) => {
-      esiti.push({ numeroFir, esito })
+    const registra = (numeroFir: string, esito: EsitoRiacquisizione, codice?: string) => {
+      esiti.push(codice === undefined ? { numeroFir, esito } : { numeroFir, esito, codice })
       conteggi[esito] = (conteggi[esito] ?? 0) + 1
     }
     let chiamate = 0
@@ -138,7 +148,7 @@ export class RiacquisisciFirService {
         await this.porta.acquisisci({
           tenantId: r.tenantId,
           userId: r.userId,
-          userRole: 'OPERATOR',
+          userRole: ruoloUtente,
           numeroFir: d.numeroFir,
           numIscrSito,
           // Mai `acquisisciVisibilita`: e' una scrittura sull'ente (vedi commento di modulo).
@@ -153,20 +163,32 @@ export class RiacquisisciFirService {
         ) {
           registra(d.numeroFir, 'INTERROTTO_ENTE')
           interrotto = true
-        } else if (e instanceof RentriApiError) {
+        } else if (
+          e instanceof TenantSenzaCertificatoRentriError ||
+          (e instanceof RentriApiError && e.status === 401)
+        ) {
+          // Problema di credenziale: vale per tutti i FIR, inutile continuare.
+          registra(d.numeroFir, 'INTERROTTO_CREDENZIALE')
+          interrotto = true
+        } else if (e instanceof RentriApiError && e.status === 403) {
           registra(d.numeroFir, 'VISIBILITA_NON_ACQUISITA')
+        } else if (e instanceof RentriApiError && e.status === 404) {
+          registra(d.numeroFir, 'NON_TROVATO_SU_RENTRI')
         } else if (
           e instanceof DomainException &&
           /GIA_AGGANCIATO/.test(String(e.metadata?.rule))
         ) {
           registra(d.numeroFir, 'GIA_PRESENTE')
         } else {
-          registra(d.numeroFir, 'FALLITO')
-          // Solo il nome della classe: il messaggio potrebbe portare valori.
-          this.logger.warn('Riacquisizione FIR fallita', {
-            tenantId: r.tenantId,
-            errore: e instanceof Error ? e.name : 'sconosciuto',
-          })
+          // Solo un codice: il messaggio potrebbe portare valori.
+          const codice =
+            e instanceof RentriApiError
+              ? `HTTP_${e.status}`
+              : e instanceof Error
+                ? e.name
+                : 'SCONOSCIUTO'
+          registra(d.numeroFir, 'FALLITO', codice)
+          this.logger.warn('Riacquisizione FIR fallita', { tenantId: r.tenantId, errore: codice })
         }
       }
     }

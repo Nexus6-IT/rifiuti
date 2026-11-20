@@ -83,7 +83,7 @@ Regole (tutte con fixture SINTETICHE: nessun `.bak` era disponibile, forme dei c
   `AWAITING_RECEIVER`. Anche CER, data, quantita', targa, recupero/smaltimento sono dedotti o presi
   dai campi del FIR; stato fisico, provenienza e caratteristiche di pericolo restano vuoti (non si inventano).
 - Scarti per FIR: `PRODUTTORE|DESTINATARIO|TRASPORTATORE_NON_RISOLTO/_AMBIGUO/_PROPRIO_NON_IN_MAPPA`,
-  `QUANTITA_ASSENTE`, `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
+  `FIR_IN_VIAGGIO_SENZA_PESO`, `CER_ASSENTE`, `DATA_ASSENTE`, `FORMU_ASSENTE`, `FORMU_NON_VALIDO`. Una unita' locale
   senza sede importata ripiega sulla sede predefinita della ditta (avviso `SEDE_NON_RISOLTA`).
 - Ogni FIR importato nasce `bloccato_invio` e senza legame RENTRI: non si trasmette mai prima della riconciliazione (3.6).
 - L'operatore (`--operatore <uuid>`, utente dell'azienda) e' obbligatorio per l'ambito FIR:

@@ -5,7 +5,13 @@
  * Il client di sistema esiste nel contesto solo perche' lo porta il sottosistema RENTRI (i suoi job
  * sono elencati in `punti-di-sistema.spec.ts`); questo modulo non lo nomina.
  */
+jest.mock('bullmq')
+jest.mock('ioredis')
+
+import { Queue, Worker } from 'bullmq'
 import { Test } from '@nestjs/testing'
+import { RENTRISyncJobProcessor } from '../../../infrastructure/queue/jobs/rentri-sync.job'
+import { RENTRISyncQueue } from '../../../infrastructure/queue/rentri-sync.queue'
 import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -51,6 +57,7 @@ describe('RiacquisizioneFirModule', () => {
       .overrideProvider(PrismaSistemaService)
       .useValue(sistema)
       .compile()
+    await ref.init()
     const servizio = ref.get(RiacquisisciFirService)
 
     const cartella = join(radice, 'WW00012026')
@@ -94,6 +101,21 @@ describe('RiacquisizioneFirModule', () => {
     await ref.close()
   })
 
+  it("C-1: dopo init() nessun worker ne' coda BullMQ: la CLI non puo' spedire FIR normali a RENTRI", async () => {
+    const ref = await Test.createTestingModule({ imports: [RiacquisizioneFirModule] })
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .overrideProvider(PrismaSistemaService)
+      .useValue({})
+      .compile()
+    await ref.init()
+    expect(Worker).not.toHaveBeenCalled()
+    expect(Queue).not.toHaveBeenCalled()
+    expect(() => ref.get(RENTRISyncJobProcessor, { strict: false })).toThrow()
+    expect(() => ref.get(RENTRISyncQueue, { strict: false })).toThrow()
+    await ref.close()
+  })
+
   it('i sorgenti del modulo e del servizio non nominano il client di sistema', async () => {
     for (const f of [
       'riacquisizione-fir.module.ts',
@@ -102,6 +124,10 @@ describe('RiacquisizioneFirModule', () => {
     ]) {
       const testo = await readFile(join(__dirname, f), 'utf8')
       expect(testo).not.toMatch(/PrismaSistema|prisma-sistema|DATABASE_URL_SISTEMA/)
+      // niente sottosistema di sincronizzazione (processori di coda, job): vedi C-1 della review
+      expect(testo.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')).not.toMatch(
+        /RentriSyncModule|rentri-sync\.module/
+      )
     }
   })
 })

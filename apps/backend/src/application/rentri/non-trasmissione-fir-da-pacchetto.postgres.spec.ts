@@ -52,6 +52,7 @@ import { validaMappa } from '../migrazione/pacchetto/mappa-import'
 import { preparaPacchetto } from '../migrazione/pacchetto/prepara-pacchetto'
 import { apriStaging } from '../migrazione/staging/lettore-staging'
 import { eseguiCli } from '../../cli/migrazione-carica'
+import { TenantContext } from '../../core/context/tenant-context'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { ArchivioRiacquisizionePrisma } from '../migrazione/riacquisizione/archivio-riacquisizione.prisma'
 import { RiacquisisciFirService } from '../migrazione/riacquisizione/riacquisisci-fir.service'
@@ -429,27 +430,48 @@ describe('Pezzo I5 T4: non-trasmissione dei FIR caricati dal pacchetto — Postg
           })
         ),
       }
+      // I-1: repository e audit sul client APPLICATIVO (RLS), come in produzione; l'adattatore entra
+      // nel contesto dell'azienda come fa `RiacquisizioneFirModule`.
+      const repoApp = new FIRPrismaRepository(app, owner as any)
       const caso = new AcquisisciFormularioRENTRIUseCase(
-        repo as any,
+        repoApp as any,
         client as any,
-        { activityLog: { create: jest.fn() } } as any,
+        app as any,
         port as any,
         logger()
       )
-      const riacquisitore = new RiacquisisciFirService(
+      const archivio = new ArchivioRiacquisizionePrisma(app)
+      const senzaContesto = new RiacquisisciFirService(
         { acquisisci: i => caso.execute(i) },
-        new ArchivioRiacquisizionePrisma(app),
+        archivio,
         logger(),
         async () => undefined
       )
-      const r = await riacquisitore.esegui({
+      const riacquisitore = new RiacquisisciFirService(
+        {
+          acquisisci: i =>
+            TenantContext.run({ tenantId: i.tenantId, userId: i.userId }, () => caso.execute(i)),
+        },
+        archivio,
+        logger(),
+        async () => undefined
+      )
+      const richiestaBase = {
         tenantId: az.tenantId,
         userId: az.userId,
         pacchetto: az.pacchetto,
         esegui: true,
         pausaMs: 1000,
         massimo: 10,
-      })
+      }
+      // senza TenantContext la RLS blocca la scrittura: e' il difetto che il contesto corregge
+      const rotta = await senzaContesto.esegui(richiestaBase)
+      expect(rotta.conteggi).toEqual({ FALLITO: 1 })
+      expect(
+        await owner.fIR.count({ where: { tenantId: az.tenantId, rentriNumeroFir: 'ABCDE1234567' } })
+      ).toBe(0)
+      chiamate.length = 0
+      const r = await riacquisitore.esegui(richiestaBase)
       expect(r.conteggi).toEqual({ RIACQUISITO: 1 })
       expect(chiamate).toEqual(['leggiFormulario'])
 
@@ -469,14 +491,7 @@ describe('Pezzo I5 T4: non-trasmissione dei FIR caricati dal pacchetto — Postg
       ).toBe(3)
 
       // seconda esecuzione: il numero e gia un FIR dell'azienda, RENTRI non si contatta piu
-      const seconda = await riacquisitore.esegui({
-        tenantId: az.tenantId,
-        userId: az.userId,
-        pacchetto: az.pacchetto,
-        esegui: true,
-        pausaMs: 1000,
-        massimo: 10,
-      })
+      const seconda = await riacquisitore.esegui(richiestaBase)
       expect(seconda.conteggi).toEqual({ GIA_PRESENTE: 1 })
       expect(chiamate).toEqual(['leggiFormulario'])
     })

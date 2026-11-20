@@ -10,6 +10,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { FIR } from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { TenantSenzaCertificatoRentriError } from '../../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriApiError } from '../../../infrastructure/rentri/rentri-http-resilienza'
 import { mappaValida, T_PROVA, U2 } from '../../../test-support/migrazione/mappa-di-prova'
 import { AcquisisciFormularioRENTRIUseCase } from '../../rentri/acquisisci-formulario-rentri.use-case'
@@ -234,21 +235,66 @@ describe('RiacquisisciFirService (client RENTRI finto)', () => {
       expect(chiamate).toHaveLength(2)
     })
 
-    it('un rifiuto non transitorio (visibilita non acquisita) e un esito per quel FIR: si prosegue, senza acquisire la visibilita', async () => {
-      const p = await pacchetto([dig(1), dig(2)])
+    it('I-2: 403 = visibilita non acquisita (si prosegue, senza acquisirla); 404 = non trovato su RENTRI; 400 = FALLITO con codice', async () => {
+      const p = await pacchetto([dig(1), dig(2), dig(3), dig(4)])
+      const stati = [403, 404, 400]
       let n = 0
       const { servizio, chiamate } = costruisci({
         leggi: async () => {
-          n++
-          if (n === 1) throw new RentriApiError(403, 'Forbidden', undefined, false)
+          const st = stati[n++]
+          if (st) throw new RentriApiError(st, 'x', undefined, false)
           return { stato_formulario: 'EMESSO' }
         },
       })
       const r = await servizio.esegui(richiesta(p))
       expect(r.interrotto).toBe(false)
-      expect(r.conteggi).toEqual({ VISIBILITA_NON_ACQUISITA: 1, RIACQUISITO: 1 })
+      expect(r.conteggi).toEqual({
+        VISIBILITA_NON_ACQUISITA: 1,
+        NON_TROVATO_SU_RENTRI: 1,
+        FALLITO: 1,
+        RIACQUISITO: 1,
+      })
+      expect(r.esiti.find(e => e.esito === 'FALLITO')?.codice).toBe('HTTP_400')
       expect(chiamate).not.toContain('acquisisciVisibilita')
     })
+
+    it('I-2: 401 o certificato mancante e un problema SISTEMICO: stop al primo, il resto RINVIATO', async () => {
+      for (const errore of [
+        new RentriApiError(401, 'Unauthorized', undefined, false),
+        new TenantSenzaCertificatoRentriError(),
+      ]) {
+        const p = await pacchetto([dig(1), dig(2), dig(3)])
+        const { servizio, chiamate } = costruisci({
+          leggi: async () => {
+            throw errore
+          },
+        })
+        const r = await servizio.esegui(richiesta(p))
+        expect(r.interrotto).toBe(true)
+        expect(r.conteggi).toEqual({ INTERROTTO_CREDENZIALE: 1, RINVIATO: 2 })
+        expect(chiamate).toHaveLength(1)
+      }
+    })
+  })
+
+  it('M-6: il ruolo letto dall archivio arriva al caso d uso', async () => {
+    const p = await pacchetto([dig(1)])
+    const eseguite: any[] = []
+    const { archivio, attese: _a } = costruisci()
+    ;(archivio.ruoloUtente as jest.Mock).mockResolvedValue('ADMIN')
+    const servizio = new RiacquisisciFirService(
+      {
+        acquisisci: async i => {
+          eseguite.push(i)
+          return { firId: 'f', numeroFir: i.numeroFir }
+        },
+      },
+      archivio,
+      logger() as any,
+      async () => undefined
+    )
+    await servizio.esegui(richiesta(p))
+    expect(eseguite[0].userRole).toBe('ADMIN')
   })
 
   it('un utente non abilitato alle scritture RENTRI ferma tutto prima di leggere il pacchetto', async () => {
@@ -266,5 +312,6 @@ describe('RiacquisisciFirService (client RENTRI finto)', () => {
     const { servizio } = costruisci()
     const r = await servizio.esegui(richiesta(p))
     expect(Object.keys(r.esiti[0]).sort()).toEqual(['esito', 'numeroFir'])
+    expect(JSON.stringify(r)).not.toMatch(/id-1|OP1234/)
   })
 })

@@ -106,10 +106,16 @@ export async function eseguiCli(
       pausaMs: args.pausaMs,
       massimo: args.massimo,
     })
-    for (const e of r.esiti) uscita.scrivi(`${e.numeroFir} ${e.esito}`)
+    for (const e of r.esiti)
+      uscita.scrivi(`${e.numeroFir} ${e.esito}${e.codice ? ` ${e.codice}` : ''}`)
     for (const [esito, n] of Object.entries(r.conteggi)) uscita.scrivi(`${esito}: ${n}`)
-    if (r.interrotto) uscita.errore("interrotto: l'ente ha risposto con un errore transitorio")
-    const falliti = (r.conteggi.FALLITO ?? 0) + (r.conteggi.VISIBILITA_NON_ACQUISITA ?? 0)
+    if (r.conteggi.INTERROTTO_CREDENZIALE)
+      uscita.errore('interrotto: credenziale RENTRI assente o rifiutata (401), il resto e RINVIATO')
+    else if (r.interrotto) uscita.errore("interrotto: l'ente ha risposto con un errore transitorio")
+    const falliti =
+      (r.conteggi.FALLITO ?? 0) +
+      (r.conteggi.VISIBILITA_NON_ACQUISITA ?? 0) +
+      (r.conteggi.NON_TROVATO_SU_RENTRI ?? 0)
     return r.interrotto || falliti > 0 ? 1 : 0
   } catch (e) {
     if (e instanceof PacchettoError) {

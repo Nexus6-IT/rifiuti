@@ -222,8 +222,11 @@ export async function preparaFir(
       continue
     }
     const netto = rec.nettoKg === null ? null : Math.round(rec.nettoKg * 100) / 100
+    // FIR senza peso a destino (tipicamente in viaggio al taglio): NON importato, con codice dedicato.
+    // `firs.quantity` e' NOT NULL e l'aggregato rifiuta quantita' <= 0: importarlo 'senza quantita'
+    // richiede una decisione di modello (nullable) o un segnaposto. Da registrare a mano (runbook).
     if (netto === null || netto <= 0) {
-      scarti.conta('FORMULARI', 'QUANTITA_ASSENTE')
+      scarti.conta('FORMULARI', 'FIR_IN_VIAGGIO_SENZA_PESO')
       continue
     }
     if (netto >= 100_000_000) {

@@ -32,6 +32,8 @@ una le corrispondenze `OPER` -> causale `dedotta` (`confermata: true`).
    vanno letti con l'operatore prima di caricare. Il pacchetto di I4 contiene ditte, sedi, ruoli
    (produttori, trasportatori, destinatari) e automezzi.
    FIR (I5): dopo ANAGRAFICHE, stesso comando con `--ambito FIR --operatore <uuid utente dell'azienda>`.
+   I FIR senza peso a destino (in viaggio al taglio) NON vengono importati: scarto `FIR_IN_VIAGGIO_SENZA_PESO`
+   nel rapporto di `prepara`; vanno registrati a mano in WasteFlow (decisione di modello in attesa).
    I FIR digitali non si caricano: il rapporto di `prepara` li elenca (`fir-digitale <numero> <idRentri>`) e si
    riacquisiscono da RENTRI con `migrazione:riacquisisci-fir` (prima in simulazione, poi `--esegui`;
    sola lettura sull'ente, con limite di frequenza: vedi `formato-pacchetto.md`).
