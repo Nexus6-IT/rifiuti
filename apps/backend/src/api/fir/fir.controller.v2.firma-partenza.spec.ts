@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
 import { FIRControllerV2 } from './fir.controller.v2'
 import { Result } from '../../core/application/result'
 import { FIRResponseDto } from './dtos/fir-response.dto'
@@ -15,6 +15,7 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
 
   let emetti: { execute: jest.Mock }
   let presaInCarico: { execute: jest.Mock }
+  let ruolo: { ruoloEffettivo: jest.Mock }
   let firmaPartenza: {
     dopoAzioneLocale: jest.Mock
     execute: jest.Mock
@@ -24,17 +25,17 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
 
   const controller = () =>
     new FIRControllerV2(
-      {} as any,
+      {} as any, // CreateFIRUseCase
       emetti as any,
       presaInCarico as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
+      {} as any, // ConfermaConsegnaFIRUseCase
+      {} as any, // AnnullaFIRUseCase
+      {} as any, // GetFIRByIdQueryHandler
+      {} as any, // ListFIRsQueryHandler
+      {} as any, // SubscriptionEnforcementService
+      ruolo as any, // RuoloEffettivoService
+      {} as any, // ModificaFIRUseCase
+      {} as any, // CollegamentiAccessoService
       firmaPartenza as any
     )
 
@@ -42,6 +43,7 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
     jest.spyOn(FIRResponseDto, 'fromDomain').mockImplementation((fir: any) => ({ ...fir }))
     emetti = { execute: jest.fn().mockResolvedValue(Result.ok(firEmesso)) }
     presaInCarico = { execute: jest.fn().mockResolvedValue(Result.ok(firEmesso)) }
+    ruolo = { ruoloEffettivo: jest.fn().mockResolvedValue('OPERATOR') }
     firmaPartenza = {
       dopoAzioneLocale: jest.fn().mockResolvedValue({ stato: 'NON_APPLICABILE' }),
       execute: jest.fn(),
@@ -127,6 +129,17 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
       expect(firmaPartenza.dopoAzioneLocale).not.toHaveBeenCalled()
     })
 
+    it('ruolo effettivo insufficiente (consulente VIEWER): l emissione resta, nessuna richiesta di firma RENTRI', async () => {
+      ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
+
+      const r = await controller().emetti('f1', { firmaRentri: true }, USER)
+
+      expect(r).toMatchObject({ id: 'f1', stato: 'EMESSO' })
+      expect(r).not.toHaveProperty('firmaRentri')
+      expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(USER, 'T1')
+      expect(firmaPartenza.dopoAzioneLocale).not.toHaveBeenCalled()
+    })
+
     it('anche se lo use case di firma sollevasse, l emissione non si perde', async () => {
       firmaPartenza.dopoAzioneLocale.mockRejectedValue(new Error('imprevisto'))
 
@@ -184,6 +197,18 @@ describe('FIRControllerV2 — firma di partenza su RENTRI', () => {
       const r = await controller().presaInCarico('f1', {}, USER)
 
       expect(r.firmaRentri).toEqual({ stato: 'IN_ATTESA', sessioneId: 's2', scadenza })
+    })
+
+    it('FIR legato e ruolo effettivo insufficiente (VIEWER nell azienda): 403, nessuna firma ne presa in carico', async () => {
+      firmaPartenza.tenantSeLegatoRentri.mockResolvedValue('T1')
+      ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
+
+      await expect(controller().presaInCarico('f1', {}, USER)).rejects.toBeInstanceOf(
+        ForbiddenException
+      )
+
+      expect(firmaPartenza.execute).not.toHaveBeenCalled()
+      expect(presaInCarico.execute).not.toHaveBeenCalled()
     })
 
     it('FIR legato ma l ente non chiede la firma: 409 con codice stabile, nessuna presa in carico locale', async () => {

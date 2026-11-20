@@ -70,6 +70,7 @@ import { comeHttpPese } from '../pese/errori-http'
 import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { MaxDecimali } from '../../core/validators/max-decimali'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 import { FirNonTrovatoError } from '../../core/domain/errors'
@@ -401,6 +402,13 @@ export class FIRControllerV2 {
     if (dto?.firmaRentri !== true) {
       return FIRResponseDto.fromDomain(result.value)
     }
+    // La richiesta di firma e' una scrittura sull'ente: serve il ruolo EFFETTIVO nell'azienda del FIR
+    // (un consulente solo VIEWER nel cliente non la fa; l'emissione resta).
+    try {
+      await richiediRuoloEffettivo(this.membership, user, result.value.tenantId ?? '')
+    } catch {
+      return FIRResponseDto.fromDomain(result.value)
+    }
     let firmaRentri: EsitoFirmaPartenzaDopoAzione
     try {
       firmaRentri = await this.firmaPartenza.dopoAzioneLocale({
@@ -449,6 +457,7 @@ export class FIRControllerV2 {
     // cartaceo) nulla cambia.
     const tenantRentri = await this.firmaPartenza.tenantSeLegatoRentri(id)
     if (tenantRentri) {
+      await richiediRuoloEffettivo(this.membership, user, tenantRentri)
       let esito
       try {
         esito = await this.firmaPartenza.execute({
