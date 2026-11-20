@@ -3,6 +3,7 @@ import {
   LUNGHEZZA_MASSIMA_CHIAVE_LEGACY,
   chiaveAutomezzo,
   chiaveDitta,
+  chiaveGiacenza,
   chiaveMovimento,
   chiaveRecordAnnuale,
   chiaveSede,
@@ -170,5 +171,27 @@ describe('precDellaRiga / chiaveSedeDaSoggettoUnita (regola della chiave sede de
         precTenuto: 'C',
       })
     ).toThrow(ChiaveLegacyError)
+  })
+})
+
+describe('chiaveGiacenza', () => {
+  const R = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  it('ditta|anno|GIACENZE|registro|cer|stato fisico, accettata dal pattern', () => {
+    const k = chiaveGiacenza('0001', 2026, R, '150101', 'S')
+    expect(k).toBe(`0001|2026|GIACENZE|${R}|150101|S`)
+    expect(new RegExp(CHIAVE_LEGACY_PATTERN).test(k)).toBe(true)
+    expect(k.length).toBeLessThanOrEqual(LUNGHEZZA_MASSIMA_CHIAVE_LEGACY)
+  })
+  it('stato fisico assente: un trattino', () => {
+    expect(chiaveGiacenza('0001', 2026, R, '150101', null)).toBe(`0001|2026|GIACENZE|${R}|150101|-`)
+  })
+  it('rifiuta CER non di 6 cifre, registro non UUID, stato fisico con pipe o troppo lungo', () => {
+    expect(() => chiaveGiacenza('0001', 2026, R, '1501', null)).toThrow(ChiaveLegacyError)
+    expect(() => chiaveGiacenza('0001', 2026, 'x', '150101', null)).toThrow(ChiaveLegacyError)
+    expect(() => chiaveGiacenza('0001', 2026, R, '150101', 'a|b')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveGiacenza('0001', 2026, R, '150101', 'x'.repeat(51))).toThrow(
+      ChiaveLegacyError
+    )
+    expect(() => chiaveGiacenza('1', 2026, R, '150101', null)).toThrow(ChiaveLegacyError)
   })
 })

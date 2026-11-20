@@ -85,6 +85,14 @@ export async function eseguiCli(argv: readonly string[], uscita: UscitaCli): Pro
       uscita.scrivi(`scarto ${s.tabella} ${s.codice}: ${s.conteggio}`)
     for (const a of rapporto.avvisi)
       uscita.scrivi(`avviso ${a.tabella} ${a.codice}: ${a.conteggio}`)
+    for (const d of rapporto.differenzeGiascar)
+      uscita.scrivi(`differenza-giascar ${d.cod} ${d.giascarKg} ${d.ricalcolatoKg}`)
+    if (rapporto.differenzeGiascar.length > 0)
+      uscita.scrivi(
+        `ATTENZIONE: ${rapporto.differenzeGiascar.length} carichi con GIASCAR diverso dal ricalcolo da RELAZ ` +
+          '(COD, GIASCAR, ricalcolato in kg): il residuo caricato e quello ricalcolato; ' +
+          'le differenze vanno al cliente insieme al rapporto'
+      )
     for (const d of rapporto.firDigitali)
       uscita.scrivi(`fir-digitale ${d.numero} ${d.idRentri ?? '-'}`)
     for (const d of rapporto.firSenzaPeso)

@@ -149,3 +149,30 @@ export function chiaveSedeDaSoggettoUnita(
     ul
   )
 }
+
+/**
+ * Giacenza iniziale al taglio (I6): una per famiglia, `ditta|anno|GIACENZE|<registroId>|<cer 6 cifre>|<stato fisico>`.
+ * Il registro e' quello di WasteFlow (piu' magazzini WinWaste possono confluire nello stesso registro,
+ * e la famiglia e' unica per registro). Il CER e' sempre di sole cifre (l'asterisco lo decide il
+ * catalogo al caricamento). Stato fisico assente = `-`. «GIACENZE» non e' un anno ne' C/F/MEZ.
+ */
+export function chiaveGiacenza(
+  ditta: string,
+  anno: number,
+  registroId: string,
+  cerCifre: string,
+  statoFisico: string | null
+): string {
+  verificaDitta(ditta)
+  if (!Number.isInteger(anno) || anno < 1990 || anno > 2100) {
+    throw new ChiaveLegacyError('ANNO_NON_VALIDO', 'anno fuori da 1990-2100')
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(registroId)) {
+    throw new ChiaveLegacyError('COMPONENTE_NON_VALIDO', 'registro: atteso un UUID')
+  }
+  if (!/^[0-9]{6}$/.test(cerCifre)) {
+    throw new ChiaveLegacyError('COMPONENTE_NON_VALIDO', 'CER: attese 6 cifre')
+  }
+  if (statoFisico !== null) componente(statoFisico, 50, 'stato fisico')
+  return `${ditta}|${anno}|GIACENZE|${registroId.toLowerCase()}|${cerCifre}|${statoFisico ?? '-'}`
+}
