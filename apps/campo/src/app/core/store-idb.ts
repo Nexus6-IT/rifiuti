@@ -21,6 +21,13 @@ export interface OpzioniStoreIdb {
   chiavePulizia?: string;
 }
 
+export interface OpzioniEsecuzione {
+  /** Se anche il secondo tentativo fallisce, lancia invece di restituire `undefined`. */
+  rilancia?: boolean;
+  /** Se IndexedDB non e' disponibile, lancia (di default l'operazione e' un no-op silenzioso). */
+  richiediDb?: boolean;
+}
+
 export class StoreIdb {
   private connessione: Promise<IDBDatabase | null> | null = null;
   private dbCorrente: IDBDatabase | null = null;
@@ -30,16 +37,16 @@ export class StoreIdb {
   async esegui<T>(
     modo: IDBTransactionMode,
     op: (store: IDBObjectStore) => IDBRequest<T>,
-    rilancia = false,
+    opz: OpzioniEsecuzione = {},
   ): Promise<T | undefined> {
     await this.ritentaPulizia();
-    return this.eseguiGrezzo(modo, op, rilancia);
+    return this.eseguiGrezzo(modo, op, opz);
   }
 
   /** Svuota lo store. Lancia se non riesce, ricordando la pulizia da rifare (se configurato). */
   async svuota(): Promise<void> {
     try {
-      await this.eseguiGrezzo<unknown>('readwrite', (s) => s.clear(), true);
+      await this.eseguiGrezzo<unknown>('readwrite', (s) => s.clear(), { rilancia: true });
       this.segnaPulizia(false);
     } catch (e) {
       this.segnaPulizia(true);
@@ -58,7 +65,7 @@ export class StoreIdb {
     }
     if (!pendente) return;
     try {
-      await this.eseguiGrezzo<unknown>('readwrite', (s) => s.clear(), true);
+      await this.eseguiGrezzo<unknown>('readwrite', (s) => s.clear(), { rilancia: true });
       this.segnaPulizia(false);
     } catch {
       /* resta pendente: ci riprova la prossima volta */
@@ -136,13 +143,14 @@ export class StoreIdb {
   private async eseguiGrezzo<T>(
     modo: IDBTransactionMode,
     op: (store: IDBObjectStore) => IDBRequest<T>,
-    rilancia: boolean,
+    { rilancia = false, richiediDb = false }: OpzioniEsecuzione,
   ): Promise<T | undefined> {
     let ultimo: unknown = new Error('IndexedDB non disponibile');
     for (let tentativo = 0; tentativo < 2; tentativo++) {
       const db = await this.apri();
       if (!db) {
         this.connessione = null; // non resta in cache: la prossima operazione ritenta l'apertura
+        if (richiediDb) throw new Error('IndexedDB non disponibile');
         return undefined;
       }
       try {

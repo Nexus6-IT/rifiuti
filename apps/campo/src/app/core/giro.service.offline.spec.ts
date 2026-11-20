@@ -32,6 +32,7 @@ const giro = (data: string): GiroVista => ({
       statoVisibile: 'DA_GENERARE',
       motivo: null,
       fir: null,
+      versione: 1,
     },
   ],
 });

@@ -19,6 +19,8 @@ export interface RitiroVista {
   statoVisibile: string;
   motivo: string | null;
   fir: { id: string; numero: string | null; status: string } | null;
+  /** Versione del ritiro: la coda la rimanda col suo esito (lock ottimistico lato server). */
+  versione: number;
   annotazioni?: string | null;
 }
 

@@ -2,12 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
+import { CodaEventi } from '../core/coda-eventi';
 import { SessioneService } from '../core/sessione.service';
+import { StatoCoda } from '../core/stato-coda';
 import { StatoGiro } from '../core/stato-giro';
 
 @Component({
   selector: 'app-giro',
-  imports: [RouterLink, StatoGiro],
+  imports: [RouterLink, StatoGiro, StatoCoda],
   template: `
     <header class="testata">
       <div>
@@ -16,6 +18,7 @@ import { StatoGiro } from '../core/stato-giro';
           <p class="sotto">{{ g.autista.nome }} {{ g.autista.cognome }} · {{ g.data }}</p>
         }
         <app-stato-giro />
+        <app-stato-coda />
       </div>
       <button type="button" class="secondario" (click)="esci()" data-testid="esci">Esci</button>
     </header>
@@ -39,6 +42,12 @@ import { StatoGiro } from '../core/stato-giro';
                   <span class="sotto">
                     {{ r.cerCode }} · {{ r.descrizione }} · {{ r.quantitaPresunta }} {{ r.unita }}
                   </span>
+                  @if (coda.perRitiro(r.id); as e) {
+                    <span class="esito-badge" data-testid="badge-esito">
+                      {{ e.tipo === 'RITIRO_ESEGUITO' ? 'Eseguito' : 'Non eseguito' }}
+                      {{ e.stato === 'DA_INVIARE' ? '· da inviare' : '· inviato' }}
+                    </span>
+                  }
                 </a>
               </li>
             }
@@ -52,6 +61,7 @@ import { StatoGiro } from '../core/stato-giro';
 export class GiroPagina {
   protected readonly giro = inject(GiroService);
   private readonly sessione = inject(SessioneService);
+  protected readonly coda = inject(CodaEventi);
   private readonly router = inject(Router);
   protected readonly caricamento = signal(false);
   protected readonly errore = signal<string | null>(null);
@@ -77,6 +87,15 @@ export class GiroPagina {
   }
 
   protected esci(): void {
+    const n = this.coda.daInviare();
+    if (
+      n > 0 &&
+      !window.confirm(
+        `Hai ${n} ${n === 1 ? 'esito' : 'esiti'} non ancora inviat${n === 1 ? 'o' : 'i'}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
+      )
+    ) {
+      return;
+    }
     this.sessione.esci().subscribe(() => {
       this.giro.svuota();
       void this.router.navigate(['/login']);

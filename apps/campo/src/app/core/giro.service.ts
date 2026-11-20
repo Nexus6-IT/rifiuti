@@ -53,6 +53,7 @@ export function proiettaPerSnapshot(g: GiroVista): GiroVista {
     statoVisibile: x.statoVisibile,
     motivo: x.motivo,
     fir: x.fir ? { id: x.fir.id, numero: x.fir.numero, status: x.fir.status } : null,
+    versione: x.versione,
     ...(x.annotazioni !== undefined ? { annotazioni: x.annotazioni } : {}),
   });
   return {

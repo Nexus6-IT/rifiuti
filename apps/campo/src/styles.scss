@@ -138,3 +138,54 @@ h1 {
   color: #5c3d00;
   font-size: 0.9rem;
 }
+
+.esito {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordo);
+}
+.esito h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+.esito label {
+  display: block;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+.esito textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.6rem;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--testo);
+}
+.azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.esito-badge {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e5f1e8;
+  color: var(--accento);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.link {
+  background: none;
+  border: 0;
+  padding: 0.5rem 0.25rem;
+  min-height: 44px;
+  color: var(--accento);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
