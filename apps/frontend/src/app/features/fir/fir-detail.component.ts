@@ -696,7 +696,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   (onClick)="apriDialogAnnotazione()"
                   data-testid="fir-detail-rentri-aggiungi-annotazione"
                   [attr.aria-label]="
-                    'Aggiungi un'annotazione al FIR ' + (f.numeroProgressivo || f.id)
+                    'Aggiungi una annotazione al FIR ' + (f.numeroProgressivo || f.id)
                   "
                 />
               }

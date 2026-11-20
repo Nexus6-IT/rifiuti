@@ -2522,12 +2522,14 @@ describe('FirDetailComponent', () => {
       expect(el().querySelector(AGGIUNGI)).toBeFalsy()
     })
 
-    it('un FIR non legato (cartaceo) e un VIEWER non la vedono', () => {
+    it('un FIR non legato (cartaceo) non la vede', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(baseFIR))
       fixture.detectChanges()
       expect(el().querySelector(AGGIUNGI)).toBeFalsy()
+    })
 
+    it('un VIEWER non la vede', () => {
       preparaFirLegato('VIEWER', firLegato, 'Annotazione')
       fixture.detectChanges()
       expect(el().querySelector(AGGIUNGI)).toBeFalsy()
