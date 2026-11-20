@@ -502,10 +502,9 @@ export class TrasmissioniRegistroRepository {
    * un importato `DA_RICONCILIARE` non si adottano mai (hanno gia' la loro riga di blocco o nessuna).
    */
   async adottaAutomatiche(tenantId: string, limite: number): Promise<number> {
-    return this.nelTenant(
-      tenantId,
-      tx =>
-        tx.$executeRaw`
+    return this.nelTenant(tenantId, async tx => {
+      await this.bloccaRegistri(tx, tenantId, 'invio_rentri_automatico_dal')
+      return tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "updated_at")
         SELECT m."tenant_id", m."id", m."registro_id", m."type", 'AUTOMATICA', now()
@@ -527,7 +526,7 @@ export class TrasmissioniRegistroRepository {
         ORDER BY m."progressive_year", m."progressive_number"
         LIMIT ${limite}
         ON CONFLICT ("movimento_id") DO NOTHING`
-    )
+    })
   }
 
   /**
@@ -535,10 +534,9 @@ export class TrasmissioniRegistroRepository {
    * (origine `CORREZIONE`). Quelle di un predecessore rifiutato o mai trasmesso non partono.
    */
   async adottaCorrezioni(tenantId: string, limite: number): Promise<number> {
-    return this.nelTenant(
-      tenantId,
-      tx =>
-        tx.$executeRaw`
+    return this.nelTenant(tenantId, async tx => {
+      await this.bloccaRegistri(tx, tenantId)
+      return tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "updated_at")
         SELECT m."tenant_id", m."id", m."registro_id", m."type", 'CORREZIONE', now()
@@ -558,6 +556,33 @@ export class TrasmissioniRegistroRepository {
         ORDER BY m."progressive_year", m."progressive_number"
         LIMIT ${limite}
         ON CONFLICT ("movimento_id") DO NOTHING`
-    )
+    })
+  }
+
+  /**
+   * eREGI E3: prende il lock dei lotti (`rentri-registro|<id>`, lo stesso di `prenota` e della
+   * chiusura) dei registri su cui l'adozione puo' scrivere, in ordine di id (nessun deadlock fra
+   * due adozioni), PRIMA dell'INSERT: l'INSERT rilegge i flag di chiusura con uno snapshot nuovo,
+   * quindi non crea righe dopo il conteggio di una chiusura. Non e' un try-lock: attende al piu'
+   * il tempo di una prenotazione.
+   */
+  private async bloccaRegistri(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    colonnaObbligatoria?: 'invio_rentri_automatico_dal'
+  ): Promise<void> {
+    const registri = colonnaObbligatoria
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "registri_rifiuti"
+          WHERE "tenant_id" = ${tenantId}::uuid AND "rentri_chiuso_il" IS NULL
+            AND "invio_rentri_automatico_dal" IS NOT NULL
+          ORDER BY "id"`
+      : await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "registri_rifiuti"
+          WHERE "tenant_id" = ${tenantId}::uuid AND "rentri_chiuso_il" IS NULL
+          ORDER BY "id"`
+    for (const r of registri) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + r.id}))`
+    }
   }
 }

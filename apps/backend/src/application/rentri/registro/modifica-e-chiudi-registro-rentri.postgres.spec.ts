@@ -51,6 +51,7 @@ import {
 import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registro.service'
 import { ModificaRegistroRentriUseCase } from './modifica-registro-rentri.use-case'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
+import { AccodaTrasmissioneRentriUseCase } from './accoda-trasmissione-rentri.use-case'
 
 const ID = 'RAB12CD34E5'
 
@@ -59,7 +60,7 @@ class AnagraficheFinto {
   /** Dopo la prima lettura si passa a questo (simula lo stato dopo la scrittura). */
   dettagliSuccessivi: Array<RegistroAnagraficoModel | Error> = []
   put: ((m: ModificaRegistro) => void) | null = null
-  delete: (() => void) | null = null
+  delete: (() => void | Promise<void>) | null = null
   chiamatePut: Array<{ id: string; modifica: ModificaRegistro }> = []
   chiamateDelete: string[] = []
   chiamateDettaglio = 0
@@ -84,7 +85,7 @@ class AnagraficheFinto {
   async chiudiRegistro(id: string) {
     this.chiamateDelete.push(id)
     this.scritto = true
-    this.delete?.()
+    await this.delete?.()
   }
 }
 
@@ -106,6 +107,7 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
   let chiudi: ChiudiRegistroRentriUseCase
   let abbandona: AbbandonaAperturaRegistroRentriUseCase
   let repo: TrasmissioniRegistroRepository
+  let accoda: AccodaTrasmissioneRentriUseCase
 
   async function azienda(
     extra: Record<string, unknown> = {},
@@ -178,6 +180,37 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
     })
   }
 
+  async function movimentoSenzaRiga(a: { tenantId: string; registroId: string }) {
+    return owner.wasteMovement.create({
+      data: {
+        tenantId: a.tenantId,
+        registroId: a.registroId,
+        progressiveYear: 2026,
+        progressiveNumber: ++progressivo,
+        cerCode: '15 01 01',
+        unit: 'KG',
+        wastePhysicalState: 'Solido',
+        type: 'CARICO',
+        movementDate: new Date(),
+        registrationDate: new Date(),
+        causale: 'PRODUZIONE_INTERNA',
+        quantity: 100,
+      } as never,
+    })
+  }
+
+  /** Tiene il lock dei lotti, scrive la prenotazione di chiusura e rilascia: simula `chiudi`. */
+  function chiusuraConLock(registroId: string, tenantId: string, attesaMs: number) {
+    return owner.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
+      await new Promise(r => setTimeout(r, attesaMs))
+      await tx.registroRifiuti.updateMany({
+        where: { id: registroId, tenantId },
+        data: { rentriChiusuraRichiestaIl: new Date() },
+      })
+    })
+  }
+
   const registroDi = (id: string) => owner.registroRifiuti.findUniqueOrThrow({ where: { id } })
   const audit = (tenantId: string, action: string) =>
     owner.activityLog.findMany({ where: { tenantId, action } })
@@ -214,6 +247,7 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
       })
     ).id
     repo = new TrasmissioniRegistroRepository(app, logger)
+    accoda = new AccodaTrasmissioneRentriUseCase(app, logger)
   })
 
   beforeEach(() => {
@@ -331,6 +365,9 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
       expect(db.rentriChiusoIl?.toISOString()).toBe('2026-06-01T10:00:00.000Z')
       expect(db.invioRentriAutomaticoDal).toBeNull()
       expect(finto.chiamatePut).toHaveLength(0)
+      const l = await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSO')
+      expect(l).toHaveLength(1)
+      expect(l[0].metadata).toMatchObject({ origine: 'PORTALE' })
     })
 
     it('registro sparito da RENTRI (404): 400, nulla cambia', async () => {
@@ -380,8 +417,6 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
     it('chiude: DELETE una volta, registro chiuso, invio automatico spento, audit avviata + chiuso', async () => {
       const a = await azienda({ invioRentriAutomaticoDal: minutiFa(1000) })
       await riga(a, 'TRASMESSA')
-      await riga(a, 'RIFIUTATA')
-      await riga(a, 'NON_TRASMISSIBILE')
       await riga(a, 'DA_TRASMETTERE', {
         esclusoIl: new Date(),
         esclusoDa: utenteId,
@@ -527,6 +562,139 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
         expect(r.esito).toBe('CHIUSO')
         expect(finto.chiamateDelete).toHaveLength(1)
       })
+    })
+
+    it('I2: RIFIUTATA e NON_TRASMISSIBILE bloccano la chiusura (come il termine mensile)', async () => {
+      for (const stato of ['RIFIUTATA', 'NON_TRASMISSIBILE'] as const) {
+        const a = await azienda()
+        await riga(a, stato)
+        const errore = await chiudi
+          .esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+          .catch(e => e)
+        expect(errore).toBeInstanceOf(ChiusuraRegistroNonPossibileError)
+        expect((errore as ChiusuraRegistroNonPossibileError).conteggi).toEqual({ [stato]: 1 })
+      }
+      expect(finto.chiamateDelete).toHaveLength(0)
+    })
+
+    it("I2: un'annotazione appena registrata che l'invio automatico adotterebbe blocca (SENZA_RIGA)", async () => {
+      const a = await azienda({ invioRentriAutomaticoDal: minutiFa(1000) })
+      await movimentoSenzaRiga(a)
+      const errore = await chiudi
+        .esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        .catch(e => e)
+      expect(errore).toBeInstanceOf(ChiusuraRegistroNonPossibileError)
+      expect((errore as ChiusuraRegistroNonPossibileError).conteggi).toEqual({ SENZA_RIGA: 1 })
+      // senza invio automatico la stessa annotazione non e' "da trasmettere": la chiusura passa
+      const b = await azienda()
+      await movimentoSenzaRiga(b)
+      expect((await chiudi.esegui(b.tenantId, utenteId, 'ADMIN', b.registroId, ID)).esito).toBe(
+        'CHIUSO'
+      )
+    })
+
+    describe('I1: chi crea righe prende il lock dei lotti (nessuna riga dopo il conteggio della chiusura)', () => {
+      it('accoda e accodaStorico attendono la chiusura e poi rifiutano', async () => {
+        const a = await azienda()
+        const m = await movimentoSenzaRiga(a)
+        const chiusura = chiusuraConLock(a.registroId, a.tenantId, 400)
+        await new Promise(r => setTimeout(r, 100))
+        const esiti = await Promise.allSettled([
+          accoda.accoda(a.tenantId, utenteId, a.registroId, [m.id]),
+          accoda.accodaStorico(a.tenantId, utenteId, a.registroId, 2026, true),
+        ])
+        await chiusura
+        expect(esiti.map(e => e.status)).toEqual(['rejected', 'rejected'])
+        expect(
+          await owner.movimentoTrasmissioneRentri.count({ where: { tenantId: a.tenantId } })
+        ).toBe(0)
+      })
+
+      it('adottaAutomatiche e adottaCorrezioni attendono la chiusura e non adottano', async () => {
+        const a = await azienda({ invioRentriAutomaticoDal: minutiFa(1000) })
+        const orig = await riga(a, 'TRASMESSA')
+        await movimentoSenzaRiga(a)
+        await owner.wasteMovement.create({
+          data: {
+            tenantId: a.tenantId,
+            registroId: a.registroId,
+            progressiveYear: 2026,
+            progressiveNumber: ++progressivo,
+            cerCode: '15 01 01',
+            unit: 'KG',
+            wastePhysicalState: 'Solido',
+            type: 'CARICO',
+            movementDate: new Date(),
+            registrationDate: new Date(),
+            causale: 'PRODUZIONE_INTERNA',
+            quantity: 100,
+            tipoAnnotazione: 'RETTIFICA',
+            movimentoRettificatoId: orig.movimentoId,
+            movimentoOriginaleId: orig.movimentoId,
+            motivoAnnotazione: 'x',
+          } as never,
+        })
+        const chiusura = chiusuraConLock(a.registroId, a.tenantId, 400)
+        await new Promise(r => setTimeout(r, 100))
+        const [auto, corr] = await Promise.all([
+          repo.adottaAutomatiche(a.tenantId, 1000),
+          repo.adottaCorrezioni(a.tenantId, 1000),
+        ])
+        await chiusura
+        expect([auto, corr]).toEqual([0, 0])
+        expect(
+          await owner.movimentoTrasmissioneRentri.count({ where: { tenantId: a.tenantId } })
+        ).toBe(1)
+      })
+    })
+
+    describe('I3: un errore della DELETE rilegge sempre il dettaglio prima di annullare', () => {
+      it('400 «gia chiuso» ma il dettaglio mostra la chiusura: CHIUSO, invii mai riattivati', async () => {
+        const a = await azienda()
+        finto.delete = () => {
+          throw new RentriApiError(400, 'Registro già chiuso', 'x', false)
+        }
+        finto.dettagliSuccessivi = [chiusoSuRentri]
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('CHIUSO')
+        expect((await registroDi(a.registroId)).rentriChiusoIl).not.toBeNull()
+        expect(await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSURA_ANNULLATA')).toHaveLength(0)
+      })
+
+      it('400 e rilettura che fallisce: la prenotazione RESTA, esito INCERTO', async () => {
+        const a = await azienda({ rentriChiusuraRichiestaIl: minutiFa(30) })
+        finto.dettaglio = new Error('rete')
+        finto.delete = () => {
+          throw new RentriApiError(400, 'Registro già chiuso', 'x', false)
+        }
+        const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+        expect(r.esito).toBe('INCERTO')
+        expect((await registroDi(a.registroId)).rentriChiusuraRichiestaIl).not.toBeNull()
+      })
+    })
+
+    it("M1: se l'identificativo cambia mentre la DELETE e in volo, il registro nuovo NON risulta chiuso", async () => {
+      const a = await azienda()
+      finto.delete = async () => {
+        await owner.registroRifiuti.update({
+          where: { id: a.registroId },
+          data: {
+            identificativoRentri: 'RNUOVO00001',
+            rentriChiusuraRichiestaIl: null,
+            rentriAttivita: [],
+          },
+        })
+      }
+      const r = await chiudi.esegui(a.tenantId, utenteId, 'ADMIN', a.registroId, ID)
+      expect(r.esito).toBe('CHIUSO')
+      const db = await registroDi(a.registroId)
+      expect(db.identificativoRentri).toBe('RNUOVO00001')
+      expect(db.rentriChiusoIl).toBeNull()
+      expect(
+        (await audit(a.tenantId, 'RENTRI_REGISTRO_CHIUSO')).some(l =>
+          JSON.stringify(l.metadata).includes('collegamentoCambiato')
+        )
+      ).toBe(true)
     })
 
     it('con la chiusura prenotata nessun lotto parte e accoda e invio automatico sono rifiutati', async () => {

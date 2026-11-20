@@ -87,6 +87,12 @@ export class AccodaTrasmissioneRentriUseCase {
     registroId: string,
     ammettiChiuso = false
   ) {
+    // eREGI E3: stesso lock dei lotti e della chiusura, preso PRIMA di leggere i flag: o la
+    // chiusura ha gia' prenotato (e qui si rifiuta) o questa transazione crea le righe prima del
+    // suo conteggio e la chiusura le trova. Stessa chiave di `escludi`/`reincludi`.
+    if (!ammettiChiuso) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
+    }
     const registro = await tx.registroRifiuti.findFirst({
       where: { id: registroId, tenantId },
       select: { id: true, rentriChiusoIl: true, rentriChiusuraRichiestaIl: true },

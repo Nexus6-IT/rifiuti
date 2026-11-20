@@ -134,7 +134,7 @@ export class ModificaRegistroRentriUseCase {
 
     const dettaglio = await this.leggiDettaglio(identificativo, tenantId)
     if (registroRentriChiuso(dettaglio)) {
-      await this.allineaChiusura(tenantId, registroId, dettaglio)
+      await this.allineaChiusura(tenantId, utenteId, registroId, dettaglio)
       throw new RegistroRentriChiusoError(
         'Il registro risulta chiuso su RENTRI (probabilmente dal portale): non si può modificare.'
       )
@@ -172,6 +172,7 @@ export class ModificaRegistroRentriUseCase {
       tenantId,
       utenteId,
       registroId,
+      identificativo,
       contesto.descrizione,
       contesto.rentriAttivitaRecSmalt,
       descrizione,
@@ -221,6 +222,7 @@ export class ModificaRegistroRentriUseCase {
   /** Il portale ha chiuso il registro: si ferma l'invio anche da noi. */
   private async allineaChiusura(
     tenantId: string,
+    utenteId: string,
     registroId: string,
     dettaglio: RegistroAnagraficoModel
   ): Promise<void> {
@@ -232,18 +234,30 @@ export class ModificaRegistroRentriUseCase {
     await TenantContext.run(
       { tenantId },
       async () =>
-        await this.prisma.registroRifiuti.updateMany({
-          where: {
-            id: registroId,
-            tenantId,
-            rentriChiusoIl: null,
-            identificativoRentri: { not: null },
-          },
-          data: {
-            rentriChiusoIl: quando,
-            rentriChiusuraRichiestaIl: null,
-            invioRentriAutomaticoDal: null,
-          },
+        await this.prisma.$transaction(async tx => {
+          const r = await tx.registroRifiuti.updateMany({
+            where: {
+              id: registroId,
+              tenantId,
+              rentriChiusoIl: null,
+              identificativoRentri: { not: null },
+            },
+            data: {
+              rentriChiusoIl: quando,
+              rentriChiusuraRichiestaIl: null,
+              invioRentriAutomaticoDal: null,
+            },
+          })
+          if (r.count === 0) return
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'RENTRI_REGISTRO_CHIUSO',
+              description: 'Registro chiuso su RENTRI dal portale: allineato in WasteFlow',
+              metadata: { registroId, origine: 'PORTALE', dopo: { rentriChiusoIl: quando } },
+            },
+          })
         })
     )
   }
@@ -252,6 +266,7 @@ export class ModificaRegistroRentriUseCase {
     tenantId: string,
     utenteId: string,
     registroId: string,
+    identificativo: string,
     descrizionePrima: string,
     codiciPrima: string[],
     descrizione: string | undefined,
@@ -261,8 +276,15 @@ export class ModificaRegistroRentriUseCase {
       { tenantId },
       async () =>
         await this.prisma.$transaction(async tx => {
+          // Solo se e' ancora lo stesso registro RENTRI e non e' entrato in chiusura nel frattempo.
           await tx.registroRifiuti.updateMany({
-            where: { id: registroId, tenantId },
+            where: {
+              id: registroId,
+              tenantId,
+              identificativoRentri: identificativo,
+              rentriChiusoIl: null,
+              rentriChiusuraRichiestaIl: null,
+            },
             data: {
               ...(descrizione !== undefined ? { descrizione } : {}),
               ...(codici !== undefined ? { rentriAttivitaRecSmalt: codici } : {}),

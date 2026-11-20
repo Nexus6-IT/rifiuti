@@ -26,6 +26,7 @@ import {
 import { TrasmissioneRentriIncertaError } from '../../../infrastructure/rentri/rentri-api.client'
 import { RentriApiError } from '../../../infrastructure/rentri/rentri-http-resilienza'
 import { leggiContestoRegistroRentri, registroRentriChiuso } from './contesto-registro-rentri'
+import { contaDaTrasmettereRegistro } from './scadenza-trasmissione-rentri'
 import {
   ChiusuraRegistroNonConfermataError,
   ChiusuraRegistroNonPossibileError,
@@ -50,18 +51,16 @@ export const MESSAGGIO_CHIUSURA_INCERTA =
   'RENTRI non ha confermato la chiusura e non è stato possibile verificarla: gli invii verso questo registro sono fermi. Tra qualche minuto ripeti «Chiudi»: WasteFlow controlla prima lo stato su RENTRI.'
 
 /** Stati che impediscono la chiusura (annotazioni in volo, incerte o ancora da trasmettere). */
-const STATI_CHE_BLOCCANO: StatoTrasmissioneRentri[] = [
-  'IN_INVIO',
-  'ATTESA_ESITO',
-  'INCERTA',
-  'DA_TRASMETTERE',
-]
+const STATI_IN_VOLO: StatoTrasmissioneRentri[] = ['IN_INVIO', 'ATTESA_ESITO']
 
-const ETICHETTE: Partial<Record<StatoTrasmissioneRentri, string>> = {
+const ETICHETTE: Record<string, string> = {
   IN_INVIO: 'in invio',
   ATTESA_ESITO: "in attesa dell'esito",
   INCERTA: 'incerte da verificare',
   DA_TRASMETTERE: 'da trasmettere',
+  RIFIUTATA: 'rifiutate da RENTRI',
+  NON_TRASMISSIBILE: 'non trasmissibili',
+  SENZA_RIGA: 'registrate e non ancora in coda',
 }
 
 @Injectable()
@@ -109,23 +108,22 @@ export class ChiudiRegistroRentriUseCase {
       }
       if (contesto.rentriChiusoIl !== null) throw new RegistroRentriChiusoError()
 
-      const gruppi = await tx.movimentoTrasmissioneRentri.groupBy({
+      // Stesse regole del termine mensile (E0): in volo, incerte, da trasmettere, rifiutate, non
+      // trasmissibili e le annotazioni che l'invio automatico adottera' (SENZA_RIGA).
+      const conteggi: Record<string, number> = await contaDaTrasmettereRegistro(
+        tx,
+        tenantId,
+        registroId
+      )
+      const inVolo = await tx.movimentoTrasmissioneRentri.groupBy({
         by: ['stato'],
-        where: {
-          tenantId,
-          registroId,
-          stato: { in: STATI_CHE_BLOCCANO },
-          // Le escluse dall'invio automatico non partono mai: non tengono aperto il registro.
-          esclusoIl: null,
-        },
+        where: { tenantId, registroId, stato: { in: STATI_IN_VOLO } },
         _count: { _all: true },
       })
-      if (gruppi.length > 0) {
-        const conteggi: Record<string, number> = {}
-        for (const g of gruppi) conteggi[g.stato] = g._count._all
-        const elenco = gruppi
-          .map(g => `${g._count._all} ${ETICHETTE[g.stato] ?? g.stato}`)
-          .join(', ')
+      for (const g of inVolo) conteggi[g.stato] = g._count._all
+      const voci = Object.entries(conteggi)
+      if (voci.length > 0) {
+        const elenco = voci.map(([stato, n]) => `${n} ${ETICHETTE[stato] ?? stato}`).join(', ')
         throw new ChiusuraRegistroNonPossibileError(
           `Non si può chiudere il registro: ci sono annotazioni ${elenco}. Trasmettile o toglile dalla coda e riprova.`,
           conteggi
@@ -181,7 +179,7 @@ export class ChiudiRegistroRentriUseCase {
       }
     }
 
-    await this.conferma(tenantId, utenteId, registroId, chiuso)
+    await this.conferma(tenantId, utenteId, registroId, fase.identificativo, chiuso)
     this.logger.info('Registro chiuso su RENTRI', { tenantId, registroId })
     const lista = await this.impostazioni.leggi(tenantId)
     const impostazioni = lista.find(r => r.registroId === registroId)
@@ -190,8 +188,10 @@ export class ChiudiRegistroRentriUseCase {
   }
 
   /**
-   * La DELETE e' fallita. Rifiuto definitivo dell'ente (4xx): nulla e' cambiato, si annulla la
-   * prenotazione e si rilancia. Altrimenti l'esito e' incerto: si rilegge il dettaglio.
+   * La DELETE e' fallita. Un errore sollevato PRIMA dell'invio (certificato, identificativo) non ha
+   * toccato RENTRI: si annulla la prenotazione e si rilancia. Per ogni errore dell'ente, anche un
+   * 4xx (per esempio «gia' chiuso» perche' la chiusura era riuscita o e' avvenuta dal portale), si
+   * rilegge SEMPRE il dettaglio prima di annullare: un registro chiuso non deve riattivare gli invii.
    * @returns il dettaglio chiuso, oppure `INCERTO` se non si e' potuto sapere
    */
   private async dopoErroreDelete(
@@ -201,22 +201,29 @@ export class ChiudiRegistroRentriUseCase {
     identificativo: string,
     errore: unknown
   ): Promise<RegistroAnagraficoModel | 'INCERTO'> {
-    const incerto =
-      errore instanceof TrasmissioneRentriIncertaError ||
-      (errore instanceof RentriApiError && (errore.retryable || errore.status >= 500))
-    if (!incerto) {
+    const dellEnte =
+      errore instanceof TrasmissioneRentriIncertaError || errore instanceof RentriApiError
+    if (!dellEnte) {
       await this.annullaPrenotazione(tenantId, utenteId, registroId, 'RIFIUTATA')
       throw errore
     }
-    this.logger.warn('Chiusura del registro su RENTRI: esito incerto, rilettura del dettaglio', {
+    this.logger.warn('Chiusura del registro su RENTRI non riuscita: rilettura del dettaglio', {
       tenantId,
       registroId,
     })
     const letto = await this.leggiSeRiesce(identificativo, tenantId)
     if (letto === null) return 'INCERTO'
     if (registroRentriChiuso(letto)) return letto
-    await this.annullaPrenotazione(tenantId, utenteId, registroId, 'NON_CHIUSO')
-    throw new ChiusuraRegistroNonConfermataError()
+    const incerto =
+      errore instanceof TrasmissioneRentriIncertaError ||
+      (errore instanceof RentriApiError && (errore.retryable || errore.status >= 500))
+    if (incerto) {
+      await this.annullaPrenotazione(tenantId, utenteId, registroId, 'NON_CHIUSO')
+      throw new ChiusuraRegistroNonConfermataError()
+    }
+    // Rifiuto definitivo e registro davvero aperto: nulla e' cambiato.
+    await this.annullaPrenotazione(tenantId, utenteId, registroId, 'RIFIUTATA')
+    throw errore
   }
 
   private async leggiSeRiesce(
@@ -264,6 +271,7 @@ export class ChiudiRegistroRentriUseCase {
     tenantId: string,
     utenteId: string,
     registroId: string,
+    identificativo: string,
     dettaglio: RegistroAnagraficoModel
   ): Promise<void> {
     const quando =
@@ -277,8 +285,15 @@ export class ChiudiRegistroRentriUseCase {
         where: { id: registroId, tenantId },
         select: { invioRentriAutomaticoDal: true, rentriChiusoIl: true },
       })
-      await tx.registroRifiuti.updateMany({
-        where: { id: registroId, tenantId },
+      // Solo se e' ancora il registro che abbiamo chiuso: se nel frattempo un admin ha cambiato o
+      // tolto l'identificativo, il registro locale non va segnato chiuso.
+      const r = await tx.registroRifiuti.updateMany({
+        where: {
+          id: registroId,
+          tenantId,
+          identificativoRentri: identificativo,
+          rentriChiusuraRichiestaIl: { not: null },
+        },
         data: {
           rentriChiusoIl: quando,
           rentriChiusuraRichiestaIl: null,
@@ -291,9 +306,13 @@ export class ChiudiRegistroRentriUseCase {
           tenantId,
           userId: utenteId,
           action: 'RENTRI_REGISTRO_CHIUSO',
-          description: 'Registro chiuso su RENTRI da WasteFlow',
+          description:
+            r.count > 0
+              ? 'Registro chiuso su RENTRI da WasteFlow'
+              : 'Registro chiuso su RENTRI, ma il collegamento locale era cambiato: registro locale non toccato',
           metadata: {
             registroId,
+            ...(r.count === 0 ? { collegamentoCambiato: true } : {}),
             prima: {
               rentriChiusoIl: prima?.rentriChiusoIl ?? null,
               invioAutomaticoDal: prima?.invioRentriAutomaticoDal ?? null,

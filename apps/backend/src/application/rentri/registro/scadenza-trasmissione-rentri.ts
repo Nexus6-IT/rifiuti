@@ -77,6 +77,51 @@ export function scadenzaTrasmissione(
 }
 
 /**
+ * Predicato (alias `m` movimento, `r` registro, `p` predecessore, `t` riga di trasmissione) delle
+ * annotazioni "da trasmettere" ai fini del termine E0 e della guardia di chiusura E3: stesse
+ * regole in un posto solo, cosi' chiudere un registro non lascia mai scoperte annotazioni che il
+ * termine mensile conterebbe.
+ */
+const PREDICATO_DA_TRASMETTERE = Prisma.sql`(
+    t."id" IS NOT NULL AND t."stato"::text IN (${Prisma.join([...STATI_DA_TRASMETTERE_PER_TERMINE])})
+    OR (
+      t."id" IS NULL
+      AND r."invio_rentri_automatico_dal" IS NOT NULL
+      AND m."import_source" IS NULL
+      AND ${NESSUNA_CATENA_DA_RICONCILIARE}
+      AND m."created_at" >= r."invio_rentri_automatico_dal"
+      AND (m."movimento_rettificato_id" IS NULL
+           OR p."created_at" >= r."invio_rentri_automatico_dal")
+    )
+  )`
+
+/**
+ * Guardia di chiusura (E3): conteggio per stato delle annotazioni "da trasmettere" di UN registro,
+ * con `SENZA_RIGA` per quelle che l'adozione automatica adottera'. Le righe escluse dall'invio
+ * automatico (decisione esplicita di un ADMIN) non contano.
+ */
+export async function contaDaTrasmettereRegistro(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  registroId: string
+): Promise<Record<string, number>> {
+  const righe = await tx.$queryRaw<Array<{ stato: string; n: bigint }>>`
+    SELECT COALESCE(t."stato"::text, 'SENZA_RIGA') AS "stato", COUNT(*) AS "n"
+    FROM "waste_movements" m
+    JOIN "registri_rifiuti" r ON r."id" = m."registro_id" AND r."tenant_id" = m."tenant_id"
+    LEFT JOIN "waste_movements" p
+      ON p."id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
+    LEFT JOIN "movimenti_trasmissione_rentri" t
+      ON t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id"
+    WHERE m."tenant_id" = ${tenantId}::uuid
+      AND m."registro_id" = ${registroId}::uuid
+      AND (t."id" IS NULL OR t."escluso_il" IS NULL)
+      AND ${PREDICATO_DA_TRASMETTERE}
+    GROUP BY 1`
+  return Object.fromEntries(righe.map(g => [g.stato, Number(g.n)]))
+}
+
+/**
  * Per ogni registro dell'azienda, la data di annotazione piu' vecchia fra le annotazioni non
  * confermate. Una sola query, nessun N+1. Va chiamata dentro il contesto dell'azienda (RLS).
  *
@@ -101,18 +146,7 @@ export async function annotazioniPiuVecchieDaTrasmettere(
       ON t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id"
     WHERE m."tenant_id" = ${tenantId}::uuid
       AND r."rentri_chiuso_il" IS NULL
-      AND (
-        t."id" IS NOT NULL AND t."stato"::text IN (${Prisma.join([...STATI_DA_TRASMETTERE_PER_TERMINE])})
-        OR (
-          t."id" IS NULL
-          AND r."invio_rentri_automatico_dal" IS NOT NULL
-          AND m."import_source" IS NULL
-          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
-          AND m."created_at" >= r."invio_rentri_automatico_dal"
-          AND (m."movimento_rettificato_id" IS NULL
-               OR p."created_at" >= r."invio_rentri_automatico_dal")
-        )
-      )
+      AND ${PREDICATO_DA_TRASMETTERE}
     GROUP BY m."registro_id"`
   return new Map(righe.map(g => [g.registro_id, g.piu_vecchia]))
 }
