@@ -13,6 +13,11 @@ import {
   tipoPrenotazioneInvioAnnotazione,
 } from './annotazione-rentri.use-case'
 import {
+  SostaTecnicaRentriUseCase,
+  tipoOperazioneSostaTecnica,
+  tipoPrenotazioneInvioSostaTecnica,
+} from './sosta-tecnica-rentri.use-case'
+import {
   FirmaPartenzaRentriUseCase,
   operazionePartenzaDaTipo,
 } from './firma-partenza-rentri.use-case'
@@ -60,7 +65,8 @@ export class GestisciSessioneFirmaRentriUseCase {
     private readonly completaOperazioneConFirma: CompletaOperazioneConFirmaUseCase,
     private readonly logger: LoggerService,
     private readonly firmaPartenza: FirmaPartenzaRentriUseCase,
-    private readonly annotazione: AnnotazioneRentriUseCase
+    private readonly annotazione: AnnotazioneRentriUseCase,
+    private readonly sostaTecnica: SostaTecnicaRentriUseCase
   ) {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
@@ -76,7 +82,12 @@ export class GestisciSessioneFirmaRentriUseCase {
     if (!ultima) return null
     // La prenotazione dell'invio di un'annotazione non e' una firma da confermare sul telefono: niente
     // banner (si riprende solo dall'annotazione, che riconcilia l'invio prima di qualunque authorize).
-    if (ultima.tipoOperazione === tipoPrenotazioneInvioAnnotazione()) return null
+    if (
+      ultima.tipoOperazione === tipoPrenotazioneInvioAnnotazione() ||
+      ultima.tipoOperazione === tipoPrenotazioneInvioSostaTecnica()
+    ) {
+      return null
+    }
     if (STATI_SESSIONE_APERTA.includes(ultima.stato)) {
       return {
         id: ultima.id,
@@ -164,6 +175,17 @@ export class GestisciSessioneFirmaRentriUseCase {
       })
     }
 
+    // Prenotazione dell'invio di una sosta tecnica: stessa regola (mai il ciclo comune).
+    if (sessione.tipoOperazione === tipoPrenotazioneInvioSostaTecnica()) {
+      return this.sostaTecnica.riprendiInvio({
+        firId,
+        tenantId,
+        sessioneId: sessione.id,
+        utenteId,
+        correlationId,
+      })
+    }
+
     // Firma di partenza: passa dal suo use case, cosi' lo storico registra l'esito della ripresa e una nuova
     // richiesta ricontrolla `/azioni` prima di una nuova `authorize`.
     const operazionePartenza = operazionePartenzaDaTipo(sessione.tipoOperazione)
@@ -182,6 +204,17 @@ export class GestisciSessioneFirmaRentriUseCase {
     // Annotazione: stessa strada (storico della ripresa, `/azioni` ricontrollato prima di una nuova `authorize`).
     if (sessione.tipoOperazione === tipoOperazioneAnnotazione()) {
       return this.annotazione.firma({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+      })
+    }
+
+    // Sosta tecnica: stessa strada (storico della ripresa, `/azioni` e riconciliazione prima di una `authorize`).
+    if (sessione.tipoOperazione === tipoOperazioneSostaTecnica()) {
+      return this.sostaTecnica.firma({
         firId,
         tenantId,
         utenteId,

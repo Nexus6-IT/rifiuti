@@ -20,6 +20,9 @@ const VESTE_PARTENZA: Readonly<Record<string, string>> = {
   PARTENZA_PRODUTTORE_TRASPORTATORE: 'come produttore e trasportatore',
 }
 
+/** Firma della sosta tecnica (FIR in viaggio P5): la firma e' sempre del trasportatore che ha in carico il rifiuto. */
+const TESTO_SOSTA_TECNICA = 'firma della sosta tecnica come trasportatore'
+
 /**
  * `Firma del formulario <numero> - operazione <tipo>`, con ogni carattere
  * fuori dal pattern del contratto sostituito da `-`.
@@ -32,7 +35,9 @@ export function descrizioneAutorizzazioneFirma(numeroFir: string, tipoOperazione
   const veste = VESTE_PARTENZA[String(tipoOperazione)]
   const testo = veste
     ? `Firma del formulario ${String(numeroFir)} - firma di partenza ${veste}`
-    : `Firma del formulario ${String(numeroFir)} - operazione ${String(tipoOperazione)}`
+    : String(tipoOperazione) === 'SOSTA_TECNICA'
+      ? `Firma del formulario ${String(numeroFir)} - ${TESTO_SOSTA_TECNICA}`
+      : `Firma del formulario ${String(numeroFir)} - operazione ${String(tipoOperazione)}`
 
   // Per code point, non per unità UTF-16: un carattere fuori dal BMP (emoji)
   // vale un solo `-`, e dopo la sostituzione ogni carattere è nel BMP, quindi

@@ -31,6 +31,8 @@ const SCRITTURE = [
   'inviaTrasporto',
   // FIR in viaggio P4: annotazione.
   'inviaAnnotazione',
+  // FIR in viaggio P5: sosta tecnica.
+  'inviaSostaTecnica',
   'caricaAllegato',
   'eliminaAllegato',
   'rilasciaVisibilita',
@@ -78,6 +80,7 @@ const ATTESI = [
   'application/rentri/invia-dati-viaggio-fir-rentri.use-case.ts',
   'application/rentri/rilascia-formulario-rentri.use-case.ts',
   'application/rentri/rollback-e-reset-fir-rentri.use-case.ts',
+  'application/rentri/sosta-tecnica-rentri.use-case.ts',
   'application/rentri/sync-fir-to-rentri.use-case.ts',
 ]
 

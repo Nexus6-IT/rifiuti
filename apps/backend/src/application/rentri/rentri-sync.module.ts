@@ -49,6 +49,7 @@ import { EventiFirRentriRepository } from '../../infrastructure/persistence/even
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
 import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
+import { SostaTecnicaRentriUseCase } from './sosta-tecnica-rentri.use-case'
 import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
 import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -573,6 +574,43 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         PrismaService,
       ],
     },
+    // FIR in viaggio P5: sosta tecnica (invio + firma del trasportatore) e ripresa della sua firma.
+    {
+      provide: SostaTecnicaRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completa: CompletaOperazioneConFirmaUseCase,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService,
+        sessioni: ISessioniFirmaRentriRepository,
+        moduli: ModuliAttiviService,
+        prisma: PrismaService
+      ) =>
+        new SostaTecnicaRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          completa,
+          eventi,
+          logger,
+          sessioni,
+          moduli,
+          prisma
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        IEventiFirRentriRepository,
+        LoggerService,
+        ISessioniFirmaRentriRepository,
+        ModuliAttiviService,
+        PrismaService,
+      ],
+    },
     {
       provide: GestisciSessioneFirmaRentriUseCase,
       useFactory: (
@@ -581,7 +619,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         completa: CompletaOperazioneConFirmaUseCase,
         logger: LoggerService,
         firmaPartenza: FirmaPartenzaRentriUseCase,
-        annotazione: AnnotazioneRentriUseCase
+        annotazione: AnnotazioneRentriUseCase,
+        sostaTecnica: SostaTecnicaRentriUseCase
       ) =>
         new GestisciSessioneFirmaRentriUseCase(
           firRepo,
@@ -589,7 +628,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
           completa,
           logger,
           firmaPartenza,
-          annotazione
+          annotazione,
+          sostaTecnica
         ),
       inject: [
         FIRPrismaRepository,
@@ -598,6 +638,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         LoggerService,
         FirmaPartenzaRentriUseCase,
         AnnotazioneRentriUseCase,
+        SostaTecnicaRentriUseCase,
       ],
     },
     // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione

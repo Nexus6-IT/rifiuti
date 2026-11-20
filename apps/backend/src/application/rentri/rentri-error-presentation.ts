@@ -207,7 +207,9 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
               ? "La firma di partenza non si è completata sull'ente: puoi riprovare."
               : operazione === 'ANNOTAZIONE'
                 ? "La firma dell'annotazione non si è completata sull'ente: puoi riprovare."
-                : "L'operazione non si è completata sull'ente: puoi riprovare."
+                : operazione === 'SOSTA_TECNICA'
+                  ? "La firma della sosta tecnica non si è completata sull'ente: puoi riprovare."
+                  : "L'operazione non si è completata sull'ente: puoi riprovare."
       return {
         messaggio,
         azione: 'RIPROVA',
@@ -288,7 +290,7 @@ function estraiCampoValidazione(responsePayload?: string | null): string | undef
  */
 function estraiTipoOperazioneFirma(
   errorMessage?: string | null
-): 'ACCETTAZIONE' | 'ANNULLAMENTO' | 'PARTENZA' | 'ANNOTAZIONE' | undefined {
+): 'ACCETTAZIONE' | 'ANNULLAMENTO' | 'PARTENZA' | 'ANNOTAZIONE' | 'SOSTA_TECNICA' | undefined {
   if (!errorMessage) {
     return undefined
   }
@@ -299,7 +301,8 @@ function estraiTipoOperazioneFirma(
   return tipo === 'ACCETTAZIONE' ||
     tipo === 'ANNULLAMENTO' ||
     tipo === 'PARTENZA' ||
-    tipo === 'ANNOTAZIONE'
+    tipo === 'ANNOTAZIONE' ||
+    tipo === 'SOSTA_TECNICA'
     ? tipo
     : undefined
 }

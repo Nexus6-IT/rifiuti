@@ -261,7 +261,8 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       completa,
       creaLogger(),
       firmaPartenza,
-      annotazione
+      annotazione,
+      {} as any // SostaTecnicaRentriUseCase: non usato dalle annotazioni
     )
     return { completa, annotazione, eventi, gestisci }
   }

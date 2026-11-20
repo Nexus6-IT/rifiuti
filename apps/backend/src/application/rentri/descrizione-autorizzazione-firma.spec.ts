@@ -86,4 +86,12 @@ describe('descrizioneAutorizzazioneFirma', () => {
       `Firma del formulario BCDFGH00001JK - firma di partenza ${veste}`
     )
   })
+
+  it('sosta tecnica: il testo sul telefono dice che si firma la sosta come trasportatore (niente underscore)', () => {
+    const testo = descrizioneAutorizzazioneFirma('BCDFGH00001JK', 'SOSTA_TECNICA')
+    expect(testo).toBe(
+      'Firma del formulario BCDFGH00001JK - firma della sosta tecnica come trasportatore'
+    )
+    expect(testo).not.toContain('_')
+  })
 })

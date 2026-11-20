@@ -29,13 +29,18 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       firma: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-an' }),
       riprendiInvio: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-inv' }),
     }
+    const sostaTecnica = {
+      firma: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-st' }),
+      riprendiInvio: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-st-inv' }),
+    }
     const useCase = new GestisciSessioneFirmaRentriUseCase(
       { findById: jest.fn().mockResolvedValue(fir) } as any,
       sessioni,
       completa as any,
       logger,
       firmaPartenza as any,
-      annotazione as any
+      annotazione as any,
+      sostaTecnica as any
     )
     const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
@@ -46,7 +51,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       digestToSign: 'd',
       scadenza: new Date(Date.now() + 60_000),
     })
-    return { useCase, sessioni, completa, sessione, fir, firmaPartenza, annotazione }
+    return { useCase, sessioni, completa, sessione, fir, firmaPartenza, annotazione, sostaTecnica }
   }
 
   it('inAttesa espone id, operazione e scadenza, MAI token, digest o handle', async () => {
@@ -320,5 +325,63 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
         expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h-inv' })
       }
     )
+  })
+  describe('sosta tecnica (FIR in viaggio P5)', () => {
+    it('riprendi su SOSTA_TECNICA passa da SostaTecnicaRentriUseCase.firma, non dal ciclo comune ne dall annotazione', async () => {
+      const { useCase, completa, annotazione, sostaTecnica, sessione } =
+        await ambiente('SOSTA_TECNICA')
+
+      const esito = await useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: sessione.id,
+        utenteId: 'u1',
+        nuovaSessione: true,
+        correlationId: 'c1',
+      })
+
+      expect(sostaTecnica.firma).toHaveBeenCalledWith({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        utenteId: 'u1',
+        nuovaSessione: true,
+        correlationId: 'c1',
+      })
+      expect(completa.execute).not.toHaveBeenCalled()
+      expect(annotazione.firma).not.toHaveBeenCalled()
+      expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h-st' })
+    })
+
+    it('la prenotazione dell invio (SOSTA_TECNICA_INVIO) non e un banner e si riprende SEMPRE dallo use case della sosta', async () => {
+      const a = await ambiente()
+      a.sessioni.righe.length = 0
+      const prenotazione = await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: 'fir-1',
+        tipoOperazione: 'SOSTA_TECNICA_INVIO',
+        scadenza: new Date(Date.now() + 60_000),
+      })
+      expect(await a.useCase.inAttesa('fir-1', TENANT)).toBeNull()
+
+      const esito = await a.useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: prenotazione.id,
+        utenteId: 'u1',
+        correlationId: 'c1',
+      })
+
+      expect(a.sostaTecnica.riprendiInvio).toHaveBeenCalledWith({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: prenotazione.id,
+        utenteId: 'u1',
+        correlationId: 'c1',
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+      expect(a.sostaTecnica.firma).not.toHaveBeenCalled()
+      expect(a.annotazione.riprendiInvio).not.toHaveBeenCalled()
+      expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h-st-inv' })
+    })
   })
 })

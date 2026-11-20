@@ -67,6 +67,11 @@ import {
   EsitoAnnotazione,
 } from '../../application/rentri/annotazione-rentri.use-case'
 import { AnnotazioneFirRentriDto } from './dto/annotazione-fir-rentri.dto'
+import {
+  EsitoSostaTecnica,
+  SostaTecnicaRentriUseCase,
+} from '../../application/rentri/sosta-tecnica-rentri.use-case'
+import { SostaTecnicaFirRentriDto } from './dto/sosta-tecnica-fir-rentri.dto'
 import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
 import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
 import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
@@ -115,6 +120,8 @@ const RULE_DATI_VIAGGIO = new Set([
   'TRASPORTO_RENTRI_RIFIUTATO',
   'ANNOTAZIONE_NON_VALIDA',
   'ANNOTAZIONE_RENTRI_RIFIUTATA',
+  'SOSTA_TECNICA_NON_VALIDA',
+  'SOSTA_TECNICA_RENTRI_RIFIUTATA',
 ])
 
 const RULE_CONFLITTO = new Set([
@@ -127,6 +134,11 @@ const RULE_CONFLITTO = new Set([
   'ANNOTAZIONE_DI_ALTRO_SOGGETTO',
   'ANNOTAZIONE_IN_VERIFICA',
   'FIRMA_ANNOTAZIONE_NON_DISPONIBILE',
+  'SOSTA_TECNICA_SOGGETTO_NON_NEL_FIR',
+  'SOSTA_TECNICA_DA_FIRMARE',
+  'SOSTA_TECNICA_DI_ALTRO_SOGGETTO',
+  'SOSTA_TECNICA_IN_VERIFICA',
+  'FIRMA_SOSTA_TECNICA_NON_DISPONIBILE',
 ])
 
 /**
@@ -168,7 +180,8 @@ export class RentriFirLifecycleController {
     private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase,
     private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase,
     private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase,
-    private readonly annotazioneUseCase: AnnotazioneRentriUseCase
+    private readonly annotazioneUseCase: AnnotazioneRentriUseCase,
+    private readonly sostaTecnicaUseCase: SostaTecnicaRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -878,6 +891,92 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Firma annotazione RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Sosta tecnica (FIR in viaggio, P5): il trasportatore che ha in carico il rifiuto dichiara dove e quando il
+   * mezzo si e' fermato e firma con la firma remota. La disponibilita' la decide `/azioni`; se la firma non si
+   * conclude la sosta resta registrata presso l'ente e si firma dopo da `firma-sosta-tecnica`.
+   */
+  @Post(':id/sosta-tecnica')
+  @ApiOperation({
+    summary: 'Dichiara una sosta tecnica del formulario',
+    description:
+      "Verifica che l'azienda sia un trasportatore del FIR e che /azioni proponga la sosta, la invia (luogo " +
+      'e date in UTC) e chiede la firma remota. Esiti della firma: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA, DA_COMPLETARE.',
+  })
+  @ApiResponse({ status: 201, description: "Sosta accettata dall'ente, esito della firma" })
+  @ApiResponse({ status: 400, description: "Dati non validi o sosta rifiutata dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'OPERAZIONE_NON_DISPONIBILE, SOSTA_TECNICA_SOGGETTO_NON_NEL_FIR, SOSTA_TECNICA_DA_FIRMARE, SOSTA_TECNICA_DI_ALTRO_SOGGETTO, SOSTA_TECNICA_IN_VERIFICA o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async dichiaraSostaTecnica(
+    @Param('id') firId: string,
+    @Body() dto: SostaTecnicaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoSostaTecnica> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Sosta tecnica RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.sostaTecnicaUseCase.invia({
+        firId,
+        tenantId,
+        luogoStazionamento: dto.luogoStazionamento,
+        dataOraSospensione: dto.dataOraSospensione,
+        dataOraRipresa: dto.dataOraRipresa,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Sosta tecnica RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma della sosta tecnica in attesa (FIR in viaggio, P5): quando la firma dopo l'invio non si e' conclusa
+   * (conferma sul telefono mancata, rete) o va richiesta di nuovo. Una sola richiesta sul telefono.
+   */
+  @Post(':id/firma-sosta-tecnica')
+  @ApiOperation({
+    summary: 'Firma la sosta tecnica su RENTRI',
+    description:
+      'Verifica /azioni (AcquisizioneFirmaSostaTecnica), chiede la firma remota del trasportatore e rilegge lo stato. Esiti: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Esito della firma' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'FIRMA_SOSTA_TECNICA_NON_DISPONIBILE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaSostaTecnica(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoCompletamentoFirma> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma sosta tecnica RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.sostaTecnicaUseCase.firma({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma sosta tecnica RENTRI non riuscita', error, { firId, tenantId })
       throw this.mappaErroreDominio(error)
     }
   }

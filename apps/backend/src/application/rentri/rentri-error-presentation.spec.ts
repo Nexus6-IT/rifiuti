@@ -232,6 +232,19 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('RIPROVA')
   })
 
+  it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA, SOSTA_TECNICA): nomina la sosta tecnica, propone «Riprova»', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage:
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione SOSTA_TECNICA NON è stata completata. Dettaglio della validazione RENTRI: []",
+    })
+
+    expect(risultato.messaggio).toBe(
+      "La firma della sosta tecnica non si è completata sull'ente: puoi riprovare."
+    )
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
   it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA) senza operazione riconoscibile: fallback generico, mai un crash', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'FIRMA_RENTRI_RIFIUTATA',
