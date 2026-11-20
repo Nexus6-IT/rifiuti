@@ -252,6 +252,18 @@ describe('DocumentoDettaglioComponent', () => {
       expect((q('annulla-motivo') as HTMLTextAreaElement).value).toBe('Scarto SDI n. 15/A')
     })
 
+    it('emesso non annullabile (es. accettato): il pulsante resta «Annulla», non «Annulla e rifattura»', async () => {
+      await crea(
+        'ADMIN',
+        dettaglioDocumento({
+          emessoIl: '2026-11-10T10:00:00.000Z',
+          annullabile: false,
+          motivoNonAnnullabile: 'EMESSO',
+        })
+      )
+      expect(bottone('dd-annulla')?.textContent).not.toContain('rifattura')
+    })
+
     it('documento non emesso: «Annulla» e nessun testo di scarto', async () => {
       await crea()
       expect(bottone('dd-annulla')?.textContent).toContain('Annulla')

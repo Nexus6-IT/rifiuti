@@ -57,7 +57,7 @@ export type MotivoNonAnnullabile =
   | 'TRASMISSIONE_SDI_VIVA'
   | 'NON_ULTIMO'
 /** Q33 */
-export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO'
+export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO' | 'SCARTATO_SDI'
 
 /** Q3: un documento senza registro non diventa bozza, sta qui. */
 export interface DocumentoNonGenerato {

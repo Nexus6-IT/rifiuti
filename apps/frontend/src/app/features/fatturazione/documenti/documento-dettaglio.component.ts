@@ -142,7 +142,7 @@ type Conferma = 'xml' | 'emesso'
             <button
               pButton
               type="button"
-              [label]="d.emessoIl !== null ? 'Annulla e rifattura' : 'Annulla'"
+              [label]="d.annullabile && d.emessoIl !== null ? 'Annulla e rifattura' : 'Annulla'"
               icon="pi pi-times"
               class="p-button-danger p-button-outlined"
               [disabled]="motivoNonAnnullabile(d) !== null || inAzione()"
