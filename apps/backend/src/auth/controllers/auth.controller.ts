@@ -32,6 +32,12 @@ import {
 } from '../../core/context/azienda-selezionata-errori'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 import { ConsentitoAutista } from '../../core/decorators/consentito-autista.decorator'
+import {
+  DESTINAZIONI_ACCESSO,
+  PERCORSO_ACCESSO_PREDEFINITO,
+  REFRESH_GIORNI_PREDEFINITO,
+  leggiRelayState,
+} from '../destinazioni-accesso'
 
 // Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
 // funzionare anche con una selezione non più valida, altrimenti l'utente resta bloccato.
@@ -96,6 +102,22 @@ export class AuthController {
       role,
     })
 
+    // Canale di ritorno: il RelayState SAML e' solo la CHIAVE di un elenco chiuso (mai un URL),
+    // quindi non c'e' open redirect. Il refresh lungo vale solo per il canale che lo prevede E
+    // solo per il ruolo indicato (app campo: AUTISTA, 30 giorni); tutti gli altri restano a 7.
+    const relay = leggiRelayState(req.body?.RelayState)
+    const destinazione = relay.destinazione
+    const refreshLungo = destinazione !== null && role === destinazione.ruoloRefreshLungo
+    const refreshGiorni = refreshLungo ? destinazione.refreshGiorni : REFRESH_GIORNI_PREDEFINITO
+    if (refreshLungo) {
+      tokens.refreshToken = this.jwtTokensService.generateRefreshToken(
+        spidUser.id,
+        tenantId,
+        `${refreshGiorni}d`,
+        'campo'
+      )
+    }
+
     // Sessione singola (regola trasversale): un nuovo accesso invalida il
     // precedente. Si revocano i refresh token gia' emessi e si sposta in
     // avanti l'epoca di sessione, che rende non validi anche gli access
@@ -103,23 +125,27 @@ export class AuthController {
     await this.redisService.revokeAllRefreshTokens(spidUser.id)
     await this.redisService.impostaEpocaSessione(spidUser.id)
 
-    // Store refresh token in Redis (7 days TTL)
+    // Store refresh token in Redis (TTL = durata del refresh token: 7 giorni, 30 per campo/AUTISTA)
     await this.redisService.storeRefreshToken(
       spidUser.id,
       tokens.refreshToken,
-      7 * 24 * 60 * 60 // 7 days in seconds
+      refreshGiorni * 24 * 60 * 60
     )
 
     // Il callback SAML e' una navigazione del browser: si reindirizza alla SPA
     // passando i token nel fragment (#) per non finire in log/referer lato server.
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://rifiuti.ignicraft.com'
-    const fragment = new URLSearchParams({
+    const parametri: Record<string, string> = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: String(tokens.expiresIn),
-    }).toString()
-    return res.redirect(302, `${frontendUrl}/auth/callback#${fragment}`)
+    }
+    // Il nonce del browser torna indietro cosi' com'e': l'app accetta i token solo se coincide.
+    if (relay.nonce !== null) parametri.nonce = relay.nonce
+    const fragment = new URLSearchParams(parametri).toString()
+    const percorso = destinazione?.percorso ?? PERCORSO_ACCESSO_PREDEFINITO
+    return res.redirect(302, `${frontendUrl}${percorso}#${fragment}`)
   }
 
   /**
@@ -154,6 +180,14 @@ export class AuthController {
     }
 
     const role = user.role || 'VIEWER'
+
+    // Refresh lungo del canale campo: vale solo finche' l'utente (letto dal DB, non dal token) e'
+    // ancora AUTISTA. Se il ruolo e' cambiato si revoca il token e si rifiuta: il telefono (o uno
+    // perso) non rinnova per 30 giorni con un ruolo d'ufficio.
+    if (payload.canale === 'campo' && role !== DESTINAZIONI_ACCESSO.campo.ruoloRefreshLungo) {
+      await this.redisService.revokeRefreshToken(payload.sub, dto.refreshToken)
+      throw new UnauthorizedException('Sessione del canale campo non piu valida per il ruolo')
+    }
     // azienda primaria: record utente letto dal DB, base per ricontrollare l'accesso all'azienda del refresh
     const tenantPrimario = user.tenantId || ''
     // Azienda del token che si rinnova: quella scelta con lo switch, se il refresh token la

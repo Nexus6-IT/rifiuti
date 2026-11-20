@@ -408,6 +408,19 @@ export async function creaScenarioProposta(
 }
 
 /**
+ * Messaggio d'errore leggibile per il log della pulizia. I messaggi Prisma cominciano con "\n"
+ * (`\nInvalid ... invocation:`), quindi la prima riga e' vuota: si prende il testo intero, con gli
+ * spazi compressi, preceduto dal codice (Prisma `code`, oppure SQLSTATE dentro `Code: \`57014\``).
+ */
+export function descriviErrorePulizia(e: unknown): string {
+  if (!(e instanceof Error)) return String(e)
+  const codice = (e as { code?: unknown }).code
+  const testo = e.message.replace(/\s+/g, ' ').trim()
+  const sintesi = testo.length > 600 ? `${testo.slice(0, 300)} [...] ${testo.slice(-300)}` : testo
+  return typeof codice === 'string' ? `[${codice}] ${sintesi}` : sintesi
+}
+
+/**
  * Pulizia unica delle aziende create dagli spec dei legami (col client PROPRIETARIO), SOLO per id
  * esatti e nell'ordine delle FK. Ogni passo ha il suo `lock_timeout` (una transazione appesa di
  * un altro processo non blocca la pulizia per sempre) e un suo `try`: un passo che fallisce non
@@ -421,16 +434,25 @@ export async function pulisciTenantDiTest(
   if (tenantIds.length === 0) return
   const ids = [...new Set(tenantIds)]
   const errori: string[] = []
+  // `movimenti` e `aziende` cancellano anche 200.000 righe (spec di volume) e ogni riga controlla le
+  // chiavi esterne dei documenti: li si fa un'azienda per volta (un'azienda da sola non blocca le
+  // altre e il volume non si somma agli altri 27 tenant), con un tetto di 480 s a transazione
+  // (il vecchio 120 s non bastava sul runner CI) e un secondo tentativo su errore transitorio
+  // (deadlock, lock_timeout, timeout della transazione).
+  const PESANTI = new Set(['waste_movements', 'tenants'])
   const passo = async (
     nome: string,
     tabella: string,
     colonna = 'tenant_id',
     replica = false
   ): Promise<void> => {
-    try {
+    const pesante = PESANTI.has(tabella)
+    const gruppi = pesante ? ids.map(id => [id]) : [ids]
+    const cancella = async (gruppo: string[]): Promise<void> => {
       await owner.$transaction(
         async tx => {
           await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '20s'`)
+          await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = 0`)
           // Documenti e figlie della fatturazione (4.4a): i trigger di immutabilita' rifiutano la
           // cancellazione dei non in bozza anche al proprietario. Serve un superuser: e' il
           // proprietario del database di test, in locale e in CI (base 4.4, Task 0). Le FK non
@@ -441,22 +463,30 @@ export async function pulisciTenantDiTest(
           if (tabella === 'tenants')
             await tx.$executeRawUnsafe(`SET LOCAL ${GUC_CONSENTI_CANCELLAZIONE_AZIENDA} = 'on'`)
           if (tabella === 'waste_movements') {
-            // Le catene di correzione hanno FK NoAction fra loro: un solo statement.
+            // Le catene di correzione hanno FK NoAction fra loro: un solo statement per azienda.
             await tx.$executeRawUnsafe(
               `DELETE FROM waste_movements WHERE tenant_id = ANY($1::uuid[])`,
-              ids
+              gruppo
             )
             return
           }
           await tx.$executeRawUnsafe(
             `DELETE FROM ${tabella} WHERE ${colonna} = ANY($1::uuid[])`,
-            ids
+            gruppo
           )
         },
-        { timeout: 120_000, maxWait: 30_000 }
+        { timeout: pesante ? 480_000 : 120_000, maxWait: 30_000 }
       )
-    } catch (e) {
-      errori.push(`${nome}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+    }
+    for (const gruppo of gruppi) {
+      for (let tentativo = 1; tentativo <= 2; tentativo++) {
+        try {
+          await cancella(gruppo)
+          break
+        } catch (e) {
+          if (tentativo === 2) errori.push(`${nome}: ${descriviErrorePulizia(e)}`)
+        }
+      }
     }
   }
   // Fatturazione per periodo (4.4a), prima dei passi dei legami: marcatori, poi le figlie dei
@@ -494,7 +524,7 @@ export async function pulisciTenantDiTest(
       ids
     )
   } catch (e) {
-    errori.push(`spese accessorie: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+    errori.push(`spese accessorie: ${descriviErrorePulizia(e)}`)
   }
   for (const [nome, tabella] of [
     ['abbinamenti', 'abbinamenti_carico_scarico'],

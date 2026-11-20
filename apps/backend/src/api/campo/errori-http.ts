@@ -11,8 +11,12 @@ import {
   AutistaDuplicatoError,
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
+  EventoCampoDiAltroUtenteError,
 } from '../../application/campo/errori-campo'
-import { RitiroDatiNonValidiError } from '../../application/ritiri/errori-ritiri'
+import {
+  RitiroDatiNonValidiError,
+  RitiroNonTrovatoError,
+} from '../../application/ritiri/errori-ritiri'
 
 /** Errori di dominio dell'app campo tradotti in HTTP, con messaggi senza id. */
 export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
@@ -20,7 +24,12 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
     return await fn()
   } catch (err) {
     if (err instanceof HttpException) throw err
-    if (err instanceof AutistaNonTrovatoError) throw new NotFoundException(err.message)
+    if (err instanceof AutistaNonTrovatoError || err instanceof RitiroNonTrovatoError) {
+      throw new NotFoundException(err.message)
+    }
+    if (err instanceof EventoCampoDiAltroUtenteError) {
+      throw new ConflictException({ message: err.message, error: err.code })
+    }
     if (err instanceof AutistaNonCollegatoError) {
       throw new ForbiddenException({ message: err.message, error: err.code })
     }

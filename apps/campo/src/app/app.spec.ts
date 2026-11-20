@@ -1,20 +1,71 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
+import { routes } from './app.routes';
+import { GiroService } from './core/giro.service';
 
 describe('App campo', () => {
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [App] }).compileComponents();
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
   });
 
   it("crea l'app", () => {
-    const fixture = TestBed.createComponent(App);
-    expect(fixture.componentInstance).toBeTruthy();
+    expect(TestBed.createComponent(App).componentInstance).toBeTruthy();
   });
 
-  it('mostra il titolo «WasteFlow campo»', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const html = fixture.nativeElement as HTMLElement;
-    expect(html.querySelector('h1')?.textContent).toContain('WasteFlow campo');
+  it('senza sessione la rotta del giro porta al login con il link SPID/CIE per il canale campo', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/');
+    const el = harness.routeNativeElement as HTMLElement;
+    expect(el.querySelector('h1')?.textContent).toContain('WasteFlow campo');
+    expect(el.querySelector('a[data-testid="accedi"]')?.getAttribute('href')).toMatch(
+      /^\/api\/v1\/auth\/spid\/login\?RelayState=campo\.[A-Za-z0-9_-]{22}$/,
+    );
+  });
+});
+
+describe('App campo: ripresa dal background', () => {
+  it('alla ripresa (visibilitychange) a giorno cambiato svuota il giro di ieri', async () => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const giro = TestBed.inject(GiroService);
+    giro.impostaFresco(
+      { data: '1999-01-01', autista: { id: 'a', nome: 'M', cognome: 'B' }, ritiri: [] },
+      'x',
+    );
+    TestBed.createComponent(App);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(giro.corrente()).toBeNull());
+  });
+});
+
+describe('App campo: ripresa con due eventi insieme', () => {
+  it('pageshow e visibilitychange nello stesso momento controllano il giorno UNA volta sola', async () => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const giro = TestBed.inject(GiroService);
+    const controlla = vi.spyOn(giro, 'controllaGiorno').mockResolvedValue(false);
+    TestBed.createComponent(App);
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pageshow'));
+    await vi.waitFor(() => expect(controlla).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controlla).toHaveBeenCalledTimes(1);
+    // Finita la prima, una nuova ripresa controlla di nuovo.
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(controlla).toHaveBeenCalledTimes(2));
   });
 });
