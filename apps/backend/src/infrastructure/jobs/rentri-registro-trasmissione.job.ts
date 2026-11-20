@@ -147,7 +147,7 @@ export class RentriRegistroTrasmissioneJob {
         { tenantId },
         async () =>
           await this.prisma.registroRifiuti.findMany({
-            where: { tenantId, identificativoRentri: { not: null } },
+            where: { tenantId, identificativoRentri: { not: null }, rentriChiusoIl: null },
             select: { id: true },
           })
       )

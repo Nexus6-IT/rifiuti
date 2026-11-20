@@ -109,7 +109,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
   let n = 0
   let progressivo = 0
 
-  async function azienda(opzioni: { identificativo?: string | null } = {}) {
+  async function azienda(opzioni: { identificativo?: string | null; chiuso?: boolean } = {}) {
     const t = await owner.tenant.create({
       data: {
         partitaIva: partitaIvaUnica(),
@@ -133,6 +133,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
         descrizione: 'Registro di prova',
         identificativoRentri:
           opzioni.identificativo === undefined ? 'RABCDE12345' : opzioni.identificativo,
+        rentriChiusoIl: opzioni.chiuso ? new Date('2026-05-01T00:00:00Z') : null,
       },
     })
     return { tenantId: t.id, registroId: registro.id, unitaLocaleId: sede.id }
@@ -397,6 +398,27 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       await expect(accoda.accoda(a.tenantId, utenteId, a.registroId, [])).rejects.toBeInstanceOf(
         RichiestaTrasmissioneNonValidaError
       )
+    })
+  })
+
+  describe('registro chiuso su RENTRI (eREGI E3)', () => {
+    it('accoda e accodaStorico rifiutano (409) e non creano righe: la registrazione locale resta', async () => {
+      const a = await azienda({ chiuso: true })
+      const m = await movimento(a)
+      const rif = await riga(a, await movimento(a), { stato: 'RIFIUTATA' })
+      await expect(accoda.accoda(a.tenantId, utenteId, a.registroId, [m.id])).rejects.toThrow(
+        TrasmissioneNonModificabileError
+      )
+      await expect(accoda.accoda(a.tenantId, utenteId, a.registroId, [m.id])).rejects.toThrow(
+        /chiuso su RENTRI/
+      )
+      await expect(
+        accoda.accodaStorico(a.tenantId, utenteId, a.registroId, 2026, true)
+      ).rejects.toThrow(TrasmissioneNonModificabileError)
+      expect(await rigaDi(m.id)).toBeNull()
+      expect((await rigaDi(rif.movimentoId))?.stato).toBe('RIFIUTATA')
+      expect(await audit(a.tenantId, 'RENTRI_REGISTRO_ACCODATI')).toHaveLength(0)
+      expect(await owner.wasteMovement.count({ where: { id: m.id } })).toBe(1)
     })
   })
 
@@ -1276,6 +1298,15 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
           })
         ).rejects.toBeInstanceOf(IdentificativoRegistroNonValidoError)
       }
+    })
+
+    it('E3: su un registro chiuso su RENTRI non si attiva l invio automatico (409)', async () => {
+      const a = await azienda({ chiuso: true })
+      await expect(
+        impostazioni.imposta(a.tenantId, utenteId, 'ADMIN', a.registroId, { invioAutomatico: true })
+      ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+      const r = await owner.registroRifiuti.findUniqueOrThrow({ where: { id: a.registroId } })
+      expect(r.invioRentriAutomaticoDal).toBeNull()
     })
 
     it('solo ADMIN', async () => {

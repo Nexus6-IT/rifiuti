@@ -100,6 +100,7 @@ export async function annotazioniPiuVecchieDaTrasmettere(
     LEFT JOIN "movimenti_trasmissione_rentri" t
       ON t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id"
     WHERE m."tenant_id" = ${tenantId}::uuid
+      AND r."rentri_chiuso_il" IS NULL
       AND (
         t."id" IS NOT NULL AND t."stato"::text IN (${Prisma.join([...STATI_DA_TRASMETTERE_PER_TERMINE])})
         OR (

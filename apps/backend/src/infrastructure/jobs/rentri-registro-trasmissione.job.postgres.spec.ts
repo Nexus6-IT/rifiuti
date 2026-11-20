@@ -16,6 +16,7 @@ process.env.DATABASE_URL = urlComeRuolo(
 )
 
 import { randomUUID } from 'crypto'
+import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaService, creaPrismaServiceApplicativo } from '../persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { LettoreAnnotazioniRentri } from '../../application/rentri/registro/lettore-annotazioni-rentri'
@@ -210,6 +211,95 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
     expect(righe.map(r => r.stato).sort()).toEqual(['INCERTA', 'TRASMESSA', 'TRASMESSA'])
     const primoRegistro = righe.filter(r => r.registroId === registro.id)
     expect(primoRegistro.map(r => r.stato).sort()).toEqual(['INCERTA', 'TRASMESSA'])
+  })
+
+  it('eREGI E3: un registro chiuso su RENTRI non riceve nessuna POST (ne dal job ne da trasmettiRegistro) e non adotta movimenti', async () => {
+    const t = await owner.tenant.create({
+      data: {
+        partitaIva: partitaIvaUnica(),
+        ragioneSociale: 'Job chiuso SRL',
+        country: 'IT',
+        subscriptionTier: 'ENTERPRISE',
+      },
+    })
+    tenantCreati.push(t.id)
+    const sede = await owner.rentriUnitaLocale.create({
+      data: {
+        tenantId: t.id,
+        numIscrSito: 'OP0001JC000001-MI0001',
+        denominazione: 'Sede',
+        principale: true,
+      },
+    })
+    const registro = await owner.registroRifiuti.create({
+      data: {
+        tenantId: t.id,
+        unitaLocaleId: sede.id,
+        descrizione: 'Registro chiuso',
+        identificativoRentri: 'RCHIUSO0001',
+        invioRentriAutomaticoDal: new Date('2020-01-01T00:00:00Z'),
+        rentriChiusoIl: new Date('2026-05-01T00:00:00Z'),
+      },
+    })
+    const crea = (progressivo: number) =>
+      owner.wasteMovement.create({
+        data: {
+          tenantId: t.id,
+          registroId: registro.id,
+          progressiveYear: 2026,
+          progressiveNumber: progressivo,
+          cerCode: '15 01 01',
+          unit: 'KG',
+          wastePhysicalState: 'Solido',
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          registrationDate: new Date('2026-03-01T10:00:00Z'),
+          causale: 'PRODUZIONE_INTERNA',
+          quantity: 100,
+        },
+      })
+    const daInviare = await crea(1)
+    await crea(2) // senza riga: l'adozione automatica non la deve prendere
+    await owner.movimentoTrasmissioneRentri.create({
+      data: {
+        tenantId: t.id,
+        movimentoId: daInviare.id,
+        registroId: registro.id,
+        tipo: 'CARICO',
+        origine: 'MANUALE',
+      },
+    })
+    const posts = jest.fn(async () => ({ transazioneId: randomUUID(), movimenti: [] }))
+    const client: any = { inviaMovimenti: posts, attendiEsitoMovimenti: jest.fn() }
+    const repo = new TrasmissioniRegistroRepository(app, logger)
+    const trasmetti = new TrasmettiLottoRegistroUseCase(
+      repo,
+      new LettoreAnnotazioniRentri(logger),
+      client,
+      logger,
+      a => ({ ok: true, corpo: { anno: a.numero.anno, progressivo: a.numero.progressivo } })
+    )
+    const job = new RentriRegistroTrasmissioneJob(
+      { tenant: { findMany: async () => [{ id: t.id }] } } as any,
+      app,
+      { haCredenziale: async () => true } as any,
+      repo,
+      trasmetti,
+      logger,
+      new ModuliAttiviService(new ContrattoGruppoService(app))
+    )
+
+    await job.eseguiTrasmissione()
+    const diretto = await TenantContext.run(
+      { tenantId: t.id },
+      async () => await trasmetti.trasmettiRegistro(t.id, registro.id)
+    )
+
+    expect(posts).not.toHaveBeenCalled()
+    expect(diretto.esito).toBe('REGISTRO_CHIUSO')
+    const righe = await owner.movimentoTrasmissioneRentri.findMany({ where: { tenantId: t.id } })
+    expect(righe).toHaveLength(1)
+    expect(righe[0]).toMatchObject({ stato: 'DA_TRASMETTERE', tentativi: 0 })
   })
 
   it('moduli a lotti col ruolo applicativo: madre ENTERPRISE e sua figlia TRIAL si, azienda TRIAL no, una sola lettura', async () => {

@@ -224,9 +224,15 @@ export class ImpostazioniRentriRegistroService {
             identificativoRentri: true,
             invioRentriAutomaticoDal: true,
             rentriAperturaRichiestaIl: true,
+            rentriChiusoIl: true,
           },
         })
         if (!registro) throw new RegistroNonTrovatoError()
+        if (dati.invioAutomatico === true && registro.rentriChiusoIl !== null) {
+          throw new TrasmissioneNonModificabileError(
+            "Il registro è chiuso su RENTRI: non si può attivare l'invio automatico."
+          )
+        }
 
         const identificativoFinale =
           nuovoIdentificativo === undefined ? registro.identificativoRentri : nuovoIdentificativo

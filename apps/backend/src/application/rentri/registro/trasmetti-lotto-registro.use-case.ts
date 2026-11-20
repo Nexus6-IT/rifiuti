@@ -63,6 +63,8 @@ export interface EsitoGiroRegistro {
     | 'NIENTE'
     | 'GIA_IN_CORSO'
     | 'SENZA_IDENTIFICATIVO'
+    /** eREGI E3: registro chiuso su RENTRI, nessun invio. */
+    | 'REGISTRO_CHIUSO'
     | 'SENZA_CERTIFICATO'
     | 'INVIATO'
     | 'INCERTO'
