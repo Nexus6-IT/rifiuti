@@ -659,3 +659,20 @@ generati con `npm run genera-schema:crea-registro` / `:modifica-registro` e guar
   il valore della fixture. Il significato di `Ref`/digest per la catena delle esportazioni resta
   l'ipotesi R1 del piano, da provare sul demo.
 - Paginazione dell'elenco registri: applicata davvero (a differenza delle altre rotte `anagrafiche`).
+
+## 10. Firma XMLDSig del registro in `/valida` (2026-11-20, piano `2026-11-18-registro-eregi.md`, E5)
+
+`POST /dati-registri/v1.0/operatore/{registro}/valida` resta NONBLOCK_PULL con esito deciso dal
+canale di controllo, ma se il file (XML, o ZIP con un solo XML) e' un `reg:Registro` la fake, al
+completamento della transazione, verifica davvero (`dominio/verifica-firma-registro.ts`, libreria
+`xml-crypto`) e aggiunge i messaggi all'esito:
+- `firmaNonPresente` (Avvertimento) se manca la `ds:Signature` di radice;
+- `firmaNonValida` (Errore) se la firma non copre tutto il documento (`Reference URI=""`, enveloped,
+  C14N 1.0, SHA-256, RSA o ECDSA P1363) o non si verifica col certificato del `KeyInfo`;
+- `catenaDigestNonValida` (Errore) se `Ref[0]` non e' il `DigestValue` del `Reference
+  URI="#eREGI-CS-0"` dell'eREGI incorporato.
+
+**Divergenze dichiarate.** Coerenza interna, nessuna catena di fiducia verso una CA. Dei `Ref`
+successivi al primo (esportazioni precedenti) non si controlla nulla. Non si ricalcola il digest
+dell'eREGI (la fake non lo canonicalizza, v. §9) e non si verifica la sua firma. Un file che non e'
+un `reg:Registro` non riceve alcun giudizio.
