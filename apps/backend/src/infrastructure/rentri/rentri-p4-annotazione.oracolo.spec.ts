@@ -393,10 +393,11 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
         ])
         const storico = (await eventi.elenca(tenantId, fir.id)).reverse()
         expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+          ['Annotazione', 'INVIATA'],
           ['Annotazione', 'ACCETTATA'],
           ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
         ])
-        expect(storico[0].payload).toEqual({ annotazione: TESTO, identificativo_soggetto: CF })
+        expect(storico[1].payload).toEqual({ annotazione: TESTO, identificativo_soggetto: CF })
       } finally {
         completatore.ferma()
       }
@@ -446,12 +447,13 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       const storico = (await eventi.elenca(tenantId, fir.id)).map(e => [e.operazione, e.esito])
       expect(storico).toEqual(
         expect.arrayContaining([
+          ['Annotazione', 'INVIATA'],
           ['Annotazione', 'ACCETTATA'],
           ['AcquisizioneFirmaAnnotazione', 'INVIATA'],
           ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
         ])
       )
-      expect(storico).toHaveLength(3)
+      expect(storico).toHaveLength(4)
     } finally {
       completatore.ferma()
     }
@@ -597,6 +599,7 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       expect(await sessioni.trovaAperta(tenantId, fir.id)).toBeNull()
       expect((await eventi.elenca(tenantId, fir.id)).map(e => [e.operazione, e.esito])).toEqual([
         ['Annotazione', 'RIFIUTATA'],
+        ['Annotazione', 'INVIATA'],
       ])
     } finally {
       completatore.ferma()
@@ -652,5 +655,181 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
     ).rejects.toMatchObject({ metadata: { rule: 'OPERAZIONE_NON_DISPONIBILE' } })
     expect(inviaAnnotazione).not.toHaveBeenCalled()
+  })
+
+  describe('R1-R2: invio senza esito riconciliato con il dettaglio del formulario', () => {
+    const { TrasmissioneRentriIncertaError } = jest.requireActual('./rentri-api.client')
+
+    /** Il POST arriva all'ente (e viene elaborato) ma la risposta si perde: esito INCERTA da noi. */
+    function rispostaPersaDopoIlPost(client: RENTRIApiClient) {
+      const originale = client.inviaAnnotazione.bind(client)
+      return jest
+        .spyOn(client, 'inviaAnnotazione')
+        .mockImplementationOnce(async (...argomenti: Parameters<typeof originale>) => {
+          await originale(...argomenti)
+          throw new TrasmissioneRentriIncertaError('HTTP_5XX', 503, 'annotazione')
+        })
+    }
+
+    it('INCERTA -> propria: l annotazione e presso l ente, firma() la riconcilia e la firma con UNA authorize, nessun secondo POST', async () => {
+      const tenantId = 'tenant-oracolo-p4-r1a'
+      const numeroFir = 'BCDFGH00060ZS'
+      const { fir, client, annotazione, eventi } = await preparaFirDaFirmare(
+        numeroFir,
+        tenantId,
+        'InserimentoAccettazione'
+      )
+      const inviaAnnotazione = rispostaPersaDopoIlPost(client)
+      const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+      agganciaConfermaAutomatica(client)
+      const completatore = avviaCompletatore()
+
+      try {
+        await expect(
+          annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
+        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+        expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(
+          'FirmaAnnotazione'
+        )
+
+        // Una nuova annotazione NON parte: la nostra e' gia' presso l'ente, va firmata.
+        await expect(
+          annotazione.invia({ firId: fir.id, tenantId, testo: 'Altra', ...TEMPI })
+        ).rejects.toMatchObject({ metadata: { rule: 'ANNOTAZIONE_DA_FIRMARE' } })
+
+        const esito = await annotazione.firma({ firId: fir.id, tenantId, ...TEMPI })
+
+        expect(esito).toEqual({ esito: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' })
+        expect(inviaAnnotazione).toHaveBeenCalledTimes(1)
+        expect(authorize).toHaveBeenCalledTimes(1)
+        const storico = (await eventi.elenca(tenantId, fir.id)).reverse()
+        expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+          ['Annotazione', 'INVIATA'],
+          ['Annotazione', 'INCERTA'],
+          ['Annotazione', 'ACCETTATA'],
+          ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
+        ])
+        expect(storico[2].dettaglioEnte).toContain('riconciliata')
+      } finally {
+        completatore.ferma()
+      }
+    }, 60000)
+
+    it('INCERTA -> assente: la nostra annotazione non e presso l ente, passata la finestra si chiude e si reinvia una sola volta', async () => {
+      const tenantId = 'tenant-oracolo-p4-r1b'
+      const numeroFir = 'BCDFGH00060ZT'
+      const { fir, client, annotazione, eventi } = await preparaFirDaFirmare(
+        numeroFir,
+        tenantId,
+        'InserimentoAccettazione'
+      )
+      // Il POST non arriva all'ente.
+      const inviaAnnotazione = jest
+        .spyOn(client, 'inviaAnnotazione')
+        .mockRejectedValueOnce(new TrasmissioneRentriIncertaError('HTTP_5XX', 503, 'annotazione'))
+      agganciaConfermaAutomatica(client)
+      const completatore = avviaCompletatore()
+
+      try {
+        await expect(
+          annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
+        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+
+        // Dentro la finestra l'ente potrebbe ancora elaborarla: nessun reinvio.
+        await expect(
+          annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
+        ).rejects.toMatchObject({ metadata: { rule: 'ANNOTAZIONE_IN_VERIFICA' } })
+        expect(inviaAnnotazione).toHaveBeenCalledTimes(1)
+
+        for (const riga of eventi.righe) riga.createdAt = new Date(Date.now() - 24 * 3600_000)
+        const esito = await annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
+
+        expect(esito.firma).toEqual({
+          esito: 'COMPLETATA',
+          statoFormulario: 'InserimentoAccettazione',
+        })
+        expect(inviaAnnotazione).toHaveBeenCalledTimes(2)
+        const storico = (await eventi.elenca(tenantId, fir.id)).reverse()
+        expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+          ['Annotazione', 'INVIATA'],
+          ['Annotazione', 'INCERTA'],
+          ['Annotazione', 'RIFIUTATA'],
+          ['Annotazione', 'INVIATA'],
+          ['Annotazione', 'ACCETTATA'],
+          ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
+        ])
+        const dettaglio = await client.leggiFormulario(tenantId, numeroFir)
+        expect(dettaglio.dati_annotazioni).toHaveLength(1)
+      } finally {
+        completatore.ferma()
+      }
+    }, 60000)
+
+    it('R2: prenotazione ANNOTAZIONE_INVIO appesa (processo morto dopo il POST): niente banner, la ripresa riconcilia e firma come ANNOTAZIONE', async () => {
+      const tenantId = 'tenant-oracolo-p4-r2'
+      const numeroFir = 'BCDFGH00060ZV'
+      const { fir, client, sessioni, annotazione, gestisci, eventi } = await preparaFirDaFirmare(
+        numeroFir,
+        tenantId,
+        'InserimentoAccettazione'
+      )
+      const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+      agganciaConfermaAutomatica(client)
+      const completatore = avviaCompletatore()
+
+      try {
+        // Il processo muore subito dopo il POST: prenotazione aperta e solo la riga INVIATA.
+        let prenotazioneId = ''
+        jest
+          .spyOn(client, 'inviaAnnotazione')
+          .mockImplementationOnce(async (t, n, corpo, opzioni) => {
+            const esito = await RENTRIApiClient.prototype.inviaAnnotazione.call(
+              client,
+              t,
+              n,
+              corpo,
+              opzioni
+            )
+            const aperta = await sessioni.trovaAperta(tenantId, fir.id)
+            prenotazioneId = aperta!.id
+            jest.spyOn(sessioni, 'chiudi').mockResolvedValueOnce(false) // il rilascio non avviene
+            throw Object.assign(new Error('processo terminato'), { esito })
+          })
+        await annotazione
+          .invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
+          .catch(() => undefined)
+        // Lo storico dopo la morte del processo: solo INVIATA (togliamo l'INCERTA del catch simulato).
+        const indice = eventi.righe.findIndex(r => r.esito === 'INCERTA')
+        if (indice >= 0) eventi.righe.splice(indice, 1)
+        const prenotazione = sessioni.righe.find(r => r.id === prenotazioneId)!
+        expect(prenotazione.stato).toBe('IN_AVVIO')
+        prenotazione.scadenza = new Date(Date.now() - 1000)
+        for (const riga of eventi.righe) riga.createdAt = new Date(Date.now() - 24 * 3600_000)
+
+        expect(await gestisci.inAttesa(fir.id, tenantId)).toBeNull()
+
+        const esito = await gestisci.riprendi({
+          firId: fir.id,
+          tenantId,
+          sessioneId: prenotazioneId,
+        })
+
+        expect(esito).toEqual({ esito: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' })
+        expect(authorize).toHaveBeenCalledTimes(1)
+        expect(soloFirma(sessioni).map(s => [s.tipoOperazione, s.stato])).toEqual([
+          ['ANNOTAZIONE', 'COMPLETATA'],
+        ])
+        expect(sessioni.righe.find(r => r.id === prenotazioneId)!.stato).toBe('ANNULLATA')
+        expect(
+          (await eventi.elenca(tenantId, fir.id)).reverse().map(e => [e.operazione, e.esito])
+        ).toEqual([
+          ['Annotazione', 'INVIATA'],
+          ['Annotazione', 'ACCETTATA'],
+          ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
+        ])
+      } finally {
+        completatore.ferma()
+      }
+    }, 60000)
   })
 })

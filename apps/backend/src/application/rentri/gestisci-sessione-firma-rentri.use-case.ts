@@ -7,7 +7,11 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
-import { AnnotazioneRentriUseCase, tipoOperazioneAnnotazione } from './annotazione-rentri.use-case'
+import {
+  AnnotazioneRentriUseCase,
+  tipoOperazioneAnnotazione,
+  tipoPrenotazioneInvioAnnotazione,
+} from './annotazione-rentri.use-case'
 import {
   FirmaPartenzaRentriUseCase,
   operazionePartenzaDaTipo,
@@ -70,6 +74,9 @@ export class GestisciSessioneFirmaRentriUseCase {
     const fir = await this.verificaFir(firId, tenantId)
     const ultima = await this.sessioni.ultima(tenantId, firId)
     if (!ultima) return null
+    // La prenotazione dell'invio di un'annotazione non e' una firma da confermare sul telefono: niente
+    // banner (si riprende solo dall'annotazione, che riconcilia l'invio prima di qualunque authorize).
+    if (ultima.tipoOperazione === tipoPrenotazioneInvioAnnotazione()) return null
     if (STATI_SESSIONE_APERTA.includes(ultima.stato)) {
       return {
         id: ultima.id,
@@ -143,6 +150,18 @@ export class GestisciSessioneFirmaRentriUseCase {
         'SESSIONE_FIRMA_NON_ATTIVA',
         `Questa richiesta di firma è già conclusa (${sessione.stato}): non c'è nulla da riprendere.`
       )
+    }
+
+    // Prenotazione dell'invio di un'annotazione (R2): MAI il ciclo comune, che firmerebbe senza `/azioni` e
+    // senza il controllo «annotazione propria». Passa sempre dallo use case dell'annotazione.
+    if (sessione.tipoOperazione === tipoPrenotazioneInvioAnnotazione()) {
+      return this.annotazione.riprendiInvio({
+        firId,
+        tenantId,
+        sessioneId: sessione.id,
+        utenteId,
+        correlationId,
+      })
     }
 
     // Firma di partenza: passa dal suo use case, cosi' lo storico registra l'esito della ripresa e una nuova

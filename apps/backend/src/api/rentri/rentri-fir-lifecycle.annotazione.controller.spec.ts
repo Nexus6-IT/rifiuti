@@ -87,6 +87,8 @@ describe('RentriFirLifecycleController — annotazione', () => {
       'ANNOTAZIONE_SOGGETTO_NON_NEL_FIR',
       'ANNOTAZIONE_DA_FIRMARE',
       'SESSIONE_FIRMA_IN_CORSO',
+      'ANNOTAZIONE_IN_VERIFICA',
+      'ANNOTAZIONE_DI_ALTRO_SOGGETTO',
     ])('%s: 409 con codice stabile e messaggio per l utente', async codice => {
       annotazione.invia.mockRejectedValue(
         DomainException.businessRuleViolation(codice, 'Spiegazione per l utente.')

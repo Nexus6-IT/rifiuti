@@ -27,6 +27,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
     }
     const annotazione = {
       firma: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-an' }),
+      riprendiInvio: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-inv' }),
     }
     const useCase = new GestisciSessioneFirmaRentriUseCase(
       { findById: jest.fn().mockResolvedValue(fir) } as any,
@@ -265,5 +266,59 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
         expect.objectContaining({ nuovaSessione: true })
       )
     })
+  })
+
+  describe('prenotazione dell invio di un annotazione (ANNOTAZIONE_INVIO, R2)', () => {
+    async function conPrenotazioneInvio(scadenza: Date) {
+      const a = await ambiente()
+      a.sessioni.righe.length = 0
+      const prenotazione = await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: 'fir-1',
+        tipoOperazione: 'ANNOTAZIONE_INVIO',
+        scadenza,
+      })
+      return { ...a, prenotazione }
+    }
+
+    it('inAttesa NON mostra la prenotazione dell invio: non e una firma da confermare sul telefono', async () => {
+      const { useCase } = await conPrenotazioneInvio(new Date(Date.now() + 60_000))
+      expect(await useCase.inAttesa('fir-1', TENANT)).toBeNull()
+
+      const b = await conPrenotazioneInvio(new Date(Date.now() - 1))
+      expect(await b.useCase.inAttesa('fir-1', TENANT)).toBeNull()
+    })
+
+    it.each([
+      ['viva', 60_000],
+      ['appesa (processo morto)', -1],
+    ])(
+      'riprendi di una prenotazione %s passa SEMPRE dallo use case dell annotazione, mai dal ciclo comune',
+      async (_n, deltaMs) => {
+        const { useCase, completa, firmaPartenza, annotazione, prenotazione } =
+          await conPrenotazioneInvio(new Date(Date.now() + deltaMs))
+
+        const esito = await useCase.riprendi({
+          firId: 'fir-1',
+          tenantId: TENANT,
+          sessioneId: prenotazione.id,
+          utenteId: 'u1',
+          nuovaSessione: true,
+          correlationId: 'c1',
+        })
+
+        expect(annotazione.riprendiInvio).toHaveBeenCalledWith({
+          firId: 'fir-1',
+          tenantId: TENANT,
+          sessioneId: prenotazione.id,
+          utenteId: 'u1',
+          correlationId: 'c1',
+        })
+        expect(completa.execute).not.toHaveBeenCalled()
+        expect(annotazione.firma).not.toHaveBeenCalled()
+        expect(firmaPartenza.execute).not.toHaveBeenCalled()
+        expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h-inv' })
+      }
+    )
   })
 })

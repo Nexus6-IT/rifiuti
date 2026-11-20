@@ -65,6 +65,7 @@ describe('AnnotazioneRentriUseCase', () => {
       cfTenant?: string | null
       moduli?: string[]
       firma?: unknown
+      annotazioniEnte?: unknown[]
     } = {}
   ) {
     const fir = opzioni.fir ?? creaFir()
@@ -90,6 +91,11 @@ describe('AnnotazioneRentriUseCase', () => {
       leggiStato: jest
         .fn()
         .mockResolvedValue({ versione: 3, stato_formulario: 'FirmaAnnotazione' }),
+      // Dettaglio del formulario: le annotazioni dell'ente (R1, riconciliazione di un invio senza esito).
+      leggiFormulario: jest.fn().mockResolvedValue({
+        stato_formulario: 'FirmaAnnotazione',
+        dati_annotazioni: opzioni.annotazioniEnte ?? [],
+      }),
     }
     const completa = {
       execute: jest
@@ -450,14 +456,17 @@ describe('AnnotazioneRentriUseCase', () => {
       })
       const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
       expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+        ['Annotazione', 'INVIATA'],
         ['Annotazione', 'ACCETTATA'],
         ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
       ])
-      expect(storico[0].payload).toEqual({
-        annotazione: 'Il carico e stato pesato due volte',
-        identificativo_soggetto: CF_TENANT,
-      })
-      expect(storico[0].transazioneId).toBe('tr-an-1')
+      for (const riga of storico.slice(0, 2)) {
+        expect(riga.payload).toEqual({
+          annotazione: 'Il carico e stato pesato due volte',
+          identificativo_soggetto: CF_TENANT,
+        })
+      }
+      expect(storico[1].transazioneId).toBe('tr-an-1')
     })
 
     it('rifiuto dell ente (esito.errore): ANNOTAZIONE_RENTRI_RIFIUTATA, evento RIFIUTATA, nessuna firma', async () => {
@@ -468,8 +477,11 @@ describe('AnnotazioneRentriUseCase', () => {
         metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_RENTRI_RIFIUTATA' }),
       })
       expect(a.completa.execute).not.toHaveBeenCalled()
-      const storico = await a.eventi.elenca(TENANT, FIR_ID)
-      expect(storico.map(e => [e.operazione, e.esito])).toEqual([['Annotazione', 'RIFIUTATA']])
+      const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
+      expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+        ['Annotazione', 'INVIATA'],
+        ['Annotazione', 'RIFIUTATA'],
+      ])
     })
 
     it('4xx definitivo: RIFIUTATA; errore di rete: INCERTA e errore originale', async () => {
@@ -503,6 +515,7 @@ describe('AnnotazioneRentriUseCase', () => {
       })
       const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
       expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+        ['Annotazione', 'INVIATA'],
         ['Annotazione', 'ACCETTATA'],
         ['AcquisizioneFirmaAnnotazione', 'INCERTA'],
       ])
@@ -622,6 +635,277 @@ describe('AnnotazioneRentriUseCase', () => {
         metadata: expect.objectContaining({ rule: 'FIRMA_RENTRI_RIFIUTATA' }),
       })
       expect((await a.eventi.elenca(TENANT, FIR_ID))[0].esito).toBe('RIFIUTATA')
+    })
+  })
+
+  describe('ciclo di vita di un invio senza esito (R1: INCERTA riconciliata con l ente)', () => {
+    const TESTO_INCERTO = 'Testo inviato, risposta persa'
+    const sha = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex')
+    const VECCHIO = new Date(Date.now() - 24 * 3600_000)
+
+    /** Un nostro invio di cui non si conosce l'esito (esito INCERTA o solo INVIATA: processo morto). */
+    async function invioSenzaEsito(
+      a: ReturnType<typeof ambiente>,
+      opzioni: { esito?: 'INCERTA' | 'INVIATA'; creato?: Date; testo?: string } = {}
+    ) {
+      const riga = await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'Annotazione',
+        payload: {
+          annotazione: opzioni.testo ?? TESTO_INCERTO,
+          identificativo_soggetto: CF_TENANT,
+        },
+        transazioneId: null,
+        esito: opzioni.esito ?? 'INCERTA',
+        dettaglioEnte: 'timeout',
+        statoFormularioDopo: null,
+        utenteId: 'u1',
+      })
+      riga.createdAt = opzioni.creato ?? VECCHIO
+      return riga
+    }
+
+    const nostraNonFirmata = (testo = TESTO_INCERTO) => ({
+      annotazione: testo,
+      identificativo_soggetto: CF_TENANT,
+      dati_firma: null,
+    })
+
+    it('INCERTA -> propria: l annotazione trovata presso l ente (stesso soggetto, stesso testo, non firmata) diventa ACCETTATA e si firma una volta', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [nostraNonFirmata()],
+      })
+      await invioSenzaEsito(a, { creato: new Date() }) // anche se recente: e' gia' presso l'ente
+
+      const esito = await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+
+      expect(esito.esito).toBe('COMPLETATA')
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+      expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+      const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
+      expect(storico.map(e => [e.operazione, e.esito])).toEqual([
+        ['Annotazione', 'INCERTA'],
+        ['Annotazione', 'ACCETTATA'],
+        ['AcquisizioneFirmaAnnotazione', 'ACCETTATA'],
+      ])
+      expect(storico[1].dettaglioEnte).toContain('riconciliata')
+      expect(storico[2].payload).toEqual({
+        transazioneIdAnnotazione: null,
+        testoSha256: sha(TESTO_INCERTO),
+      })
+    })
+
+    it('INCERTA -> propria in invia: 409 ANNOTAZIONE_DA_FIRMARE (non «di un altro soggetto») e nessun secondo POST', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione', 'Reset'],
+        annotazioniEnte: [nostraNonFirmata()],
+      })
+      await invioSenzaEsito(a)
+
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DA_FIRMARE' }),
+      })
+      expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+
+    it('INCERTA -> assente (fuori dalla finestra): si chiude come RIFIUTATA riconciliata e si puo reinviare', async () => {
+      const a = ambiente({ annotazioniEnte: [] })
+      await invioSenzaEsito(a)
+
+      await a.useCase.invia(comando())
+
+      expect(a.client.inviaAnnotazione).toHaveBeenCalledTimes(1)
+      const storico = (await a.eventi.elenca(TENANT, FIR_ID)).reverse()
+      expect(storico.map(e => [e.operazione, e.esito]).slice(0, 4)).toEqual([
+        ['Annotazione', 'INCERTA'],
+        ['Annotazione', 'RIFIUTATA'],
+        ['Annotazione', 'INVIATA'],
+        ['Annotazione', 'ACCETTATA'],
+      ])
+      expect(storico[1].dettaglioEnte).toContain('non risulta')
+      expect(storico[1].payload).toEqual(storico[0].payload)
+    })
+
+    it('INCERTA recente e non (ancora) presso l ente: 409 ANNOTAZIONE_IN_VERIFICA, nessun POST, nessuna riga, prenotazione rilasciata', async () => {
+      const a = ambiente({ annotazioniEnte: [] })
+      await invioSenzaEsito(a, { creato: new Date() })
+
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_IN_VERIFICA' }),
+      })
+      expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+      expect(await a.eventi.elenca(TENANT, FIR_ID)).toHaveLength(1)
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+
+    it.each([
+      ['testo diverso', { ...nostraNonFirmata('Un altro testo') }],
+      ['altro soggetto', { ...nostraNonFirmata(), identificativo_soggetto: '99999999990' }],
+      [
+        'gia firmata',
+        { ...nostraNonFirmata(), dati_firma: { data_firma: '2026-11-20T10:00:00Z' } },
+      ],
+    ])(
+      'presso l ente c e un annotazione ma non la nostra (%s): non si adotta e non si firma',
+      async (_n, presso) => {
+        const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'], annotazioniEnte: [presso] })
+        await invioSenzaEsito(a)
+
+        await expect(
+          a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+        ).rejects.toMatchObject({
+          metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+        })
+        expect(a.completa.execute).not.toHaveBeenCalled()
+        expect((await a.eventi.elenca(TENANT, FIR_ID))[0]).toMatchObject({
+          operazione: 'Annotazione',
+          esito: 'RIFIUTATA',
+        })
+      }
+    )
+
+    it('dettaglio dell ente non leggibile: nessuna decisione, nessuna firma, l INCERTA resta da riconciliare', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      a.client.leggiFormulario.mockRejectedValue(new Error('ECONNRESET'))
+      await invioSenzaEsito(a)
+
+      await expect(a.useCase.firma({ firId: FIR_ID, tenantId: TENANT })).rejects.toThrow(
+        'ECONNRESET'
+      )
+      expect(a.completa.execute).not.toHaveBeenCalled()
+      expect(await a.eventi.elenca(TENANT, FIR_ID)).toHaveLength(1)
+    })
+
+    it('solo INVIATA (processo morto fra POST ed esito): riconciliata come un INCERTA', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [nostraNonFirmata()],
+      })
+      await invioSenzaEsito(a, { esito: 'INVIATA' })
+
+      const esito = await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT })
+
+      expect(esito.esito).toBe('COMPLETATA')
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+    })
+
+    it('la riga INVIATA nasce PRIMA del POST; se non si riesce a scriverla il POST non parte', async () => {
+      const a = ambiente()
+      let invioPrimaDelPost: string | undefined
+      a.client.inviaAnnotazione.mockImplementationOnce(async () => {
+        invioPrimaDelPost = (await a.eventi.elenca(TENANT, FIR_ID))[0]?.esito
+        return { errore: false, validazione: [], transazioneId: 'tr-an-1' }
+      })
+      await a.useCase.invia(comando())
+      expect(invioPrimaDelPost).toBe('INVIATA')
+
+      const b = ambiente()
+      jest.spyOn(b.eventi, 'registra').mockRejectedValueOnce(new Error('db giu'))
+      await expect(b.useCase.invia(comando())).rejects.toThrow('db giu')
+      expect(b.client.inviaAnnotazione).not.toHaveBeenCalled()
+      expect(await b.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+  })
+
+  describe('ripresa (R2): sempre dallo use case dell annotazione, riconciliazione prima di ogni authorize', () => {
+    it('ripresa di una prenotazione ANNOTAZIONE_INVIO ancora viva: 409 SESSIONE_FIRMA_IN_CORSO, nessuna rete', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      const prenotazione = await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: 'ANNOTAZIONE_INVIO',
+        scadenza: new Date(Date.now() + 60_000),
+      })
+
+      await expect(
+        a.useCase.riprendiInvio({ firId: FIR_ID, tenantId: TENANT, sessioneId: prenotazione.id })
+      ).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'SESSIONE_FIRMA_IN_CORSO' }),
+      })
+      expect(a.getAzioni.execute).not.toHaveBeenCalled()
+      expect(a.completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('ripresa di una prenotazione ANNOTAZIONE_INVIO appesa: si chiude, si riconcilia, e si firma come ANNOTAZIONE (mai ANNOTAZIONE_INVIO)', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [
+          { annotazione: 'Appesa', identificativo_soggetto: CF_TENANT, dati_firma: null },
+        ],
+      })
+      const prenotazione = await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: 'ANNOTAZIONE_INVIO',
+        scadenza: new Date(Date.now() - 1000),
+      })
+      const riga = await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'Annotazione',
+        payload: { annotazione: 'Appesa', identificativo_soggetto: CF_TENANT },
+        transazioneId: null,
+        esito: 'INVIATA',
+        dettaglioEnte: null,
+        statoFormularioDopo: null,
+        utenteId: 'u1',
+      })
+      riga.createdAt = new Date(Date.now() - 3600_000)
+
+      const esito = await a.useCase.riprendiInvio({
+        firId: FIR_ID,
+        tenantId: TENANT,
+        sessioneId: prenotazione.id,
+      })
+
+      expect(esito.esito).toBe('COMPLETATA')
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+      expect(a.completa.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tipoOperazione: 'ANNOTAZIONE' })
+      )
+      expect((await a.sessioni.trovaPerId(TENANT, prenotazione.id))?.stato).toBe('ANNULLATA')
+    })
+
+    it('ripresa di una sessione di firma ANNOTAZIONE con l invio INCERTA: riconcilia e riprende la stessa sessione (una sola firma)', async () => {
+      const a = ambiente({
+        azioni: ['AcquisizioneFirmaAnnotazione'],
+        annotazioniEnte: [
+          { annotazione: 'In firma', identificativo_soggetto: CF_TENANT, dati_firma: null },
+        ],
+      })
+      await a.sessioni.apriInAttesa({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: 'ANNOTAZIONE',
+        handle: 'h',
+        tokenAcquisizione: 't',
+        digestToSign: 'd',
+        scadenza: new Date(Date.now() + 60_000),
+      })
+      const riga = await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'Annotazione',
+        payload: { annotazione: 'In firma', identificativo_soggetto: CF_TENANT },
+        transazioneId: null,
+        esito: 'INCERTA',
+        dettaglioEnte: null,
+        statoFormularioDopo: null,
+        utenteId: 'u1',
+      })
+      riga.createdAt = new Date(Date.now() - 3600_000)
+
+      const esito = await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT })
+
+      expect(esito.esito).toBe('COMPLETATA')
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[1]).toMatchObject({
+        operazione: 'Annotazione',
+        esito: 'ACCETTATA',
+      })
     })
   })
 })
