@@ -127,6 +127,23 @@ describe('Fase 3 (3.1): motore di caricamento a blocchi — Postgres reale, ruol
     expect(await contaDitte(t, lotto.id)).toBe(450)
   })
 
+  it('concludi: false lascia il lotto IN_CORSO e i conteggi si sommano alla fase successiva; concludi di default invariato', async () => {
+    const t = await azienda()
+    const lotto = await avvia(t)
+    const prima = await inserisciABlocchi(dip(), t, lotto.id, righe(5, 10_000), {
+      inserisciBlocco: inserisciDitteImportate,
+      concludi: false,
+    })
+    expect(prima).toEqual({ lette: 5, inserite: 5, saltate: 0, scartate: 0, blocchi: 1 })
+    expect((await lotti.leggi(t, lotto.id))!.stato).toBe('IN_CORSO')
+
+    const seconda = await inserisciABlocchi(dip(), t, lotto.id, righe(3, 20_000), {
+      inserisciBlocco: inserisciDitteImportate,
+    })
+    expect(seconda).toEqual({ lette: 8, inserite: 8, saltate: 0, scartate: 0, blocchi: 2 })
+    expect((await lotti.leggi(t, lotto.id))!.stato).toBe('COMPLETATO')
+  })
+
   it('seconda esecuzione dello stesso input su un lotto nuovo: idempotente, inserite 0, saltate 450', async () => {
     const t = await azienda()
     const input = righe(450)
