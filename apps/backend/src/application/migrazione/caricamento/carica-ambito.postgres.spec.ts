@@ -2,6 +2,7 @@
  * Pezzo I2, T4: `caricaAmbito` contro Postgres reale COME `wasteflow_app`, con due fasi finte
  * (due insiemi di ditte) sullo stesso lotto.
  */
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
@@ -72,7 +73,7 @@ describe('Pezzo I2 T4: caricaAmbito — Postgres reale, ruolo wasteflow_app', ()
     lotti = new LottiImportService(app, logger)
   })
   afterAll(async () => {
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
   })

@@ -2,6 +2,7 @@
  * Pezzo I2, T5/T6: `migrazione:carica` (servizio e CLI) contro Postgres reale COME `wasteflow_app`.
  * Pacchetto sintetico di sole ditte, preparato dallo staging di prova con `preparaPacchetto`.
  */
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { PrismaClient } from '@prisma/client'
 import { mkdtemp, rm } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -114,7 +115,7 @@ describe('Pezzo I2 T5/T6: carica pacchetto — Postgres reale, ruolo wasteflow_a
     )
   })
   afterAll(async () => {
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await app.onModuleDestroy()
     await owner.$disconnect()
     await rm(radice, { recursive: true, force: true })

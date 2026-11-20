@@ -111,7 +111,9 @@ describe('I4 T1/T2: trasformazione pura CLIFOR + SEDI LEGALI + UNITA LOCALI + AU
   })
 
   it('ruoli dedotti dall uso nei movimenti, con numero e scadenza dell autorizzazione', () => {
-    expect(r.produttori.map(p => p.legacyKey)).toEqual(['0001|C|000001'])
+    expect(r.produttori.map(p => p.legacyKey)).toEqual(['0001|C|000001', '0001|C|000006'])
+    // il produttore di una ditta agganciata porta l'id esistente
+    expect(r.produttori[1]).toMatchObject({ dittaId: U2, sedeKey: '0001|C|000006|SL' })
     expect(r.produttori[0]).toMatchObject({
       dittaKey: `0001|FISC|${prova.piva.uno}`,
       sedeKey: '0001|C|000001|SL',

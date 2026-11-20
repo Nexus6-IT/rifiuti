@@ -148,6 +148,8 @@ export async function scriviStagingAnagraficheProva(
     ['1', '000001.0001', '', '000002.0001', '01', '000003.0001', '02', '000001.0001', ''],
     ['2', '000007.0001', '', '000002.0001', '01', '', '', '', ''],
     ['3', 'X90001.0001', '', '', '', '', '', '', ''],
+    // una ditta agganciata (gia' in WasteFlow) che produce: ruolo su ditta esistente
+    ['4', '000006.0001', '', '', '', '', '', '', ''],
   ]
   const tabelle = [
     { nome: 'CLIFOR', colonne: COL_CLIFOR, righe: clifor },
