@@ -30,7 +30,6 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
-import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
 import { FIR, FIRStato, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
 import { DigitalSignatureService } from '../signatures/digital-signature.service'
@@ -47,7 +46,6 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
   let app: PrismaService
   let sistema: PrismaSistemaService
   let repo: FIRPrismaRepository
-  let dati: DatiViaggioFirRepository
   let cripto: SignatureFIRRepository
   let firma: DigitalSignatureService
   let emetti: EmettiFIRUseCase
@@ -74,7 +72,6 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     await app.onModuleInit()
     sistema = new PrismaSistemaService()
     repo = new FIRPrismaRepository(app, sistema)
-    dati = new DatiViaggioFirRepository(app)
     cripto = new SignatureFIRRepository(app, sistema, logger())
     firma = new DigitalSignatureService(logger())
     const rentri = { eseguiSeAutomatica: jest.fn().mockResolvedValue(undefined) } as any
@@ -110,25 +107,6 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     }
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })
-
-  async function firEmessoELegato(numeroFir: string): Promise<string> {
-    const fir = FIR.create({
-      produttoreId: '11111111-1111-4111-8111-111111111111',
-      rifiuto: { cerCode: '150101', quantita: 1.2 },
-      trasportatoreId: '22222222-2222-4222-8222-222222222222',
-      destinatarioId: '33333333-3333-4333-8333-333333333333',
-      tenantId,
-      creatoDaUserId: userId,
-      tipoTrattaPrincipale: TipoTratta.TERRESTRE,
-    })
-    await nelTenant(() => repo.save(fir))
-    const r = await nelTenant(() =>
-      emetti.execute(new EmettiFIRCommand(fir.id, userId, 'Mario Rossi'))
-    )
-    if (!r.isSuccess) throw new Error(`emissione fallita: ${String(r.error)}`)
-    await owner.fIR.update({ where: { id: fir.id }, data: { rentriNumeroFir: numeroFir } })
-    return fir.id
-  }
 
   async function firEmesso(): Promise<string> {
     const fir = FIR.create({
@@ -249,7 +227,6 @@ describe('FIR in viaggio P3 — firma di partenza con repository reale (Postgres
     )
 
     expect(r.isSuccess).toBe(true)
-    const riga = await owner.fIR.findUnique({ where: { id: firId } })
     expect((await nelTenant(() => repo.findById(firId)))?.stato).toBe(FIRStato.IN_TRANSITO)
     expect((await nelTenant(() => verifica.execute({ firId, tenantId }))).allValid).toBe(true)
   })
