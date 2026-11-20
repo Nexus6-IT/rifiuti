@@ -4,7 +4,6 @@
  */
 import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { PrismaClient } from '@prisma/client'
-import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 import { mkdtemp, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
