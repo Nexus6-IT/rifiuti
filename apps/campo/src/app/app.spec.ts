@@ -48,3 +48,24 @@ describe('App campo: ripresa dal background', () => {
     await vi.waitFor(() => expect(giro.corrente()).toBeNull());
   });
 });
+
+describe('App campo: ripresa con due eventi insieme', () => {
+  it('pageshow e visibilitychange nello stesso momento controllano il giorno UNA volta sola', async () => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const giro = TestBed.inject(GiroService);
+    const controlla = vi.spyOn(giro, 'controllaGiorno').mockResolvedValue(false);
+    TestBed.createComponent(App);
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pageshow'));
+    await vi.waitFor(() => expect(controlla).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controlla).toHaveBeenCalledTimes(1);
+    // Finita la prima, una nuova ripresa controlla di nuovo.
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(controlla).toHaveBeenCalledTimes(2));
+  });
+});

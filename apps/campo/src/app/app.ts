@@ -19,10 +19,21 @@ export class App {
     window.addEventListener('pageshow', () => this.allaRipresa());
   }
 
+  private ripresaInCorso = false;
+
+  /**
+   * `pageshow` e `visibilitychange` arrivano spesso insieme (e a volte piu' volte): un solo controllo
+   * alla volta, altrimenti il giro verrebbe scartato e ricaricato due volte.
+   */
   private allaRipresa(): void {
-    void this.giro.controllaGiorno(dataLocaleIso()).then((cambiato) => {
-      // Dal dettaglio di un ritiro di ieri si torna al giro, che si ricarica da se'.
-      if (cambiato) void this.router.navigateByUrl('/');
-    });
+    if (this.ripresaInCorso) return;
+    this.ripresaInCorso = true;
+    void this.giro
+      .controllaGiorno(dataLocaleIso())
+      .then((cambiato) => {
+        // Dal dettaglio di un ritiro di ieri si torna al giro, che si ricarica da se'.
+        if (cambiato) void this.router.navigateByUrl('/');
+      })
+      .finally(() => (this.ripresaInCorso = false));
   }
 }
