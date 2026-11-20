@@ -7,6 +7,7 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
+import { AnnotazioneRentriUseCase, tipoOperazioneAnnotazione } from './annotazione-rentri.use-case'
 import {
   FirmaPartenzaRentriUseCase,
   operazionePartenzaDaTipo,
@@ -54,7 +55,8 @@ export class GestisciSessioneFirmaRentriUseCase {
     private readonly sessioni: ISessioniFirmaRentriRepository,
     private readonly completaOperazioneConFirma: CompletaOperazioneConFirmaUseCase,
     private readonly logger: LoggerService,
-    private readonly firmaPartenza: FirmaPartenzaRentriUseCase
+    private readonly firmaPartenza: FirmaPartenzaRentriUseCase,
+    private readonly annotazione: AnnotazioneRentriUseCase
   ) {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
@@ -156,6 +158,17 @@ export class GestisciSessioneFirmaRentriUseCase {
         ammesse: [operazionePartenza],
       })
       return firma
+    }
+
+    // Annotazione: stessa strada (storico della ripresa, `/azioni` ricontrollato prima di una nuova `authorize`).
+    if (sessione.tipoOperazione === tipoOperazioneAnnotazione()) {
+      return this.annotazione.firma({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+      })
     }
 
     return this.completaOperazioneConFirma.execute({

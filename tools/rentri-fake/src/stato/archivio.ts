@@ -92,6 +92,7 @@ export interface Formulario {
   pendingOperazione?:
     | { tipo: 'Accettazione'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'Annulla'; corpo: Record<string, unknown>; statoPrecedente: string }
+    | { tipo: 'Annotazione'; corpo: Record<string, unknown>; statoPrecedente: string }
   /**
    * Ultima firma apposta con successo e non ancora annullata: serve a
    * `rollback-firma` (formulari.yaml riga 2079) per tornare allo stato di
@@ -707,6 +708,18 @@ export class Archivio {
       return
     }
 
+    // Annotazione (FIR in viaggio, P4): il formulario passa a `FirmaAnnotazione` e, firmata, torna allo stato
+    // di prima (viaggio o esito). Ipotesi dedotta dai nomi degli stati (FEDELTA.md §8.3, da verificare sulla demo).
+    if (contesto.operazione === 'Annotazione') {
+      formulario.pendingOperazione = {
+        tipo: 'Annotazione',
+        corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
+      }
+      formulario.stato = 'FirmaAnnotazione'
+      return
+    }
+
     if (contesto.operazione === 'NoteAnnullamento') {
       const note = contesto.corpo?.note
       if (typeof note === 'string') {
@@ -736,6 +749,13 @@ export class Archivio {
 
       if (pendente.tipo === 'Annulla') {
         formulario.stato = 'Annullato'
+        formulario.pendingOperazione = undefined
+        return
+      }
+
+      if (pendente.tipo === 'Annotazione') {
+        formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
+        formulario.stato = pendente.statoPrecedente
         formulario.pendingOperazione = undefined
         return
       }
@@ -775,9 +795,8 @@ export class Archivio {
       return
     }
 
-    // Annotazione, sosta tecnica, trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito)
-    // ma non applica ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in
-    // viaggio, P4-P8).
+    // Sosta tecnica, trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica
+    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P5-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito

@@ -205,7 +205,9 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
             ? "L'annullamento non si è completato sull'ente: puoi riprovare."
             : operazione === 'PARTENZA'
               ? "La firma di partenza non si è completata sull'ente: puoi riprovare."
-              : "L'operazione non si è completata sull'ente: puoi riprovare."
+              : operazione === 'ANNOTAZIONE'
+                ? "La firma dell'annotazione non si è completata sull'ente: puoi riprovare."
+                : "L'operazione non si è completata sull'ente: puoi riprovare."
       return {
         messaggio,
         azione: 'RIPROVA',
@@ -286,7 +288,7 @@ function estraiCampoValidazione(responsePayload?: string | null): string | undef
  */
 function estraiTipoOperazioneFirma(
   errorMessage?: string | null
-): 'ACCETTAZIONE' | 'ANNULLAMENTO' | 'PARTENZA' | undefined {
+): 'ACCETTAZIONE' | 'ANNULLAMENTO' | 'PARTENZA' | 'ANNOTAZIONE' | undefined {
   if (!errorMessage) {
     return undefined
   }
@@ -294,7 +296,10 @@ function estraiTipoOperazioneFirma(
   const match = errorMessage.match(/l'operazione\s+(\S+)\s+non è stata completata/i)
   const tipo = match?.[1]?.toUpperCase()
   if (tipo?.startsWith('PARTENZA')) return 'PARTENZA'
-  return tipo === 'ACCETTAZIONE' || tipo === 'ANNULLAMENTO' || tipo === 'PARTENZA'
+  return tipo === 'ACCETTAZIONE' ||
+    tipo === 'ANNULLAMENTO' ||
+    tipo === 'PARTENZA' ||
+    tipo === 'ANNOTAZIONE'
     ? tipo
     : undefined
 }

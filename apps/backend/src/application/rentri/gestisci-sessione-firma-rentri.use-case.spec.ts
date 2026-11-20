@@ -25,12 +25,16 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
         firma: { esito: 'IN_ATTESA', handle: 'h' },
       }),
     }
+    const annotazione = {
+      firma: jest.fn().mockResolvedValue({ esito: 'IN_ATTESA', handle: 'h-an' }),
+    }
     const useCase = new GestisciSessioneFirmaRentriUseCase(
       { findById: jest.fn().mockResolvedValue(fir) } as any,
       sessioni,
       completa as any,
       logger,
-      firmaPartenza as any
+      firmaPartenza as any,
+      annotazione as any
     )
     const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
@@ -41,7 +45,7 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
       digestToSign: 'd',
       scadenza: new Date(Date.now() + 60_000),
     })
-    return { useCase, sessioni, completa, sessione, fir, firmaPartenza }
+    return { useCase, sessioni, completa, sessione, fir, firmaPartenza, annotazione }
   }
 
   it('inAttesa espone id, operazione e scadenza, MAI token, digest o handle', async () => {
@@ -217,6 +221,49 @@ describe('GestisciSessioneFirmaRentriUseCase', () => {
 
       expect(completa.execute).toHaveBeenCalledTimes(1)
       expect(firmaPartenza.execute).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('sessioni di firma dell annotazione (FIR in viaggio P4)', () => {
+    it('riprendi su ANNOTAZIONE passa da AnnotazioneRentriUseCase.firma (storico e /azioni), non dal ciclo comune', async () => {
+      const { useCase, completa, firmaPartenza, annotazione, sessione } =
+        await ambiente('ANNOTAZIONE')
+
+      const esito = await useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: sessione.id,
+        utenteId: 'u1',
+        nuovaSessione: false,
+        correlationId: 'c1',
+      })
+
+      expect(annotazione.firma).toHaveBeenCalledWith({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        utenteId: 'u1',
+        nuovaSessione: false,
+        correlationId: 'c1',
+      })
+      expect(completa.execute).not.toHaveBeenCalled()
+      expect(firmaPartenza.execute).not.toHaveBeenCalled()
+      expect(esito).toEqual({ esito: 'IN_ATTESA', handle: 'h-an' })
+    })
+
+    it('«Richiedi di nuovo» su una sessione ANNOTAZIONE scaduta ricontrolla /azioni tramite lo use case dell annotazione', async () => {
+      const { useCase, sessioni, annotazione, sessione } = await ambiente('ANNOTAZIONE')
+      sessioni.righe[0].stato = 'SCADUTA'
+
+      await useCase.riprendi({
+        firId: 'fir-1',
+        tenantId: TENANT,
+        sessioneId: sessione.id,
+        nuovaSessione: true,
+      })
+
+      expect(annotazione.firma).toHaveBeenCalledWith(
+        expect.objectContaining({ nuovaSessione: true })
+      )
     })
   })
 })

@@ -611,7 +611,7 @@ describe('Firme di partenza: acquisizione-firma nella fase iniziale (FIR in viag
     expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
   })
 
-  it('una firma rifiutata dall\'ente lascia lo stato invariato', async () => {
+  it("una firma rifiutata dall'ente lascia lo stato invariato", async () => {
     const app = creaApp()
     await seminaFormulario(app, 'FirmaProduttoreTrasportatoreIniziale')
     const avvio = await app.inject({
@@ -627,6 +627,91 @@ describe('Firme di partenza: acquisizione-firma nella fase iniziale (FIR in viag
     })
 
     expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+})
+
+describe('Annotazione: FirmaAnnotazione e ritorno allo stato di prima (FIR in viaggio, P4)', () => {
+  const CORPO = { annotazione: 'Carico pesato due volte', identificativo_soggetto: '01234567897' }
+
+  async function completa(
+    app: ReturnType<typeof creaApp>,
+    segmento: string,
+    corpo: Record<string, unknown>,
+    errore = false
+  ): Promise<void> {
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/${segmento}`,
+      headers: await intestazioniAutenticate(),
+      payload: corpo,
+    })
+    expect(avvio.statusCode).toBe(202)
+    const esito = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore },
+    })
+    expect(esito.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  const FIRMA = { certificato: 'c', token: 't', firma: 'f' }
+
+  it.each(['InserimentoAccettazione', 'Accettato', 'RespintoAccettatoParzialmente'])(
+    'da %s: annotazione -> FirmaAnnotazione -> firma -> stato di prima',
+    async partenza => {
+      const app = creaApp()
+      await seminaFormulario(app, partenza)
+
+      await completa(app, 'annotazione', CORPO)
+      expect(await stato(app)).toBe('FirmaAnnotazione')
+
+      await completa(app, 'acquisizione-firma', FIRMA)
+      expect(await stato(app)).toBe(partenza)
+    }
+  )
+
+  it("un'annotazione rifiutata dall'ente lascia lo stato invariato", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'annotazione', CORPO, true)
+
+    expect(await stato(app)).toBe('InserimentoAccettazione')
+  })
+
+  it("una firma rifiutata lascia FirmaAnnotazione; il reset annulla l'annotazione non firmata", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+    await completa(app, 'annotazione', CORPO)
+
+    await completa(app, 'acquisizione-firma', FIRMA, true)
+    expect(await stato(app)).toBe('FirmaAnnotazione')
+
+    await completa(app, 'reset', {})
+    expect(await stato(app)).toBe('InserimentoAccettazione')
+  })
+
+  it("un'annotazione senza identificativo_soggetto e respinta dal contratto (400)", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/annotazione`,
+      headers: await intestazioniAutenticate(),
+      payload: { annotazione: 'x' },
+    })
+
+    expect(risposta.statusCode).toBe(400)
   })
 })
 

@@ -29,6 +29,8 @@ const SCRITTURE = [
   // FIR in viaggio P2: quantita' e dati di trasporto.
   'inviaQuantita',
   'inviaTrasporto',
+  // FIR in viaggio P4: annotazione.
+  'inviaAnnotazione',
   'caricaAllegato',
   'eliminaAllegato',
   'rilasciaVisibilita',
@@ -69,6 +71,7 @@ function metodiScrittura(testo: string): string[] {
 const ATTESI = [
   'application/rentri/accetta-o-respingi-fir.use-case.ts',
   'application/rentri/acquisisci-formulario-rentri.use-case.ts',
+  'application/rentri/annotazione-rentri.use-case.ts',
   'application/rentri/annulla-fir-rentri.use-case.ts',
   'application/rentri/completa-operazione-con-firma.use-case.ts',
   'application/rentri/gestisci-allegati-fir.use-case.ts',

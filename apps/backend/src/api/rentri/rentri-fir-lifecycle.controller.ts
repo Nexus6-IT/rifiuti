@@ -62,6 +62,11 @@ import {
   FirmaPartenzaRentriUseCase,
 } from '../../application/rentri/firma-partenza-rentri.use-case'
 import { FirmaPartenzaFirRentriDto } from './dto/firma-partenza-fir-rentri.dto'
+import {
+  AnnotazioneRentriUseCase,
+  EsitoAnnotazione,
+} from '../../application/rentri/annotazione-rentri.use-case'
+import { AnnotazioneFirRentriDto } from './dto/annotazione-fir-rentri.dto'
 import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
 import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
 import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
@@ -108,6 +113,8 @@ const RULE_DATI_VIAGGIO = new Set([
   'TRASPORTO_NON_TERRESTRE',
   'QUANTITA_RENTRI_RIFIUTATA',
   'TRASPORTO_RENTRI_RIFIUTATO',
+  'ANNOTAZIONE_NON_VALIDA',
+  'ANNOTAZIONE_RENTRI_RIFIUTATA',
 ])
 
 const RULE_CONFLITTO = new Set([
@@ -115,6 +122,9 @@ const RULE_CONFLITTO = new Set([
   'FIRMA_PARTENZA_NON_DISPONIBILE',
   'SESSIONE_FIRMA_IN_CORSO',
   'SESSIONE_FIRMA_NON_ATTIVA',
+  'ANNOTAZIONE_SOGGETTO_NON_NEL_FIR',
+  'ANNOTAZIONE_DA_FIRMARE',
+  'FIRMA_ANNOTAZIONE_NON_DISPONIBILE',
 ])
 
 /**
@@ -155,7 +165,8 @@ export class RentriFirLifecycleController {
     private readonly inviaDatiViaggioUseCase: InviaDatiViaggioFirRentriUseCase,
     private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase,
     private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase,
-    private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase
+    private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase,
+    private readonly annotazioneUseCase: AnnotazioneRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -781,6 +792,90 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Firma di partenza RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Annotazione (FIR in viaggio, P4): un testo libero del soggetto (l'azienda selezionata) aggiunto al
+   * formulario e firmato con la firma remota. La disponibilita' la decide `/azioni`; se la firma non si
+   * conclude l'annotazione resta registrata presso l'ente e si firma dopo da `firma-annotazione`.
+   */
+  @Post(':id/annotazione')
+  @ApiOperation({
+    summary: "Aggiungi un'annotazione al formulario",
+    description:
+      "Verifica che il CF dell'azienda compaia nel FIR e che /azioni proponga l'annotazione, la invia e " +
+      'chiede la firma remota. Esiti della firma: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA, DA_COMPLETARE.',
+  })
+  @ApiResponse({ status: 201, description: "Annotazione accettata dall'ente, esito della firma" })
+  @ApiResponse({ status: 400, description: "Testo non valido o annotazione rifiutata dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'OPERAZIONE_NON_DISPONIBILE, ANNOTAZIONE_SOGGETTO_NON_NEL_FIR, ANNOTAZIONE_DA_FIRMARE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async aggiungiAnnotazione(
+    @Param('id') firId: string,
+    @Body() dto: AnnotazioneFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoAnnotazione> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Annotazione RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.annotazioneUseCase.invia({
+        firId,
+        tenantId,
+        testo: dto.testo,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Annotazione RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma dell'annotazione in attesa (FIR in viaggio, P4): quando la firma dopo l'invio non si e' conclusa
+   * (conferma sul telefono mancata, rete) o va richiesta di nuovo. Una sola richiesta sul telefono.
+   */
+  @Post(':id/firma-annotazione')
+  @ApiOperation({
+    summary: "Firma l'annotazione su RENTRI",
+    description:
+      'Verifica /azioni (AcquisizioneFirmaAnnotazione), chiede la firma remota e rilegge lo stato. Esiti: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Esito della firma' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'FIRMA_ANNOTAZIONE_NON_DISPONIBILE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaAnnotazione(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoCompletamentoFirma> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma annotazione RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.annotazioneUseCase.firma({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma annotazione RENTRI non riuscita', error, { firId, tenantId })
       throw this.mappaErroreDominio(error)
     }
   }

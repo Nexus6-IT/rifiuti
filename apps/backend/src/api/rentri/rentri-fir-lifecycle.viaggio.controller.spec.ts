@@ -34,7 +34,8 @@ describe('RentriFirLifecycleController — quantita, trasporto, eventi', () => {
       viaggio as any,
       eventi as any,
       ultimo as any,
-      {} as any // FirmaPartenzaRentriUseCase
+      {} as any, // FirmaPartenzaRentriUseCase
+      {} as any // AnnotazioneRentriUseCase
     )
   })
 

@@ -706,11 +706,28 @@ export class RENTRIApiClient {
     return this.postAsincronaConCorpo(tenantId, numeroFir, 'trasporto', corpo, opzioni)
   }
 
-  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`). */
+  /**
+   * Aggiunge un'annotazione al formulario (`POST /{numero_fir}/annotazione`, `Operazione` `Annotazione`).
+   * Corpo: `DatiAnnotazioneModel` (`{ annotazione, identificativo_soggetto }`, `additionalProperties: false`).
+   * L'annotazione si firma poi con `AcquisizioneFirmaAnnotazione` (stato `FirmaAnnotazione`).
+   *
+   * **ASYNC (NONBLOCK_PULL)**; esito restituito COSI' COM'E' (la decisione e' del chiamante, v.
+   * {@link inviaQuantita}).
+   */
+  async inviaAnnotazione(
+    tenantId: string,
+    numeroFir: string,
+    corpo: { annotazione: string; identificativo_soggetto: string },
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'annotazione', corpo, opzioni)
+  }
+
+  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`, `annotazione`). */
   private async postAsincronaConCorpo(
     tenantId: string,
     numeroFir: string,
-    operazione: 'quantita' | 'trasporto',
+    operazione: 'quantita' | 'trasporto' | 'annotazione',
     corpo: Record<string, unknown>,
     opzioni?: OpzioniPollingEsito
   ): Promise<EsitoFormulario> {

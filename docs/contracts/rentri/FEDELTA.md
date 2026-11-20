@@ -653,6 +653,19 @@ Da chiedere alla demo: quale firma propone l'ente quando produttore e trasportat
 sceglie quella combinata se presente in `/azioni`), se `FirmaProduttore` precede davvero `FirmaTrasportatoreIniziale`,
 e quale stato segue l'ultima firma di partenza.
 
+### 8.3 Annotazione (2026-11-23, FIR in viaggio, P4)
+
+`annotazione` completata con successo: il formulario passa a `FirmaAnnotazione` e la fake ricorda lo stato di
+prima (`pendingOperazione` di tipo `Annotazione`); `acquisizione-firma` completata lo riporta a quello stato
+(viaggio, `Accettato` o `RespintoAccettatoParzialmente`: sono gli stati in cui il contratto ammette
+l'annotazione); `reset` in `FirmaAnnotazione` annulla l'annotazione non firmata. Ipotesi dedotta dai NOMI degli
+stati, da verificare sulla demo. Il corpo e' validato con `DatiAnnotazioneModel` (`annotazione` 1..10.000,
+`identificativo_soggetto` obbligatorio); la fake NON verifica che il CF sia uno dei soggetti del formulario
+(il contratto dice che deve esserlo): lo garantisce WasteFlow prima dell'invio.
+
+Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
+sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in

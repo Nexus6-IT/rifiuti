@@ -10,7 +10,8 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
-import { IEventiFirRentriRepository, EsitoEventoFirRentri } from './eventi-fir-rentri.port'
+import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
+import { esitoEventoDaErroreFirma, eventoDaEsitoFirma } from './evento-da-esito-firma'
 import { registraEventoFirRentri } from './registra-evento-fir-rentri'
 import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 
@@ -227,7 +228,7 @@ export class FirmaPartenzaRentriUseCase {
         intervalloPollingMs: comando.intervalloPollingMs,
       })
     } catch (errore) {
-      const esito = this.esitoDaErrore(errore)
+      const esito = esitoEventoDaErroreFirma(errore)
       if (esito) {
         await registraEventoFirRentri(this.eventi, this.logger, {
           tenantId,
@@ -250,7 +251,7 @@ export class FirmaPartenzaRentriUseCase {
       operazione,
       payload: null,
       transazioneId: null,
-      ...this.eventoDaEsito(firma),
+      ...eventoDaEsitoFirma(firma),
       utenteId: utenteId ?? null,
     })
 
@@ -335,50 +336,6 @@ export class FirmaPartenzaRentriUseCase {
         causa: errore instanceof Error ? errore.message : String(errore),
       })
       return null
-    }
-  }
-
-  /** Esito dello storico per un'eccezione del ciclo di firma; `null` = non e' un esito dell'ente. */
-  private esitoDaErrore(errore: unknown): EsitoEventoFirRentri | null {
-    if (errore instanceof DomainException) {
-      const rule = errore.metadata?.rule as string | undefined
-      if (rule === 'FIRMA_RENTRI_RIFIUTATA') return 'RIFIUTATA'
-      // Conflitti e precondizioni locali: nessuna operazione e' arrivata all'ente.
-      return null
-    }
-    return 'INCERTA'
-  }
-
-  private eventoDaEsito(firma: EsitoCompletamentoFirma): {
-    esito: EsitoEventoFirRentri
-    dettaglioEnte: string | null
-    statoFormularioDopo: string | null
-  } {
-    switch (firma.esito) {
-      case 'COMPLETATA':
-        return {
-          esito: 'ACCETTATA',
-          dettaglioEnte: null,
-          statoFormularioDopo: firma.statoFormulario,
-        }
-      case 'IN_ATTESA':
-        return {
-          esito: 'INVIATA',
-          dettaglioEnte: 'in attesa della conferma sul telefono',
-          statoFormularioDopo: null,
-        }
-      case 'SCADUTA':
-        return {
-          esito: 'RIFIUTATA',
-          dettaglioEnte: firma.dettaglioEnte ?? 'richiesta di firma scaduta',
-          statoFormularioDopo: null,
-        }
-      case 'RIFIUTATA':
-        return {
-          esito: 'RIFIUTATA',
-          dettaglioEnte: firma.dettaglioEnte ?? 'firma rifiutata',
-          statoFormularioDopo: null,
-        }
     }
   }
 }
