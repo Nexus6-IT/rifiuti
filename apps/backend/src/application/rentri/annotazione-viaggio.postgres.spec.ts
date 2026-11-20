@@ -39,6 +39,7 @@ import { EmettiFIRUseCase } from '../fir/use-cases/emetti-fir.use-case'
 import { EmettiFIRCommand } from '../fir/commands/emetti-fir.command'
 import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
+import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
 
 describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -132,8 +133,9 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
       tenantId,
       creatoDaUserId: userId,
       tipoTrattaPrincipale: TipoTratta.TERRESTRE,
-      produttore: {
-        ragioneSociale: 'Produttore SRL',
+      // Il soggetto che annota e' il trasportatore (il solo produttore non e' ammesso dal contratto).
+      trasportatore: {
+        ragioneSociale: 'Trasporti SRL',
         partitaIva: '',
         codiceFiscale: opzioni.cfProduttore ?? CF_TENANT,
       },
@@ -187,7 +189,7 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
       }),
     }
     const eventi = new EventiFirRentriInMemoria()
-    const sessioni = { trovaAperta: jest.fn().mockResolvedValue(null) }
+    const sessioni = new SessioniFirmaRentriInMemoria()
     return {
       client,
       completa,
@@ -201,7 +203,7 @@ describe('FIR in viaggio P4 — annotazione con repository reale (Postgres reale
           completa as any,
           eventi,
           logger(),
-          sessioni as any,
+          sessioni,
           { moduliAttivi: jest.fn().mockResolvedValue(['fir', 'rentri']) } as any,
           app
         ),

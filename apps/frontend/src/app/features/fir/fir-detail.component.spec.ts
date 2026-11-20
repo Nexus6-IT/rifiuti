@@ -12,7 +12,7 @@ import { FirService } from './fir.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
-import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
+import { EventoFirRentri, RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
@@ -2502,6 +2502,17 @@ describe('FirDetailComponent', () => {
     const FIRMA = '[data-testid="fir-detail-firma-annotazione"]'
     let messageService: MessageService
 
+    const eventoAnnotazione = (testo = 'Carico pesato due volte'): EventoFirRentri => ({
+      id: 'ev-an',
+      operazione: 'Annotazione',
+      esito: 'ACCETTATA',
+      payload: { annotazione: testo, identificativo_soggetto: '01234567897' },
+      dettaglioEnte: null,
+      statoFormularioDopo: 'FirmaAnnotazione',
+      utenteId: 'u1',
+      createdAt: '2026-11-20T10:00:00.000Z',
+    })
+
     function preparaFirLegato(role: string, fir: FIR, ...operazioni: string[]): void {
       setup({ role })
       firService.getFIRById.and.returnValue(of(fir))
@@ -2555,11 +2566,16 @@ describe('FirDetailComponent', () => {
 
     it("«Firma l'annotazione» compare solo se l'ente propone AcquisizioneFirmaAnnotazione, e chiama la rotta", () => {
       preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoAnnotazione()] }))
       rentriFirLifecycleService.firmaAnnotazione.and.returnValue(
         of({ esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' })
       )
       fixture.detectChanges()
       expect(el().querySelector(BANNER)?.textContent).toContain('Firma RENTRI da completare')
+      // Il testo che si sta per firmare e' mostrato.
+      expect(
+        el().querySelector('[data-testid="fir-detail-firma-annotazione-testo"]')?.textContent
+      ).toContain('Carico pesato due volte')
       expect(el().querySelector(AGGIUNGI)).toBeFalsy()
       const aggiungi = spyOn(messageService, 'add')
 
@@ -2570,6 +2586,27 @@ describe('FirDetailComponent', () => {
         jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
       )
       expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it("un'annotazione in attesa inserita da un ALTRO soggetto (nessuna nostra nello storico) non si firma da qui", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione', 'Reset')
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+      expect(el().querySelector(FIRMA)).toBeFalsy()
+    })
+
+    it('se l ultima annotazione e gia stata firmata il banner non compare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaAnnotazione')
+      rentriFirLifecycleService.eventi.and.returnValue(
+        of({
+          eventi: [
+            { ...eventoAnnotazione(), id: 'ev-f', operazione: 'AcquisizioneFirmaAnnotazione' },
+            eventoAnnotazione(),
+          ],
+        })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
     })
 
     it('il testo non puo essere vuoto, di soli spazi o oltre 10.000 caratteri', () => {

@@ -663,6 +663,14 @@ stati, da verificare sulla demo. Il corpo e' validato con `DatiAnnotazioneModel`
 `identificativo_soggetto` obbligatorio); la fake NON verifica che il CF sia uno dei soggetti del formulario
 (il contratto dice che deve esserlo): lo garantisce WasteFlow prima dell'invio.
 
+Limiti noti della fake (review-finale P4, M6): controlla lo stato solo al POST (la transizione avviene
+all'elaborazione, quindi due POST ravvicinati danno due 202: per questo WasteFlow serializza gli invii con una
+prenotazione locale), non esclude il produttore (il contratto, formulari.yaml:1046, ammette l'annotazione solo
+al trasportatore o al destinatario che ha in carico il rifiuto: WasteFlow lo controlla prima dell'invio), non
+modella «copia gia' restituita con accettazione totale -> non consentita» (r. 1052) e non verifica che la firma
+sia del soggetto che ha inserito l'annotazione (r. 6154: WasteFlow firma solo annotazioni proprie, di cui
+conosce il testo). Il POST `/annotazione` non si ritenta mai su 5xx/timeout (esito incerto, come la creazione).
+
 Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
 sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
 

@@ -1,4 +1,6 @@
 import { FIR, ParteFIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { createHash } from 'crypto'
+import { TrasmissioneRentriIncertaError } from '../../infrastructure/rentri/rentri-api.client'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
 import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
@@ -39,8 +41,8 @@ describe('AnnotazioneRentriUseCase', () => {
       destinatarioId: 'd',
       tenantId: TENANT,
       rifiuto: { cerCode: '150101', quantita: 10 },
-      produttore: opzioni.produttore ?? parte(CF_TENANT),
-      trasportatore: opzioni.trasportatore ?? parte('11111111119'),
+      produttore: opzioni.produttore ?? parte('33333333335'),
+      trasportatore: opzioni.trasportatore ?? parte(CF_TENANT),
       destinatario: opzioni.destinatario ?? parte('22222222226'),
       trasportatoriAggiuntivi: (opzioni.aggiuntivi ?? []).map((a, i) => ({
         ordine: i + 2,
@@ -153,6 +155,25 @@ describe('AnnotazioneRentriUseCase', () => {
     expect(await a.eventi.elenca(TENANT, FIR_ID)).toHaveLength(0)
   }
 
+  /** Una nostra annotazione gia accettata dall'ente, in attesa di firma (storico locale). */
+  async function annotazioneNostraInSospeso(
+    a: ReturnType<typeof ambiente>,
+    testo = 'Annotazione in sospeso',
+    cf = CF_TENANT
+  ) {
+    await a.eventi.registra({
+      tenantId: TENANT,
+      firId: FIR_ID,
+      operazione: 'Annotazione',
+      payload: { annotazione: testo, identificativo_soggetto: cf },
+      transazioneId: 'tr-sospesa',
+      esito: 'ACCETTATA',
+      dettaglioEnte: null,
+      statoFormularioDopo: 'FirmaAnnotazione',
+      utenteId: 'u1',
+    })
+  }
+
   describe('invia: precondizioni locali (prima di qualunque rete)', () => {
     it('FIR inesistente: 404', async () => {
       const a = ambiente()
@@ -229,9 +250,19 @@ describe('AnnotazioneRentriUseCase', () => {
     })
 
     it.each([
-      ['produttore (P.IVA con prefisso IT)', { produttore: parte('IT' + CF_TENANT) }],
-      ['produttore (codice fiscale)', { produttore: parte('', CF_TENANT.toLowerCase()) }],
+      [
+        'trasportatore (P.IVA con prefisso IT)',
+        { produttore: parte('33333333335'), trasportatore: parte('IT' + CF_TENANT) },
+      ],
+      [
+        'trasportatore (codice fiscale)',
+        { produttore: parte('33333333335'), trasportatore: parte('', CF_TENANT.toLowerCase()) },
+      ],
       ['trasportatore', { produttore: parte('33333333335'), trasportatore: parte(CF_TENANT) }],
+      [
+        'produttore che e anche destinatario',
+        { produttore: parte(CF_TENANT), destinatario: parte(CF_TENANT) },
+      ],
       ['destinatario', { produttore: parte('33333333335'), destinatario: parte(CF_TENANT) }],
       [
         'trasportatore aggiuntivo',
@@ -241,6 +272,20 @@ describe('AnnotazioneRentriUseCase', () => {
       const a = ambiente({ fir: creaFir(parti as any) })
       await a.useCase.invia(comando())
       expect(a.client.inviaAnnotazione).toHaveBeenCalledTimes(1)
+    })
+
+    it('il solo produttore NON e ammesso (contratto: trasportatore o destinatario): 409, nessuna rete', async () => {
+      const a = ambiente({
+        fir: creaFir({
+          produttore: parte(CF_TENANT),
+          trasportatore: parte('11111111119'),
+          destinatario: parte('22222222226'),
+        }),
+      })
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_SOGGETTO_NON_NEL_FIR' }),
+      })
+      await nessunaRete(a)
     })
 
     it('firma in attesa sul FIR: SESSIONE_FIRMA_IN_CORSO, nessuna chiamata all ente', async () => {
@@ -269,12 +314,112 @@ describe('AnnotazioneRentriUseCase', () => {
       expect(await a.eventi.elenca(TENANT, FIR_ID)).toHaveLength(0)
     })
 
-    it('annotazione gia in attesa di firma: ANNOTAZIONE_DA_FIRMARE (nessuna doppia annotazione)', async () => {
+    it('annotazione NOSTRA gia in attesa di firma: ANNOTAZIONE_DA_FIRMARE (nessuna doppia annotazione)', async () => {
       const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione', 'Reset'] })
+      await annotazioneNostraInSospeso(a)
       await expect(a.useCase.invia(comando())).rejects.toMatchObject({
         metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DA_FIRMARE' }),
       })
       expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+    })
+
+    it('annotazione di un ALTRO soggetto in attesa di firma: ANNOTAZIONE_DI_ALTRO_SOGGETTO, non si invita a firmarla', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione', 'Reset'] })
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+      })
+      expect(a.client.inviaAnnotazione).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('invia: prenotazione locale (I1) e idempotenza (I2)', () => {
+    it('due invii concorrenti: UN solo POST, l altro 409 SESSIONE_FIRMA_IN_CORSO', async () => {
+      const a = ambiente()
+      // /azioni lento: senza prenotazione entrambe le richieste lo supererebbero prima del POST.
+      a.getAzioni.execute.mockImplementationOnce(async () => {
+        await new Promise(r => setTimeout(r, 30))
+        return { azioni: [{ operazione: 'Annotazione' }] }
+      })
+      a.getAzioni.execute.mockImplementationOnce(async () => {
+        await new Promise(r => setTimeout(r, 30))
+        return { azioni: [{ operazione: 'Annotazione' }] }
+      })
+
+      const esiti = await Promise.allSettled([
+        a.useCase.invia(comando()),
+        a.useCase.invia(comando({ utenteId: 'u2' })),
+      ])
+
+      expect(a.client.inviaAnnotazione).toHaveBeenCalledTimes(1)
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      const rifiutata = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+      expect(rifiutata.reason).toMatchObject({
+        metadata: expect.objectContaining({ rule: 'SESSIONE_FIRMA_IN_CORSO' }),
+      })
+    })
+
+    it('la prenotazione nasce PRIMA di /azioni e di POST, e viene rilasciata prima della firma', async () => {
+      const a = ambiente()
+      let apertaDuranteAzioni = false
+      a.getAzioni.execute.mockReset()
+      a.getAzioni.execute
+        .mockImplementationOnce(async () => {
+          apertaDuranteAzioni = (await a.sessioni.trovaAperta(TENANT, FIR_ID)) !== null
+          return { azioni: [{ operazione: 'Annotazione' }] }
+        })
+        .mockResolvedValue({ azioni: [{ operazione: 'AcquisizioneFirmaAnnotazione' }] })
+      let apertaAllaFirma = true
+      a.completa.execute.mockImplementationOnce(async () => {
+        apertaAllaFirma = (await a.sessioni.trovaAperta(TENANT, FIR_ID)) !== null
+        return { esito: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' }
+      })
+
+      await a.useCase.invia(comando())
+
+      expect(apertaDuranteAzioni).toBe(true)
+      expect(apertaAllaFirma).toBe(false)
+    })
+
+    it.each([
+      ['/azioni non la propone', 'azioni'],
+      ['rifiuto dell ente', 'rifiuto'],
+      ['errore di rete', 'rete'],
+    ])('%s: la prenotazione non resta aperta a bloccare il FIR', async (_n, caso) => {
+      const a = ambiente({ azioni: caso === 'azioni' ? ['Reset'] : undefined })
+      if (caso === 'rifiuto')
+        a.client.inviaAnnotazione.mockResolvedValue({ errore: true, validazione: [] })
+      if (caso === 'rete') a.client.inviaAnnotazione.mockRejectedValue(new Error('ECONNRESET'))
+
+      await a.useCase.invia(comando()).catch(() => undefined)
+
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+
+    it('esito incerto dal client (5xx): evento INCERTA, errore originale, nessuna firma, prenotazione rilasciata', async () => {
+      const a = ambiente()
+      const incerto = new TrasmissioneRentriIncertaError('HTTP_5XX', 503, 'annotazione')
+      a.client.inviaAnnotazione.mockRejectedValue(incerto)
+
+      await expect(a.useCase.invia(comando())).rejects.toBe(incerto)
+
+      expect((await a.eventi.elenca(TENANT, FIR_ID))[0]).toMatchObject({
+        operazione: 'Annotazione',
+        esito: 'INCERTA',
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+
+    it('una prenotazione IN_AVVIO scaduta (processo morto) non blocca per sempre: si chiude e si riparte', async () => {
+      const a = ambiente()
+      await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: 'ANNOTAZIONE_INVIO',
+        scadenza: new Date(Date.now() - 1000),
+      })
+      await a.useCase.invia(comando())
+      expect(a.client.inviaAnnotazione).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -404,6 +549,7 @@ describe('AnnotazioneRentriUseCase', () => {
 
     it('firma proposta: una sola richiesta al ciclo comune, ACCETTATA nello storico', async () => {
       const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await annotazioneNostraInSospeso(a)
       const esito = await a.useCase.firma({
         firId: FIR_ID,
         tenantId: TENANT,
@@ -415,14 +561,59 @@ describe('AnnotazioneRentriUseCase', () => {
         expect.objectContaining({ tipoOperazione: 'ANNOTAZIONE', nuovaSessione: true })
       )
       expect(esito).toEqual({ esito: 'COMPLETATA', statoFormulario: 'InserimentoAccettazione' })
-      expect((await a.eventi.elenca(TENANT, FIR_ID))[0]).toMatchObject({
+      const riga = (await a.eventi.elenca(TENANT, FIR_ID))[0]
+      expect(riga).toMatchObject({ operazione: 'AcquisizioneFirmaAnnotazione', esito: 'ACCETTATA' })
+      // M1: la firma e' legata al testo che si firma (transazione dell'annotazione e hash del testo).
+      expect(riga.payload).toEqual({
+        transazioneIdAnnotazione: 'tr-sospesa',
+        testoSha256: createHash('sha256').update('Annotazione in sospeso', 'utf8').digest('hex'),
+      })
+    })
+
+    it('annotazione inserita da un ALTRO soggetto: 409 ANNOTAZIONE_DI_ALTRO_SOGGETTO, nessuna authorize', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await annotazioneNostraInSospeso(a, 'Testo del trasportatore', '99999999990')
+
+      await expect(
+        a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+      ).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('senza nessuna nostra annotazione nello storico: 409, non si firma un testo sconosciuto', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await expect(
+        a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+      ).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
+      })
+      expect(a.completa.execute).not.toHaveBeenCalled()
+    })
+
+    it('un annotazione gia firmata (firma ACCETTATA piu recente) non e piu in sospeso', async () => {
+      const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await annotazioneNostraInSospeso(a)
+      await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
         operazione: 'AcquisizioneFirmaAnnotazione',
+        payload: null,
+        transazioneId: null,
         esito: 'ACCETTATA',
+        dettaglioEnte: null,
+        statoFormularioDopo: 'Accettato',
+        utenteId: 'u1',
+      })
+      await expect(a.useCase.firma({ firId: FIR_ID, tenantId: TENANT })).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' }),
       })
     })
 
     it('firma rifiutata dall ente (eccezione FIRMA_RENTRI_RIFIUTATA): RIFIUTATA nello storico, eccezione propagata', async () => {
       const a = ambiente({ azioni: ['AcquisizioneFirmaAnnotazione'] })
+      await annotazioneNostraInSospeso(a)
       const { DomainException } = await import('../../domain/shared/domain-exception')
       a.completa.execute.mockRejectedValue(
         DomainException.businessRuleViolation('FIRMA_RENTRI_RIFIUTATA', 'no')

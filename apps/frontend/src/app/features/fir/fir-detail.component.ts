@@ -397,8 +397,14 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 <p class="firma-in-attesa__testo">
                   <i class="pi pi-pencil" aria-hidden="true"></i>
                   Firma RENTRI da completare: l'annotazione è stata registrata presso l'ente ma non
-                  è ancora firmata.
+                  è ancora firmata. Stai per firmare questo testo:
                 </p>
+                <blockquote
+                  class="firma-in-attesa__testo"
+                  data-testid="fir-detail-firma-annotazione-testo"
+                >
+                  {{ annotazioneDaFirmare() }}
+                </blockquote>
                 <div class="row-actions">
                   <p-button
                     label="Firma l'annotazione"
@@ -2093,8 +2099,25 @@ export class FirDetailComponent implements OnInit {
       !!fir.rentriNumeroFir &&
       this.canManageRENTRI() &&
       this.haOperazioneRentri('AcquisizioneFirmaAnnotazione') &&
-      !this.sessioneFirma()
+      !this.sessioneFirma() &&
+      this.annotazioneDaFirmare() !== null
     )
+  }
+
+  /**
+   * Il testo dell'ultima annotazione della nostra azienda accettata dall'ente e non ancora firmata, dallo
+   * storico (dal piu' recente). `null` se non c'e': un'annotazione in attesa inserita da un altro soggetto
+   * non si firma da qui, perche' non ne conosciamo il testo.
+   */
+  protected annotazioneDaFirmare(): string | null {
+    for (const e of this.eventi()) {
+      if (e.operazione === 'AcquisizioneFirmaAnnotazione' && e.esito === 'ACCETTATA') return null
+      if (e.operazione === 'Annotazione' && e.esito === 'ACCETTATA') {
+        const testo = (e.payload as { annotazione?: unknown } | null | undefined)?.annotazione
+        return typeof testo === 'string' ? testo : null
+      }
+    }
+    return null
   }
 
   apriDialogAnnotazione(): void {

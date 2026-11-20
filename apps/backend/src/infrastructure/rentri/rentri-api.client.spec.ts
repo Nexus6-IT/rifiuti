@@ -860,6 +860,22 @@ describe('RENTRIApiClient', () => {
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
     })
 
+    it('inviaAnnotazione (non idempotente): 5xx = una sola POST e esito incerto, mai ritentata', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ response: { status: 503 } })))
+
+      const errore = await client
+        .inviaAnnotazione('tenant-1', 'BCDFGH00001ZH', {
+          annotazione: 'x',
+          identificativo_soggetto: '01234567897',
+        })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).status).toBe(503)
+      expect((errore as Error).message).toContain('annotazione')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
     it('timeout senza risposta: TrasmissioneRentriIncertaError NESSUNA_RISPOSTA', async () => {
       mockHttpService.post.mockReturnValue(throwError(() => ({ code: 'ECONNABORTED' })))
 

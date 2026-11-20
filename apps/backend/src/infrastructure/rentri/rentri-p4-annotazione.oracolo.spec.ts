@@ -188,8 +188,12 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       destinatarioId: 'destinatario-oracolo-p4',
       tenantId,
       rifiuto: { cerCode: '150101', quantita: 100 },
-      // Il CF del tenant compare fra i soggetti del FIR (condizione dell'annotazione).
-      produttore: { ragioneSociale: 'Produttore di prova SRL', partitaIva: '', codiceFiscale: CF },
+      // Il CF del tenant e' quello del trasportatore (il solo produttore non puo' annotare, contratto r. 1046).
+      trasportatore: {
+        ragioneSociale: 'Trasporti di prova SRL',
+        partitaIva: '',
+        codiceFiscale: CF,
+      },
     })
     fir.emetti('FIR-ORACOLO-P4-000001', {
       firmatario: 'Produttore di prova SRL',
@@ -345,6 +349,10 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
     }
   }
 
+  /** Le sessioni di FIRMA: la prenotazione che serializza l'invio (ANNOTAZIONE_INVIO) e' un'altra cosa. */
+  const soloFirma = (sessioni: SessioniFirmaRentriInMemoria) =>
+    sessioni.righe.filter(r => r.tipoOperazione !== 'ANNOTAZIONE_INVIO')
+
   const TEMPI = { intervalloPollingMs: 5, attesaMassimaMs: 2000 }
   const TESTO = 'Il carico è stato pesato due volte alla partenza.'
 
@@ -380,7 +388,7 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
         })
         expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(partenza)
         expect((await firRepository.findById(fir.id))!.rentriStatoFormulario).toBe(partenza)
-        expect(sessioni.righe.map(s => [s.tipoOperazione, s.stato])).toEqual([
+        expect(soloFirma(sessioni).map(s => [s.tipoOperazione, s.stato])).toEqual([
           ['ANNOTAZIONE', 'COMPLETATA'],
         ])
         const storico = (await eventi.elenca(tenantId, fir.id)).reverse()
@@ -429,7 +437,7 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       const esito = await gestisci.riprendi({
         firId: fir.id,
         tenantId,
-        sessioneId: sessioni.righe[0].id,
+        sessioneId: soloFirma(sessioni)[0].id,
         utenteId: 'u-1',
       })
 
@@ -453,11 +461,23 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
     const tenantId = 'tenant-oracolo-p4-4'
     const numeroFir = 'BCDFGH00060ZD'
     // Stato dell'ente: annotazione registrata, firma ancora da dare, nessuna sessione locale aperta.
-    const { fir, client, annotazione } = await preparaFirDaFirmare(
+    const { fir, client, annotazione, eventi } = await preparaFirDaFirmare(
       numeroFir,
       tenantId,
       'FirmaAnnotazione'
     )
+    // L'annotazione e' nostra: lo storico locale ne conserva testo e CF.
+    await eventi.registra({
+      tenantId,
+      firId: fir.id,
+      operazione: 'Annotazione',
+      payload: { annotazione: TESTO, identificativo_soggetto: CF },
+      transazioneId: 'tr-pregressa',
+      esito: 'ACCETTATA',
+      dettaglioEnte: null,
+      statoFormularioDopo: 'FirmaAnnotazione',
+      utenteId: 'u-1',
+    })
     agganciaConfermaAutomatica(client)
     const inviaAnnotazione = jest.spyOn(client, 'inviaAnnotazione')
     const completatore = avviaCompletatore()
@@ -470,6 +490,52 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
 
       const esito = await annotazione.firma({ firId: fir.id, tenantId, ...TEMPI })
       expect(esito.esito).toBe('COMPLETATA')
+    } finally {
+      completatore.ferma()
+    }
+  }, 60000)
+
+  it('I3: annotazione in attesa inserita da un ALTRO soggetto: 409, nessuna authorize', async () => {
+    const tenantId = 'tenant-oracolo-p4-9'
+    const numeroFir = 'BCDFGH00060ZQ'
+    const { fir, client, annotazione } = await preparaFirDaFirmare(
+      numeroFir,
+      tenantId,
+      'FirmaAnnotazione'
+    )
+    const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+
+    await expect(annotazione.firma({ firId: fir.id, tenantId, ...TEMPI })).rejects.toMatchObject({
+      metadata: { rule: 'ANNOTAZIONE_DI_ALTRO_SOGGETTO' },
+    })
+    expect(authorize).not.toHaveBeenCalled()
+  })
+
+  it('I1: due invii concorrenti contro la fake = UN solo POST /annotazione, l altro 409', async () => {
+    const tenantId = 'tenant-oracolo-p4-10'
+    const numeroFir = 'BCDFGH00060ZR'
+    const { fir, client, annotazione } = await preparaFirDaFirmare(
+      numeroFir,
+      tenantId,
+      'InserimentoAccettazione'
+    )
+    agganciaConfermaAutomatica(client)
+    const inviaAnnotazione = jest.spyOn(client, 'inviaAnnotazione')
+    const completatore = avviaCompletatore()
+
+    try {
+      const esiti = await Promise.allSettled([
+        annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, utenteId: 'u-1', ...TEMPI }),
+        annotazione.invia({ firId: fir.id, tenantId, testo: 'Altra', utenteId: 'u-2', ...TEMPI }),
+      ])
+
+      expect(inviaAnnotazione).toHaveBeenCalledTimes(1)
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      expect(
+        (esiti.find(e => e.status === 'rejected') as PromiseRejectedResult).reason
+      ).toMatchObject({
+        metadata: { rule: 'SESSIONE_FIRMA_IN_CORSO' },
+      })
     } finally {
       completatore.ferma()
     }
@@ -526,7 +592,9 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
         'InserimentoAccettazione'
       )
       expect(authorize).not.toHaveBeenCalled()
-      expect(sessioni.righe).toHaveLength(0)
+      expect(soloFirma(sessioni)).toHaveLength(0)
+      // La prenotazione dell'invio non resta aperta a bloccare il FIR.
+      expect(await sessioni.trovaAperta(tenantId, fir.id)).toBeNull()
       expect((await eventi.elenca(tenantId, fir.id)).map(e => [e.operazione, e.esito])).toEqual([
         ['Annotazione', 'RIFIUTATA'],
       ])
@@ -557,7 +625,7 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(
         'FirmaAnnotazione'
       )
-      expect(sessioni.righe.map(s => s.stato)).toEqual(['RIFIUTATA'])
+      expect(soloFirma(sessioni).map(s => s.stato)).toEqual(['RIFIUTATA'])
       const storico = (await eventi.elenca(tenantId, fir.id)).map(e => [e.operazione, e.esito])
       expect(storico).toEqual(
         expect.arrayContaining([

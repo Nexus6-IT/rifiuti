@@ -740,11 +740,22 @@ export class RENTRIApiClient {
           contesto,
           tenantId
         ),
-      contesto
+      contesto,
+      undefined,
+      // L'annotazione si AGGIUNGE (non sovrascrive come quantita'/trasporto): 5xx o nessuna risposta non
+      // provano che l'ente non l'abbia registrata, quindi niente ritentativo cieco (come la creazione).
+      operazione === 'annotazione' ? { creazione: true, oggetto: 'annotazione' } : undefined
     )
 
     const transazioneId = risposta.data?.transazione_id
     if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      if (operazione === 'annotazione') {
+        throw new TrasmissioneRentriIncertaError(
+          'RISPOSTA_SENZA_TRANSAZIONE',
+          undefined,
+          'annotazione'
+        )
+      }
       throw new Error(
         `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
       )
@@ -1522,7 +1533,7 @@ export class RENTRIApiClient {
     azione: () => Promise<AxiosResponse>,
     contesto: string,
     tenantId?: string,
-    opzioni?: { creazione?: boolean }
+    opzioni?: { creazione?: boolean; oggetto?: string }
   ): Promise<AxiosResponse> {
     const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
@@ -1544,7 +1555,7 @@ export class RENTRIApiClient {
             typeof error === 'object' &&
             erroriChiamataHttp.has(error)
           ) {
-            throw new TrasmissioneRentriIncertaError('NESSUNA_RISPOSTA')
+            throw new TrasmissioneRentriIncertaError('NESSUNA_RISPOSTA', undefined, opzioni.oggetto)
           }
           // Nessuna risposta HTTP riconoscibile (es. timeout, errore di rete):
           // comportamento preesistente, invariato.
@@ -1554,7 +1565,7 @@ export class RENTRIApiClient {
         // Creazione: un 5xx non prova che il FIR non sia stato registrato.
         // 403/429/423 restano com'erano (richiesta non elaborata: ritentare è sicuro).
         if (opzioni?.creazione && risposta.status >= 500) {
-          throw new TrasmissioneRentriIncertaError('HTTP_5XX', risposta.status)
+          throw new TrasmissioneRentriIncertaError('HTTP_5XX', risposta.status, opzioni.oggetto)
         }
 
         await this.gestisciRispostaNonPrevista(risposta, contesto, tentativo, tenantEffettivo)
@@ -1720,14 +1731,16 @@ export { RentriApiError } from './rentri-http-resilienza'
 export class TrasmissioneRentriIncertaError extends Error {
   constructor(
     readonly causa: 'HTTP_5XX' | 'NESSUNA_RISPOSTA' | 'RISPOSTA_SENZA_TRANSAZIONE',
-    readonly status?: number
+    readonly status?: number,
+    /** Cosa si stava scrivendo (default: la creazione del formulario). */
+    readonly oggetto: string = 'creazione del formulario'
   ) {
     super(
       causa === 'HTTP_5XX'
-        ? `RENTRI ha risposto ${status} alla creazione del formulario: esito della trasmissione incerto`
+        ? `RENTRI ha risposto ${status} alla ${oggetto}: esito della trasmissione incerto`
         : causa === 'NESSUNA_RISPOSTA'
-          ? 'Nessuna risposta da RENTRI alla creazione del formulario: esito della trasmissione incerto'
-          : 'RENTRI ha risposto alla creazione del formulario senza transazione_id: esito della trasmissione incerto'
+          ? `Nessuna risposta da RENTRI alla ${oggetto}: esito della trasmissione incerto`
+          : `RENTRI ha risposto alla ${oggetto} senza transazione_id: esito della trasmissione incerto`
     )
     this.name = 'TrasmissioneRentriIncertaError'
   }

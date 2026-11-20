@@ -129,6 +129,8 @@ export interface EventoFirRentri {
   id: string
   operazione: string
   esito: 'INVIATA' | 'ACCETTATA' | 'RIFIUTATA' | 'INCERTA'
+  /** Corpo di dominio inviato all'ente (per l'annotazione: testo e CF del soggetto). */
+  payload?: unknown
   dettaglioEnte: string | null
   statoFormularioDopo: string | null
   utenteId: string | null
