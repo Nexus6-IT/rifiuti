@@ -100,6 +100,8 @@ describe('FirDetailComponent', () => {
       'firmaPartenza',
       'aggiungiAnnotazione',
       'firmaAnnotazione',
+      'dichiaraSostaTecnica',
+      'firmaSostaTecnica',
       'eventi',
       'ultimoTrasporto',
     ])
@@ -2785,6 +2787,323 @@ describe('FirDetailComponent', () => {
       fixture.detectChanges()
       expect(component.etichettaEvento('Annotazione')).toBe('Annotazione aggiunta')
       expect(component.etichettaEvento('AcquisizioneFirmaAnnotazione')).toBe('Annotazione firmata')
+    })
+  })
+
+  describe('Sosta tecnica (FIR in viaggio P5)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000777',
+    }
+    const azioni = (...operazioni: string[]) =>
+      of({
+        stato: 'InserimentoAccettazione',
+        versione: 1,
+        azioni: operazioni.map(operazione => ({ operazione, verbo: operazione })),
+      })
+    const el = (): HTMLElement => fixture.nativeElement
+    const DICHIARA = '[data-testid="fir-detail-rentri-dichiara-sosta-tecnica"]'
+    const BANNER = '[data-testid="fir-detail-firma-sosta-tecnica-banner"]'
+    const FIRMA = '[data-testid="fir-detail-firma-sosta-tecnica"]'
+    let messageService: MessageService
+
+    const eventoSosta = (luogo = 'Area di servizio A1'): EventoFirRentri => ({
+      id: 'ev-st',
+      operazione: 'SostaTecnica',
+      esito: 'ACCETTATA',
+      payload: {
+        luogo_stazionamento: luogo,
+        data_ora_sospensione: '2026-11-18T10:00:00.000Z',
+        data_ora_ripresa: '2026-11-18T12:30:00.000Z',
+      },
+      dettaglioEnte: null,
+      statoFormularioDopo: 'FirmaSostaTecnica',
+      utenteId: 'u1',
+      createdAt: '2026-11-20T10:00:00.000Z',
+    })
+
+    function preparaFirLegato(role: string, fir: FIR, ...operazioni: string[]): void {
+      setup({ role })
+      firService.getFIRById.and.returnValue(of(fir))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni(...operazioni))
+      messageService = fixture.debugElement.injector.get(MessageService)
+    }
+
+    function compila(
+      luogo = 'Area di servizio A1',
+      sospensione = '2026-11-18T10:00',
+      ripresa = '2026-11-18T12:30'
+    ) {
+      component.apriDialogSostaTecnica()
+      component['sostaLuogo'] = luogo
+      component['sostaSospensione'] = sospensione
+      component['sostaRipresa'] = ripresa
+    }
+
+    it("il pulsante «Dichiara una sosta tecnica» nasce SOLO dall'azione SostaTecnica dell'ente", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica', 'Annotazione')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeTruthy()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+    })
+
+    it('senza SostaTecnica fra le azioni (per esempio dopo l accettazione) non compare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('un FIR non legato (cartaceo) e un VIEWER non la vedono', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+
+      preparaFirLegato('VIEWER', firLegato, 'SostaTecnica')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('con una firma gia in attesa non si puo dichiarare un altra sosta', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({
+          sessione: {
+            id: 's1',
+            tipoOperazione: 'SOSTA_TECNICA',
+            scadenza: new Date(Date.now() + 90_000).toISOString(),
+            stato: 'IN_ATTESA' as const,
+            scaduta: false,
+          },
+        })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+      expect(el().querySelector('[data-testid="fir-detail-firma-riprendi"]')).toBeTruthy()
+    })
+
+    it("«Firma la sosta tecnica» compare solo se l'ente propone AcquisizioneFirmaSostaTecnica, mostra luogo e date e chiama la rotta", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaSostaTecnica', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoSosta()] }))
+      rentriFirLifecycleService.firmaSostaTecnica.and.returnValue(
+        of({ esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)?.textContent).toContain('Firma RENTRI da completare')
+      expect(
+        el().querySelector('[data-testid="fir-detail-firma-sosta-tecnica-testo"]')?.textContent
+      ).toContain('Area di servizio A1')
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+      const aggiungi = spyOn(messageService, 'add')
+
+      ;(el().querySelector(FIRMA) as HTMLElement).querySelector('button')?.click()
+
+      expect(rentriFirLifecycleService.firmaSostaTecnica).toHaveBeenCalledOnceWith('fir-1')
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('una sosta in attesa dichiarata da un ALTRO soggetto (nessuna nostra nello storico) non si firma da qui', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaSostaTecnica', 'Reset')
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER)).toBeFalsy()
+      expect(el().querySelector(FIRMA)).toBeFalsy()
+    })
+
+    for (const esito of ['INCERTA', 'INVIATA'] as const) {
+      it(`invio ${esito} (esito ignoto) e firma proposta dall'ente: banner con il luogo e l'avviso di verifica`, () => {
+        preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaSostaTecnica', 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [{ ...eventoSosta('Piazzale risposta persa'), esito }] })
+        )
+        fixture.detectChanges()
+        expect(
+          el().querySelector('[data-testid="fir-detail-firma-sosta-tecnica-testo"]')?.textContent
+        ).toContain('Piazzale risposta persa')
+        expect(
+          el().querySelector('[data-testid="fir-detail-firma-sosta-tecnica-verifica"]')?.textContent
+        ).toContain('verifica presso l')
+        expect(el().querySelector(FIRMA)).toBeTruthy()
+      })
+    }
+
+    it('dopo un Reset accettato, un invio RIFIUTATO o una sosta gia firmata il banner non compare', () => {
+      const casi: EventoFirRentri[][] = [
+        [{ ...eventoSosta(), id: 'ev-r', operazione: 'Reset', payload: null }, eventoSosta()],
+        [{ ...eventoSosta(), esito: 'RIFIUTATA' }],
+        [
+          { ...eventoSosta(), id: 'ev-f', operazione: 'AcquisizioneFirmaSostaTecnica' },
+          eventoSosta(),
+        ],
+      ]
+      for (const eventi of casi) {
+        preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaSostaTecnica', 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(of({ eventi }))
+        fixture.detectChanges()
+        expect(el().querySelector(BANNER)).toBeFalsy()
+      }
+    })
+
+    it('validazione del dialog: luogo 1..1000, due date, ripresa dopo la sospensione', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      fixture.detectChanges()
+      component.apriDialogSostaTecnica()
+      expect(component.sostaValida()).toBeFalse()
+
+      compila()
+      expect(component.sostaValida()).toBeTrue()
+      expect(component.sostaMessaggioDate()).toBeNull()
+
+      compila('   ')
+      expect(component.sostaValida()).toBeFalse()
+      compila('x'.repeat(1000))
+      expect(component.sostaValida()).toBeTrue()
+      compila('x'.repeat(1001))
+      expect(component.sostaValida()).toBeFalse()
+
+      compila('Area', '', '2026-11-18T12:30')
+      expect(component.sostaValida()).toBeFalse()
+      compila('Area', '2026-11-18T10:00', '')
+      expect(component.sostaValida()).toBeFalse()
+      compila('Area', 'non una data', '2026-11-18T12:30')
+      expect(component.sostaValida()).toBeFalse()
+
+      // Ripresa uguale o prima della sospensione: non valida, con il motivo.
+      compila('Area', '2026-11-18T12:30', '2026-11-18T12:30')
+      expect(component.sostaValida()).toBeFalse()
+      expect(component.sostaMessaggioDate()).toContain('successiva')
+      compila('Area', '2026-11-18T12:30', '2026-11-18T10:00')
+      expect(component.sostaValida()).toBeFalse()
+    })
+
+    it('conferma: invia luogo (ripulito) e le date in UTC, avvisa, chiude il dialog e ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(
+        of({
+          operazione: 'SostaTecnica' as const,
+          statoFormulario: 'FirmaSostaTecnica',
+          firma: { esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila('  Area di servizio A1  ', '2026-11-18T10:00', '2026-11-18T12:30')
+
+      component.confermaSostaTecnica()
+
+      expect(rentriFirLifecycleService.dichiaraSostaTecnica).toHaveBeenCalledOnceWith('fir-1', {
+        luogoStazionamento: 'Area di servizio A1',
+        // `datetime-local` e' ora locale: all'ente va l'istante in UTC (ISO con Z).
+        dataOraSospensione: new Date('2026-11-18T10:00').toISOString(),
+        dataOraRipresa: new Date('2026-11-18T12:30').toISOString(),
+      })
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Sosta tecnica inviata a RENTRI' })
+      )
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(component['sostaDialogVisible']()).toBeFalse()
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('sosta registrata ma firma da completare: avviso, nessun errore, la sosta non si perde', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(
+        of({
+          operazione: 'SostaTecnica' as const,
+          statoFormulario: 'FirmaSostaTecnica',
+          firma: {
+            esito: 'DA_COMPLETARE' as const,
+            avviso: 'Firma RENTRI da completare: puoi riprovare da «Firma la sosta tecnica».',
+          },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila()
+
+      component.confermaSostaTecnica()
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Firma RENTRI da completare',
+          detail: jasmine.stringContaining('Firma la sosta tecnica'),
+        })
+      )
+    })
+
+    it('firma in attesa sul telefono: messaggio informativo, nessuna doppia richiesta', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(
+        of({
+          operazione: 'SostaTecnica' as const,
+          statoFormulario: 'FirmaSostaTecnica',
+          firma: {
+            esito: 'IN_ATTESA' as const,
+            handle: 'h',
+            scadenzaAutorizzazione: new Date().toISOString(),
+          },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila()
+
+      component.confermaSostaTecnica()
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'info', summary: 'Firma non ancora confermata' })
+      )
+      expect(rentriFirLifecycleService.firmaSostaTecnica).not.toHaveBeenCalled()
+    })
+
+    it('errore 409 (non sei il trasportatore): il messaggio resta nel dialog, i campi scritti non si perdono', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            message: 'Il codice fiscale della tua azienda non compare fra i trasportatori.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      compila('Piazzale da non perdere')
+
+      component.confermaSostaTecnica()
+
+      expect(component['sostaErrore']()).toContain('non compare fra i trasportatori')
+      expect(component['sostaLuogo']).toBe('Piazzale da non perdere')
+      expect(component['sostaDialogVisible']()).toBeTrue()
+      expect(component['sostaInCorso']()).toBeFalse()
+    })
+
+    it('non invia due volte mentre la richiesta e in corso, ne con dati non validi', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(NEVER)
+      fixture.detectChanges()
+      compila('   ')
+      component.confermaSostaTecnica()
+      expect(rentriFirLifecycleService.dichiaraSostaTecnica).not.toHaveBeenCalled()
+
+      compila()
+      component.confermaSostaTecnica()
+      component.confermaSostaTecnica()
+      expect(rentriFirLifecycleService.dichiaraSostaTecnica).toHaveBeenCalledTimes(1)
+    })
+
+    it('lo storico nomina la sosta tecnica e la sua firma', () => {
+      preparaFirLegato('OPERATOR', firLegato)
+      fixture.detectChanges()
+      expect(component.etichettaEvento('SostaTecnica')).toBe('Sosta tecnica dichiarata')
+      expect(component.etichettaEvento('AcquisizioneFirmaSostaTecnica')).toBe(
+        'Sosta tecnica firmata'
+      )
     })
   })
 })

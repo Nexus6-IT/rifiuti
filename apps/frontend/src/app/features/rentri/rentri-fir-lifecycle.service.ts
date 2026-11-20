@@ -86,6 +86,27 @@ export interface EsitoAnnotazione {
 /** Limite del contratto RENTRI per il testo di un'annotazione (caratteri). */
 export const ANNOTAZIONE_RENTRI_MAX = 10000
 
+/** Esito della firma proposta subito dopo la sosta tecnica: quelli del ciclo comune, piu' «da completare». */
+export type EsitoFirmaSostaTecnica = EsitoFirmaAnnotazione
+
+/** Esito di `POST /rentri/fir/:id/sosta-tecnica` (FIR in viaggio, P5). */
+export interface EsitoSostaTecnica {
+  operazione: 'SostaTecnica'
+  /** Stato riletto dall'ente dopo l'invio (`FirmaSostaTecnica`); null se la rilettura non e' riuscita. */
+  statoFormulario: string | null
+  firma: EsitoFirmaSostaTecnica
+}
+
+/** Corpo di `POST /rentri/fir/:id/sosta-tecnica`: istanti ISO 8601 in UTC (`Z`). */
+export interface DatiSostaTecnica {
+  luogoStazionamento: string
+  dataOraSospensione: string
+  dataOraRipresa: string
+}
+
+/** Limite del contratto RENTRI per il luogo di stazionamento (caratteri). */
+export const LUOGO_SOSTA_RENTRI_MAX = 1000
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
@@ -264,6 +285,22 @@ export class RentriFirLifecycleService {
     payload: { nuovaSessione?: boolean } = {}
   ): Observable<EsitoFirmaRemota> {
     return this.http.post<EsitoFirmaRemota>(`${this.API_URL}/${firId}/firma-annotazione`, payload)
+  }
+
+  /**
+   * «Dichiara una sosta tecnica» (FIR in viaggio, P5): luogo e istanti in UTC, firmati subito con la firma
+   * remota del trasportatore. Il soggetto e' sempre l'azienda selezionata (lo mette il backend).
+   */
+  dichiaraSostaTecnica(firId: string, dati: DatiSostaTecnica): Observable<EsitoSostaTecnica> {
+    return this.http.post<EsitoSostaTecnica>(`${this.API_URL}/${firId}/sosta-tecnica`, dati)
+  }
+
+  /** «Firma la sosta tecnica»: ripresa della firma di una sosta gia' registrata presso l'ente. */
+  firmaSostaTecnica(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaRemota> {
+    return this.http.post<EsitoFirmaRemota>(`${this.API_URL}/${firId}/firma-sosta-tecnica`, payload)
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

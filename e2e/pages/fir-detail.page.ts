@@ -76,6 +76,16 @@ export class FirDetailPage {
   readonly annotazioneConferma: Locator
   readonly annotazioneErrore: Locator
   readonly firmaAnnotazioneBanner: Locator
+  readonly dichiaraSostaTecnica: Locator
+  readonly sostaDialog: Locator
+  readonly sostaLuogo: Locator
+  readonly sostaContatore: Locator
+  readonly sostaSospensione: Locator
+  readonly sostaRipresa: Locator
+  readonly sostaConferma: Locator
+  readonly sostaErrore: Locator
+  readonly sostaDateErrore: Locator
+  readonly firmaSostaTecnicaBanner: Locator
   readonly indicaQuantita: Locator
   readonly indicaTrasporto: Locator
   readonly quantitaDialog: Locator
@@ -185,6 +195,16 @@ export class FirDetailPage {
     this.annotazioneConferma = page.getByTestId('fir-detail-rentri-annotazione-confirm')
     this.annotazioneErrore = page.getByTestId('fir-detail-rentri-annotazione-errore')
     this.firmaAnnotazioneBanner = page.getByTestId('fir-detail-firma-annotazione-banner')
+    this.dichiaraSostaTecnica = page.getByTestId('fir-detail-rentri-dichiara-sosta-tecnica')
+    this.sostaDialog = page.getByTestId('fir-detail-rentri-sosta-dialog')
+    this.sostaLuogo = page.getByTestId('fir-detail-rentri-sosta-luogo')
+    this.sostaContatore = page.getByTestId('fir-detail-rentri-sosta-contatore')
+    this.sostaSospensione = page.getByTestId('fir-detail-rentri-sosta-sospensione')
+    this.sostaRipresa = page.getByTestId('fir-detail-rentri-sosta-ripresa')
+    this.sostaConferma = page.getByTestId('fir-detail-rentri-sosta-confirm')
+    this.sostaErrore = page.getByTestId('fir-detail-rentri-sosta-errore')
+    this.sostaDateErrore = page.getByTestId('fir-detail-rentri-sosta-date-errore')
+    this.firmaSostaTecnicaBanner = page.getByTestId('fir-detail-firma-sosta-tecnica-banner')
     this.indicaQuantita = page.getByTestId('fir-detail-rentri-indica-quantita')
     this.indicaTrasporto = page.getByTestId('fir-detail-rentri-indica-trasporto')
     this.quantitaDialog = page.getByTestId('fir-detail-rentri-quantita-dialog')

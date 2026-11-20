@@ -49,6 +49,7 @@ import {
   EventoFirRentri,
   OPERAZIONI_FIRMA_PARTENZA,
   ANNOTAZIONE_RENTRI_MAX,
+  LUOGO_SOSTA_RENTRI_MAX,
   SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -75,6 +76,14 @@ const ORIGINI_RILASCIABILI = ['ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE']
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
 /** Etichette italiane per l'origine del legame RENTRI (v. RentriOrigineLegame nel dominio). */
+/** Istante ISO (UTC) mostrato nel fuso del browser, in italiano: «18/11/2026, 11:00». */
+function formattaIstante(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })
+}
+
 const ORIGINE_LEGAME_LABELS: Record<string, string> = {
   TRASMESSO_DA_NOI: 'Trasmesso da noi',
   ACQUISITO_DA_TERZI: 'Acquisito da terzi',
@@ -426,6 +435,44 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 </div>
               </div>
             }
+            @if (canFirmareSostaTecnica(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-sosta-tecnica-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: la sosta tecnica è stata registrata presso l'ente ma
+                  non è ancora firmata. Stai per firmare come trasportatore questa sosta:
+                </p>
+                <blockquote
+                  class="firma-in-attesa__testo"
+                  data-testid="fir-detail-firma-sosta-tecnica-testo"
+                >
+                  {{ sostaDaFirmare() }}
+                </blockquote>
+                @if (sostaDaVerificare()) {
+                  <p
+                    class="firma-in-attesa__testo"
+                    data-testid="fir-detail-firma-sosta-tecnica-verifica"
+                  >
+                    <i class="pi pi-info-circle" aria-hidden="true"></i>
+                    L'esito dell'invio non era arrivato: prima di chiedere la firma WasteFlow
+                    verifica presso l'ente che la sosta in attesa sia proprio questa.
+                  </p>
+                }
+                <div class="row-actions">
+                  <p-button
+                    label="Firma la sosta tecnica"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaSostaTecnica(f)"
+                    data-testid="fir-detail-firma-sosta-tecnica"
+                  />
+                </div>
+              </div>
+            }
             @if (sessioneFirma(); as sessione) {
               <div
                 class="firma-in-attesa"
@@ -716,6 +763,18 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canDichiararSostaTecnica(f)) {
+                <p-button
+                  label="Dichiara una sosta tecnica"
+                  icon="pi pi-clock"
+                  [outlined]="true"
+                  (onClick)="apriDialogSostaTecnica()"
+                  data-testid="fir-detail-rentri-dichiara-sosta-tecnica"
+                  [attr.aria-label]="
+                    'Dichiara una sosta tecnica del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
               @if (canAnnullareRentri(f)) {
                 <p-button
                   label="Annulla il formulario"
@@ -996,6 +1055,85 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           [loading]="annotazioneInCorso()"
           (onClick)="confermaAnnotazione()"
           data-testid="fir-detail-rentri-annotazione-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Sosta tecnica (FIR in viaggio, P5) -->
+    <p-dialog
+      header="Dichiara una sosta tecnica"
+      [(visible)]="sostaDialogVisible"
+      [modal]="true"
+      [style]="{ width: '34rem' }"
+      data-testid="fir-detail-rentri-sosta-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="sosta-luogo">Luogo di stazionamento *</label>
+          <textarea
+            id="sosta-luogo"
+            pInputTextarea
+            rows="3"
+            [attr.maxlength]="sostaLuogoMax"
+            [(ngModel)]="sostaLuogo"
+            data-testid="fir-detail-rentri-sosta-luogo"
+          ></textarea>
+          <small class="text-tertiary" data-testid="fir-detail-rentri-sosta-contatore"
+            >{{ sostaLuogo.length }} / {{ sostaLuogoMax }} caratteri.</small
+          >
+        </div>
+        <div class="form-field">
+          <label for="sosta-sospensione">Inizio della sosta (sospensione) *</label>
+          <input
+            id="sosta-sospensione"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="sostaSospensione"
+            data-testid="fir-detail-rentri-sosta-sospensione"
+          />
+        </div>
+        <div class="form-field">
+          <label for="sosta-ripresa">Fine della sosta (ripresa) *</label>
+          <input
+            id="sosta-ripresa"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="sostaRipresa"
+            data-testid="fir-detail-rentri-sosta-ripresa"
+          />
+          <small class="text-tertiary"
+            >Le date sono nel tuo fuso orario e arrivano all'ente in UTC. La sosta è a nome della
+            tua azienda come trasportatore e va firmata sull'app RENTRI FIR Digitale.</small
+          >
+        </div>
+        @if (sostaMessaggioDate(); as messaggioDate) {
+          <small
+            class="form-error"
+            role="alert"
+            data-testid="fir-detail-rentri-sosta-date-errore"
+            >{{ messaggioDate }}</small
+          >
+        }
+        @if (sostaErrore()) {
+          <small class="form-error" role="alert" data-testid="fir-detail-rentri-sosta-errore">{{
+            sostaErrore()
+          }}</small>
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="sostaDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-sosta-cancel"
+        />
+        <p-button
+          label="Invia e firma"
+          [disabled]="!sostaValida()"
+          [loading]="sostaInCorso()"
+          (onClick)="confermaSostaTecnica()"
+          data-testid="fir-detail-rentri-sosta-confirm"
         />
       </ng-template>
     </p-dialog>
@@ -1556,6 +1694,16 @@ export class FirDetailComponent implements OnInit {
   protected readonly annotazioneErrore = signal<string | null>(null)
   protected annotazioneTesto = ''
 
+  // --- Sosta tecnica (FIR in viaggio, P5) ---
+  protected readonly sostaLuogoMax = LUOGO_SOSTA_RENTRI_MAX
+  protected readonly sostaDialogVisible = signal(false)
+  protected readonly sostaInCorso = signal(false)
+  protected readonly sostaErrore = signal<string | null>(null)
+  protected sostaLuogo = ''
+  /** `datetime-local` (ora locale, senza fuso): all'ente parte l'istante in UTC. */
+  protected sostaSospensione = ''
+  protected sostaRipresa = ''
+
   // --- Quantita' e dati di trasporto (FIR in viaggio, P2) ---
   protected readonly unitaQuantita = [
     { label: 'kg', value: 'kg' },
@@ -1982,6 +2130,8 @@ export class FirDetailComponent implements OnInit {
       this.canFirmarePartenza(fir) ||
       this.canAggiungereAnnotazione(fir) ||
       this.canFirmareAnnotazione(fir) ||
+      this.canDichiararSostaTecnica(fir) ||
+      this.canFirmareSostaTecnica(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
@@ -2216,6 +2366,177 @@ export class FirDetailComponent implements OnInit {
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, "Impossibile firmare l'annotazione su RENTRI"),
+        })
+        this.reload()
+      },
+    })
+  }
+
+  // --- Sosta tecnica (FIR in viaggio, P5) ---
+
+  /** Il pulsante nasce SOLO da `/azioni` (`SostaTecnica`), per un FIR legato, un ruolo abilitato e senza una firma gia' in attesa. */
+  canDichiararSostaTecnica(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('SostaTecnica') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  /** Una sosta gia' registrata presso l'ente e non ancora firmata: lo dice `/azioni`, mai lo stato locale. */
+  canFirmareSostaTecnica(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaSostaTecnica') &&
+      !this.sessioneFirma() &&
+      this.sostaDaFirmare() !== null
+    )
+  }
+
+  /**
+   * Luogo e date (UTC) dell'ultima sosta della nostra azienda accettata dall'ente e non ancora firmata, dallo
+   * storico. `null` se non c'e': una sosta in attesa dichiarata da un altro soggetto non si firma da qui,
+   * perche' non ne conosciamo il contenuto.
+   */
+  protected sostaDaFirmare(): string | null {
+    const evento = this.sostaInSospeso()
+    const p = evento?.payload as
+      | {
+          luogo_stazionamento?: unknown
+          data_ora_sospensione?: unknown
+          data_ora_ripresa?: unknown
+        }
+      | null
+      | undefined
+    if (
+      typeof p?.luogo_stazionamento !== 'string' ||
+      typeof p.data_ora_sospensione !== 'string' ||
+      typeof p.data_ora_ripresa !== 'string'
+    ) {
+      return null
+    }
+    return `${p.luogo_stazionamento} (dal ${formattaIstante(p.data_ora_sospensione)} al ${formattaIstante(p.data_ora_ripresa)})`
+  }
+
+  /** L'invio della sosta ha un esito ignoto (INVIATA/INCERTA): il backend lo riconcilia con l'ente prima della firma. */
+  protected sostaDaVerificare(): boolean {
+    const esito = this.sostaInSospeso()?.esito
+    return esito === 'INVIATA' || esito === 'INCERTA'
+  }
+
+  /**
+   * Come il backend: l'ultimo invio dopo l'ultima firma accettata. ACCETTATA = nostra e accettata;
+   * INVIATA/INCERTA = esito ignoto, da riconciliare; RIFIUTATA = chiuso (si guarda l'invio precedente).
+   */
+  private sostaInSospeso(): EventoFirRentri | null {
+    for (const e of this.eventi()) {
+      if (e.operazione === 'AcquisizioneFirmaSostaTecnica' && e.esito === 'ACCETTATA') return null
+      if (
+        (e.operazione === 'Reset' || e.operazione === 'RollbackFirma') &&
+        e.esito === 'ACCETTATA'
+      ) {
+        return null
+      }
+      if (e.operazione === 'SostaTecnica' && e.esito !== 'RIFIUTATA') return e
+    }
+    return null
+  }
+
+  apriDialogSostaTecnica(): void {
+    this.sostaLuogo = ''
+    this.sostaSospensione = ''
+    this.sostaRipresa = ''
+    this.sostaErrore.set(null)
+    this.sostaDialogVisible.set(true)
+  }
+
+  /** Istanti (ms) delle due date del dialog, oppure `null` se mancano o non sono date valide. */
+  private sostaIstanti(): { sospensione: number; ripresa: number } | null {
+    if (!this.sostaSospensione || !this.sostaRipresa) return null
+    const sospensione = new Date(this.sostaSospensione).getTime()
+    const ripresa = new Date(this.sostaRipresa).getTime()
+    return Number.isNaN(sospensione) || Number.isNaN(ripresa) ? null : { sospensione, ripresa }
+  }
+
+  /** Il motivo per cui le date non vanno (solo se entrambe sono valide: gli altri casi li copre il pulsante disabilitato). */
+  sostaMessaggioDate(): string | null {
+    const istanti = this.sostaIstanti()
+    return istanti && istanti.sospensione >= istanti.ripresa
+      ? 'La ripresa deve essere successiva alla sospensione.'
+      : null
+  }
+
+  /** Luogo da 1 a 1000 caratteri (non solo spazi), due date valide e sospensione < ripresa. */
+  sostaValida(): boolean {
+    const luogo = this.sostaLuogo.trim()
+    const istanti = this.sostaIstanti()
+    return (
+      luogo.length > 0 &&
+      luogo.length <= this.sostaLuogoMax &&
+      istanti !== null &&
+      istanti.sospensione < istanti.ripresa
+    )
+  }
+
+  confermaSostaTecnica(): void {
+    const fir = this.fir()
+    if (!fir || !this.sostaValida() || this.sostaInCorso()) return
+    this.sostaInCorso.set(true)
+    this.sostaErrore.set(null)
+    this.rentriFirLifecycleService
+      .dichiaraSostaTecnica(fir.id, {
+        luogoStazionamento: this.sostaLuogo.trim(),
+        // `datetime-local` e' ora locale: all'ente va l'istante in UTC.
+        dataOraSospensione: new Date(this.sostaSospensione).toISOString(),
+        dataOraRipresa: new Date(this.sostaRipresa).toISOString(),
+      })
+      .subscribe({
+        next: esito => {
+          this.sostaInCorso.set(false)
+          this.sostaDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Sosta tecnica inviata a RENTRI',
+            detail: "L'ente ha registrato la sosta tecnica.",
+          })
+          if (esito.firma.esito === 'DA_COMPLETARE') {
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Firma RENTRI da completare',
+              detail: esito.firma.avviso,
+            })
+          } else {
+            this.mostraEsitoFirma(esito.firma)
+          }
+          this.reload()
+        },
+        error: err => {
+          this.sostaInCorso.set(false)
+          // Il messaggio resta nel dialog: i dati scritti non si perdono.
+          this.sostaErrore.set(
+            this.extractError(err, "Errore nell'invio della sosta tecnica a RENTRI")
+          )
+          this.reload()
+        },
+      })
+  }
+
+  firmaSostaTecnica(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaSostaTecnica(fir.id).subscribe({
+      next: esito => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(esito)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile firmare la sosta tecnica su RENTRI'),
         })
         this.reload()
       },
@@ -2515,6 +2836,10 @@ export class FirDetailComponent implements OnInit {
         return 'Annotazione aggiunta'
       case 'AcquisizioneFirmaAnnotazione':
         return 'Annotazione firmata'
+      case 'SostaTecnica':
+        return 'Sosta tecnica dichiarata'
+      case 'AcquisizioneFirmaSostaTecnica':
+        return 'Sosta tecnica firmata'
       default:
         return operazione
     }
