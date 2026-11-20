@@ -64,6 +64,10 @@ export const TABELLE_PESE_IN_SOLA_SCRITTURA: readonly string[] = [
   'pesate',
   'rettifiche_peso',
   'allegati_pesa',
+  // App campo (P4, P5): append-only con gli stessi trigger; un TRUNCATE ... CASCADE di `ritiri` o
+  // `users` li raggiungerebbe e fallirebbe.
+  'eventi_campo',
+  'allegati_campo',
 ]
 
 @Injectable()
