@@ -208,9 +208,20 @@ export class EventiCampoService {
     if (precedente) return conflitto('ESITO_GIA_REGISTRATO')
     if (ritiro.stato === 'ANNULLATO') return conflitto('RITIRO_ANNULLATO')
     if (ritiro.stato !== 'PROGRAMMATO') return conflitto('RITIRO_STATO_CAMBIATO')
-    // Versione diversa = l'ufficio ha toccato il ritiro (data, mezzo...): «eseguito» su un ritiro
-    // spostato e' un conflitto di fatto, anche se l'esito non scrive sul ritiro.
-    if (ritiro.versione !== ev.versioneVista) return conflitto('RITIRO_MODIFICATO')
+    // `versione` sale a ogni modifica d'ufficio (anche un riordino): non basta a bloccare. Conta
+    // solo cio' che cambia il senso dell'esito: la data del giro e la sede/cliente (stato, autista
+    // e FIR sono controllati qui sopra e sotto, sul dato corrente).
+    const attuale = await tx.ritiro.findFirst({
+      where: { id: ev.ritiroId, tenantId },
+      select: { dataPrevista: true, produttoreSedeId: true },
+    })
+    if (
+      !attuale ||
+      attuale.dataPrevista.toISOString().slice(0, 10) !== ev.dataVista ||
+      attuale.produttoreSedeId.toLowerCase() !== ev.sedeVista
+    ) {
+      return conflitto('RITIRO_MODIFICATO')
+    }
     if (ev.tipo === 'RITIRO_ESEGUITO') return { esito: 'APPLICATO', motivoConflitto: null }
 
     if (await this.repo.firAttivo(tx, tenantId, ev.ritiroId)) return conflitto('RITIRO_CON_FIR')

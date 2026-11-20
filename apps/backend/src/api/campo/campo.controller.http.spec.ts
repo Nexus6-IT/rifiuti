@@ -40,6 +40,8 @@ const corpoEvento = {
   ritiroId: ID,
   tipo: 'RITIRO_ESEGUITO',
   versioneVista: 2,
+  dataVista: '2026-12-01',
+  sedeVista: '33333333-3333-4333-8333-333333333333',
   rilevatoIl: '2026-12-01T08:30:00.000Z',
 }
 

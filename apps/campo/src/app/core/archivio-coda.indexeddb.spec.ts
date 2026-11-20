@@ -7,6 +7,8 @@ const evento = (id: string): EventoInCoda => ({
   ritiroId: 'r1',
   tipo: 'RITIRO_ESEGUITO',
   versioneVista: 1,
+  dataVista: '2026-12-01',
+  sedeVista: '33333333-3333-4333-8333-333333333333',
   dati: {},
   rilevatoIl: '2026-12-01T08:00:00.000Z',
   stato: 'DA_INVIARE',

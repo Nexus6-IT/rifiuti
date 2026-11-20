@@ -46,6 +46,14 @@ export class EventoCampoDto {
   @Max(2_147_483_647, { message: 'La versione del ritiro non è valida.' })
   versioneVista!: number
 
+  @ApiProperty({ example: '2026-12-01', description: 'Data del giro che l’autista aveva davanti' })
+  @IsString({ message: 'La data del ritiro non è valida.' })
+  dataVista!: string
+
+  @ApiProperty({ description: 'Sede del produttore che l’autista aveva davanti' })
+  @IsUUID('all', { message: 'La sede del ritiro non è valida.' })
+  sedeVista!: string
+
   @ApiProperty({ example: '2026-12-01T08:30:00.000Z', description: 'Orologio del telefono' })
   @IsString({ message: 'La data di rilevazione non è valida.' })
   rilevatoIl!: string

@@ -113,7 +113,7 @@ import { StatoGiro } from '../core/stato-giro';
                 <button
                   type="button"
                   class="bottone"
-                  (click)="conferma(r.versione)"
+                  (click)="conferma(r)"
                   [disabled]="invio()"
                   data-testid="conferma-esito"
                 >
@@ -163,7 +163,7 @@ export class RitiroPagina implements OnInit {
     void this.coda.scarta(id);
   }
 
-  protected async conferma(versione: number): Promise<void> {
+  protected async conferma(r: RitiroVista): Promise<void> {
     const tipo = this.modo();
     if (tipo === null || this.invio()) return;
     const testo = this.testo().trim();
@@ -180,7 +180,9 @@ export class RitiroPagina implements OnInit {
       await this.coda.registra({
         ritiroId: this.id(),
         tipo,
-        versioneVista: versione,
+        versioneVista: r.versione,
+        dataVista: r.dataPrevista,
+        sedeVista: r.produttore.sedeId,
         dati:
           tipo === 'RITIRO_NON_ESEGUITO' ? { motivo: testo } : testo === '' ? {} : { nota: testo },
       });

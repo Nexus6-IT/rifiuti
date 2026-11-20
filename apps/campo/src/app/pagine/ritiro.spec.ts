@@ -102,6 +102,8 @@ describe('RitiroPagina: esito', () => {
       ritiroId: 'r1',
       tipo: 'RITIRO_ESEGUITO',
       versioneVista: 1,
+      dataVista: '2026-12-01',
+      sedeVista: 's',
       dati: { nota: 'tutto ritirato' },
     });
     expect(el(f).querySelector('[data-testid="esito-stato"]')?.textContent).toContain(

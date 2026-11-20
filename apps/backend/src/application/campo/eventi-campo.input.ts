@@ -19,6 +19,9 @@ export interface EventoCampoValori {
   ritiroId: string
   tipo: TipoEventoCampo
   versioneVista: number
+  /** Data del giro e sede del produttore che l'autista aveva davanti (campi che contano per l'esito). */
+  dataVista: string
+  sedeVista: string
   /** Orologio del telefono: informativo, mai data legale. */
   rilevatoIl: Date
   dati: DatiEventoCampo
@@ -44,6 +47,8 @@ export function normalizzaEventoCampo(grezzo: {
   ritiroId?: unknown
   tipo?: unknown
   versioneVista?: unknown
+  dataVista?: unknown
+  sedeVista?: unknown
   rilevatoIl?: unknown
   dati?: unknown
 }): EsitoValidazioneEvento {
@@ -66,6 +71,17 @@ export function normalizzaEventoCampo(grezzo: {
   const versioneVista =
     typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= VERSIONE_MASSIMA ? v : null
   if (versioneVista === null) messaggi.push('La versione del ritiro non è valida.')
+
+  const dataVista =
+    typeof grezzo.dataVista === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(grezzo.dataVista)
+      ? grezzo.dataVista
+      : null
+  if (dataVista === null) messaggi.push('La data del ritiro non è valida.')
+  const sedeVista =
+    typeof grezzo.sedeVista === 'string' && UUID.test(grezzo.sedeVista)
+      ? grezzo.sedeVista.toLowerCase()
+      : null
+  if (sedeVista === null) messaggi.push('La sede del ritiro non è valida.')
 
   let rilevatoIl: Date | null = null
   if (typeof grezzo.rilevatoIl === 'string' && ISO_CON_ORA.test(grezzo.rilevatoIl)) {
@@ -105,7 +121,14 @@ export function normalizzaEventoCampo(grezzo: {
     }
   }
 
-  if (messaggi.length > 0 || id === null || ritiroId === null || tipo === null) {
+  if (
+    messaggi.length > 0 ||
+    dataVista === null ||
+    sedeVista === null ||
+    id === null ||
+    ritiroId === null ||
+    tipo === null
+  ) {
     return { ok: false, messaggi }
   }
   return {
@@ -115,6 +138,8 @@ export function normalizzaEventoCampo(grezzo: {
       ritiroId,
       tipo,
       versioneVista: versioneVista as number,
+      dataVista,
+      sedeVista,
       rilevatoIl: rilevatoIl as Date,
       dati,
     },

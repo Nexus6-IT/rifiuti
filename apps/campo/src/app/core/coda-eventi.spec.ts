@@ -14,12 +14,16 @@ const eseguito = (ritiroId = 'r1') => ({
   ritiroId,
   tipo: 'RITIRO_ESEGUITO' as const,
   versioneVista: 1,
+  dataVista: '2026-12-01',
+  sedeVista: '33333333-3333-4333-8333-333333333333',
   dati: {},
 });
 const nonEseguito = (ritiroId = 'r1') => ({
   ritiroId,
   tipo: 'RITIRO_NON_ESEGUITO' as const,
   versioneVista: 1,
+  dataVista: '2026-12-01',
+  sedeVista: '33333333-3333-4333-8333-333333333333',
   dati: { motivo: 'Cliente assente' },
 });
 const ok = (id: string, esito = 'APPLICATO', motivoConflitto: string | null = null) => ({
@@ -87,6 +91,8 @@ describe('CodaEventi (coda di uscita)', () => {
       ritiroId: 'r1',
       tipo: 'RITIRO_NON_ESEGUITO',
       versioneVista: 1,
+      dataVista: '2026-12-01',
+      sedeVista: '33333333-3333-4333-8333-333333333333',
       rilevatoIl: e.rilevatoIl,
       dati: { motivo: 'Cliente assente' },
     });
@@ -229,14 +235,26 @@ describe('CodaEventi (coda di uscita)', () => {
       r.flush({ message: 'Autista non collegato.' }, { status: 403, statusText: 'x' }),
     );
     expect(coda.bloccata()).toContain('non collegato');
+    // Rete, ripresa, intervallo e nuova registrazione NON ritentano: nessuna richiesta.
     window.dispatchEvent(new Event('online'));
-    await coda.avvia().catch(() => undefined);
-    http.match(URL_EVENTI).forEach((r) => r.flush({}, { status: 403, statusText: 'x' }));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await coda.registra(eseguito('r2'));
     await flush();
+    http.expectNone(URL_EVENTI);
+    expect(coda.daInviare()).toBe(2);
+    expect(coda.bloccata()).toContain('non collegato');
+    // «Invia ora» riprova una volta sola e, se il 403 resta, si ferma di nuovo.
     void coda.invia();
-    const req = http.expectOne(URL_EVENTI);
-    req.flush(ok(req.request.body.id));
+    http.expectOne(URL_EVENTI).flush({ message: 'Ancora no.' }, { status: 403, statusText: 'x' });
     await flush();
+    http.expectNone(URL_EVENTI);
+    expect(coda.bloccata()).toContain('Ancora no');
+    void coda.invia();
+    for (let i = 0; i < 2; i++) {
+      const req = http.expectOne(URL_EVENTI);
+      req.flush(ok(req.request.body.id));
+      await flush();
+    }
     expect(coda.bloccata()).toBeNull();
     expect(coda.daInviare()).toBe(0);
   });
@@ -335,6 +353,8 @@ describe('CodaEventi (coda di uscita)', () => {
       ritiroId: 'r9',
       tipo: 'RITIRO_ESEGUITO' as const,
       versioneVista: 1,
+      dataVista: '2026-12-01',
+      sedeVista: 's',
       dati: {},
       tentativi: 0,
       errore: null,

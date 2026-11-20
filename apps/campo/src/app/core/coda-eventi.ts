@@ -19,6 +19,9 @@ export interface NuovoEvento {
   tipo: TipoEventoCampo;
   /** `versione` del ritiro che l'autista aveva davanti. */
   versioneVista: number;
+  /** Data del giro e sede che l'autista aveva davanti. */
+  dataVista: string;
+  sedeVista: string;
   dati: DatiEvento;
 }
 
@@ -231,6 +234,8 @@ export class CodaEventi {
             ritiroId: e.ritiroId,
             tipo: e.tipo,
             versioneVista: e.versioneVista,
+            dataVista: e.dataVista,
+            sedeVista: e.sedeVista,
             rilevatoIl: e.rilevatoIl,
             dati: e.dati,
           })
