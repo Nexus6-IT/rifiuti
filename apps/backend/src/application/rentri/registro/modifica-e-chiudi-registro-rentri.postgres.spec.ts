@@ -10,6 +10,7 @@
  */
 import { PrismaClient, type StatoTrasmissioneRentri } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
+import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -263,7 +264,7 @@ describe('Modificare e chiudere il registro RENTRI — Postgres reale, ruolo was
   })
 
   afterAll(async () => {
-    await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await cancellaAziendeDiProva(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
   })
