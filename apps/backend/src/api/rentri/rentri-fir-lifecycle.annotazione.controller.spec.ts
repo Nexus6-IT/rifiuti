@@ -41,7 +41,8 @@ describe('RentriFirLifecycleController — annotazione', () => {
       {} as any,
       {} as any,
       annotazione as any,
-      {} as any // SostaTecnicaRentriUseCase
+      {} as any, // SostaTecnicaRentriUseCase
+      {} as any // TrasbordoTotaleRentriUseCase
     )
   })
 

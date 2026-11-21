@@ -18,6 +18,11 @@ import {
   tipoPrenotazioneInvioSostaTecnica,
 } from './sosta-tecnica-rentri.use-case'
 import {
+  TrasbordoTotaleRentriUseCase,
+  tipoOperazioneTrasbordoTotale,
+  tipoPrenotazioneInvioTrasbordoTotale,
+} from './trasbordo-totale-rentri.use-case'
+import {
   FirmaPartenzaRentriUseCase,
   operazionePartenzaDaTipo,
 } from './firma-partenza-rentri.use-case'
@@ -66,7 +71,8 @@ export class GestisciSessioneFirmaRentriUseCase {
     private readonly logger: LoggerService,
     private readonly firmaPartenza: FirmaPartenzaRentriUseCase,
     private readonly annotazione: AnnotazioneRentriUseCase,
-    private readonly sostaTecnica: SostaTecnicaRentriUseCase
+    private readonly sostaTecnica: SostaTecnicaRentriUseCase,
+    private readonly trasbordoTotale: TrasbordoTotaleRentriUseCase
   ) {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
@@ -84,7 +90,8 @@ export class GestisciSessioneFirmaRentriUseCase {
     // banner (si riprende solo dall'annotazione, che riconcilia l'invio prima di qualunque authorize).
     if (
       ultima.tipoOperazione === tipoPrenotazioneInvioAnnotazione() ||
-      ultima.tipoOperazione === tipoPrenotazioneInvioSostaTecnica()
+      ultima.tipoOperazione === tipoPrenotazioneInvioSostaTecnica() ||
+      ultima.tipoOperazione === tipoPrenotazioneInvioTrasbordoTotale()
     ) {
       return null
     }
@@ -186,6 +193,17 @@ export class GestisciSessioneFirmaRentriUseCase {
       })
     }
 
+    // Prenotazione dell'invio di un trasbordo totale: stessa regola (mai il ciclo comune).
+    if (sessione.tipoOperazione === tipoPrenotazioneInvioTrasbordoTotale()) {
+      return this.trasbordoTotale.riprendiInvio({
+        firId,
+        tenantId,
+        sessioneId: sessione.id,
+        utenteId,
+        correlationId,
+      })
+    }
+
     // Firma di partenza: passa dal suo use case, cosi' lo storico registra l'esito della ripresa e una nuova
     // richiesta ricontrolla `/azioni` prima di una nuova `authorize`.
     const operazionePartenza = operazionePartenzaDaTipo(sessione.tipoOperazione)
@@ -215,6 +233,18 @@ export class GestisciSessioneFirmaRentriUseCase {
     // Sosta tecnica: stessa strada (storico della ripresa, `/azioni` e riconciliazione prima di una `authorize`).
     if (sessione.tipoOperazione === tipoOperazioneSostaTecnica()) {
       return this.sostaTecnica.firma({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+      })
+    }
+
+    // Trasbordo totale: firma del NUOVO trasportatore, stessa strada (`/azioni`, riconciliazione e controllo del CF
+    // prima di una `authorize`).
+    if (sessione.tipoOperazione === tipoOperazioneTrasbordoTotale()) {
+      return this.trasbordoTotale.firma({
         firId,
         tenantId,
         utenteId,

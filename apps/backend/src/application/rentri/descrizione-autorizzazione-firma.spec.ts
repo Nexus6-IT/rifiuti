@@ -94,4 +94,12 @@ describe('descrizioneAutorizzazioneFirma', () => {
     )
     expect(testo).not.toContain('_')
   })
+
+  it('trasbordo totale: il testo sul telefono dice che si firma come nuovo trasportatore (niente underscore)', () => {
+    const testo = descrizioneAutorizzazioneFirma('BCDFGH00001JK', 'TRASBORDO_TOTALE')
+    expect(testo).toBe(
+      'Firma del formulario BCDFGH00001JK - firma del trasbordo totale come nuovo trasportatore'
+    )
+    expect(testo).not.toContain('_')
+  })
 })

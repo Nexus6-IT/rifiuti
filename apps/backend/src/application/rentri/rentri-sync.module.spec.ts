@@ -21,6 +21,7 @@ import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentr
 import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
 import { SostaTecnicaRentriUseCase } from './sosta-tecnica-rentri.use-case'
+import { TrasbordoTotaleRentriUseCase } from './trasbordo-totale-rentri.use-case'
 import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
 import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-automezzo.use-case'
 import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
@@ -143,6 +144,7 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(FirmaPartenzaRentriUseCase)).toBeDefined()
     expect(moduleRef.get(AnnotazioneRentriUseCase)).toBeDefined()
     expect(moduleRef.get(SostaTecnicaRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(TrasbordoTotaleRentriUseCase)).toBeDefined()
     expect(moduleRef.get(IDatiViaggioFirRepository)).toBeDefined()
     expect(moduleRef.get(IEventiFirRentriRepository)).toBeDefined()
 

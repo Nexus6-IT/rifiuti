@@ -50,6 +50,8 @@ import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.us
 import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
 import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
 import { SostaTecnicaRentriUseCase } from './sosta-tecnica-rentri.use-case'
+import { TrasbordoTotaleRentriUseCase } from './trasbordo-totale-rentri.use-case'
+import { TrasportatorePrismaRepository } from '../../infrastructure/persistence/trasportatore-prisma.repository'
 import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
 import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -611,6 +613,50 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         PrismaService,
       ],
     },
+    // FIR in viaggio P6: trasbordo totale (invio dal trasportatore in carico, firma del nuovo trasportatore).
+    TrasportatorePrismaRepository,
+    {
+      provide: TrasbordoTotaleRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completa: CompletaOperazioneConFirmaUseCase,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService,
+        sessioni: ISessioniFirmaRentriRepository,
+        moduli: ModuliAttiviService,
+        prisma: PrismaService,
+        trasportatori: TrasportatorePrismaRepository,
+        datiViaggio: IDatiViaggioFirRepository
+      ) =>
+        new TrasbordoTotaleRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          completa,
+          eventi,
+          logger,
+          sessioni,
+          moduli,
+          prisma,
+          trasportatori,
+          datiViaggio
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        IEventiFirRentriRepository,
+        LoggerService,
+        ISessioniFirmaRentriRepository,
+        ModuliAttiviService,
+        PrismaService,
+        TrasportatorePrismaRepository,
+        IDatiViaggioFirRepository,
+      ],
+    },
     {
       provide: GestisciSessioneFirmaRentriUseCase,
       useFactory: (
@@ -620,7 +666,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         logger: LoggerService,
         firmaPartenza: FirmaPartenzaRentriUseCase,
         annotazione: AnnotazioneRentriUseCase,
-        sostaTecnica: SostaTecnicaRentriUseCase
+        sostaTecnica: SostaTecnicaRentriUseCase,
+        trasbordoTotale: TrasbordoTotaleRentriUseCase
       ) =>
         new GestisciSessioneFirmaRentriUseCase(
           firRepo,
@@ -629,7 +676,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
           logger,
           firmaPartenza,
           annotazione,
-          sostaTecnica
+          sostaTecnica,
+          trasbordoTotale
         ),
       inject: [
         FIRPrismaRepository,
@@ -639,6 +687,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         FirmaPartenzaRentriUseCase,
         AnnotazioneRentriUseCase,
         SostaTecnicaRentriUseCase,
+        TrasbordoTotaleRentriUseCase,
       ],
     },
     // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione

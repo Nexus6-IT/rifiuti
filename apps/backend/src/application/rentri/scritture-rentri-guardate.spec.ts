@@ -33,6 +33,8 @@ const SCRITTURE = [
   'inviaAnnotazione',
   // FIR in viaggio P5: sosta tecnica.
   'inviaSostaTecnica',
+  // FIR in viaggio P6: trasbordo totale.
+  'inviaTrasbordoTotale',
   'caricaAllegato',
   'eliminaAllegato',
   'rilasciaVisibilita',
@@ -82,6 +84,7 @@ const ATTESI = [
   'application/rentri/rollback-e-reset-fir-rentri.use-case.ts',
   'application/rentri/sosta-tecnica-rentri.use-case.ts',
   'application/rentri/sync-fir-to-rentri.use-case.ts',
+  'application/rentri/trasbordo-totale-rentri.use-case.ts',
 ]
 
 function sorgenti(dir: string, uscita: string[] = []): string[] {

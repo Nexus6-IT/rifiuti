@@ -36,7 +36,8 @@ describe('RentriFirLifecycleController — quantita, trasporto, eventi', () => {
       ultimo as any,
       {} as any, // FirmaPartenzaRentriUseCase
       {} as any, // AnnotazioneRentriUseCase
-      {} as any // SostaTecnicaRentriUseCase
+      {} as any, // SostaTecnicaRentriUseCase
+      {} as any // TrasbordoTotaleRentriUseCase
     )
   })
 

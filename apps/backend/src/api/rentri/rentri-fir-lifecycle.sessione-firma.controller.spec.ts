@@ -32,7 +32,8 @@ describe('RentriFirLifecycleController — sessione di firma, rollback, reset', 
       {} as any, // TrovaUltimoTrasportoAutomezzoUseCase
       {} as any, // FirmaPartenzaRentriUseCase
       {} as any, // AnnotazioneRentriUseCase
-      {} as any // SostaTecnicaRentriUseCase
+      {} as any, // SostaTecnicaRentriUseCase
+      {} as any // TrasbordoTotaleRentriUseCase
     )
   })
 

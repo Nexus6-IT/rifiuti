@@ -72,6 +72,11 @@ import {
   SostaTecnicaRentriUseCase,
 } from '../../application/rentri/sosta-tecnica-rentri.use-case'
 import { SostaTecnicaFirRentriDto } from './dto/sosta-tecnica-fir-rentri.dto'
+import {
+  EsitoTrasbordoTotale,
+  TrasbordoTotaleRentriUseCase,
+} from '../../application/rentri/trasbordo-totale-rentri.use-case'
+import { TrasbordoTotaleFirRentriDto } from './dto/trasbordo-totale-fir-rentri.dto'
 import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
 import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
 import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
@@ -122,6 +127,8 @@ const RULE_DATI_VIAGGIO = new Set([
   'ANNOTAZIONE_RENTRI_RIFIUTATA',
   'SOSTA_TECNICA_NON_VALIDA',
   'SOSTA_TECNICA_RENTRI_RIFIUTATA',
+  'TRASBORDO_TOTALE_NON_VALIDO',
+  'TRASBORDO_TOTALE_RENTRI_RIFIUTATO',
 ])
 
 const RULE_CONFLITTO = new Set([
@@ -139,6 +146,14 @@ const RULE_CONFLITTO = new Set([
   'SOSTA_TECNICA_DI_ALTRO_SOGGETTO',
   'SOSTA_TECNICA_IN_VERIFICA',
   'FIRMA_SOSTA_TECNICA_NON_DISPONIBILE',
+  'TRASBORDO_TOTALE_SOGGETTO_NON_NEL_FIR',
+  'TRASBORDO_TOTALE_DA_FIRMARE',
+  'TRASBORDO_TOTALE_DI_ALTRO_SOGGETTO',
+  'TRASBORDO_TOTALE_IN_VERIFICA',
+  // Esito ignoto: non e' un errore del server ne' un rifiuto, e' uno stato da verificare (mai un 500 generico).
+  'TRASBORDO_TOTALE_ESITO_INCERTO',
+  'TRASBORDO_TOTALE_FIRMA_NON_TUA',
+  'FIRMA_TRASBORDO_TOTALE_NON_DISPONIBILE',
 ])
 
 /**
@@ -181,7 +196,8 @@ export class RentriFirLifecycleController {
     private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase,
     private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase,
     private readonly annotazioneUseCase: AnnotazioneRentriUseCase,
-    private readonly sostaTecnicaUseCase: SostaTecnicaRentriUseCase
+    private readonly sostaTecnicaUseCase: SostaTecnicaRentriUseCase,
+    private readonly trasbordoTotaleUseCase: TrasbordoTotaleRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -977,6 +993,99 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Firma sosta tecnica RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Trasbordo totale (FIR in viaggio, P6): il trasportatore che ha in carico il rifiuto lo passa a un NUOVO
+   * trasportatore (dall'anagrafica) con i dati di trasporto del suo mezzo. La disponibilita' la decide `/azioni`.
+   * La nuova tratta del FIR nasce solo dopo l'esito positivo dell'ente. La firma e' del nuovo trasportatore.
+   */
+  @Post(':id/trasbordo-totale')
+  @ApiOperation({
+    summary: 'Dichiara il trasbordo totale del rifiuto a un nuovo trasportatore',
+    description:
+      "Verifica che l'azienda sia un trasportatore del FIR e che /azioni proponga il trasbordo, lo invia (inizio in UTC) " +
+      "e, solo se l'ente accetta, aggiunge il nuovo trasportatore al formulario. La firma spetta al nuovo trasportatore.",
+  })
+  @ApiResponse({ status: 201, description: "Trasbordo accettato dall'ente" })
+  @ApiResponse({ status: 400, description: "Dati non validi o trasbordo rifiutato dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR o trasportatore non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'OPERAZIONE_NON_DISPONIBILE, TRASBORDO_TOTALE_SOGGETTO_NON_NEL_FIR, TRASBORDO_TOTALE_DA_FIRMARE, TRASBORDO_TOTALE_DI_ALTRO_SOGGETTO, TRASBORDO_TOTALE_IN_VERIFICA, TRASBORDO_TOTALE_ESITO_INCERTO o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async dichiaraTrasbordoTotale(
+    @Param('id') firId: string,
+    @Body() dto: TrasbordoTotaleFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoTrasbordoTotale> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Trasbordo totale RENTRI richiesto', { firId, tenantId, userId })
+
+    try {
+      return await this.trasbordoTotaleUseCase.invia({
+        firId,
+        tenantId,
+        trasportatoreId: dto.trasportatoreId,
+        conducenteNome: dto.conducenteNome,
+        conducenteCognome: dto.conducenteCognome,
+        targaAutomezzo: dto.targaAutomezzo,
+        targaRimorchio: dto.targaRimorchio,
+        percorso: dto.percorso,
+        dataOraInizioTrasporto: dto.dataOraInizioTrasporto,
+        presaInCaricoRimorchioPrecedente: dto.presaInCaricoRimorchioPrecedente,
+        annotazioni: dto.annotazioni,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Trasbordo totale RENTRI non riuscito', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma del trasbordo totale (FIR in viaggio, P6): solo il NUOVO trasportatore, e solo se l'ente mostra un
+   * trasbordo non firmato a suo nome. Una sola richiesta sul telefono.
+   */
+  @Post(':id/firma-trasbordo-totale')
+  @ApiOperation({
+    summary: 'Firma il trasbordo totale su RENTRI come nuovo trasportatore',
+    description:
+      'Verifica /azioni (AcquisizioneFirmaTrasbordoTotale) e che il nuovo trasportatore mostrato dall’ente sia l’azienda, poi chiede la firma remota. Esiti: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Esito della firma' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'FIRMA_TRASBORDO_TOTALE_NON_DISPONIBILE, TRASBORDO_TOTALE_FIRMA_NON_TUA o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaTrasbordoTotale(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoCompletamentoFirma> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma trasbordo totale RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.trasbordoTotaleUseCase.firma({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma trasbordo totale RENTRI non riuscita', error, { firId, tenantId })
       throw this.mappaErroreDominio(error)
     }
   }

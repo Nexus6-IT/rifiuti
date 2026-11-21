@@ -245,6 +245,19 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('RIPROVA')
   })
 
+  it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA, TRASBORDO_TOTALE): nomina il trasbordo totale, propone «Riprova»', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage:
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione TRASBORDO_TOTALE NON è stata completata. Dettaglio della validazione RENTRI: []",
+    })
+
+    expect(risultato.messaggio).toBe(
+      "La firma del trasbordo totale non si è completata sull'ente: puoi riprovare."
+    )
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
   it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA) senza operazione riconoscibile: fallback generico, mai un crash', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'FIRMA_RENTRI_RIFIUTATA',
