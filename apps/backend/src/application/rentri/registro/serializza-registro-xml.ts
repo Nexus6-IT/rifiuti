@@ -365,7 +365,7 @@ export function serializzaMovimento(
  * Toglie dichiarazione XML e spazi esterni all'eREGI e lo restituisce IDENTICO, byte per byte, per
  * il resto. Non lo parsa ne' lo ri-serializza: e' firmato da RENTRI e ogni byte conta.
  */
-function eregiVerbatim(xml: string): string {
+export function eregiVerbatim(xml: string): string {
   if (typeof xml !== 'string') errore("l'eREGI deve essere un testo")
   if (/<!DOCTYPE/i.test(xml)) errore("l'eREGI non puo' contenere un DOCTYPE")
   const s = (xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml)
