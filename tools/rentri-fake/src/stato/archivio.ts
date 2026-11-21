@@ -94,6 +94,7 @@ export interface Formulario {
     | { tipo: 'Annulla'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'Annotazione'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'SostaTecnica'; corpo: Record<string, unknown>; statoPrecedente: string }
+    | { tipo: 'TrasbordoTotale'; corpo: Record<string, unknown>; statoPrecedente: string }
   /**
    * Ultima firma apposta con successo e non ancora annullata: serve a
    * `rollback-firma` (formulari.yaml riga 2079) per tornare allo stato di
@@ -121,6 +122,15 @@ export interface Formulario {
     data_ora_ripresa: string
     dati_firma: { data_firma: string } | null
   }[]
+  /**
+   * Trasbordo totale (`DettaglioFormulario.dati_trasbordo_totale`, `DatiTrasbordoTotaleResultModel`): UNO solo,
+   * come nel contratto. Entra con `presa_in_carico.dati_firma_trasportatore: null` e lo firma il NUOVO
+   * trasportatore; il `reset` lo toglie se non firmato, il `rollback-firma` lo riporta a non firmato.
+   */
+  dati_trasbordo_totale?: {
+    trasportatore: Record<string, unknown>
+    presa_in_carico: Record<string, unknown> & { dati_firma_trasportatore: { data_firma: string } | null }
+  }
   ultimaFirma?: {
     statoPrecedente: string
     /** Assente per le firme di partenza (P3): non c'era un'operazione in attesa da ripristinare. */
@@ -771,6 +781,25 @@ export class Archivio {
       return
     }
 
+    // Trasbordo totale (FIR in viaggio, P6): il nuovo trasportatore, con i dati di trasporto, e' firmato dal
+    // NUOVO trasportatore (`FirmaTrasbordoTotale`). Ipotesi dedotta dai nomi degli stati (FEDELTA.md §8.5).
+    if (contesto.operazione === 'TrasbordoTotale') {
+      formulario.pendingOperazione = {
+        tipo: 'TrasbordoTotale',
+        corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
+      }
+      formulario.stato = 'FirmaTrasbordoTotale'
+      formulario.dati_trasbordo_totale = {
+        trasportatore: { ...((contesto.corpo?.trasportatore as Record<string, unknown>) ?? {}) },
+        presa_in_carico: {
+          ...((contesto.corpo?.presa_in_carico as Record<string, unknown>) ?? {}),
+          dati_firma_trasportatore: null,
+        },
+      }
+      return
+    }
+
     if (contesto.operazione === 'NoteAnnullamento') {
       const note = contesto.corpo?.note
       if (typeof note === 'string') {
@@ -821,6 +850,18 @@ export class Archivio {
         if (daFirmare) daFirmare.dati_firma = { data_firma: new Date().toISOString() }
         return
       }
+
+      if (pendente.tipo === 'TrasbordoTotale') {
+        formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
+        formulario.stato = pendente.statoPrecedente
+        formulario.pendingOperazione = undefined
+        if (formulario.dati_trasbordo_totale) {
+          formulario.dati_trasbordo_totale.presa_in_carico.dati_firma_trasportatore = {
+            data_firma: new Date().toISOString(),
+          }
+        }
+        return
+      }
     }
 
     // `reset`: cancella i dati inseriti e non ancora firmati, tornando allo
@@ -840,6 +881,9 @@ export class Archivio {
         formulario.dati_soste_tecniche = formulario.dati_soste_tecniche?.filter(
           x => x !== daTogliere
         )
+      }
+      if (pendente.tipo === 'TrasbordoTotale') {
+        formulario.dati_trasbordo_totale = undefined
       }
       return
     }
@@ -862,6 +906,9 @@ export class Archivio {
         const ultimaFirmata = firmate[firmate.length - 1]
         if (ultimaFirmata) ultimaFirmata.dati_firma = null
       }
+      if (ultima.pending?.tipo === 'TrasbordoTotale' && formulario.dati_trasbordo_totale) {
+        formulario.dati_trasbordo_totale.presa_in_carico.dati_firma_trasportatore = null
+      }
       return
     }
 
@@ -877,8 +924,8 @@ export class Archivio {
       return
     }
 
-    // Trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica ancora alcuna
-    // transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P6-P8).
+    // Trasbordo parziale, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica ancora alcuna
+    // transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P7-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito

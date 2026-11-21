@@ -714,6 +714,37 @@ luogo identico a quello inviato, se la firma `AcquisizioneFirmaSostaTecnica` e' 
 in carico il rifiuto (e quindi se l'utenza con visibilita' su un trasportatore diverso viene rifiutata), come
 l'ente tratta le date con frazioni di secondo.
 
+### 8.5 Trasbordo totale (2026-11-23, FIR in viaggio, P6)
+
+`trasbordo-totale` completato con successo: il formulario passa a `FirmaTrasbordoTotale` e la fake ricorda lo
+stato di prima (`pendingOperazione` di tipo `TrasbordoTotale`); `acquisizione-firma` completata lo riporta a
+quello stato (`InserimentoAccettazione` o `InserimentoTrasportoSuccessivo`, i soli in cui il contratto ammette
+l'operazione); `reset` in `FirmaTrasbordoTotale` toglie il trasbordo non firmato; `rollback-firma` lo riporta a
+non firmato. Il corpo e' validato con `DatiTrasbordoTotaleModel` (nuovo trasportatore + `presa_in_carico`
+terrestre, che include gia' conducente e data di inizio).
+
+Nel dettaglio (`GET /{numero_fir}`): `dati_trasbordo_totale` (`DatiTrasbordoTotaleResultModel`), **UNO solo**,
+come nel contratto: entra con `presa_in_carico.dati_firma_trasportatore: null`, la firma lo valorizza. Un
+secondo trasbordo totale non si propone in `/azioni` e la POST risponde 403 (ipotesi: il contratto parla di
+«eventuale trasbordo totale» al singolare). La fake NON valorizza `trasportatore_id`.
+
+Chi firma: la descrizione dello stato (`FirmaTrasbordoTotale`) dice «firma del trasportatore che prende in carico
+il rifiuto con l'operazione di trasbordo totale», cioe' il NUOVO trasportatore, non quello che ha inviato il
+trasbordo. La fake non distingue i soggetti (`/azioni` e `authorize` ignorano l'utenza). WasteFlow invece
+controlla da se' che il CF dell'azienda sia quello del nuovo trasportatore mostrato dall'ente, prima di ogni
+`authorize`.
+
+Limiti noti (stessi dell'annotazione, §8.3, e della sosta, §8.4): lo stato si controlla solo al POST; non si
+verifica che l'invio sia del trasportatore che ha in carico il rifiuto; non si modella «copia gia' restituita con
+accettazione totale -> non consentita»; il POST `/trasbordo-totale` non si ritenta mai su 5xx/timeout (esito
+incerto, il trasbordo AGGIUNGE un trasportatore).
+
+Da chiedere alla demo: se dopo la firma lo stato e' davvero quello di prima o `InserimentoTrasportoSuccessivo`
+(il plan ipotizza un `/trasporto` successivo, ma il contratto mette gia' la presa in carico nel POST); chi firma
+(solo il nuovo trasportatore o anche chi ha in carico); se un secondo trasbordo totale e' ammesso e cosa
+sostituisce; se il dettaglio mostra il trasbordo non ancora firmato con gli stessi dati inviati; come cambia
+`/azioni` per il vecchio trasportatore dopo il trasbordo.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in

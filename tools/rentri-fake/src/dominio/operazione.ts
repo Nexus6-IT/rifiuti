@@ -181,7 +181,12 @@ const OPERAZIONI_NELL_ORDINE = Object.keys(STATI_PER_OPERAZIONE) as Operazione[]
  */
 export function operazioniPerStato(
   stato: string,
-  opzioni?: { noteAnnullamentoGiaPresenti?: boolean; ultimaFirmaPresente?: boolean }
+  opzioni?: {
+    noteAnnullamentoGiaPresenti?: boolean
+    ultimaFirmaPresente?: boolean
+    /** Il dettaglio ha gia' `dati_trasbordo_totale`: nel contratto e' UNO solo, un secondo non si propone. */
+    trasbordoTotaleGiaPresente?: boolean
+  }
 ): Operazione[] {
   // `Annullato` NON e' terminale (R3 Task 5): il contratto ammette
   // `NoteAnnullamento` finche' il formulario e' "privo di note" (riga 1656).
@@ -193,7 +198,9 @@ export function operazioniPerStato(
   // (`Formulario.ultimaFirma`), quindi dipende da `ultimaFirmaPresente`.
   return OPERAZIONI_NELL_ORDINE.filter(
     operazione =>
-      STATI_PER_OPERAZIONE[operazione].includes(stato) ||
+      (operazione === 'TrasbordoTotale' && opzioni?.trasbordoTotaleGiaPresente === true
+        ? false
+        : STATI_PER_OPERAZIONE[operazione].includes(stato)) ||
       (operazione === 'RollbackFirma' &&
         opzioni?.ultimaFirmaPresente === true &&
         stato !== 'FirmaAnnullamento')
