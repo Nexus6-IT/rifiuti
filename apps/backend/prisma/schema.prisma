@@ -134,6 +134,8 @@ model Tenant {
   automezzi             Automezzo[]
   autisti               Autista[]
   eventiCampo           EventoCampo[]
+  sottoscrizioniPush    SottoscrizionePush[]
+  preferenzePush        PreferenzaPush[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
@@ -288,6 +290,8 @@ model User {
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
   eventiCampo             EventoCampo[]
+  sottoscrizioniPush      SottoscrizionePush[]
+  preferenzePush          PreferenzaPush[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
 
   @@unique([tenantId, fiscalCode])
@@ -4773,6 +4777,40 @@ model EventoCampo {
   @@index([tenantId, esito, ricevutoIl(sort: Desc)], map: "eventi_campo_esito_idx")
   @@index([tenantId, ritiroId, ricevutoIl], map: "eventi_campo_ritiro_idx")
   @@map("eventi_campo")
+}
+
+/// Sottoscrizione web push di un dispositivo (app campo, P7). Solo l'endpoint del servizio push: l'invio
+/// non porta dati, quindi non servono le chiavi di cifratura. Mutabile: si sposta di utente se il telefono
+/// passa a un collega, si cancella al logout o quando il servizio push risponde 404/410.
+/// CHECK solo in migration (`20261124110000_push_campo`).
+model SottoscrizionePush {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  utenteId      String    @map("utente_id") @db.Uuid
+  endpoint      String
+  creataIl      DateTime  @default(now()) @map("creata_il") @db.Timestamptz(3)
+  ultimoInvioIl DateTime? @map("ultimo_invio_il") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  utente User   @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "sottoscrizioni_push_utente_fkey")
+
+  @@unique([tenantId, endpoint], map: "sottoscrizioni_push_endpoint_key")
+  @@index([tenantId, utenteId], map: "sottoscrizioni_push_utente_idx")
+  @@map("sottoscrizioni_push")
+}
+
+/// Preferenze degli avvisi push per utente (app campo, P7): una riga per utente, assente = predefiniti.
+model PreferenzaPush {
+  tenantId       String   @map("tenant_id") @db.Uuid
+  utenteId       String   @map("utente_id") @db.Uuid
+  giroModificato Boolean  @default(true) @map("giro_modificato")
+  aggiornataIl   DateTime @default(now()) @map("aggiornata_il") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  utente User   @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "preferenze_push_utente_fkey")
+
+  @@id([tenantId, utenteId])
+  @@map("preferenze_push")
 }
 
 enum EsitoEventoCampo {

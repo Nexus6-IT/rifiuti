@@ -31,6 +31,7 @@
 -- `tenants_registro_protetto` protegge il registro anche dal proprietario.
 -- `autisti` (app campo, P1): un autista si disattiva, non si cancella.
 -- `eventi_campo` (app campo, P4): append-only, sta in `v_solo_inserimento` (SELECT e INSERT, mai UPDATE/DELETE).
+-- `sottoscrizioni_push`, `preferenze_push` (app campo, P7): mutabili e cancellabili (logout, 404/410 del servizio push), restano CRUD.
 -- `fir_sessioni_firma_rentri` (FIR in viaggio, P1): una sessione di firma chiusa resta come traccia.
 -- `lotti_import` (Fase 3, 3.1): un lotto non si cancella, si annulla: sta in `v_senza_cancellazione`.
 -- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a; `letture_pesa` dal pezzo 8b): `v_solo_inserimento`
