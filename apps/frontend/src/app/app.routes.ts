@@ -284,6 +284,14 @@ export const routes: Routes = [
           import('./features/autisti/autisti.component').then(m => m.AutistiComponent),
       },
       {
+        // «Esiti dal campo» (app campo, P4): backend @RichiedeModulo('campo').
+        path: 'esiti-campo',
+        canActivate: [moduloGuard],
+        data: { modulo: 'campo' },
+        loadComponent: () =>
+          import('./features/esiti-campo/esiti-campo.component').then(m => m.EsitiCampoComponent),
+      },
+      {
         // Lista del giorno da telefono (ordine di giro, PDF del FIR, non eseguito).
         path: 'ritiri/giorno',
         canActivate: [moduloGuard],

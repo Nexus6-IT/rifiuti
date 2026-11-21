@@ -55,3 +55,8 @@ certs/*.key
 tmp/
 temp/
 *.tmp
+
+# App campo: dipendenze e build locali non vanno nel contesto (npm ci e build girano nel container)
+apps/campo/node_modules
+apps/campo/dist
+apps/campo/.angular

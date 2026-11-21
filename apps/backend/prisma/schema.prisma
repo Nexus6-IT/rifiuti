@@ -133,6 +133,7 @@ model Tenant {
   strumentiPesa         StrumentoPesa[]
   automezzi             Automezzo[]
   autisti               Autista[]
+  eventiCampo           EventoCampo[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
@@ -286,6 +287,7 @@ model User {
   recordedMovements       WasteMovement[]     @relation("RecordedMovements")
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
+  eventiCampo             EventoCampo[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
 
   @@unique([tenantId, fiscalCode])
@@ -2865,6 +2867,7 @@ model Autista {
   trasportatore Trasportatore? @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_trasportatore_fkey")
   utente        User?          @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_user_fkey")
   ritiri        Ritiro[]
+  eventiCampo   EventoCampo[]
 
   @@unique([id, tenantId], map: "autisti_id_tenant_id_key")
   @@unique([tenantId, codiceFiscale], map: "autisti_tenant_codice_fiscale_key")
@@ -4747,6 +4750,46 @@ enum AmbitoModelloStampa {
 /// genera la bozza di FIR (`firs.ritiro_id`). Mai cancellato (`ruoli-db.sql`): si annulla con motivo.
 /// Coerenza sede-ditta controllata nel servizio, come per il FIR. CHECK, trigger e indici parziali
 /// sono solo in SQL (migration `20261110100000_ritiri_e_modelli`).
+/// Evento dal campo (app campo, P4): un esito registrato dall'autista sul telefono. APPEND-ONLY
+/// (trigger anche per il proprietario; ai ruoli applicativi solo SELECT e INSERT). `eventoUuid` e'
+/// generato dal telefono ed e' la chiave di idempotenza. L'esito si decide prima dell'INSERT.
+/// CHECK, trigger e privilegi solo in migration (`20261123110000_eventi_campo`).
+model EventoCampo {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  eventoUuid      String           @map("evento_uuid") @db.Uuid
+  ritiroId        String           @map("ritiro_id") @db.Uuid
+  autistaId       String           @map("autista_id") @db.Uuid
+  utenteId        String           @map("utente_id") @db.Uuid
+  tipo            String           @db.VarChar(30)
+  dati            Json             @default("{}")
+  versioneVista   Int              @map("versione_vista")
+  /// Orologio del telefono: mai usato come data legale.
+  rilevatoIl      DateTime         @map("rilevato_il") @db.Timestamptz(3)
+  /// Ora del server.
+  ricevutoIl      DateTime         @default(now()) @map("ricevuto_il") @db.Timestamptz(3)
+  esito           EsitoEventoCampo
+  motivoConflitto String?          @map("motivo_conflitto") @db.VarChar(40)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_ritiro_fkey")
+  autista Autista @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_autista_fkey")
+  utente  User    @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_utente_fkey")
+
+  @@unique([id, tenantId], map: "eventi_campo_id_tenant_id_key")
+  @@unique([tenantId, eventoUuid], map: "eventi_campo_evento_uuid_key")
+  @@index([tenantId, esito, ricevutoIl(sort: Desc)], map: "eventi_campo_esito_idx")
+  @@index([tenantId, ritiroId, ricevutoIl], map: "eventi_campo_ritiro_idx")
+  @@map("eventi_campo")
+}
+
+enum EsitoEventoCampo {
+  APPLICATO
+  DA_RICONCILIARE
+
+  @@map("esito_evento_campo")
+}
+
 model Ritiro {
   id                  String               @id(map: "ritiri_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String               @map("tenant_id") @db.Uuid
@@ -4797,6 +4840,7 @@ model Ritiro {
   automezzo    Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
   autista      Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
   firs         FIR[]
+  eventiCampo  EventoCampo[]
 
   @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
   @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")
