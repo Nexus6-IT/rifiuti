@@ -225,12 +225,14 @@ describe('RentriRegistroTrasmissioneJob', () => {
     expect(where).not.toEqual({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO })
   })
 
-  it('solo registri con identificativo RENTRI', async () => {
+  it('solo registri con identificativo RENTRI e non chiusi', async () => {
     const { job, prisma } = build({ t1: ['r1'] })
     await job.eseguiTrasmissione()
     expect((prisma.registroRifiuti.findMany.mock.calls[0] as any[])[0].where).toEqual({
       tenantId: 't1',
       identificativoRentri: { not: null },
+      // eREGI E3: i registri chiusi su RENTRI non ricevono piu' invii
+      rentriChiusoIl: null,
     })
   })
 
