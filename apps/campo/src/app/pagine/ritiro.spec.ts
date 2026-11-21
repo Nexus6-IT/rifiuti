@@ -7,6 +7,7 @@ import { ArchivioCodaMemoria } from '../core/archivio-coda.memoria';
 import { ArchivioGiro } from '../core/archivio-giro';
 import { ArchivioGiroMemoria } from '../core/archivio-giro.memoria';
 import { CodaEventi } from '../core/coda-eventi';
+import { CodaRicevute } from '../core/coda-ricevute';
 import { GiroService } from '../core/giro.service';
 import type { GiroVista } from '../core/modelli';
 import { SessioneService } from '../core/sessione.service';
@@ -192,5 +193,40 @@ describe('RitiroPagina: esito', () => {
     await flush();
     f.detectChanges();
     expect(el(f).querySelector('[data-testid="eseguito"]')).not.toBeNull();
+  });
+
+  describe('ricevuta di ritiro', () => {
+    it('un ritiro da fare offre la ricevuta con la dicitura onesta', async () => {
+      const f = await apri();
+      const sezione = el(f).querySelector('[data-testid="ricevuta"]');
+      expect(sezione?.textContent).toContain('Non sostituisce il FIR');
+      expect(sezione?.textContent).toContain('non è una firma qualificata');
+      expect(el(f).querySelector('[data-testid="apri-ricevuta"]')?.getAttribute('href')).toBe(
+        '/ritiro/r1/ricevuta',
+      );
+    });
+
+    it('un ritiro non piu da fare, o dichiarato non eseguito, non offre la ricevuta', async () => {
+      const chiuso = await apri((g) => (g.ritiri[0].stato = 'NON_ESEGUITO'));
+      expect(el(chiuso).querySelector('[data-testid="ricevuta"]')).toBeNull();
+    });
+
+    it('mostra lo stato delle ricevute firmate per questo ritiro', async () => {
+      const f = await apri();
+      const ricevute = TestBed.inject(CodaRicevute);
+      await ricevute.registra({
+        ritiroId: 'r1',
+        firmatarioNome: 'Mario Rossi',
+        firmaPng: 'iVBORw0KGgo=',
+        emailCliente: null,
+      });
+      http.expectOne('/api/v1/campo/ricevute').error(new ProgressEvent('error'), { status: 0 });
+      await flush();
+      f.detectChanges();
+      const t = el(f).querySelector('[data-testid="ricevuta-stato"]')?.textContent ?? '';
+      expect(t).toContain('Mario Rossi');
+      expect(t).toContain('in attesa di invio');
+      ricevute.ferma();
+    });
   });
 });

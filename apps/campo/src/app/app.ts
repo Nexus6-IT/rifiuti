@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { CodaEventi } from './core/coda-eventi';
+import { CodaRicevute } from './core/coda-ricevute';
 import { GiroService, dataLocaleIso } from './core/giro.service';
 
 @Component({
@@ -12,12 +13,15 @@ export class App {
   private readonly giro = inject(GiroService);
   private readonly router = inject(Router);
   private readonly coda = inject(CodaEventi);
+  private readonly ricevute = inject(CodaRicevute);
 
   constructor() {
     // Fine giornata / telefono condiviso: la copia di ieri o di un altro utente non resta.
     void this.giro.pulisciObsoleto(dataLocaleIso());
     // Esiti rimasti in coda dall'ultima volta: si riprende l'invio.
     void this.coda.avvia();
+    // Idem per le ricevute firmate non ancora arrivate.
+    void this.ricevute.avvia();
     // Una PWA ripresa dal background non ricostruisce App: si ricontrolla il giorno alla ripresa.
     document.addEventListener('visibilitychange', () => this.allaRipresa());
     window.addEventListener('pageshow', () => this.allaRipresa());

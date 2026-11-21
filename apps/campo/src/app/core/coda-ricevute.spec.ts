@@ -112,7 +112,11 @@ describe('CodaRicevute (coda di uscita delle ricevute)', () => {
     accedi('u1');
     const r = await coda.registra(nuova());
     await rispondi(senzaRete);
-    expect(coda.mie()[0]).toMatchObject({ stato: 'DA_INVIARE', tentativi: 1, firmaPng: 'iVBORw0KGgo=' });
+    expect(coda.mie()[0]).toMatchObject({
+      stato: 'DA_INVIARE',
+      tentativi: 1,
+      firmaPng: 'iVBORw0KGgo=',
+    });
     void coda.invia();
     const req = http.expectOne(URL_RICEVUTE);
     expect(req.request.body.id).toBe(r.id);

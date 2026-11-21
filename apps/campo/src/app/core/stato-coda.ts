@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CodaEventi } from './coda-eventi';
+import { CodaRicevute } from './coda-ricevute';
 import { StatoRete } from './stato-rete';
 
 /** Testo italiano del motivo per cui un esito e' finito «da riconciliare» in ufficio. */
@@ -62,6 +63,47 @@ export function spiegaConflitto(motivo: string | null): string {
         Questo telefono non riesce a salvare gli esiti: tieni aperta l'app finché non sono inviati.
       </p>
     }
+    @if (ricevute.daInviare() > 0) {
+      <p class="avviso-offline" role="status" data-testid="ricevute-da-inviare">
+        {{
+          ricevute.daInviare() === 1
+            ? '1 ricevuta da inviare'
+            : ricevute.daInviare() + ' ricevute da inviare'
+        }}.
+        @if (!rete.online()) {
+          Sei offline: partiranno appena torna la rete (tieni aperta l'app).
+        }
+        <button
+          type="button"
+          class="link"
+          (click)="ricevute.invia()"
+          data-testid="ricevute-invia-ora"
+        >
+          Invia ora
+        </button>
+      </p>
+    }
+    @if (ricevute.bloccata(); as b) {
+      <p class="errore" role="alert" data-testid="ricevute-bloccata">
+        Le ricevute non partono: {{ b }} Contatta l'ufficio, poi tocca «Invia ora».
+      </p>
+    }
+    @if (ricevute.rifiutate() > 0) {
+      <p class="errore" role="alert" data-testid="ricevute-rifiutate">
+        {{
+          ricevute.rifiutate() === 1
+            ? '1 ricevuta non è stata accettata dal server.'
+            : ricevute.rifiutate() + ' ricevute non sono state accettate dal server.'
+        }}
+        Aprila dal ritiro per vedere il motivo.
+      </p>
+    }
+    @if (ricevute.nonSalvata()) {
+      <p class="errore" role="alert" data-testid="ricevute-non-salvata">
+        Questo telefono non riesce a salvare le ricevute: tieni aperta l'app finché non sono
+        inviate.
+      </p>
+    }
     @if (coda.diAltriUtenti() > 0) {
       <p class="avviso-offline" role="status" data-testid="altri-utenti">
         {{
@@ -81,6 +123,7 @@ export function spiegaConflitto(motivo: string | null): string {
 })
 export class StatoCoda {
   protected readonly coda = inject(CodaEventi);
+  protected readonly ricevute = inject(CodaRicevute);
   protected readonly rete = inject(StatoRete);
 
   protected scarta(): void {

@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ALTEZZA_TELA,
-  LARGHEZZA_TELA,
-  PUNTI_MASSIMI,
-  TrattoFirma,
-} from './tratto-firma';
+import { ALTEZZA_TELA, LARGHEZZA_TELA, PUNTI_MASSIMI, TrattoFirma } from './tratto-firma';
 
 const lineaRetta = (t: TrattoFirma, da: number, a: number, y = 50) => {
   t.inizia({ x: da, y });

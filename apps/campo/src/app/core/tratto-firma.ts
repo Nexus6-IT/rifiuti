@@ -83,8 +83,7 @@ export class TrattoFirma {
   sufficiente(): boolean {
     const e = this.estensione();
     return (
-      this.lunghezza() >= LUNGHEZZA_MINIMA &&
-      Math.max(e.larghezza, e.altezza) >= ESTENSIONE_MINIMA
+      this.lunghezza() >= LUNGHEZZA_MINIMA && Math.max(e.larghezza, e.altezza) >= ESTENSIONE_MINIMA
     );
   }
 }
