@@ -129,7 +129,9 @@ export interface Formulario {
    */
   dati_trasbordo_totale?: {
     trasportatore: Record<string, unknown>
-    presa_in_carico: Record<string, unknown> & { dati_firma_trasportatore: { data_firma: string } | null }
+    presa_in_carico: Record<string, unknown> & {
+      dati_firma_trasportatore: { data_firma: string } | null
+    }
   }
   ultimaFirma?: {
     statoPrecedente: string

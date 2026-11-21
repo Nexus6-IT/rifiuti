@@ -1083,17 +1083,17 @@ describe('RENTRIApiClient', () => {
           'tenant-1',
           'BCDFGH00001ZH',
           {
-          trasportatore: {
-            denominazione: 'Trasporti Verdi Srl',
-            codice_fiscale: '01234567890',
-            tipo_trasporto: 'Terrestre' as const,
+            trasportatore: {
+              denominazione: 'Trasporti Verdi Srl',
+              codice_fiscale: '01234567890',
+              tipo_trasporto: 'Terrestre' as const,
+            },
+            presa_in_carico: {
+              data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+              conducente: { nome: 'Luca', cognome: 'Bianchi' },
+              targa_automezzo: 'FG456HI',
+            },
           },
-          presa_in_carico: {
-            data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
-            conducente: { nome: 'Luca', cognome: 'Bianchi' },
-            targa_automezzo: 'FG456HI',
-          },
-        },
           { intervalloMs: 0, maxTentativi: 2 }
         )
         .catch((e: unknown) => e)

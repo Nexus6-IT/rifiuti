@@ -140,7 +140,7 @@ describe('mappaTrasbordoTotale (POST /{numero_fir}/trasbordo-totale)', () => {
     },
   }
 
-  it('nuovo trasportatore terrestre dall\'anagrafica + presa in carico: valido per il contratto', () => {
+  it("nuovo trasportatore terrestre dall'anagrafica + presa in carico: valido per il contratto", () => {
     const corpo = mappaTrasbordoTotale(base)
     expect(corpo).toEqual({
       trasportatore: {
@@ -170,10 +170,14 @@ describe('mappaTrasbordoTotale (POST /{numero_fir}/trasbordo-totale)', () => {
     )
   })
 
-  it('senza partita IVA usa il codice fiscale; senza nessuno dei due e\' un dato mancante', () => {
+  it("senza partita IVA usa il codice fiscale; senza nessuno dei due e' un dato mancante", () => {
     const conCf = mappaTrasbordoTotale({
       ...base,
-      trasportatore: { ragioneSociale: 'Mario Rossi', partitaIva: '', codiceFiscale: 'RSSMRA80A01H501U' },
+      trasportatore: {
+        ragioneSociale: 'Mario Rossi',
+        partitaIva: '',
+        codiceFiscale: 'RSSMRA80A01H501U',
+      },
     })
     expect(conCf.trasportatore.codice_fiscale).toBe('RSSMRA80A01H501U')
     expect(() =>
@@ -199,7 +203,7 @@ describe('mappaTrasbordoTotale (POST /{numero_fir}/trasbordo-totale)', () => {
     ).toThrow(/targa/)
   })
 
-  it('il numero di iscrizione all\'Albo non normalizzabile e\' un dato mancante', () => {
+  it("il numero di iscrizione all'Albo non normalizzabile e' un dato mancante", () => {
     expect(() =>
       mappaTrasbordoTotale({
         ...base,

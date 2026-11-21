@@ -32,7 +32,7 @@ import {
 import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
-import { FIR, FIRStato, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
+import { FIR, TipoTratta } from '../../domain/fir/aggregates/fir.aggregate'
 import { DigitalSignatureService } from '../signatures/digital-signature.service'
 import { VerifySignaturesUseCase } from '../signatures/verify-signatures.use-case'
 import { EmettiFIRUseCase } from '../fir/use-cases/emetti-fir.use-case'
