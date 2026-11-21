@@ -2,8 +2,8 @@
  * Pezzo I2, T4: `caricaAmbito` contro Postgres reale COME `wasteflow_app`, con due fasi finte
  * (due insiemi di ditte) sullo stesso lotto.
  */
-import { PrismaClient } from '@prisma/client'
 import { cancellaAziendeDiProva } from '../../../test-support/cancella-azienda-di-prova'
+import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
 const urlProprietario =

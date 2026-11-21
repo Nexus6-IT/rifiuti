@@ -62,6 +62,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CODICE_LEGACY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/
 const OPER = /^[0-9]{2}$/
 const CAUSALE = /^[A-Z0-9][A-Z0-9_]{0,99}$/
+/** Codice WinWaste di una unita' locale propria: `X` + sede (1-6) `.` UL (1-4). Mai un telefono (comincia per lettera). */
+const UNITA_LOCALE_PROPRIA = /^X[0-9A-Za-z]{1,6}\.[0-9A-Za-z]{1,4}$/
 const DATA = /^\d{4}-\d{2}-\d{2}$/
 // Codice fiscale di persona fisica (anche con omocodia) e di persona giuridica (11 cifre) non
 // compaiono mai: l'unico identificativo fiscale ammesso e' la partita IVA degli agganci.
@@ -216,7 +218,13 @@ export function validaMappa(json: unknown): MappaImport {
   // per intero) puo' somigliare a un dato personale.
   const daControllare: Array<[string, string]> = []
   registri.forEach((r, i) => daControllare.push([`registri[${i}].legacy`, r.legacy]))
-  unitaLocali.forEach((r, i) => daControllare.push([`unitaLocali[${i}].legacy`, r.legacy]))
+  // Il codice di una unita' locale PROPRIA (VERSIS `XRENTRI:X<sede>.<ul>`) ha una lunga serie di cifre
+  // e punto che somiglierebbe a un telefono: lo si riconosce per FORMA, e solo in questo campo.
+  // Una forma diversa (es. un numero di telefono) resta soggetta al controllo.
+  unitaLocali.forEach((r, i) => {
+    if (!UNITA_LOCALE_PROPRIA.test(r.legacy))
+      daControllare.push([`unitaLocali[${i}].legacy`, r.legacy])
+  })
   causali.forEach((c, i) => daControllare.push([`causali[${i}].causale`, c.causale]))
   for (const [dove, valore] of daControllare) nessunDatoPersonale(valore, dove)
 

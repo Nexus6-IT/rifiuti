@@ -104,3 +104,48 @@ export function chiaveSede(ditta: string, prec: string, cod: string, ul: string)
   componente(ul, 4, "COD unita' locale")
   return `${ditta}|${prec}|${cod}|${ul}`
 }
+
+/**
+ * Automezzo (`AUTOMEZZI`, senza PK): `ditta|MEZ|<PRECOD>|<COD>`, con PRECOD = soggetto.unita'
+ * proprietario (fino a 11 caratteri) e COD = codice del mezzo (4). «MEZ» non puo' essere un anno ne'
+ * un PRECOD di CLIFOR (C/F), quindi la famiglia di chiavi non collide con le altre.
+ */
+export function chiaveAutomezzo(ditta: string, precod: string, cod: string): string {
+  verificaDitta(ditta)
+  componente(precod, 11, 'PRECOD automezzo')
+  componente(cod, 4, 'COD automezzo')
+  return `${ditta}|MEZ|${precod}|${cod}`
+}
+
+/**
+ * Soggetto WinWaste della RIGA (C o F) per la chiave di una sede. UNICA regola, usata da `prepara`
+ * (ANAGRAFICHE: sedi) e da chi deve riagganciare un riferimento `soggetto.unita'` a una sede
+ * (FIR, registro): se divergessero, un PROD/SMAL punterebbe alla sede sbagliata senza errori.
+ *  1. il PRECOD a 7 caratteri (`C000005`, `F000005`) porta gia' il C/F;
+ *  2. altrimenti l'unico PRECOD di CLIFOR con quel COD;
+ *  3. altrimenti (C e F con lo stesso COD, stessa ditta) il PRECOD della riga tenuta.
+ */
+export function precDellaRiga(
+  precodDelRiferimento: 'C' | 'F' | undefined,
+  precPerCod: ReadonlySet<string> | undefined,
+  precTenuto: string
+): string {
+  if (precodDelRiferimento !== undefined) return precodDelRiferimento
+  if (precPerCod !== undefined && precPerCod.size === 1) return [...precPerCod][0]
+  return precTenuto
+}
+
+/** Chiave della sede (`chiaveSede`) di un riferimento `soggetto.unita'`, con la regola di `precDellaRiga`. */
+export function chiaveSedeDaSoggettoUnita(
+  ditta: string,
+  riferimento: { readonly soggetto: string; readonly precod?: 'C' | 'F' },
+  ul: string,
+  contesto: { readonly precPerCod: ReadonlySet<string> | undefined; readonly precTenuto: string }
+): string {
+  return chiaveSede(
+    ditta,
+    precDellaRiga(riferimento.precod, contesto.precPerCod, contesto.precTenuto),
+    riferimento.soggetto,
+    ul
+  )
+}
