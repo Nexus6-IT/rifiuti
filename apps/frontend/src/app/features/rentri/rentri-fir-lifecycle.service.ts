@@ -107,6 +107,32 @@ export interface DatiSostaTecnica {
 /** Limite del contratto RENTRI per il luogo di stazionamento (caratteri). */
 export const LUOGO_SOSTA_RENTRI_MAX = 1000
 
+/** Corpo di `POST /rentri/fir/:id/trasbordo-totale` (FIR in viaggio, P6): inizio in UTC (`Z`). */
+export interface DatiTrasbordoTotale {
+  /** Il NUOVO trasportatore, dall'anagrafica dell'azienda. */
+  trasportatoreId: string
+  conducenteNome: string
+  conducenteCognome: string
+  targaAutomezzo?: string
+  targaRimorchio?: string
+  percorso?: string
+  dataOraInizioTrasporto: string
+  presaInCaricoRimorchioPrecedente?: boolean
+}
+
+/**
+ * Esito di `POST /rentri/fir/:id/trasbordo-totale`. La firma NON e' di chi invia ma del nuovo trasportatore:
+ * da qui non parte nessuna richiesta di firma.
+ */
+export interface EsitoTrasbordoTotale {
+  operazione: 'TrasbordoTotale'
+  /** Stato riletto dall'ente dopo l'invio (`FirmaTrasbordoTotale`); null se la rilettura non e' riuscita. */
+  statoFormulario: string | null
+  /** `false` se l'ente ha accettato ma la nuova tratta del FIR non si e' potuta salvare qui. */
+  trattaLocaleCreata: boolean
+  firma: { esito: 'DA_FIRMARE_DAL_NUOVO_TRASPORTATORE'; avviso: string }
+}
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
@@ -301,6 +327,28 @@ export class RentriFirLifecycleService {
     payload: { nuovaSessione?: boolean } = {}
   ): Observable<EsitoFirmaRemota> {
     return this.http.post<EsitoFirmaRemota>(`${this.API_URL}/${firId}/firma-sosta-tecnica`, payload)
+  }
+
+  /**
+   * «Trasbordo totale» (FIR in viaggio, P6): passa il rifiuto a un nuovo trasportatore dell'anagrafica con i
+   * suoi dati di trasporto. Il soggetto che invia e' sempre l'azienda selezionata (lo mette il backend).
+   */
+  dichiaraTrasbordoTotale(
+    firId: string,
+    dati: DatiTrasbordoTotale
+  ): Observable<EsitoTrasbordoTotale> {
+    return this.http.post<EsitoTrasbordoTotale>(`${this.API_URL}/${firId}/trasbordo-totale`, dati)
+  }
+
+  /** «Firma il trasbordo totale»: solo il NUOVO trasportatore (lo verifica il backend prima della richiesta). */
+  firmaTrasbordoTotale(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaRemota> {
+    return this.http.post<EsitoFirmaRemota>(
+      `${this.API_URL}/${firId}/firma-trasbordo-totale`,
+      payload
+    )
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

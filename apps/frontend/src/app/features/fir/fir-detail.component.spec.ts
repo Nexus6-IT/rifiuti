@@ -16,6 +16,8 @@ import { EventoFirRentri, RentriFirLifecycleService } from '../rentri/rentri-fir
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { RegistryService } from '../registry/registry.service'
+import { PaginatedResponse, Trasportatore } from '../../shared/models/registry.model'
 
 /**
  * TDD per la pagina di dettaglio del formulario FIR (R1 Task 4).
@@ -37,6 +39,7 @@ describe('FirDetailComponent', () => {
   let rentriFormulariService: jasmine.SpyObj<RentriFormulariService>
   let rentriFirLifecycleService: jasmine.SpyObj<RentriFirLifecycleService>
   let authService: jasmine.SpyObj<AuthService>
+  let registryService: jasmine.SpyObj<RegistryService>
   let httpMock: HttpTestingController
 
   const baseFIR: FIR = {
@@ -102,6 +105,8 @@ describe('FirDetailComponent', () => {
       'firmaAnnotazione',
       'dichiaraSostaTecnica',
       'firmaSostaTecnica',
+      'dichiaraTrasbordoTotale',
+      'firmaTrasbordoTotale',
       'eventi',
       'ultimoTrasporto',
     ])
@@ -119,6 +124,19 @@ describe('FirDetailComponent', () => {
     rentriFirLifecycleService.azioniDisponibili.and.returnValue(
       of({ stato: 'Emesso', versione: 1, azioni: [] })
     )
+    registryService = jasmine.createSpyObj('RegistryService', ['getTrasportatori'])
+    registryService.getTrasportatori.and.returnValue(
+      of({
+        items: [
+          { id: 'tr-1', ragioneSociale: 'Trasporti Verdi Srl', partitaIVA: '01234567890' },
+          { id: 'tr-2', ragioneSociale: 'Altri Trasporti Spa', partitaIVA: '09876543210' },
+        ],
+        total: 2,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+      } as unknown as PaginatedResponse<Trasportatore>)
+    )
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
     })
@@ -130,6 +148,7 @@ describe('FirDetailComponent', () => {
       { provide: RentriFormulariService, useValue: rentriFormulariService },
       { provide: RentriFirLifecycleService, useValue: rentriFirLifecycleService },
       { provide: AuthService, useValue: authService },
+      { provide: RegistryService, useValue: registryService },
       {
         provide: FeatureFlagsService,
         useValue: { has: (k: string) => k !== 'rentri' || overrides.rentri !== false },
@@ -3111,6 +3130,382 @@ describe('FirDetailComponent', () => {
       expect(component.etichettaEvento('SostaTecnica')).toBe('Sosta tecnica dichiarata')
       expect(component.etichettaEvento('AcquisizioneFirmaSostaTecnica')).toBe(
         'Sosta tecnica firmata'
+      )
+    })
+  })
+
+  describe('Trasbordo totale (FIR in viaggio P6)', () => {
+    const firLegato: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000888',
+    }
+    const azioni = (...operazioni: string[]) =>
+      of({
+        stato: 'InserimentoAccettazione',
+        versione: 1,
+        azioni: operazioni.map(operazione => ({ operazione, verbo: operazione })),
+      })
+    const el = (): HTMLElement => fixture.nativeElement
+    const DICHIARA = '[data-testid="fir-detail-rentri-dichiara-trasbordo-totale"]'
+    const BANNER_FIRMA = '[data-testid="fir-detail-firma-trasbordo-totale-banner"]'
+    const FIRMA = '[data-testid="fir-detail-firma-trasbordo-totale"]'
+    const BANNER_ATTESA = '[data-testid="fir-detail-trasbordo-totale-in-attesa"]'
+    let messageService: MessageService
+
+    const eventoTrasbordo = (esito: EventoFirRentri['esito'] = 'ACCETTATA'): EventoFirRentri => ({
+      id: 'ev-tt',
+      operazione: 'TrasbordoTotale',
+      esito,
+      payload: {
+        trasportatore: { denominazione: 'Trasporti Verdi Srl', codice_fiscale: '01234567890' },
+        presa_in_carico: {
+          data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+          conducente: { nome: 'Luca', cognome: 'Bianchi' },
+        },
+      },
+      dettaglioEnte: null,
+      statoFormularioDopo: 'FirmaTrasbordoTotale',
+      utenteId: 'u1',
+      createdAt: '2026-11-20T10:00:00.000Z',
+    })
+
+    function preparaFirLegato(role: string, fir: FIR, ...operazioni: string[]): void {
+      setup({ role })
+      firService.getFIRById.and.returnValue(of(fir))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(azioni(...operazioni))
+      messageService = fixture.debugElement.injector.get(MessageService)
+    }
+
+    function compila(extra: Partial<Record<string, unknown>> = {}) {
+      component.apriDialogTrasbordoTotale(firLegato)
+      Object.assign(component, {
+        tbTrasportatoreId: 'tr-1',
+        tbNome: 'Luca',
+        tbCognome: 'Bianchi',
+        tbTargaAutomezzo: 'FG456HI',
+        tbInizio: '2026-11-18T13:00',
+        ...extra,
+      })
+    }
+
+    it("il pulsante «Trasbordo totale» nasce SOLO dall'azione TrasbordoTotale dell'ente", () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale', 'Annotazione')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeTruthy()
+      expect(el().querySelector(BANNER_FIRMA)).toBeFalsy()
+    })
+
+    it('senza TrasbordoTotale fra le azioni (per esempio dopo l accettazione) non compare', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('un FIR non legato (cartaceo) non lo vede', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('un VIEWER non lo vede', () => {
+      preparaFirLegato('VIEWER', firLegato, 'TrasbordoTotale')
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('con una firma gia in attesa non si puo dichiarare un trasbordo', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.firmaInAttesa.and.returnValue(
+        of({
+          sessione: {
+            id: 's1',
+            tipoOperazione: 'ACCETTAZIONE',
+            scadenza: new Date(Date.now() + 90_000).toISOString(),
+            stato: 'IN_ATTESA' as const,
+            scaduta: false,
+          },
+        })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('apertura del dialog: carica i trasportatori dell anagrafica e propone l inizio adesso', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      fixture.detectChanges()
+
+      component.apriDialogTrasbordoTotale(firLegato)
+
+      expect(registryService.getTrasportatori).toHaveBeenCalledWith(1, 100)
+      expect(component['trasbordoTrasportatori']().map(t => t.id)).toEqual(['tr-1', 'tr-2'])
+      expect(component['tbInizio']).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+      expect(component['trasbordoDialogVisible']()).toBeTrue()
+    })
+
+    it('anagrafica non caricabile: errore nel dialog, nessun invio possibile', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      registryService.getTrasportatori.and.returnValue(throwError(() => ({ status: 500 })))
+      fixture.detectChanges()
+
+      component.apriDialogTrasbordoTotale(firLegato)
+
+      expect(component['trasbordoErrore']()).toContain('trasportatori')
+      expect(component.trasbordoValido()).toBeFalse()
+    })
+
+    it('validazione: nuovo trasportatore, conducente (nome e cognome), almeno una targa, inizio', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      fixture.detectChanges()
+      component.apriDialogTrasbordoTotale(firLegato)
+      expect(component.trasbordoValido()).toBeFalse()
+
+      compila()
+      expect(component.trasbordoValido()).toBeTrue()
+      compila({ tbTrasportatoreId: null })
+      expect(component.trasbordoValido()).toBeFalse()
+      compila({ tbNome: '  ' })
+      expect(component.trasbordoValido()).toBeFalse()
+      compila({ tbCognome: '' })
+      expect(component.trasbordoValido()).toBeFalse()
+      compila({ tbTargaAutomezzo: '', tbTargaRimorchio: '' })
+      expect(component.trasbordoValido()).toBeFalse()
+      compila({ tbTargaAutomezzo: '', tbTargaRimorchio: 'AB123CD' })
+      expect(component.trasbordoValido()).toBeTrue()
+      compila({ tbInizio: '' })
+      expect(component.trasbordoValido()).toBeFalse()
+      compila({ tbInizio: 'non una data' })
+      expect(component.trasbordoValido()).toBeFalse()
+    })
+
+    it('conferma: invia i dati (inizio in UTC), avvisa che la firma e del nuovo trasportatore, chiude e ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.dichiaraTrasbordoTotale.and.returnValue(
+        of({
+          operazione: 'TrasbordoTotale' as const,
+          statoFormulario: 'FirmaTrasbordoTotale',
+          trattaLocaleCreata: true,
+          firma: {
+            esito: 'DA_FIRMARE_DAL_NUOVO_TRASPORTATORE' as const,
+            avviso: 'La firma spetta al nuovo trasportatore.',
+          },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila({ tbTargaRimorchio: 'ab123cd', tbPercorso: ' A1 ', tbRimorchioPrecedente: true })
+
+      component.confermaTrasbordoTotale()
+
+      expect(rentriFirLifecycleService.dichiaraTrasbordoTotale).toHaveBeenCalledOnceWith('fir-1', {
+        trasportatoreId: 'tr-1',
+        conducenteNome: 'Luca',
+        conducenteCognome: 'Bianchi',
+        targaAutomezzo: 'FG456HI',
+        targaRimorchio: 'ab123cd',
+        percorso: 'A1',
+        dataOraInizioTrasporto: new Date('2026-11-18T13:00').toISOString(),
+        presaInCaricoRimorchioPrecedente: true,
+      })
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'success',
+          summary: 'Trasbordo totale inviato a RENTRI',
+        })
+      )
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'info',
+          summary: 'Firma del nuovo trasportatore',
+          detail: 'La firma spetta al nuovo trasportatore.',
+        })
+      )
+      expect(component['trasbordoDialogVisible']()).toBeFalse()
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('ente accettato ma tratta locale non salvata: avviso, non un errore', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.dichiaraTrasbordoTotale.and.returnValue(
+        of({
+          operazione: 'TrasbordoTotale' as const,
+          statoFormulario: 'FirmaTrasbordoTotale',
+          trattaLocaleCreata: false,
+          firma: { esito: 'DA_FIRMARE_DAL_NUOVO_TRASPORTATORE' as const, avviso: 'x' },
+        })
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila()
+
+      component.confermaTrasbordoTotale()
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Trasbordo totale inviato a RENTRI',
+          detail: jasmine.stringContaining('non è stato aggiunto'),
+        })
+      )
+    })
+
+    it('errore 409 (non sei il trasportatore): il messaggio resta nel dialog, i campi scritti non si perdono', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.dichiaraTrasbordoTotale.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            codice: 'TRASBORDO_TOTALE_SOGGETTO_NON_NEL_FIR',
+            message: 'Il codice fiscale della tua azienda non compare fra i trasportatori.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      compila({ tbNome: 'Nome da non perdere' })
+
+      component.confermaTrasbordoTotale()
+
+      expect(component['trasbordoErrore']()).toContain('non compare fra i trasportatori')
+      expect(component['tbNome']).toBe('Nome da non perdere')
+      expect(component['trasbordoDialogVisible']()).toBeTrue()
+      expect(component['trasbordoInCorso']()).toBeFalse()
+    })
+
+    it('ESITO INCERTO: il dialog si chiude (niente secondo invio a caldo), avviso di verificare, il FIR si ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.dichiaraTrasbordoTotale.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            codice: 'TRASBORDO_TOTALE_ESITO_INCERTO',
+            message: 'Non sappiamo se l’ente ha registrato il trasbordo totale.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila()
+
+      component.confermaTrasbordoTotale()
+
+      expect(component['trasbordoDialogVisible']()).toBeFalse()
+      expect(component['trasbordoInCorso']()).toBeFalse()
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Esito del trasbordo da verificare',
+          detail: jasmine.stringContaining('Non sappiamo se'),
+        })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('non invia due volte mentre la richiesta e in corso, ne con dati non validi', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      rentriFirLifecycleService.dichiaraTrasbordoTotale.and.returnValue(NEVER)
+      fixture.detectChanges()
+      compila({ tbNome: '' })
+      component.confermaTrasbordoTotale()
+      expect(rentriFirLifecycleService.dichiaraTrasbordoTotale).not.toHaveBeenCalled()
+
+      compila()
+      component.confermaTrasbordoTotale()
+      component.confermaTrasbordoTotale()
+      expect(rentriFirLifecycleService.dichiaraTrasbordoTotale).toHaveBeenCalledTimes(1)
+    })
+
+    it('chi ha DICHIARATO il trasbordo (storico nostro) vede «in attesa del nuovo trasportatore», NON il pulsante di firma', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoTrasbordo()] }))
+      fixture.detectChanges()
+
+      expect(el().querySelector(BANNER_ATTESA)?.textContent).toContain('Trasporti Verdi Srl')
+      expect(el().querySelector(BANNER_ATTESA)?.textContent).toContain('nuovo trasportatore')
+      expect(el().querySelector(BANNER_FIRMA)).toBeFalsy()
+      expect(el().querySelector(FIRMA)).toBeFalsy()
+      expect(el().querySelector(DICHIARA)).toBeFalsy()
+    })
+
+    it('il NUOVO trasportatore (nessun trasbordo nostro nello storico) vede il banner di firma e chiama la rotta', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+      rentriFirLifecycleService.firmaTrasbordoTotale.and.returnValue(
+        of({ esito: 'COMPLETATA' as const, statoFormulario: 'InserimentoAccettazione' })
+      )
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER_FIRMA)?.textContent).toContain('prendi in carico')
+      expect(el().querySelector(BANNER_ATTESA)).toBeFalsy()
+      const aggiungi = spyOn(messageService, 'add')
+
+      ;(el().querySelector(FIRMA) as HTMLElement).querySelector('button')?.click()
+
+      expect(rentriFirLifecycleService.firmaTrasbordoTotale).toHaveBeenCalledOnceWith('fir-1')
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'success', summary: 'Firma completata' })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('errore 409 della firma (non sei il nuovo trasportatore): messaggio chiaro, nessun crash, ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+      rentriFirLifecycleService.firmaTrasbordoTotale.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            codice: 'TRASBORDO_TOTALE_FIRMA_NON_TUA',
+            message: 'Non spetta alla tua azienda.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+
+      component.firmaTrasbordoTotale(firLegato)
+
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({ severity: 'error', detail: 'Non spetta alla tua azienda.' })
+      )
+      expect(component['firmaInCorso']()).toBeFalse()
+    })
+
+    const casiSenzaBanner: [string, () => EventoFirRentri[]][] = [
+      [
+        'dopo un Reset accettato',
+        () => [
+          { ...eventoTrasbordo(), id: 'ev-r', operazione: 'Reset', payload: null },
+          eventoTrasbordo(),
+        ],
+      ],
+      [
+        'un trasbordo gia firmato',
+        () => [
+          { ...eventoTrasbordo(), id: 'ev-f', operazione: 'AcquisizioneFirmaTrasbordoTotale' },
+          eventoTrasbordo(),
+        ],
+      ],
+    ]
+    for (const [nome, eventi] of casiSenzaBanner) {
+      it(`${nome}: lo storico nostro non blocca il banner di firma del nuovo trasportatore`, () => {
+        preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: eventi() }))
+        fixture.detectChanges()
+        expect(el().querySelector(BANNER_ATTESA)).toBeFalsy()
+      })
+    }
+
+    it('un invio INCERTA e ancora «nostro»: attesa con l avviso di verifica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+      rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoTrasbordo('INCERTA')] }))
+      fixture.detectChanges()
+      expect(el().querySelector(BANNER_ATTESA)).toBeTruthy()
+    })
+
+    it('lo storico nomina il trasbordo totale e la sua firma', () => {
+      preparaFirLegato('OPERATOR', firLegato)
+      fixture.detectChanges()
+      expect(component.etichettaEvento('TrasbordoTotale')).toBe('Trasbordo totale dichiarato')
+      expect(component.etichettaEvento('AcquisizioneFirmaTrasbordoTotale')).toBe(
+        'Trasbordo totale firmato'
       )
     })
   })
