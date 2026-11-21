@@ -264,7 +264,8 @@ describe('P5 — sosta tecnica contro la fake RENTRI (in-process)', () => {
       creaLogger(),
       firmaPartenza,
       {} as any, // AnnotazioneRentriUseCase: non usato dalle soste tecniche
-      sostaTecnica
+      sostaTecnica,
+      {} as any // TrasbordoTotaleRentriUseCase: non usato dalle soste tecniche
     )
     return { completa, sostaTecnica, eventi, gestisci }
   }

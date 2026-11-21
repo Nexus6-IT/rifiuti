@@ -242,7 +242,8 @@ describe('P3 — firme di partenza contro la fake RENTRI (in-process)', () => {
       creaLogger(),
       firmaPartenza,
       {} as any, // AnnotazioneRentriUseCase: non usato dalle firme di partenza
-      {} as any // SostaTecnicaRentriUseCase: non usato dalle firme di partenza
+      {} as any, // SostaTecnicaRentriUseCase: non usato dalle firme di partenza
+      {} as any // TrasbordoTotaleRentriUseCase: non usato dalle firme di partenza
     )
     return { completa, firmaPartenza, eventi, gestisci }
   }
