@@ -147,6 +147,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'Autista',
   // Eventi dal campo (app campo, P4): append-only.
   'EventoCampo',
+  // Ricevute di ritiro con firma su schermo (app campo, P6): append-only.
+  'RicevutaRitiro',
+  'InvioRicevutaRitiro',
   // Sessione di firma remota RENTRI riprendibile (FIR in viaggio, P1).
   'FirSessioneFirmaRentri',
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
