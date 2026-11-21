@@ -16,7 +16,7 @@ import {
   type ChiaviVapidCaricate,
 } from './vapid'
 
-// Nomi delle variabili d'ambiente (costanti: la guardia infrastruttura-prod non vuole `.get('LITERAL')`).
+// Nomi delle variabili d'ambiente, tenuti in costanti (la guardia infrastruttura-prod controlla le letture con nome scritto per esteso).
 export const ENV_VAPID_PUBLIC_KEY = 'VAPID_PUBLIC_KEY'
 export const ENV_VAPID_PRIVATE_KEY = 'VAPID_PRIVATE_KEY'
 export const ENV_VAPID_SUBJECT = 'VAPID_SUBJECT'
