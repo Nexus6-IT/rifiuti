@@ -676,3 +676,19 @@ completamento della transazione, verifica davvero (`dominio/verifica-firma-regis
 successivi al primo (esportazioni precedenti) non si controlla nulla. Non si ricalcola il digest
 dell'eREGI (la fake non lo canonicalizza, v. §9) e non si verifica la sua firma. Un file che non e'
 un `reg:Registro` non riceve alcun giudizio.
+
+### 10.1 Catena di 3 esportazioni contro `/valida` (2026-11-21, eREGI E6)
+
+`apps/backend/src/application/rentri/registro/esportazioni-registro-rentri.oracolo.spec.ts` prova, con
+l'eREGI scaricato dalla fake, una catena di 3 esportazioni costruite con il codice di produzione
+(`costruisciEsportazioneRegistro`): la fake non segnala messaggi su nessuna delle tre. Prove in
+negativo: file alterato dopo la firma (`firmaNonValida`), primo `Ref` sbagliato
+(`catenaDigestNonValida`), file non firmato (`firmaNonPresente`).
+
+**Divergenza della fake scoperta in E6.** Le unita' locali di fixture (`MI00001234-002`) non rispettano
+il pattern `NumIscrSito` dell'XSD (`OP` + 4 cifre + 3 alfanumerici + 6 cifre + `-` + 2 lettere + 4
+cifre): l'eREGI che la fake rilascia per quei siti, inserito in un `reg:Registro`, NON passa la
+validazione XSD. L'oracolo ne sostituisce il solo valore con uno conforme. Da correggere nelle fixture
+quando si potra' rinumerare i siti senza rompere gli altri test. Come in §10, dei `Ref` oltre il primo
+la fake non controlla nulla: che le esportazioni successive citino il digest della precedente e' provato
+solo da `verificaCatenaEsportazioni` (nostro codice), non da un'implementazione indipendente.
