@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import {
   DatiPartenzaDaSalvare,
+  EsitoAggiuntaTratta,
+  NuovaTrattaTrasbordoTotale,
   DatiViaggioFir,
   DichiaratoRentri,
   IDatiViaggioFirRepository,
@@ -168,6 +170,57 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
           percorso = ${t.percorso}::varchar,
           rentri_dichiarato = COALESCE(rentri_dichiarato, '{}'::jsonb) || ${parte}::jsonb
         WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid`
+    })
+  }
+
+  async aggiungiTrattaTrasbordoTotale(
+    tenantId: string,
+    firId: string,
+    t: NuovaTrattaTrasbordoTotale
+  ): Promise<EsitoAggiuntaTratta> {
+    // Una transazione: lettura delle tratte (anche per l'idempotenza) e inserimento si vedono insieme, e
+    // l'estensione imposta il tenant (RLS) per tutta la transazione. Nessun UPDATE su `firs`: `versione` e
+    // colonne firmate restano quelle dell'emissione.
+    return this.prisma.$transaction(async tx => {
+      const esistenti = await tx.fIRTransporter.findMany({
+        where: { firId, tenantId },
+        select: {
+          ordine: true,
+          partitaIva: true,
+          codiceFiscale: true,
+          dataOraInizioTrasporto: true,
+        },
+      })
+      const stessa = esistenti.find(
+        x =>
+          x.partitaIva === t.partitaIva &&
+          x.codiceFiscale === t.codiceFiscale &&
+          x.dataOraInizioTrasporto?.getTime() === t.dataOraInizioTrasporto.getTime()
+      )
+      if (stessa) return { creata: false, ordine: stessa.ordine }
+
+      const ordine = Math.max(1, ...esistenti.map(x => x.ordine)) + 1
+      await tx.fIRTransporter.create({
+        data: {
+          firId,
+          tenantId,
+          ordine,
+          tipoTratta: 'TERRESTRE',
+          trasportatoreId: t.trasportatoreId,
+          denominazione: t.denominazione,
+          partitaIva: t.partitaIva,
+          codiceFiscale: t.codiceFiscale,
+          numeroIscrizioneAlbo: t.numeroIscrizioneAlbo,
+          mezzo: t.mezzo,
+          dataPresaInCarico: t.dataOraInizioTrasporto,
+          conducenteNome: t.conducenteNome,
+          conducenteCognome: t.conducenteCognome,
+          targaRimorchio: t.targaRimorchio,
+          percorso: t.percorso,
+          dataOraInizioTrasporto: t.dataOraInizioTrasporto,
+        },
+      })
+      return { creata: true, ordine }
     })
   }
 }
