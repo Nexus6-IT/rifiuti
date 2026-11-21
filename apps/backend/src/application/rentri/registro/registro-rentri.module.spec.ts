@@ -16,6 +16,10 @@ import { ModificaRegistroRentriUseCase } from './modifica-registro-rentri.use-ca
 import { ChiudiRegistroRentriUseCase } from './chiudi-registro-rentri.use-case'
 import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-registro-rentri.use-case'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
+import { GeneraEsportazioneRegistroRentriUseCase } from './genera-esportazione-registro-rentri.use-case'
+import { ValidaEsportazioneRegistroRentriUseCase } from './valida-esportazione-registro-rentri.use-case'
+import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentri.service'
+import { RentriRegistroEsportazioniController } from '../../../api/rentri/rentri-registro-esportazioni.controller'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 
 /**
@@ -48,6 +52,10 @@ describe('RegistroRentriModule (DI wiring)', () => {
       ChiudiRegistroRentriUseCase,
       AbbandonaAperturaRegistroRentriUseCase,
       RentriRegistroCollegamentoController,
+      RentriRegistroEsportazioniController,
+      GeneraEsportazioneRegistroRentriUseCase,
+      ValidaEsportazioneRegistroRentriUseCase,
+      EsportazioniRegistroRentriService,
     ]) {
       expect(moduleRef.get(token, { strict: false })).toBeDefined()
     }

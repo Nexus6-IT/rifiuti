@@ -22,10 +22,11 @@ import { serializzaRegistro, type VoceRegistro } from './serializza-registro-xml
 import { verificaCatenaEsportazioni } from './verifica-catena-esportazioni'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../../tools/rentri-fake/src/app')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+/* eslint-disable @typescript-eslint/no-var-requires */
 const {
   creaCertificatoDiTest,
 } = require('../../../../../../tools/rentri-fake/test/aiuti/certificati')
+/* eslint-enable @typescript-eslint/no-var-requires */
 
 /**
  * Oracolo delle esportazioni del registro (eREGI E6): l'eREGI VERO della fake, la catena di 3
