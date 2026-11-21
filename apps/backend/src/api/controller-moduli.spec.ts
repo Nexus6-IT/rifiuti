@@ -221,6 +221,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['campo'],
     motivo: "Esiti dal campo per l'ufficio (P4)",
   },
+  'api/campo/push.controller.ts': {
+    chiavi: ['campo'],
+    motivo: 'Notifiche web push dell’app campo (P7)',
+  },
   'api/campo/autisti.controller.ts': {
     chiavi: ['ritiri', 'campo'],
     motivo: "Anagrafica autisti: serve ai ritiri (assegnazione) e all'app campo",

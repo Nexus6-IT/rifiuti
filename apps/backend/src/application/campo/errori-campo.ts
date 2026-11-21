@@ -43,3 +43,21 @@ export class EventoCampoDiAltroUtenteError extends DomainError {
     this.name = 'EventoCampoDiAltroUtenteError'
   }
 }
+
+/** 503 `PUSH_NON_DISPONIBILE`: le chiavi VAPID non sono configurate, le notifiche sono spente. */
+export class PushNonDisponibileError extends DomainError {
+  readonly code = 'PUSH_NON_DISPONIBILE'
+  constructor() {
+    super('Le notifiche non sono disponibili.')
+    this.name = 'PushNonDisponibileError'
+  }
+}
+
+/** 400 `PUSH_ENDPOINT_NON_AMMESSO`: l'indirizzo del servizio push non e' fra quelli dei browser noti. */
+export class PushEndpointNonAmmessoError extends DomainError {
+  readonly code = 'PUSH_ENDPOINT_NON_AMMESSO'
+  constructor() {
+    super('Il servizio di notifica del dispositivo non è supportato.')
+    this.name = 'PushEndpointNonAmmessoError'
+  }
+}

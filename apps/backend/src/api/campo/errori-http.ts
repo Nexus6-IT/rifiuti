@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  ServiceUnavailableException,
   NotFoundException,
 } from '@nestjs/common'
 import { DomainError } from '../../core/domain/errors'
@@ -12,6 +13,8 @@ import {
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
   EventoCampoDiAltroUtenteError,
+  PushEndpointNonAmmessoError,
+  PushNonDisponibileError,
 } from '../../application/campo/errori-campo'
 import {
   RitiroDatiNonValidiError,
@@ -29,6 +32,12 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
     }
     if (err instanceof EventoCampoDiAltroUtenteError) {
       throw new ConflictException({ message: err.message, error: err.code })
+    }
+    if (err instanceof PushNonDisponibileError) {
+      throw new ServiceUnavailableException({ message: err.message, error: err.code })
+    }
+    if (err instanceof PushEndpointNonAmmessoError) {
+      throw new BadRequestException({ message: err.message, error: err.code })
     }
     if (err instanceof AutistaNonCollegatoError) {
       throw new ForbiddenException({ message: err.message, error: err.code })

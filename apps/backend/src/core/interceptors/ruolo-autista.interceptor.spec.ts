@@ -130,6 +130,11 @@ const AMMESSE_ALL_AUTISTA = [
   'AuthController.logout',
   'CampoController.giro',
   'CampoController.registraEvento',
+  'PushController.annulla',
+  'PushController.configurazione',
+  'PushController.impostaPreferenze',
+  'PushController.preferenze',
+  'PushController.sottoscrivi',
 ]
 
 describe('RuoloAutistaInterceptor: tutte le rotte montate in AppModule', () => {

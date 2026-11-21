@@ -50,32 +50,50 @@ describe('chiavi VAPID', () => {
     for (let i = 0; i < 600; i++) {
       const k = generaChiaviVapid()
       expect(decodifica(k.privata)).toHaveLength(32)
-      expect(caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'mailto:a@b.it' })).not.toBeNull()
+      expect(
+        caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'mailto:a@b.it' })
+      ).not.toBeNull()
     }
   })
 
   it('caricaChiaviVapid: assenti -> null (funzione spenta), nessun errore', () => {
-    expect(caricaChiaviVapid({ pubblica: undefined, privata: undefined, soggetto: undefined })).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: undefined, privata: undefined, soggetto: undefined })
+    ).toBeNull()
     expect(caricaChiaviVapid({ pubblica: '', privata: '', soggetto: '' })).toBeNull()
   })
 
   it('caricaChiaviVapid: incomplete o malformate -> null (spenta, mai un errore all’avvio)', () => {
     const k = generaChiaviVapid()
-    expect(caricaChiaviVapid({ pubblica: k.pubblica, privata: undefined, soggetto: 'mailto:a@b.it' })).toBeNull()
-    expect(caricaChiaviVapid({ pubblica: 'xx', privata: k.privata, soggetto: 'mailto:a@b.it' })).toBeNull()
-    expect(caricaChiaviVapid({ pubblica: k.pubblica, privata: 'xx', soggetto: 'mailto:a@b.it' })).toBeNull()
-    expect(caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'info' })).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: k.pubblica, privata: undefined, soggetto: 'mailto:a@b.it' })
+    ).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: 'xx', privata: k.privata, soggetto: 'mailto:a@b.it' })
+    ).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: k.pubblica, privata: 'xx', soggetto: 'mailto:a@b.it' })
+    ).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'info' })
+    ).toBeNull()
   })
 
   it('caricaChiaviVapid: una privata che non corrisponde alla pubblica e` rifiutata', () => {
     const a = generaChiaviVapid()
     const b = generaChiaviVapid()
-    expect(caricaChiaviVapid({ pubblica: a.pubblica, privata: b.privata, soggetto: 'mailto:a@b.it' })).toBeNull()
+    expect(
+      caricaChiaviVapid({ pubblica: a.pubblica, privata: b.privata, soggetto: 'mailto:a@b.it' })
+    ).toBeNull()
   })
 
   it('caricaChiaviVapid: coppia valida', () => {
     const k = generaChiaviVapid()
-    const c = caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'mailto:a@b.it' })
+    const c = caricaChiaviVapid({
+      pubblica: k.pubblica,
+      privata: k.privata,
+      soggetto: 'mailto:a@b.it',
+    })
     expect(c).not.toBeNull()
     expect(c?.pubblica).toBe(k.pubblica)
   })
@@ -83,7 +101,11 @@ describe('chiavi VAPID', () => {
 
 describe('creaIntestazioneVapid (RFC 8292)', () => {
   const k = generaChiaviVapid()
-  const chiavi = caricaChiaviVapid({ pubblica: k.pubblica, privata: k.privata, soggetto: 'mailto:a@b.it' })!
+  const chiavi = caricaChiaviVapid({
+    pubblica: k.pubblica,
+    privata: k.privata,
+    soggetto: 'mailto:a@b.it',
+  })!
 
   it('JWT ES256 con aud = origine dell’endpoint, exp breve, firma verificabile con la pubblica', () => {
     const adesso = 1_800_000_000
@@ -111,7 +133,12 @@ describe('creaIntestazioneVapid (RFC 8292)', () => {
       format: 'jwk',
     })
     expect(
-      verify('sha256', Buffer.from(`${intestazione}.${corpo}`), { key: pubblica, dsaEncoding: 'ieee-p1363' }, decodifica(firma))
+      verify(
+        'sha256',
+        Buffer.from(`${intestazione}.${corpo}`),
+        { key: pubblica, dsaEncoding: 'ieee-p1363' },
+        decodifica(firma)
+      )
     ).toBe(true)
   })
 

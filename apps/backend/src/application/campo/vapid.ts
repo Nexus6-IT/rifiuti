@@ -28,7 +28,10 @@ export function generaChiaviVapid(): ChiaviVapid {
   // getPrivateKey() toglie gli zeri iniziali (1 volta su 256 darebbe 31 byte): si riporta a 32.
   const privata = ecdh.getPrivateKey()
   const piena = Buffer.concat([Buffer.alloc(32 - privata.length), privata])
-  return { pubblica: ecdh.getPublicKey().toString('base64url'), privata: piena.toString('base64url') }
+  return {
+    pubblica: ecdh.getPublicKey().toString('base64url'),
+    privata: piena.toString('base64url'),
+  }
 }
 
 /**
@@ -92,11 +95,7 @@ export function creaIntestazioneVapid(
 
 /** Host dei servizi push dei browser. Un suffisso vale solo con il punto davanti (host intero). */
 const HOST_ESATTI = new Set(['fcm.googleapis.com', 'android.googleapis.com', 'web.push.apple.com'])
-const SUFFISSI = [
-  '.push.services.mozilla.com',
-  '.notify.windows.com',
-  '.push.apple.com',
-]
+const SUFFISSI = ['.push.services.mozilla.com', '.notify.windows.com', '.push.apple.com']
 
 /**
  * Difesa SSRF: l'endpoint lo sceglie il client e il server lo chiama. Si ammettono solo https sulla
@@ -109,7 +108,8 @@ export function endpointPushAmmesso(endpoint: string): boolean {
   } catch {
     return false
   }
-  if (u.protocol !== 'https:' || u.port !== '' || u.username !== '' || u.password !== '') return false
+  if (u.protocol !== 'https:' || u.port !== '' || u.username !== '' || u.password !== '')
+    return false
   const host = u.hostname.toLowerCase()
   if (HOST_ESATTI.has(host)) return true
   return SUFFISSI.some(s => host.endsWith(s) && host.length > s.length)

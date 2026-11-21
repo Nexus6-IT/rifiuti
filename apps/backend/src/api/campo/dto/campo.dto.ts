@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -8,6 +9,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator'
@@ -76,4 +78,23 @@ export class EsitiCampoQueryDto {
   @IsInt({ message: 'Pagina non valida.' })
   @Min(1, { message: 'Pagina non valida.' })
   pagina?: number
+}
+
+/** Corpo di `PUT /push/sottoscrizione` e `POST /push/sottoscrizione/annulla`: solo l'endpoint del browser. */
+export class PushEndpointDto {
+  @ApiProperty({
+    example: 'https://fcm.googleapis.com/fcm/send/…',
+    description: 'Indirizzo del servizio push del browser (`PushSubscription.endpoint`)',
+  })
+  @IsString({ message: 'L’indirizzo di notifica non è valido.' })
+  @MaxLength(2000, { message: 'L’indirizzo di notifica non è valido.' })
+  @Matches(/^https:\/\//, { message: 'L’indirizzo di notifica non è valido.' })
+  endpoint!: string
+}
+
+/** Corpo di `PUT /push/preferenze`. */
+export class PushPreferenzeDto {
+  @ApiProperty({ description: 'Avvisami quando il mio giro cambia' })
+  @IsBoolean({ message: 'La preferenza non è valida.' })
+  giroModificato!: boolean
 }
