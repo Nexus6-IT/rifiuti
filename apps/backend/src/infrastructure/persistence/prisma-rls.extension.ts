@@ -99,6 +99,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'LetturaPesa',
   // Stato di trasmissione del registro a RENTRI (Fase 2 pezzo 9): dato dell'azienda.
   'MovimentoTrasmissioneRentri',
+  // Esportazioni XML firmate del registro con la catena dei digest (eREGI E6): dato dell'azienda.
+  'EsportazioneRegistroRentri',
   // Abbinamenti carico-scarico (4.6): dato dell'azienda.
   'AbbinamentoCaricoScarico',
   // Tabelle di fatturazione (Fase 4 pezzo 1): dato dell'azienda.

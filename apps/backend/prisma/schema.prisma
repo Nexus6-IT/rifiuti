@@ -128,6 +128,7 @@ model Tenant {
   registroProgressiviIniziali RegistroProgressivoIniziale[]
   registriRifiuti       RegistroRifiuti[]
   giacenzeIniziali      GiacenzaIniziale[]
+  esportazioniRegistroRentri EsportazioneRegistroRentri[]
   causaliRegistroAzienda CausaleRegistroAzienda[]
   soglieDeposito        SogliaDepositoTemporaneo[]
   strumentiPesa         StrumentoPesa[]
@@ -2341,6 +2342,14 @@ model RegistroRifiuti {
   rentriChiusuraRichiestaIl DateTime? @map("rentri_chiusura_richiesta_il") @db.Timestamptz(3)
   /// Ultima lettura del registro da RENTRI (collegamento o modifica).
   rentriSincronizzatoIl    DateTime? @map("rentri_sincronizzato_il") @db.Timestamptz(3)
+  /// eREGI E6: vidimazione virtuale scaricata da RENTRI (XML verbatim, firmato dall'ente), il suo
+  /// digest (`Reference URI="#eREGI-CS-0"`) e la `DataRichiesta`: sono il primo `Ref` di ogni
+  /// esportazione. Le quattro colonne vanno insieme (CHECK) e, con almeno un'esportazione, non
+  /// cambiano piu' (trigger): la catena dei digest ne dipende.
+  eregXml                  String?   @map("ereg_xml") @db.Text
+  eregDigest               String?   @map("ereg_digest") @db.VarChar(100)
+  eregDataRichiesta        DateTime? @map("ereg_data_richiesta") @db.Timestamptz(3)
+  eregScaricatoIl          DateTime? @map("ereg_scaricato_il") @db.Timestamptz(3)
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
@@ -2352,6 +2361,7 @@ model RegistroRifiuti {
   giacenzeIniziali    GiacenzaIniziale[]
   soglieDeposito      SogliaDepositoTemporaneo[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
+  esportazioniRentri       EsportazioneRegistroRentri[]
 
   regoleConsorzio RegolaConsorzio[]
 
@@ -3244,6 +3254,72 @@ model MovimentoTrasmissioneRentri {
   @@index([registroId, stato], map: "movimenti_trasmissione_rentri_registro_stato_idx")
   @@index([transazioneId], map: "movimenti_trasmissione_rentri_transazione_id_idx")
   @@map("movimenti_trasmissione_rentri")
+}
+
+/// Stato di un'esportazione XML del registro (eREGI E6).
+enum StatoEsportazioneRegistroRentri {
+  /// Generata e firmata, validazione non ancora avviata o non arrivata a esito.
+  GENERATA
+  /// `POST /valida` accettata, esito da leggere.
+  IN_VALIDAZIONE
+  /// RENTRI non ha segnalato nulla.
+  VALIDATA
+  /// Solo avvertimenti.
+  VALIDATA_CON_AVVISI
+  /// RENTRI ha segnalato almeno un errore: il file non e' valido (mai per un errore tecnico).
+  RIFIUTATA
+  /// Errore tecnico (rete, 5xx, esito non leggibile): riprovabile con `rivalida`.
+  VALIDAZIONE_NON_DISPONIBILE
+
+  @@map("stato_esportazione_registro_rentri")
+}
+
+/// Esportazione XML firmata del registro cronologico (eREGI E6). Una riga per file generato: il
+/// contenuto (XML compresso gzip), il digest della firma e i numeri coperti non cambiano mai
+/// (trigger); cambiano solo lo stato e l'esito della validazione. La catena dei digest e'
+/// `precedente_id` (una sola successiva per esportazione, una sola prima per registro). Trigger,
+/// CHECK e indici parziali stanno solo nella migration: Prisma non li conosce, `migrate diff` resta
+/// pulito.
+model EsportazioneRegistroRentri {
+  id                       String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String                          @map("tenant_id") @db.Uuid
+  registroId               String                          @map("registro_id") @db.Uuid
+  anno                     Int                             @db.SmallInt
+  progressivoDa            Int                             @map("progressivo_da")
+  progressivoA             Int                             @map("progressivo_a")
+  numeroRegistrazioni      Int                             @map("numero_registrazioni")
+  /// `DataCreazione` scritta nell'XML (attributo di `reg:Registrazioni` e del `Ref` successivo).
+  dataCreazione            DateTime                        @map("data_creazione") @db.Timestamptz(3)
+  precedenteId             String?                         @map("precedente_id") @db.Uuid
+  /// `DigestValue` (base64) del `Reference URI=""` della firma: e' il `Ref` della successiva.
+  digestValue              String?                         @map("digest_value") @db.VarChar(100)
+  sha256File               String                          @map("sha256_file") @db.Char(64)
+  /// XML firmato compresso gzip.
+  xml                      Bytes
+  firmato                  Boolean
+  /// Impronta SHA-256 del certificato che ha firmato (mai la chiave).
+  certificatoSha256        String?                         @map("certificato_sha256") @db.Char(64)
+  stato                    StatoEsportazioneRegistroRentri @default(GENERATA)
+  transazioneValidazioneId String?                         @map("transazione_validazione_id") @db.Uuid
+  /// Solo `{ codice, tipo, campo }` dei messaggi dell'esito.
+  messaggi                 Json                            @default("[]")
+  creataDa                 String?                         @map("creata_da") @db.Uuid
+  createdAt                DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "esportazioni_registro_rentri_tenant_fkey")
+  registro   RegistroRifiuti              @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "esportazioni_registro_rentri_registro_fkey")
+  precedente EsportazioneRegistroRentri?  @relation("CatenaEsportazioni", fields: [precedenteId, registroId, tenantId], references: [id, registroId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "esportazioni_registro_rentri_precedente_fkey")
+  /// Al massimo una (unico `precedente_id`); lista perche' Prisma non vede l'unico sul solo `precedente_id`.
+  successive EsportazioneRegistroRentri[] @relation("CatenaEsportazioni")
+
+  @@unique([id, tenantId], map: "esportazioni_registro_rentri_id_tenant_id_key")
+  @@unique([id, registroId, tenantId], map: "esportazioni_registro_rentri_id_registro_tenant_key")
+  @@unique([registroId, anno, progressivoA], map: "esportazioni_registro_rentri_registro_anno_a_key")
+  @@unique([precedenteId], map: "esportazioni_registro_rentri_precedente_id_key")
+  @@index([tenantId], map: "esportazioni_registro_rentri_tenant_id_idx")
+  @@index([registroId, createdAt], map: "esportazioni_registro_rentri_registro_creata_idx")
+  @@map("esportazioni_registro_rentri")
 }
 
 enum OrigineAbbinamento {
