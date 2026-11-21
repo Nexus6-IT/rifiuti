@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { CodaEventi } from './core/coda-eventi';
 import { GiroService, dataLocaleIso } from './core/giro.service';
+import { PushService } from './core/push.service';
 
 @Component({
   imports: [RouterOutlet],
@@ -12,6 +13,8 @@ export class App {
   private readonly giro = inject(GiroService);
   private readonly router = inject(Router);
   private readonly coda = inject(CodaEventi);
+  // Istanziato subito: registra la pulizia delle notifiche al logout e al cambio utente.
+  private readonly push = inject(PushService);
 
   constructor() {
     // Fine giornata / telefono condiviso: la copia di ieri o di un altro utente non resta.

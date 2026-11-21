@@ -189,3 +189,21 @@ h1 {
   text-decoration: underline;
   cursor: pointer;
 }
+
+.notifiche {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordo, #d9d6cc);
+}
+
+.notifiche h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.preferenza {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+}

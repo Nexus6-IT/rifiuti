@@ -11,7 +11,8 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(withInterceptors([authInterceptor])),
     // Solo shell (ngsw-config.json): nessun dataGroup, le chiamate /api/ vanno sempre in rete.
-    provideServiceWorker('ngsw-worker.js', {
+    // `sw-campo.js` = worker di Angular + notifiche push (public/sw-campo.js).
+    provideServiceWorker('sw-campo.js', {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
     }),

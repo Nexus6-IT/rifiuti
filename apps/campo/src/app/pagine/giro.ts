@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
+import { Notifiche } from '../core/notifiche';
 import { CodaEventi } from '../core/coda-eventi';
 import { SessioneService } from '../core/sessione.service';
 import { StatoCoda } from '../core/stato-coda';
@@ -9,7 +10,7 @@ import { StatoGiro } from '../core/stato-giro';
 
 @Component({
   selector: 'app-giro',
-  imports: [RouterLink, StatoGiro, StatoCoda],
+  imports: [RouterLink, StatoGiro, StatoCoda, Notifiche],
   template: `
     <header class="testata">
       <div>
@@ -55,6 +56,7 @@ import { StatoGiro } from '../core/stato-giro';
         }
         <button type="button" class="secondario" (click)="carica()">Aggiorna</button>
       }
+      <app-notifiche />
     </main>
   `,
 })
