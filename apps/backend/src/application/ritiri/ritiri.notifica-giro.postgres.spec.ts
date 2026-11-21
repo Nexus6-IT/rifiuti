@@ -179,6 +179,33 @@ describe('Ritiri e avviso push — Postgres reale, ruolo wasteflow_app', () => {
     expect(chiamate).toHaveLength(0)
   })
 
+  it('una modifica che cambia solo le note interne non avvisa', async () => {
+    const a = await azienda()
+    const { p, chiamate } = porta()
+    const s = servizio(p)
+    const { ritiri } = await nelTenant(a.t, () => s.crea(a.t, a.admin, nuovo(a)))
+    await fineCoda()
+    chiamate.length = 0
+    await nelTenant(a.t, () =>
+      s.modifica(a.t, ritiri[0].id, {
+        ...nuovo(a, { noteInterne: 'telefonare prima' }),
+        versione: ritiri[0].versione,
+      })
+    )
+    await fineCoda()
+    expect(chiamate).toHaveLength(0)
+  })
+
+  it('una porta lenta (promessa mai risolta) non ritarda la risposta del ritiro', async () => {
+    const a = await azienda()
+    const s = servizio({ notificaGiroModificato: () => new Promise<never>(() => undefined) })
+    const r = await Promise.race([
+      nelTenant(a.t, () => s.crea(a.t, a.admin, nuovo(a))),
+      new Promise<'lento'>(res => setTimeout(() => res('lento'), 5000)),
+    ])
+    expect(r).not.toBe('lento')
+  })
+
   it('annulla, non eseguito e riprogramma del giro di oggi avvisano', async () => {
     const a = await azienda()
     const { p, chiamate } = porta()

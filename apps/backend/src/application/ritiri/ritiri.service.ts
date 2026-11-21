@@ -76,6 +76,24 @@ export class RitiriService {
       .catch(() => undefined)
   }
 
+  /** Cio' che l'autista vede nel giro: se non cambia (note interne, annotazioni) non serve l'avviso. */
+  private static firmaGiro(v: RitiroVista): string {
+    return JSON.stringify([
+      v.dataPrevista,
+      v.fascia,
+      v.ordineGiro,
+      v.autista?.id ?? null,
+      v.automezzo?.id ?? null,
+      v.produttore.sedeId,
+      v.destinatario.sedeId,
+      v.cerCode,
+      v.descrizione,
+      v.quantitaPresunta,
+      v.unita,
+      v.stato,
+    ])
+  }
+
   private static cambio(v: RitiroVista) {
     return { autistaId: v.autista?.id ?? null, dataPrevista: v.dataPrevista }
   }
@@ -181,6 +199,7 @@ export class RitiriService {
       if (cer.isFailure) throw new RitiroDatiNonValidiError(['Il codice CER non è valido.'])
       const completi = { ...valori, cerCode: cer.value }
       let prima: { autistaId: string | null; dataPrevista: string } | null = null
+      let firmaPrima: string | null = null
       const dopo = await this.scrivi(
         tenantId,
         id,
@@ -189,7 +208,10 @@ export class RitiriService {
           // L'autista gia' assegnato, anche se poi disattivato, non blocca la modifica d'altro.
           const attuale = await this.repo.autistaDelRitiro(tx, tenantId, id)
           const vista = await this.repo.leggi(tx, tenantId, id, { dettaglio: false })
-          if (vista) prima = RitiriService.cambio(vista)
+          if (vista) {
+            prima = RitiriService.cambio(vista)
+            firmaPrima = RitiriService.firmaGiro(vista)
+          }
           await this.verificaAnagrafiche(tx, tenantId, completi, attuale)
           await this.repo.aggiornaDati(tx, tenantId, id, completi)
         },
@@ -197,7 +219,10 @@ export class RitiriService {
         'Solo un ritiro programmato si può modificare.'
       )
       // Anche l'autista precedente, se e' cambiato o se la data e' uscita dal suo giro.
-      this.avvisaGiro(tenantId, [...(prima ? [prima] : []), RitiriService.cambio(dopo)])
+      // Nessun avviso se il giro dell'autista non e' cambiato (es. solo note interne).
+      if (firmaPrima === null || firmaPrima !== RitiriService.firmaGiro(dopo)) {
+        this.avvisaGiro(tenantId, [...(prima ? [prima] : []), RitiriService.cambio(dopo)])
+      }
       return dopo
     })
   }

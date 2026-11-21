@@ -15,6 +15,11 @@ import {
   throwError,
 } from 'rxjs';
 
+/** Cosa e' successo alla sessione: `stessoUtente` = nuovo accesso dello stesso utente. */
+export interface EventoChiusura {
+  stessoUtente: boolean;
+}
+
 export const CHIAVE_SESSIONE = 'wasteflow.campo.sessione';
 const API = '/api/v1';
 
@@ -34,7 +39,7 @@ export class SessioneService {
   private readonly http = inject(HttpClient);
   private readonly archivio = inject(ArchivioGiro);
   private readonly token = signal<Token | null>(this.leggi());
-  private readonly allaChiusuraCb: Array<() => void> = [];
+  private readonly allaChiusuraCb: Array<(ev: EventoChiusura) => void> = [];
   private readonly primaDelLogoutCb: Array<() => Promise<void>> = [];
   private rinnovoInCorso: Observable<string> | null = null;
 
@@ -43,7 +48,7 @@ export class SessioneService {
   readonly utenteId = computed(() => idDaToken(this.token()?.accessToken));
 
   /** Registra una pulizia da eseguire a fine sessione e a ogni nuovo accesso (cambio utente). */
-  allaChiusura(fn: () => void): void {
+  allaChiusura(fn: (ev: EventoChiusura) => void): void {
     this.allaChiusuraCb.push(fn);
   }
 
@@ -75,8 +80,12 @@ export class SessioneService {
     const accessToken = p.get('accessToken');
     const refreshToken = p.get('refreshToken');
     if (!accessToken || !refreshToken) return false;
-    // Nuovo accesso: la copia del giro del precedente non deve sopravvivere.
-    this.allaChiusuraCb.forEach((f) => f());
+    // Nuovo accesso: la copia del giro del precedente non deve sopravvivere. `stessoUtente` dice
+    // a chi ne ha bisogno (le notifiche) che il dispositivo resta dello stesso utente.
+    const prima = this.utenteId();
+    const dopo = idDaToken(accessToken);
+    const stessoUtente = prima !== null && prima === dopo;
+    this.allaChiusuraCb.forEach((f) => f({ stessoUtente }));
     void this.archivio.cancella().catch(() => undefined);
     this.imposta({ accessToken, refreshToken });
     return true;
@@ -129,7 +138,7 @@ export class SessioneService {
 
   pulisci(): void {
     this.token.set(null);
-    this.allaChiusuraCb.forEach((f) => f());
+    this.allaChiusuraCb.forEach((f) => f({ stessoUtente: false }));
     void this.archivio.cancella().catch(() => undefined);
     try {
       localStorage.removeItem(CHIAVE_SESSIONE);

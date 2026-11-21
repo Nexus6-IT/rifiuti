@@ -54,6 +54,8 @@ export const invioPushHttp: InvioPush = {
         'Content-Length': '0',
       },
     })
+    // Il corpo non serve: si libera il socket senza aspettare il GC.
+    await r.body?.cancel().catch(() => undefined)
     return { status: r.status }
   },
 }
@@ -118,7 +120,9 @@ export class PushCampoService {
         await tx.sottoscrizionePush.upsert({
           where: { tenantId_endpoint: { tenantId, endpoint } },
           create: { tenantId, utenteId, endpoint },
-          update: { utenteId },
+          // creataIl aggiornata: il telefono appena passato a questo utente e' il piu' recente,
+          // il tetto non deve toglierlo subito.
+          update: { utenteId, creataIl: new Date() },
         })
         // Tetto per utente: restano le piu' recenti.
         const sue = await tx.sottoscrizionePush.findMany({

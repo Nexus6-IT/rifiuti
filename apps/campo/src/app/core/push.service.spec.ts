@@ -268,5 +268,48 @@ describe('PushService', () => {
       http.expectNone(`${API}/sottoscrizione/annulla`);
       expect(servizio.stato()).toBe('da-attivare');
     });
+
+    it('nuovo accesso dello STESSO utente: la sottoscrizione resta e lo stato resta attivo', async () => {
+      await conSottoscrizione();
+      servizio.sessioneChiusa(true);
+      await flush();
+      expect(porta.chiamate).not.toContain('annullaLocale');
+      expect(servizio.stato()).toBe('attivo');
+    });
+
+    it('cambio utente: inizializza aspetta la disiscrizione lenta e non ri-registra l endpoint vecchio', async () => {
+      await conSottoscrizione();
+      let sblocca!: () => void;
+      porta.annullaLocale = async () => {
+        await new Promise<void>((r) => (sblocca = r));
+        porta.endpoint = null;
+      };
+      servizio.sessioneChiusa(false);
+      const p = servizio.inizializza();
+      await flush();
+      http.expectNone(`${API}/configurazione`);
+      sblocca();
+      await flush();
+      http.expectOne(`${API}/configurazione`).flush({ disponibile: true, chiavePubblica: 'C' });
+      await flush();
+      http.expectOne(`${API}/preferenze`).flush({ giroModificato: true });
+      await p;
+      http.expectNone(`${API}/sottoscrizione`);
+      expect(servizio.stato()).toBe('da-attivare');
+    });
+
+    it('logout con porta lenta: finisce entro il tetto complessivo (~4 s)', async () => {
+      await conSottoscrizione();
+      vi.useFakeTimers();
+      try {
+        porta.endpointAttuale = () => new Promise<string | null>(() => undefined);
+        let finito = false;
+        void servizio.rimuoviAlLogout().then(() => (finito = true));
+        await vi.advanceTimersByTimeAsync(4_100);
+        expect(finito).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

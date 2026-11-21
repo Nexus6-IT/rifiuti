@@ -170,6 +170,20 @@ describe('Web push P7 — Postgres reale, ruolo wasteflow_app', () => {
       expect(rimaste).toEqual(tutti.slice(2).sort())
     })
 
+    it('un telefono passato a un utente con il tetto pieno non viene tolto subito', async () => {
+      const a = await azienda()
+      const s = servizio()
+      const passato = ep('passato')
+      await s.sottoscrivi(a.t, a.utente1, passato)
+      for (let i = 0; i < MAX_SOTTOSCRIZIONI_PER_UTENTE; i++) {
+        await s.sottoscrivi(a.t, a.utente2, ep(`due${i}`))
+      }
+      await s.sottoscrivi(a.t, a.utente2, passato)
+      const di2 = (await righe(a)).filter(r => r.utenteId === a.utente2).map(r => r.endpoint)
+      expect(di2).toHaveLength(MAX_SOTTOSCRIZIONI_PER_UTENTE)
+      expect(di2).toContain(passato)
+    })
+
     it('annulla toglie solo il dispositivo dell utente: non quello di un collega, ne altre aziende', async () => {
       const a = await azienda()
       const b = await azienda()

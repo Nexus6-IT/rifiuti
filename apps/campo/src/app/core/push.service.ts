@@ -47,6 +47,8 @@ export class PushService {
   private readonly sessione = inject(SessioneService);
 
   private chiavePubblica: string | null = null;
+  /** Disiscrizione dal browser in corso (cambio utente/logout): chi legge lo stato la aspetta. */
+  private pulizia: Promise<unknown> = Promise.resolve();
   private readonly _stato = signal<StatoPush>('sconosciuto');
   private readonly _preferenze = signal<PreferenzePush>({ giroModificato: true });
   private readonly _errore = signal<string | null>(null);
@@ -59,12 +61,13 @@ export class PushService {
 
   constructor() {
     this.sessione.primaDelLogout(() => this.rimuoviAlLogout());
-    this.sessione.allaChiusura(() => this.sessioneChiusa());
+    this.sessione.allaChiusura((ev) => this.sessioneChiusa(ev.stessoUtente));
   }
 
   /** Legge cosa offrono browser e server. Chiamata dalla schermata del giro. */
   async inizializza(): Promise<void> {
     this._errore.set(null);
+    await this.pulizia;
     if (!this.porta.supportato()) {
       this._stato.set('non-supportato');
       return;
@@ -118,6 +121,7 @@ export class PushService {
   async attiva(): Promise<void> {
     if (this._occupato() || !this.chiavePubblica) return;
     this._occupato.set(true);
+    await this.pulizia;
     this._errore.set(null);
     try {
       const permesso =
@@ -176,16 +180,25 @@ export class PushService {
   /** Prima del logout: toglie il dispositivo dal server e dal browser, senza mai bloccare l'uscita. */
   async rimuoviAlLogout(): Promise<void> {
     if (!this.porta.supportato()) return;
-    const endpoint = await entro(this.endpointAttuale(), TIMEOUT_LOGOUT_MS);
-    if (!endpoint) return;
-    await this.togli();
+    // Un solo tetto per l'intero passo: l'uscita non aspetta piu' di ~4 s in tutto.
+    await entro(
+      (async () => {
+        const endpoint = (await this.porta.endpointAttuale()) ?? null;
+        if (endpoint) await this.togli(endpoint);
+      })(),
+      TIMEOUT_LOGOUT_MS,
+    );
   }
 
-  /** Sessione finita o cambio utente: dal browser si toglie subito, il server la scarta con il 410. */
-  sessioneChiusa(): void {
+  /**
+   * Sessione finita o cambio utente: dal browser si toglie subito, il server la scarta con il 410.
+   * Un nuovo accesso dello STESSO utente non tocca nulla: il dispositivo resta sottoscritto.
+   */
+  sessioneChiusa(stessoUtente = false): void {
+    if (stessoUtente) return;
     if (this._stato() === 'attivo') this._stato.set('da-attivare');
     if (!this.porta.supportato()) return;
-    void entro(this.porta.annullaLocale(), TIMEOUT_LOGOUT_MS);
+    this.pulizia = entro(this.porta.annullaLocale(), TIMEOUT_LOGOUT_MS);
   }
 
   private async endpointAttuale(): Promise<string | null> {
@@ -199,8 +212,8 @@ export class PushService {
   }
 
   /** Server (best effort) e poi browser. */
-  private async togli(): Promise<void> {
-    const endpoint = await this.endpointAttuale();
+  private async togli(letto?: string): Promise<void> {
+    const endpoint = letto ?? (await this.endpointAttuale());
     if (endpoint) {
       try {
         await firstValueFrom(

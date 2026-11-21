@@ -141,4 +141,17 @@ describe('SessioneService.accettaRitornoSpid (nonce)', () => {
     expect(s.accettaRitornoSpid('#accessToken=a&refreshToken=r')).toBe(false);
     expect(s.autenticato()).toBe(false);
   });
+
+  describe('allaChiusura: stesso utente', () => {
+    const jwt = (sub: string) => `h.${btoa(JSON.stringify({ sub }))}.s`;
+    it('segnala stessoUtente solo se il sub non cambia', () => {
+      const eventi: boolean[] = [];
+      const servizio = TestBed.inject(SessioneService);
+      servizio.allaChiusura((ev) => eventi.push(ev.stessoUtente));
+      servizio.salvaDaFragment(`#accessToken=${jwt('u1')}&refreshToken=r`);
+      servizio.salvaDaFragment(`#accessToken=${jwt('u1')}&refreshToken=r2`);
+      servizio.salvaDaFragment(`#accessToken=${jwt('u2')}&refreshToken=r3`);
+      expect(eventi).toEqual([false, true, false]);
+    });
+  });
 });
