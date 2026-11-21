@@ -137,7 +137,10 @@ export function definizioneRicevuta(
             riga('Cliente (produttore)', d.cliente),
             riga('Indirizzo', d.indirizzoCliente),
             riga('Rifiuto (CER)', `${d.cerCode} - ${d.descrizione}`),
-            riga('Quantità presunta', `${quantitaIt(d.quantitaPresunta)} ${d.unita} (indicativa, non è una pesata)`),
+            riga(
+              'Quantità presunta',
+              `${quantitaIt(d.quantitaPresunta)} ${d.unita} (indicativa, non è una pesata)`
+            ),
             riga('Trasportatore', d.trasportatore),
             riga('Autista', d.autista),
             ...(d.targa ? [riga('Automezzo', d.targa)] : []),
@@ -163,7 +166,11 @@ export function definizioneRicevuta(
       { text: DICITURA_FIRMA_SEMPLICE, style: 'piccolo', margin: [0, 12, 0, 8] },
       { text: 'Impronta SHA-256 del contenuto firmato', style: 'etichetta' },
       { text: contenutoSha256, style: 'impronta' },
-      { text: 'Impronta SHA-256 dell’immagine della firma', style: 'etichetta', margin: [0, 4, 0, 0] },
+      {
+        text: 'Impronta SHA-256 dell’immagine della firma',
+        style: 'etichetta',
+        margin: [0, 4, 0, 0],
+      },
       { text: i.firmaSha256, style: 'impronta' },
     ],
   }

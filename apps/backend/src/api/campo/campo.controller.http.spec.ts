@@ -19,6 +19,14 @@ import {
 import { GiroService } from '../../application/campo/giro.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
 import { EventoCampoDiAltroUtenteError } from '../../application/campo/errori-campo'
+import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
+import {
+  RicevutaDiAltroUtenteError,
+  RicevutaLimiteRitiroError,
+  RicevutaNonConsentitaError,
+  RicevutaNonTrovataError,
+} from '../../application/campo/errori-campo'
+import { pngDiProva } from '../../test-support/png-di-prova'
 import { RitiroNonTrovatoError } from '../../application/ritiri/errori-ritiri'
 import { EsitiCampoController } from './esiti-campo.controller'
 import { RitiriService } from '../../application/ritiri/ritiri.service'
@@ -35,6 +43,14 @@ const TENANT = '5a5a5a5a-0000-4000-8000-00000000000a'
 const UTENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const ID = '3b3b3b3b-0000-4000-8000-000000000006'
 const EVENTO = '4c4c4c4c-0000-4000-8000-000000000007'
+const RICEVUTA = '5d5d5d5d-0000-4000-8000-000000000008'
+const corpoRicevuta = {
+  id: RICEVUTA,
+  ritiroId: ID,
+  firmatarioNome: 'Mario Rossi',
+  firmatoIl: '2026-12-01T08:30:00.000Z',
+  firmaPng: pngDiProva().toString('base64'),
+}
 const corpoEvento = {
   id: EVENTO,
   ritiroId: ID,
@@ -52,6 +68,12 @@ describe('Campo - catena HTTP', () => {
   let moduliAttivi: string[]
   let giro: { giro: jest.Mock }
   let eventi: { registra: jest.Mock; elenca: jest.Mock }
+  let ricevute: {
+    registra: jest.Mock
+    configurazione: jest.Mock
+    elenca: jest.Mock
+    leggiPdf: jest.Mock
+  }
   let autisti: Record<string, jest.Mock>
   let ritiri: Record<string, jest.Mock>
 
@@ -65,6 +87,15 @@ describe('Campo - catena HTTP', () => {
         .fn()
         .mockResolvedValue({ id: EVENTO, esito: 'APPLICATO', motivoConflitto: null }),
       elenca: jest.fn().mockResolvedValue({ righe: [], totale: 0 }),
+    }
+    ricevute = {
+      registra: jest.fn().mockResolvedValue({ id: RICEVUTA, invio: 'NON_RICHIESTO' }),
+      configurazione: jest.fn().mockReturnValue({ invioEmail: false }),
+      elenca: jest.fn().mockResolvedValue({ righe: [], totale: 0 }),
+      leggiPdf: jest.fn().mockResolvedValue({
+        nomeFile: 'ricevuta-ritiro-2026-12-01.pdf',
+        contenuto: Buffer.from('%PDF-1.7 prova'),
+      }),
     }
     autisti = {
       elenca: jest.fn().mockResolvedValue([]),
@@ -83,6 +114,7 @@ describe('Campo - catena HTTP', () => {
       providers: [
         { provide: GiroService, useValue: giro },
         { provide: EventiCampoService, useValue: eventi },
+        { provide: RicevuteRitiroService, useValue: ricevute },
         { provide: AutistiService, useValue: autisti },
         { provide: RitiriService, useValue: ritiri },
         { provide: GENERA_FIR_DA_RITIRI, useValue: { genera: jest.fn() } },
@@ -210,6 +242,86 @@ describe('Campo - catena HTTP', () => {
       expect(JSON.stringify(f.body)).toContain('AUTISTA_NON_COLLEGATO')
     })
 
+    it('invia una ricevuta: il servizio riceve azienda, utente del token e corpo', async () => {
+      const r = await http().post('/campo/ricevute').send(corpoRicevuta).expect(200)
+      expect(r.body).toEqual({ id: RICEVUTA, invio: 'NON_RICHIESTO' })
+      expect(ricevute.registra).toHaveBeenCalledWith(TENANT, UTENTE, corpoRicevuta)
+      await http()
+        .post('/campo/ricevute')
+        .send({ ...corpoRicevuta, emailCliente: 'c@esempio.it' })
+        .expect(200)
+    })
+
+    it('la ricevuta non puo indicare autista, utente, azienda, dati del ritiro o hash (whitelist) e deve avere la forma giusta', async () => {
+      for (const extra of [
+        { autistaId: ID },
+        { utenteId: ID },
+        { tenantId: TENANT },
+        { cliente: 'Altro SRL' },
+        { pdfSha256: 'a'.repeat(64) },
+      ]) {
+        await http()
+          .post('/campo/ricevute')
+          .send({ ...corpoRicevuta, ...extra })
+          .expect(400)
+      }
+      for (const guasto of [
+        { id: 'x' },
+        { ritiroId: 'x' },
+        { firmatarioNome: 12 },
+        { firmatoIl: 5 },
+        { firmaPng: 5 },
+        { emailCliente: 5 },
+      ]) {
+        await http()
+          .post('/campo/ricevute')
+          .send({ ...corpoRicevuta, ...guasto })
+          .expect(400)
+      }
+      expect(ricevute.registra).not.toHaveBeenCalled()
+    })
+
+    it('errori della ricevuta: 404, 409 con codice, 403', async () => {
+      ricevute.registra.mockRejectedValueOnce(new RitiroNonTrovatoError())
+      await http().post('/campo/ricevute').send(corpoRicevuta).expect(404)
+      for (const [errore, codice] of [
+        [new RicevutaDiAltroUtenteError(), 'RICEVUTA_DI_ALTRO_UTENTE'],
+        [
+          new RicevutaNonConsentitaError('Il ritiro non è più assegnato a te.'),
+          'RICEVUTA_NON_CONSENTITA',
+        ],
+        [new RicevutaLimiteRitiroError(5), 'RICEVUTA_LIMITE_RITIRO'],
+      ] as const) {
+        ricevute.registra.mockRejectedValueOnce(errore)
+        const c = await http().post('/campo/ricevute').send(corpoRicevuta).expect(409)
+        expect(JSON.stringify(c.body)).toContain(codice)
+      }
+      ricevute.registra.mockRejectedValueOnce(new AutistaNonCollegatoError())
+      await http().post('/campo/ricevute').send(corpoRicevuta).expect(403)
+    })
+
+    it('legge se l invio al cliente e acceso (spento per default)', async () => {
+      const r = await http().get('/campo/ricevute/configurazione').expect(200)
+      expect(r.body).toEqual({ invioEmail: false })
+    })
+
+    it('senza il modulo campo anche le ricevute sono chiuse; non legge l archivio d ufficio', async () => {
+      moduliAttivi = ['ritiri']
+      await http().post('/campo/ricevute').send(corpoRicevuta).expect(403)
+      moduliAttivi = ['campo']
+      for (const richiesta of [
+        () => http().get('/esiti-campo/ricevute'),
+        () => http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`),
+      ]) {
+        const r = await richiesta()
+        expect(r.status).toBe(403)
+        expect(JSON.stringify(r.body)).toContain('ROTTA_NON_CONSENTITA_ALL_AUTISTA')
+      }
+      expect(ricevute.registra).not.toHaveBeenCalled()
+      expect(ricevute.elenca).not.toHaveBeenCalled()
+      expect(ricevute.leggiPdf).not.toHaveBeenCalled()
+    })
+
     it('non legge gli esiti d ufficio: 403 e il servizio non gira', async () => {
       const r = await http().get('/esiti-campo').expect(403)
       expect(JSON.stringify(r.body)).toContain('ROTTA_NON_CONSENTITA_ALL_AUTISTA')
@@ -263,6 +375,35 @@ describe('Campo - catena HTTP', () => {
       await http().get('/esiti-campo?pagina=0').expect(400)
       ruoloEffettivo = 'VIEWER'
       await http().get('/esiti-campo').expect(200)
+    })
+
+    it('non puo inviare ricevute ne leggerne la configurazione (e dell autista): 403', async () => {
+      await http().post('/campo/ricevute').send(corpoRicevuta).expect(403)
+      await http().get('/campo/ricevute/configurazione').expect(403)
+      expect(ricevute.registra).not.toHaveBeenCalled()
+    })
+
+    it('elenca le ricevute e scarica il PDF archiviato con intestazioni di sicurezza', async () => {
+      ricevute.elenca.mockResolvedValue({ righe: [{ id: RICEVUTA }], totale: 1 })
+      const e = await http().get(`/esiti-campo/ricevute?ritiroId=${ID}&pagina=2`).expect(200)
+      expect(e.body).toEqual({ righe: [{ id: RICEVUTA }], totale: 1 })
+      expect(ricevute.elenca).toHaveBeenCalledWith(TENANT, { ritiroId: ID, pagina: 2 })
+      await http().get('/esiti-campo/ricevute?ritiroId=x').expect(400)
+      await http().get('/esiti-campo/ricevute?pagina=0').expect(400)
+
+      const r = await http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`).expect(200)
+      expect(r.headers['content-type']).toContain('application/pdf')
+      expect(r.headers['content-disposition']).toBe(
+        'attachment; filename="ricevuta-ritiro-2026-12-01.pdf"'
+      )
+      expect(r.headers['x-content-type-options']).toBe('nosniff')
+      expect(r.headers['cache-control']).toBe('private, no-store')
+      expect(r.headers['content-security-policy']).toBe('sandbox')
+      expect(Buffer.from(r.body).toString()).toBe('%PDF-1.7 prova')
+      expect(ricevute.leggiPdf).toHaveBeenCalledWith(TENANT, RICEVUTA)
+      await http().get('/esiti-campo/ricevute/non-un-uuid/pdf').expect(400)
+      ricevute.leggiPdf.mockRejectedValueOnce(new RicevutaNonTrovataError())
+      await http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`).expect(404)
     })
 
     it('gli esiti richiedono il modulo campo', async () => {

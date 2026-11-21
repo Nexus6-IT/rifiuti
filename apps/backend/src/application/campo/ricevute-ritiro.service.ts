@@ -185,7 +185,9 @@ export class RicevuteRitiroService {
     if (!vista) throw new RitiroNonTrovatoError()
     // La ricevuta mostra i dati del cliente: solo per un ritiro che e' dell'autista, ancora da fare.
     if (vista.autista?.id !== autista.id) {
-      throw new RicevutaNonConsentitaError("Il ritiro non è più assegnato a te: contatta l'ufficio.")
+      throw new RicevutaNonConsentitaError(
+        "Il ritiro non è più assegnato a te: contatta l'ufficio."
+      )
     }
     if (bloccato.stato !== 'PROGRAMMATO') {
       throw new RicevutaNonConsentitaError('Il ritiro non è più da fare: contatta l’ufficio.')

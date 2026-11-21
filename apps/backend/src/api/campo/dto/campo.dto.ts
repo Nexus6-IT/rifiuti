@@ -103,7 +103,9 @@ export class RicevutaCampoDto {
   @IsString({ message: 'La firma non è valida.' })
   firmaPng!: string
 
-  @ApiPropertyOptional({ description: 'Invio al cliente (facoltativo, ignorato se l’invio è spento)' })
+  @ApiPropertyOptional({
+    description: 'Invio al cliente (facoltativo, ignorato se l’invio è spento)',
+  })
   @IsOptional()
   @IsString({ message: "L'indirizzo email del cliente non è valido." })
   emailCliente?: string

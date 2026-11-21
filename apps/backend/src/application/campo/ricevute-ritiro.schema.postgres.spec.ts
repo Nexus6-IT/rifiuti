@@ -124,9 +124,9 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
           /permission denied/i
         )
       }
-      await expect(owner.$executeRawUnsafe(`UPDATE ${tabella} SET ${colonna} = 'X'`)).rejects.toThrow(
-        /immutabile/
-      )
+      await expect(
+        owner.$executeRawUnsafe(`UPDATE ${tabella} SET ${colonna} = 'X'`)
+      ).rejects.toThrow(/immutabile/)
       await expect(
         owner.$executeRawUnsafe(`DELETE FROM ${tabella} WHERE tenant_id = '${a.t}'`)
       ).rejects.toThrow(/non si cancellano/)
@@ -156,9 +156,7 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
       app.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ricevute_ritiro`)
     )
     expect(visti[0].n).toBe(0)
-    await expect(
-      nelTenant(b.t, () => app.$queryRawUnsafe(sqlInserisci(a, ra)))
-    ).rejects.toThrow()
+    await expect(nelTenant(b.t, () => app.$queryRawUnsafe(sqlInserisci(a, ra)))).rejects.toThrow()
   })
 
   it('chiavi composte: ritiro, autista e utente devono essere della stessa azienda', async () => {
@@ -166,9 +164,9 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
     const b = await azienda()
     const ra = await creaRitiroCampo(owner, a, a.autista1)
     const rb = await creaRitiroCampo(owner, b, b.autista1)
-    await expect(owner.$queryRawUnsafe(sqlInserisci(a, ra, { autista: b.autista1 }))).rejects.toThrow(
-      /ricevute_ritiro_autista_fkey/
-    )
+    await expect(
+      owner.$queryRawUnsafe(sqlInserisci(a, ra, { autista: b.autista1 }))
+    ).rejects.toThrow(/ricevute_ritiro_autista_fkey/)
     await expect(owner.$queryRawUnsafe(sqlInserisci(a, ra, { utente: b.utente1 }))).rejects.toThrow(
       /ricevute_ritiro_utente_fkey/
     )
@@ -191,7 +189,9 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
     await expect(prova({ pdf: "decode(repeat('00', 1048577), 'hex')" })).rejects.toThrow(
       /ricevute_ritiro_pdf_dimensione/
     )
-    await expect(prova({ hashFirma: 'ABC' })).rejects.toThrow(/ricevute_ritiro_firma_sha256_formato/)
+    await expect(prova({ hashFirma: 'ABC' })).rejects.toThrow(
+      /ricevute_ritiro_firma_sha256_formato/
+    )
     await expect(prova({ dati: '[]' })).rejects.toThrow(/ricevute_ritiro_dati_oggetto/)
     await prova({})
     await expect(

@@ -1,9 +1,5 @@
 import { pngDiProva } from '../../test-support/png-di-prova'
-import {
-  LIMITE_FIRMA_BYTE,
-  mascheraEmail,
-  normalizzaRicevutaCampo,
-} from './ricevute-ritiro.input'
+import { LIMITE_FIRMA_BYTE, mascheraEmail, normalizzaRicevutaCampo } from './ricevute-ritiro.input'
 
 const base = (extra: Record<string, unknown> = {}) => ({
   id: '11111111-1111-4111-8111-111111111111',
@@ -49,7 +45,9 @@ describe('normalizzaRicevutaCampo', () => {
     expect(no(42)).toBe(false)
     expect(no('non è base64!')).toBe(false)
     expect(no(Buffer.from('<svg onload=alert(1)>').toString('base64'))).toBe(false)
-    expect(no(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), png.subarray(3)]).toString('base64'))).toBe(false)
+    expect(
+      no(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), png.subarray(3)]).toString('base64'))
+    ).toBe(false)
     expect(no(png.subarray(0, png.length - 12).toString('base64'))).toBe(false) // senza IEND
     expect(no(pngDiProva(5000, 100).toString('base64'))).toBe(false)
     expect(no(pngDiProva(300, 5).toString('base64'))).toBe(false)

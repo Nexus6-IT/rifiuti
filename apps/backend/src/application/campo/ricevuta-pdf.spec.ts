@@ -77,9 +77,9 @@ describe('ricevuta di ritiro — PDF', () => {
     expect(
       calcolaContenutoSha256({ ...a, dati: { ...dati, quantitaPresunta: '251.00' } })
     ).not.toBe(calcolaContenutoSha256(a))
-    expect(
-      calcolaContenutoSha256({ ...a, firmaSha256: 'f'.repeat(64) })
-    ).not.toBe(calcolaContenutoSha256(a))
+    expect(calcolaContenutoSha256({ ...a, firmaSha256: 'f'.repeat(64) })).not.toBe(
+      calcolaContenutoSha256(a)
+    )
     expect(
       calcolaContenutoSha256({ ...a, firmatoIl: new Date('2026-12-01T08:31:00.000Z') })
     ).not.toBe(calcolaContenutoSha256(a))

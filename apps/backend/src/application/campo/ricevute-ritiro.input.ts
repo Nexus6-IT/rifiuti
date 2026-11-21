@@ -98,7 +98,8 @@ export function normalizzaRicevutaCampo(grezzo: {
       }
     }
   }
-  if (nome === null) messaggi.push('Il nome di chi firma non è valido (almeno 2 caratteri, con lettere).')
+  if (nome === null)
+    messaggi.push('Il nome di chi firma non è valido (almeno 2 caratteri, con lettere).')
 
   let firmatoIl: Date | null = null
   if (typeof grezzo.firmatoIl === 'string' && ISO_CON_ORA.test(grezzo.firmatoIl)) {

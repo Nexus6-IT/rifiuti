@@ -212,9 +212,9 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
     await expect(registra(a, a.admin, ricevuta(ra))).rejects.toBeInstanceOf(
       AutistaNonCollegatoError
     )
-    await expect(
-      registra(a, a.utente1, ricevuta(ra, { firmaPng: 'AAAA' }))
-    ).rejects.toBeInstanceOf(RitiroDatiNonValidiError)
+    await expect(registra(a, a.utente1, ricevuta(ra, { firmaPng: 'AAAA' }))).rejects.toBeInstanceOf(
+      RitiroDatiNonValidiError
+    )
     expect(await righe(a)).toHaveLength(0)
     expect(await righe(b)).toHaveLength(0)
   })
@@ -380,16 +380,20 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
       const rit = await creaRitiroCampo(owner, a, a.autista1)
       await registra(a, a.utente1, ricevuta(rit))
       const [riga] = await righe(a)
-      await owner.$executeRawUnsafe(`ALTER TABLE ricevute_ritiro DISABLE TRIGGER ricevute_ritiro_no_update`)
+      await owner.$executeRawUnsafe(
+        `ALTER TABLE ricevute_ritiro DISABLE TRIGGER ricevute_ritiro_no_update`
+      )
       try {
         await owner.$executeRawUnsafe(
           `UPDATE ricevute_ritiro SET pdf_sha256 = '${'0'.repeat(64)}' WHERE id = '${riga.id}'`
         )
-        await expect(
-          nelTenant(a.t, () => servizio.leggiPdf(a.t, riga.id))
-        ).rejects.toThrow(/impronta del PDF non corrispondente/)
+        await expect(nelTenant(a.t, () => servizio.leggiPdf(a.t, riga.id))).rejects.toThrow(
+          /impronta del PDF non corrispondente/
+        )
       } finally {
-        await owner.$executeRawUnsafe(`ALTER TABLE ricevute_ritiro ENABLE TRIGGER ricevute_ritiro_no_update`)
+        await owner.$executeRawUnsafe(
+          `ALTER TABLE ricevute_ritiro ENABLE TRIGGER ricevute_ritiro_no_update`
+        )
       }
     })
   })

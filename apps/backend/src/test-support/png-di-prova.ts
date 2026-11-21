@@ -32,4 +32,3 @@ export function pngDiProva(w = 300, h = 120): Buffer {
     chunk('IEND', Buffer.alloc(0)),
   ])
 }
-
