@@ -741,23 +741,46 @@ export class RENTRIApiClient {
     return this.postAsincronaConCorpo(tenantId, numeroFir, 'sosta-tecnica', corpo, opzioni)
   }
 
-  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`, `annotazione`, `sosta-tecnica`). */
+  /**
+   * Trasbordo totale del rifiuto a un nuovo trasportatore (`POST /{numero_fir}/trasbordo-totale`,
+   * `Operazione` `TrasbordoTotale`). Corpo: `DatiTrasbordoTotaleModel` (nuovo trasportatore + `presa_in_carico`
+   * terrestre, `additionalProperties: false`). Lo firma poi il NUOVO trasportatore
+   * (`AcquisizioneFirmaTrasbordoTotale`, stato `FirmaTrasbordoTotale`).
+   *
+   * **ASYNC (NONBLOCK_PULL)** e NON idempotente (aggiunge un trasportatore al formulario): niente ritentativo
+   * cieco su 5xx o nessuna risposta, esito incerto. Esito restituito COSI' COM'E'.
+   */
+  async inviaTrasbordoTotale(
+    tenantId: string,
+    numeroFir: string,
+    corpo: {
+      trasportatore: Record<string, unknown>
+      presa_in_carico: Record<string, unknown>
+    },
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'trasbordo-totale', corpo, opzioni)
+  }
+
+  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`, `annotazione`, `sosta-tecnica`, `trasbordo-totale`). */
   private async postAsincronaConCorpo(
     tenantId: string,
     numeroFir: string,
-    operazione: 'quantita' | 'trasporto' | 'annotazione' | 'sosta-tecnica',
+    operazione: 'quantita' | 'trasporto' | 'annotazione' | 'sosta-tecnica' | 'trasbordo-totale',
     corpo: Record<string, unknown>,
     opzioni?: OpzioniPollingEsito
   ): Promise<EsitoFormulario> {
     const contesto = `/formulari/${numeroFir}/${operazione}`
-    // Annotazione e sosta tecnica si AGGIUNGONO (non sovrascrivono come quantita'/trasporto): 5xx o nessuna
+    // Annotazione, sosta tecnica e trasbordo totale si AGGIUNGONO (non sovrascrivono come quantita'/trasporto): 5xx o nessuna
     // risposta non provano che l'ente non le abbia registrate, quindi niente ritentativo cieco (come la creazione).
     const oggettoNonIdempotente =
       operazione === 'annotazione'
         ? 'annotazione'
         : operazione === 'sosta-tecnica'
           ? 'sosta tecnica'
-          : undefined
+          : operazione === 'trasbordo-totale'
+            ? 'trasbordo totale'
+            : undefined
     const risposta = await this.eseguiRichiestaConResilienza(
       () =>
         this.post(
