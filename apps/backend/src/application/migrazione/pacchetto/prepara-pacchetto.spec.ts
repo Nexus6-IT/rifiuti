@@ -47,7 +47,14 @@ describe('migrazione:prepara (staging + mappa -> pacchetto)', () => {
     )
     expect(rapporto.agganciate).toBe(1)
     const per = Object.fromEntries(rapporto.scarti.map(s => [s.codice, s.conteggio]))
-    expect(per).toEqual({ DITTA_DUPLICATA: 1, PARTITA_IVA_NON_VALIDA: 1, FISCALE_ASSENTE: 1 })
+    // Lo staging di prova non ha colonne di indirizzo: dal pezzo I4 le tre ditte (agganciata compresa) sono
+    // senza sede legale (segnalato, non e' un errore: la ditta entra comunque).
+    expect(per).toEqual({
+      DITTA_DUPLICATA: 1,
+      PARTITA_IVA_NON_VALIDA: 1,
+      FISCALE_ASSENTE: 1,
+      SEDE_LEGALE_INCOMPLETA: 3,
+    })
 
     const p = await apriPacchetto(join(radice, 'pacchetto', 'WW00012026'))
     expect(p.manifest.hashStaging).toBe(staging.hashManifest)
@@ -95,7 +102,14 @@ describe('migrazione:prepara (staging + mappa -> pacchetto)', () => {
       const p = await apriPacchetto(dest)
       let n = 0
       for await (const _ of p.leggi('ANAGRAFICHE', 'ditte')) n++
-      return { n, scarti: Object.fromEntries(rapporto.scarti.map(s => [s.codice, s.conteggio])) }
+      return {
+        n, // questi casi riguardano solo le ditte: la sede legale (I4) ha i suoi test in prepara-anagrafiche
+        scarti: Object.fromEntries(
+          rapporto.scarti
+            .filter(s => s.codice !== 'SEDE_LEGALE_INCOMPLETA')
+            .map(s => [s.codice, s.conteggio])
+        ),
+      }
     }
 
     it('A {P.IVA, CF} e B {solo CF}: entra solo A, B e segnalata', async () => {

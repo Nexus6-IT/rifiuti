@@ -2897,6 +2897,13 @@ model Automezzo {
   pesate        Pesata[]       @relation("PesateAutomezzo")
   ritiri        Ritiro[]
 
+  /// Fase 3 (I4): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261122110000_automezzi_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "automezzi_lotto_import_fkey")
+
   @@unique([id, tenantId], map: "automezzi_id_tenant_id_key")
   @@index([tenantId], map: "automezzi_tenant_id_idx")
   @@map("automezzi")
@@ -5092,6 +5099,7 @@ model LottoImport {
   produttoriImportati      Produttore[]
   trasportatoriImportati   Trasportatore[]
   destinatariImportati     Destinatario[]
+  automezziImportati       Automezzo[]
 
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
