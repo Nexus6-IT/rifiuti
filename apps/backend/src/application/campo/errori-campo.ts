@@ -43,3 +43,38 @@ export class EventoCampoDiAltroUtenteError extends DomainError {
     this.name = 'EventoCampoDiAltroUtenteError'
   }
 }
+
+/** 409 `RICEVUTA_DI_ALTRO_UTENTE`: l'identificativo della ricevuta e' gia' stato usato da un altro autista. */
+export class RicevutaDiAltroUtenteError extends DomainError {
+  readonly code = 'RICEVUTA_DI_ALTRO_UTENTE'
+  constructor() {
+    super("La ricevuta risulta gia' registrata da un altro utente.")
+    this.name = 'RicevutaDiAltroUtenteError'
+  }
+}
+
+/** 409 `RICEVUTA_NON_CONSENTITA`: il ritiro non e' (piu') dell'autista o non e' piu' da fare. */
+export class RicevutaNonConsentitaError extends DomainError {
+  readonly code = 'RICEVUTA_NON_CONSENTITA'
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RicevutaNonConsentitaError'
+  }
+}
+
+/** 409 `RICEVUTA_LIMITE_RITIRO`: troppe ricevute per lo stesso ritiro. */
+export class RicevutaLimiteRitiroError extends DomainError {
+  readonly code = 'RICEVUTA_LIMITE_RITIRO'
+  constructor(massimo: number) {
+    super(`Per questo ritiro ci sono già ${massimo} ricevute: contatta l'ufficio.`)
+    this.name = 'RicevutaLimiteRitiroError'
+  }
+}
+
+/** 404: la ricevuta non esiste in questa azienda. */
+export class RicevutaNonTrovataError extends DomainError {
+  constructor() {
+    super('Ricevuta non trovata.')
+    this.name = 'RicevutaNonTrovataError'
+  }
+}

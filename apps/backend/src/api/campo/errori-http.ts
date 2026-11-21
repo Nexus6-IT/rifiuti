@@ -12,6 +12,10 @@ import {
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
   EventoCampoDiAltroUtenteError,
+  RicevutaDiAltroUtenteError,
+  RicevutaLimiteRitiroError,
+  RicevutaNonConsentitaError,
+  RicevutaNonTrovataError,
 } from '../../application/campo/errori-campo'
 import {
   RitiroDatiNonValidiError,
@@ -24,10 +28,19 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
     return await fn()
   } catch (err) {
     if (err instanceof HttpException) throw err
-    if (err instanceof AutistaNonTrovatoError || err instanceof RitiroNonTrovatoError) {
+    if (
+      err instanceof AutistaNonTrovatoError ||
+      err instanceof RitiroNonTrovatoError ||
+      err instanceof RicevutaNonTrovataError
+    ) {
       throw new NotFoundException(err.message)
     }
-    if (err instanceof EventoCampoDiAltroUtenteError) {
+    if (
+      err instanceof EventoCampoDiAltroUtenteError ||
+      err instanceof RicevutaDiAltroUtenteError ||
+      err instanceof RicevutaNonConsentitaError ||
+      err instanceof RicevutaLimiteRitiroError
+    ) {
       throw new ConflictException({ message: err.message, error: err.code })
     }
     if (err instanceof AutistaNonCollegatoError) {

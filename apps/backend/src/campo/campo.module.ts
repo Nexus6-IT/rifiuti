@@ -8,13 +8,22 @@ import { EsitiCampoController } from '../api/campo/esiti-campo.controller'
 import { AutistiService } from '../application/campo/autisti.service'
 import { EventiCampoService } from '../application/campo/eventi-campo.service'
 import { GiroService } from '../application/campo/giro.service'
+import { RicevuteRitiroService } from '../application/campo/ricevute-ritiro.service'
+import { EmailService } from '../infrastructure/email/email.service'
 import { RitiriRepository } from '../infrastructure/persistence/ritiri.repository'
 
-/** CampoModule — app campo (P1): anagrafica autisti `/autisti/*` e giro `/campo/giro`, eventi `/campo/eventi` (P4) ed esiti d'ufficio `/esiti-campo`. */
+/** CampoModule — app campo (P1): anagrafica autisti `/autisti/*` e giro `/campo/giro`, eventi `/campo/eventi` (P4), esiti d'ufficio `/esiti-campo` e ricevute di ritiro `/campo/ricevute` (P6). */
 @Module({
   imports: [PrismaModule, AuthModule, RuoloEffettivoModule],
   controllers: [CampoController, AutistiController, EsitiCampoController],
-  providers: [AutistiService, GiroService, EventiCampoService, RitiriRepository],
+  providers: [
+    AutistiService,
+    GiroService,
+    EventiCampoService,
+    RicevuteRitiroService,
+    RitiriRepository,
+    EmailService,
+  ],
   exports: [AutistiService],
 })
 export class CampoModule {}
