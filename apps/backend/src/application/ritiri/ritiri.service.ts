@@ -10,7 +10,7 @@
  *    409 `RITIRO_CON_FIR`;
  *  - lock ottimistico con `versione` (409 `RITIRO_MODIFICATO`).
  */
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { ICERRepository } from '../../domain/cer/repositories/cer-repository.interface'
@@ -19,6 +19,8 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RitiriRepository, type Tx } from '../../infrastructure/persistence/ritiri.repository'
 import { normalizzaCerCode, verificaCerPerFormulario } from '../fir/verifica-cer-formulario'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { dataNellaFinestraGiro } from './giro-vicino'
+import { NOTIFICA_GIRO, type NotificaGiroPorta } from './notifica-giro.porta'
 import {
   RitiroConFirError,
   RitiroDatiNonValidiError,
@@ -52,8 +54,31 @@ export class RitiriService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repo: RitiriRepository,
-    @Inject('ICERRepository') private readonly cerRepository: ICERRepository
+    @Inject('ICERRepository') private readonly cerRepository: ICERRepository,
+    @Optional() @Inject(NOTIFICA_GIRO) private readonly notificaGiro?: NotificaGiroPorta
   ) {}
+
+  /**
+   * Avvisa gli autisti il cui giro di oggi o di domani e' cambiato. Fuoco e dimentica: parte dopo il
+   * commit, non si attende e non fa mai fallire la scrittura (il contesto azienda viaggia con la chiamata).
+   */
+  private avvisaGiro(
+    tenantId: string,
+    cambi: Array<{ autistaId: string | null; dataPrevista: string }>
+  ): void {
+    if (!this.notificaGiro) return
+    const ids = cambi
+      .filter(c => c.autistaId !== null && dataNellaFinestraGiro(c.dataPrevista))
+      .map(c => c.autistaId as string)
+    if (ids.length === 0) return
+    void Promise.resolve()
+      .then(() => this.notificaGiro?.notificaGiroModificato(tenantId, ids))
+      .catch(() => undefined)
+  }
+
+  private static cambio(v: RitiroVista) {
+    return { autistaId: v.autista?.id ?? null, dataPrevista: v.dataPrevista }
+  }
 
   // --- lettura -----------------------------------------------------------------------------
 
@@ -135,6 +160,7 @@ export class RitiriService {
           })
           return this.repo.leggiMolti(tx, tenantId, ids)
         })
+        this.avvisaGiro(tenantId, ritiri.map(RitiriService.cambio))
         return { ritiri, giaRegistrato: false }
       } catch (err) {
         if (!eViolazioneUnicita(err)) throw err
@@ -154,19 +180,25 @@ export class RitiriService {
       const cer = await verificaCerPerFormulario(this.cerRepository, valori.cerCode)
       if (cer.isFailure) throw new RitiroDatiNonValidiError(['Il codice CER non è valido.'])
       const completi = { ...valori, cerCode: cer.value }
-      return this.scrivi(
+      let prima: { autistaId: string | null; dataPrevista: string } | null = null
+      const dopo = await this.scrivi(
         tenantId,
         id,
         dati.versione,
         async tx => {
           // L'autista gia' assegnato, anche se poi disattivato, non blocca la modifica d'altro.
           const attuale = await this.repo.autistaDelRitiro(tx, tenantId, id)
+          const vista = await this.repo.leggi(tx, tenantId, id, { dettaglio: false })
+          if (vista) prima = RitiriService.cambio(vista)
           await this.verificaAnagrafiche(tx, tenantId, completi, attuale)
           await this.repo.aggiornaDati(tx, tenantId, id, completi)
         },
         ['PROGRAMMATO'],
         'Solo un ritiro programmato si può modificare.'
       )
+      // Anche l'autista precedente, se e' cambiato o se la data e' uscita dal suo giro.
+      this.avvisaGiro(tenantId, [...(prima ? [prima] : []), RitiriService.cambio(dopo)])
+      return dopo
     })
   }
 
@@ -178,8 +210,8 @@ export class RitiriService {
     versione: number
   ): Promise<RitiroVista> {
     const m = this.motivo(motivo)
-    return nelContestoTenant(tenantId, () =>
-      this.scrivi(
+    return nelContestoTenant(tenantId, async () => {
+      const v = await this.scrivi(
         tenantId,
         id,
         versione,
@@ -187,7 +219,9 @@ export class RitiriService {
         ['PROGRAMMATO', 'NON_ESEGUITO'],
         'Il ritiro è già annullato.'
       )
-    )
+      this.avvisaGiro(tenantId, [RitiriService.cambio(v)])
+      return v
+    })
   }
 
   async nonEseguito(
@@ -197,8 +231,8 @@ export class RitiriService {
     versione: number
   ): Promise<RitiroVista> {
     const m = this.motivo(motivo)
-    return nelContestoTenant(tenantId, () =>
-      this.scrivi(
+    return nelContestoTenant(tenantId, async () => {
+      const v = await this.scrivi(
         tenantId,
         id,
         versione,
@@ -206,7 +240,9 @@ export class RitiriService {
         ['PROGRAMMATO'],
         'Solo un ritiro programmato si può segnare come non eseguito.'
       )
-    )
+      this.avvisaGiro(tenantId, [RitiriService.cambio(v)])
+      return v
+    })
   }
 
   /** Riporta a PROGRAMMATO un ritiro non eseguito, con una data nuova. */
@@ -219,8 +255,8 @@ export class RitiriService {
     if (!dataValida(dataPrevista)) {
       throw new RitiroDatiNonValidiError(['La data del ritiro non è valida.'])
     }
-    return nelContestoTenant(tenantId, () =>
-      this.scrivi(
+    return nelContestoTenant(tenantId, async () => {
+      const v = await this.scrivi(
         tenantId,
         id,
         versione,
@@ -228,7 +264,9 @@ export class RitiriService {
         ['NON_ESEGUITO'],
         'Si può riprogrammare solo un ritiro non eseguito.'
       )
-    )
+      this.avvisaGiro(tenantId, [RitiriService.cambio(v)])
+      return v
+    })
   }
 
   // --- interni -----------------------------------------------------------------------------
