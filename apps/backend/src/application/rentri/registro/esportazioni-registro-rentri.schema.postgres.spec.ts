@@ -239,6 +239,7 @@ describe('Esportazioni XML del registro RENTRI, schema — Postgres reale, ruolo
 
   describe('trigger di immutabilita', () => {
     const modifiche: Array<[string, Record<string, unknown>]> = [
+      ['id', { id: randomUUID() }],
       ['xml', { xml: gzipSync(Buffer.from('<altro/>')) }],
       ['digest_value', { digestValue: Buffer.alloc(32, 9).toString('base64') }],
       ['sha256_file', { sha256File: sha('altro') }],

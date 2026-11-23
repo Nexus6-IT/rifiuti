@@ -128,7 +128,8 @@ ALTER TABLE "esportazioni_registro_rentri"
 CREATE FUNCTION esportazioni_registro_rentri_immutabile() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
      OR NEW.registro_id IS DISTINCT FROM OLD.registro_id
      OR NEW.anno IS DISTINCT FROM OLD.anno
      OR NEW.progressivo_da IS DISTINCT FROM OLD.progressivo_da
