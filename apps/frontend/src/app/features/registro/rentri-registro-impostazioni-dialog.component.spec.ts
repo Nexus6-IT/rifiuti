@@ -25,6 +25,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     rentriAttivitaRecSmalt: [],
     aperturaInCorso: false,
     rentriChiusoIl: null,
+    chiusuraInCorso: false,
     ...p,
   }
 }

@@ -12,6 +12,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Req,
   Res,
   ServiceUnavailableException,
@@ -33,10 +34,24 @@ import {
   type CandidatoRegistroRentri,
 } from '../../application/rentri/registro/candidati-registro-rentri.use-case'
 import { CollegaRegistroRentriUseCase } from '../../application/rentri/registro/collega-registro-rentri.use-case'
+import { AbbandonaAperturaRegistroRentriUseCase } from '../../application/rentri/registro/abbandona-apertura-registro-rentri.use-case'
+import {
+  ChiudiRegistroRentriUseCase,
+  type EsitoChiusura,
+} from '../../application/rentri/registro/chiudi-registro-rentri.use-case'
+import {
+  ModificaRegistroRentriUseCase,
+  type EsitoModifica,
+} from '../../application/rentri/registro/modifica-registro-rentri.use-case'
 import {
   AperturaRegistroInCorsoError,
   AperturaRegistroNonRisoltaError,
+  ChiusuraRegistroNonConfermataError,
+  ChiusuraRegistroNonPossibileError,
   IdentificativoGiaUsatoError,
+  NessunaAperturaDaAbbandonareError,
+  RegistroNonCollegatoRentriError,
+  RegistroRentriChiusoError,
   IdentificativoRegistroNonValidoError,
   OperatoreRentriNonConfiguratoError,
   RegistroGiaCollegatoError,
@@ -50,7 +65,12 @@ import {
 import type { ImpostazioniRegistro } from '../../application/rentri/registro/impostazioni-rentri-registro.service'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
-import { ApriRegistroRentriDto, CollegaRegistroRentriDto } from './dto/rentri-registro.dto'
+import {
+  ApriRegistroRentriDto,
+  ChiudiRegistroRentriDto,
+  CollegaRegistroRentriDto,
+  ModificaRegistroRentriDto,
+} from './dto/rentri-registro.dto'
 
 const uuidRegistro = new ParseUUIDPipe({
   exceptionFactory: () => new BadRequestException('Identificativo del registro non valido.'),
@@ -71,6 +91,9 @@ export class RentriRegistroCollegamentoController {
     private readonly candidati: CandidatiRegistroRentriUseCase,
     private readonly collega: CollegaRegistroRentriUseCase,
     private readonly apri: ApriRegistroRentriUseCase,
+    private readonly modifica: ModificaRegistroRentriUseCase,
+    private readonly chiudi: ChiudiRegistroRentriUseCase,
+    private readonly abbandona: AbbandonaAperturaRegistroRentriUseCase,
     private readonly membership: RuoloEffettivoService
   ) {}
 
@@ -85,6 +108,12 @@ export class RentriRegistroCollegamentoController {
     ) {
       return new BadRequestException(err.message)
     }
+    if (err instanceof ChiusuraRegistroNonPossibileError) {
+      return new ConflictException({
+        message: err.message,
+        details: { conteggi: err.conteggi },
+      })
+    }
     if (
       err instanceof RegistroRentriNonCollegabileError ||
       err instanceof RegistroSenzaSedeRentriError ||
@@ -92,6 +121,10 @@ export class RentriRegistroCollegamentoController {
       err instanceof AperturaRegistroInCorsoError ||
       err instanceof AperturaRegistroNonRisoltaError ||
       err instanceof RegistroGiaCollegatoError ||
+      err instanceof RegistroNonCollegatoRentriError ||
+      err instanceof RegistroRentriChiusoError ||
+      err instanceof ChiusuraRegistroNonConfermataError ||
+      err instanceof NessunaAperturaDaAbbandonareError ||
       err instanceof TrasmissioneNonModificabileError ||
       err instanceof IdentificativoGiaUsatoError
     ) {
@@ -202,5 +235,72 @@ export class RentriRegistroCollegamentoController {
     )
     res.status(esito.esito === 'INCERTO' ? HttpStatus.ACCEPTED : HttpStatus.CREATED)
     return esito
+  }
+
+  @Put('registri/:registroId/rentri')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Modifica descrizione e codici R/D del registro su RENTRI (amministratori)',
+  })
+  @ApiResponse({ status: 200, description: 'Registro modificato' })
+  @ApiResponse({ status: 202, description: 'Esito incerto: il registro non risulta cambiato' })
+  @ApiResponse({ status: 409, description: 'Non collegato o chiuso su RENTRI' })
+  async modificaRegistro(
+    @Param('registroId', uuidRegistro) registroId: string,
+    @Body() dto: ModificaRegistroRentriDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<EsitoModifica> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    const esito = await this.conErrori(() =>
+      this.modifica.esegui(tenantId, req.user.id, ruolo, registroId, {
+        ...(dto.descrizione !== undefined ? { descrizione: dto.descrizione } : {}),
+        ...(dto.attivitaRecSmalt !== undefined ? { attivitaRecSmalt: dto.attivitaRecSmalt } : {}),
+        ...(dto.forza !== undefined ? { forza: dto.forza } : {}),
+      })
+    )
+    res.status(esito.esito === 'INCERTO' ? HttpStatus.ACCEPTED : HttpStatus.OK)
+    return esito
+  }
+
+  @Post('registri/:registroId/rentri/chiudi')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Chiude il registro su RENTRI, IRREVERSIBILE (amministratori, doppia conferma)',
+  })
+  @ApiResponse({ status: 200, description: 'Registro chiuso' })
+  @ApiResponse({ status: 202, description: 'Esito incerto: invii fermi, ripetere la richiesta' })
+  @ApiResponse({
+    status: 409,
+    description: 'Annotazioni in volo o da trasmettere (con i conteggi), non collegato, già chiuso',
+  })
+  async chiudiRegistro(
+    @Param('registroId', uuidRegistro) registroId: string,
+    @Body() dto: ChiudiRegistroRentriDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<EsitoChiusura> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    const esito = await this.conErrori(() =>
+      this.chiudi.esegui(tenantId, req.user.id, ruolo, registroId, dto.conferma)
+    )
+    res.status(esito.esito === 'INCERTO' ? HttpStatus.ACCEPTED : HttpStatus.OK)
+    return esito
+  }
+
+  @Post('registri/:registroId/rentri/abbandona-apertura')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Abbandona un'apertura rimasta incerta (amministratori)" })
+  @ApiResponse({ status: 200, description: "Prenotazione dell'apertura azzerata" })
+  @ApiResponse({ status: 409, description: 'Nessuna apertura, già collegato o troppo presto' })
+  async abbandonaApertura(
+    @Param('registroId', uuidRegistro) registroId: string,
+    @Req() req: any
+  ): Promise<ImpostazioniRegistro> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    return this.conErrori(() => this.abbandona.esegui(tenantId, req.user.id, ruolo, registroId))
   }
 }

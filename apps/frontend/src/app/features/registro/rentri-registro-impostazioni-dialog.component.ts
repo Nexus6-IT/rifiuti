@@ -36,6 +36,7 @@ import {
   messaggioErroreRentri,
 } from './rentri-registro.service'
 import { RentriRegistroCollegamentoComponent } from './rentri-registro-collegamento.component'
+import { RentriRegistroGestioneComponent } from './rentri-registro-gestione.component'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
@@ -53,6 +54,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
     InputTextModule,
     InputTextareaModule,
     RentriRegistroCollegamentoComponent,
+    RentriRegistroGestioneComponent,
   ],
   template: `
     <p-dialog
@@ -69,6 +71,11 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
         [registro]="registro"
         (aggiornato)="dopoCollegamento($event)"
       ></app-rentri-registro-collegamento>
+
+      <app-rentri-registro-gestione
+        [registro]="registro"
+        (aggiornato)="dopoCollegamento($event)"
+      ></app-rentri-registro-gestione>
 
       <hr />
 
