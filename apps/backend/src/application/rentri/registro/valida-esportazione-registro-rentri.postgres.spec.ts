@@ -77,6 +77,23 @@ describe('statoDaEsito (funzione pura)', () => {
     expect(salvati).toEqual([{ codice: 'x', tipo: 'Errore', campo: 'Produttore' }])
   })
 
+  it('errore=true senza messaggi di tipo Errore: messaggio sintetico, mai un rifiuto muto', () => {
+    expect(messaggiSalvabili(esito([], true))).toEqual([
+      { codice: 'ESITO_ERRORE', tipo: 'Errore', campo: null },
+    ])
+    // Con un messaggio Errore vero non si aggiunge nulla; senza errore nemmeno.
+    expect(messaggiSalvabili(esito([msg('Errore', 'x', 'Campo')], true))).toEqual([
+      { codice: 'x', tipo: 'Errore', campo: 'Campo' },
+    ])
+    expect(messaggiSalvabili(esito([msg('Avvertimento', 'a')]))).toHaveLength(1)
+    // Con solo avvertimenti ed errore=true il sintetico precede, cosi' non lo taglia il tetto.
+    expect(messaggiSalvabili(esito([msg('Avvertimento', 'a')], true))[0]).toEqual({
+      codice: 'ESITO_ERRORE',
+      tipo: 'Errore',
+      campo: null,
+    })
+  })
+
   it('nome del file come WinWaste', () => {
     expect(nomeFileEsportazione('R1234ABCDE0', 1, 25, new Date('2026-04-01T23:30:00Z'))).toBe(
       'RENR1234ABCDE0_000001_000025_20260401.SignedR.xml'
@@ -266,6 +283,14 @@ describe('ValidaEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
       s.tenantId,
       expect.anything()
     )
+  })
+
+  it('errore=true senza messaggi: RIFIUTATA con il messaggio sintetico salvato', async () => {
+    const { s, id } = await esportazione()
+    attendiEsitoMovimenti.mockResolvedValue(esito([], true))
+    const r = await useCase().valida(s.tenantId, id)
+    expect(r.stato).toBe('RIFIUTATA')
+    expect(r.messaggi).toEqual([{ codice: 'ESITO_ERRORE', tipo: 'Errore', campo: null }])
   })
 
   it('esportazione di un altra azienda o inesistente: non trovata', async () => {

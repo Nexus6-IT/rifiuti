@@ -63,13 +63,28 @@ export function nomeFileEsportazione(
   return `REN${identificativo}_${sei(progressivoDa)}_${sei(progressivoA)}_${giorno}.SignedR.xml`
 }
 
-/** Messaggi dell'esito ridotti ai tre campi senza valori. */
+/** Messaggio sintetico per un esito con `errore: true` ma senza alcun messaggio di tipo `Errore`. */
+export const MESSAGGIO_ESITO_ERRORE: MessaggioSalvato = {
+  codice: 'ESITO_ERRORE',
+  tipo: 'Errore',
+  campo: null,
+}
+
+/**
+ * Messaggi dell'esito ridotti ai tre campi senza valori. Se RENTRI segnala `errore: true` senza
+ * nessun messaggio `Errore`, il rifiuto avrebbe un esito muto: si salva un messaggio sintetico
+ * (in testa, cosi' non lo taglia il tetto).
+ */
 export function messaggiSalvabili(esito: EsitoMovimentiRentri): MessaggioSalvato[] {
-  return esito.validazione.slice(0, MAX_MESSAGGI_SALVATI).map(m => ({
+  const salvati = esito.validazione.slice(0, MAX_MESSAGGI_SALVATI).map(m => ({
     codice: m.codice,
     tipo: m.tipo,
     campo: m.campo,
   }))
+  if (esito.errore && !esito.validazione.some(m => m.tipo === 'Errore')) {
+    return [MESSAGGIO_ESITO_ERRORE, ...salvati.slice(0, MAX_MESSAGGI_SALVATI - 1)]
+  }
+  return salvati
 }
 
 /** Stato definitivo dall'esito decodificato di RENTRI. */
