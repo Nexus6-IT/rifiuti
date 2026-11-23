@@ -6,13 +6,31 @@ import { environment } from '../../../environments/environment'
 export type EsitoEventoCampo = 'APPLICATO' | 'DA_RICONCILIARE'
 export type TipoEventoCampo = 'RITIRO_ESEGUITO' | 'RITIRO_NON_ESEGUITO'
 
+/** Foto allegata a un esito (senza byte: si scarica a parte). */
+export interface FotoEsitoCampo {
+  id: string
+  mimeType: string
+  dimensioneByte: number
+  sha256: string
+}
+
+/** Posizione al momento dell'evento: una sola lettura, in primo piano, data dall'autista. */
+export interface PosizioneEsitoCampo {
+  lat: number
+  lon: number
+  /** Raggio di incertezza, in metri. */
+  accuratezza: number
+}
+
 /** Esito inviato da un autista dall'app campo (contratto di `GET /esiti-campo`). */
 export interface EsitoCampo {
   id: string
   tipo: TipoEventoCampo
   esito: EsitoEventoCampo
   motivoConflitto: string | null
-  dati: { motivo?: string; nota?: string }
+  dati: { motivo?: string; nota?: string; posizione?: PosizioneEsitoCampo }
+  /** Assente nelle risposte di un backend precedente a P5. */
+  foto?: FotoEsitoCampo[]
   versioneVista: number
   /** Orologio del telefono: indicativo, non e' la data legale. */
   rilevatoIl: string
@@ -64,5 +82,36 @@ export class EsitiCampoService {
     let params = new HttpParams().set('pagina', String(pagina))
     if (esito) params = params.set('esito', esito)
     return this.http.get<ElencoEsitiCampo>(this.base, { params })
+  }
+
+  /** Byte della foto: serve il Bearer, quindi non si puo' usare un link diretto. */
+  scaricaFoto(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/foto/${id}`, { responseType: 'blob' })
+  }
+
+  /**
+   * Apre la foto in una nuova scheda da un object URL, revocato dopo un minuto. Da chiamare dentro
+   * il gestore del click: la scheda si apre subito (il blocco popup non la ferma) e riceve
+   * l'indirizzo a scaricamento finito; in caso di errore si chiude.
+   */
+  apriFoto(id: string): Observable<void> {
+    return new Observable<void>(osservatore => {
+      const scheda = window.open('', '_blank')
+      const sub = this.scaricaFoto(id).subscribe({
+        next: blob => {
+          const url = URL.createObjectURL(blob)
+          if (scheda) scheda.location.href = url
+          else window.open(url, '_blank')
+          setTimeout(() => URL.revokeObjectURL(url), 60_000)
+          osservatore.next()
+          osservatore.complete()
+        },
+        error: err => {
+          scheda?.close()
+          osservatore.error(err)
+        },
+      })
+      return () => sub.unsubscribe()
+    })
   }
 }
