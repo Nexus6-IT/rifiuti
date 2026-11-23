@@ -612,6 +612,32 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
     })
 
+    it('il nuovo trasportatore ha gia firmato: la riconciliazione guarda solo l identita, ACCETTATA riconciliata e tratta creata una sola volta', async () => {
+      const firmatoDallEnte = {
+        trasportatore: CORPO.trasportatore,
+        presa_in_carico: {
+          ...CORPO.presa_in_carico,
+          dati_firma_trasportatore: { data_firma: '2026-11-20T10:00:00Z' },
+        },
+      }
+      const a = ambiente({ trasbordo: firmatoDallEnte })
+      await invioSenzaEsito(a, 'INCERTA', null)
+
+      a.getAzioni.execute.mockReset()
+      a.getAzioni.execute.mockResolvedValue({ azioni: [] })
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'OPERAZIONE_NON_DISPONIBILE' }),
+      })
+
+      expect(a.client.inviaTrasbordoTotale).not.toHaveBeenCalled()
+      expect(await esitiTrasbordo(a)).toEqual(['INCERTA', 'ACCETTATA'])
+      expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
+
+      // Una seconda riconciliazione non trova piu nulla in sospeso: la tratta resta una.
+      await expect(a.useCase.invia(comando())).rejects.toBeDefined()
+      expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
+    })
+
     it("non c'e' presso l'ente, dentro la finestra: IN_VERIFICA, nessun POST, nessuna tratta", async () => {
       const a = ambiente({ trasbordo: null })
       await invioSenzaEsito(a, 'INCERTA', null)

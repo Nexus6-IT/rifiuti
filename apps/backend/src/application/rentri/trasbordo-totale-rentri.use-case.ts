@@ -538,8 +538,9 @@ export class TrasbordoTotaleRentriUseCase {
   }
 
   /**
-   * Risolve un invio senza esito leggendo `dati_trasbordo_totale` dal dettaglio. E' proprio il trasbordo NON
-   * firmato con lo stesso nuovo trasportatore, lo stesso inizio e lo stesso conducente: `ACCETTATA`
+   * Risolve un invio senza esito leggendo `dati_trasbordo_totale` dal dettaglio. E' proprio il trasbordo con
+   * lo stesso nuovo trasportatore, lo stesso inizio e lo stesso conducente, firmato o no (la firma e' del nuovo
+   * trasportatore, che puo' avere firmato prima che il mittente riconciliasse): `ACCETTATA`
    * «riconciliata» e SOLO ORA la tratta locale (idempotente). Se non c'e' e la finestra e' passata:
    * `RIFIUTATA` «non risulta presso l'ente», nessuna tratta. Dentro la finestra (o con la transazione ancora in
    * elaborazione): 409 `TRASBORDO_TOTALE_IN_VERIFICA`, nessuna scrittura. Un errore di lettura si propaga.
@@ -576,7 +577,6 @@ export class TrasbordoTotaleRentriUseCase {
     const presente =
       inviato !== null &&
       dellEnte !== null &&
-      !dellEnte.firmato &&
       identitaSha256(dellEnte.identita) === identitaSha256(identitaDaCorpo(inviato))
 
     const base = {
@@ -600,7 +600,7 @@ export class TrasbordoTotaleRentriUseCase {
         ...base,
         esito: 'ACCETTATA',
         dettaglioEnte:
-          'riconciliata: trasbordo totale trovato nel dettaglio del formulario, non firmato, con lo stesso nuovo ' +
+          'riconciliata: trasbordo totale trovato nel dettaglio del formulario con lo stesso nuovo ' +
           `trasportatore, lo stesso inizio e lo stesso conducente${nota ? `; ${nota}` : ''}`,
         statoFormularioDopo: dettaglio.stato_formulario ?? null,
       })
