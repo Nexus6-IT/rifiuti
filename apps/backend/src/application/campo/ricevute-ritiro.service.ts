@@ -212,7 +212,10 @@ export class RicevuteRitiroService {
       autista.id,
       bloccato.stato
     )
-    const gia = await tx.ricevutaRitiro.count({ where: { tenantId, ritiroId: ric.ritiroId } })
+    // Il tetto e' PER AUTISTA: un collega non puo' esaurire i posti e bloccare la firma vera.
+    const gia = await tx.ricevutaRitiro.count({
+      where: { tenantId, ritiroId: ric.ritiroId, autistaId: autista.id },
+    })
     if (gia >= RICEVUTE_MASSIME_PER_RITIRO) {
       throw new RicevutaLimiteRitiroError(RICEVUTE_MASSIME_PER_RITIRO)
     }

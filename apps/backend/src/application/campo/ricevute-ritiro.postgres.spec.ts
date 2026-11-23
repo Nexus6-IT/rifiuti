@@ -312,6 +312,22 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
     expect(await righe(a)).toHaveLength(RICEVUTE_MASSIME_PER_RITIRO)
   })
 
+  it('il tetto conta per autista: un collega che riempie i posti non blocca la firma vera', async () => {
+    const a = await azienda()
+    const rit = await creaRitiroCampo(owner, a, a.autista1)
+    for (let i = 0; i < RICEVUTE_MASSIME_PER_RITIRO; i++) {
+      const r = await registra(a, a.utente2, ricevuta(rit))
+      expect(r.esito).toBe('DA_RICONCILIARE')
+    }
+    // Il collega ha esaurito il SUO tetto...
+    await expect(registra(a, a.utente2, ricevuta(rit))).rejects.toBeInstanceOf(
+      RicevutaLimiteRitiroError
+    )
+    // ...ma l'autista assegnato firma regolarmente.
+    const vera = await registra(a, a.utente1, ricevuta(rit))
+    expect(vera.esito).toBe('REGISTRATA')
+  })
+
   describe('invio facoltativo al cliente', () => {
     it('spento per default: l’email e ignorata, nulla viene spedito ne conservato', async () => {
       const a = await azienda()
