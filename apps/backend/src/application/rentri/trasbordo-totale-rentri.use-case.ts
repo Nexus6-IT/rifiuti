@@ -404,7 +404,7 @@ export class TrasbordoTotaleRentriUseCase {
       )
     }
 
-    await this.riconciliaInvioSenzaEsito(fir, tenantId, correlationId)
+    await this.riconciliaSottoPrenotazione(fir, tenantId, utenteId, correlationId)
 
     const { azioni } = await this.getAzioniDisponibiliUseCase.execute(
       firId,
@@ -523,6 +523,26 @@ export class TrasbordoTotaleRentriUseCase {
       )
     }
     return this.firma({ firId, tenantId, utenteId, correlationId })
+  }
+
+  /**
+   * Riconciliazione fuori da {@link invia}: se c'e' un invio senza esito la si esegue SOTTO prenotazione, come
+   * l'invio, cosi' non si sovrappone a un invio, a un'altra firma o a un'altra verifica dello stesso FIR. Senza
+   * invii in sospeso non si prenota nulla (una sessione di firma da riprendere non deve essere bloccata).
+   */
+  private async riconciliaSottoPrenotazione(
+    fir: FIR,
+    tenantId: string,
+    utenteId: string | undefined,
+    correlationId?: string
+  ): Promise<void> {
+    if (!(await this.invioSenzaEsito(tenantId, fir.id))) return
+    const prenotazione = await this.prenotaInvio(tenantId, fir.id, utenteId)
+    try {
+      await this.riconciliaInvioSenzaEsito(fir, tenantId, correlationId)
+    } finally {
+      await this.rilascia(prenotazione)
+    }
   }
 
   /** Il nostro ultimo invio rimasto senza esito: la riga `TrasbordoTotale` piu' recente se e' `INVIATA` o `INCERTA`. */

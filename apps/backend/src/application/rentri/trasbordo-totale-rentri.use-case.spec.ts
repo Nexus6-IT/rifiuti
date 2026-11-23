@@ -738,6 +738,43 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       expect(a.datiViaggio.scritture).toEqual([])
     })
 
+    it('la riconciliazione di un invio senza esito, dentro firma, gira SOTTO prenotazione e la rilascia', async () => {
+      const a = ambienteNuovoTrasportatore({ cfTenant: CF_TENANT })
+      await a.eventi.registra({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        operazione: 'TrasbordoTotale',
+        payload: CORPO,
+        transazioneId: null,
+        esito: 'INCERTA',
+        dettaglioEnte: null,
+        statoFormularioDopo: null,
+        utenteId: 'u1',
+      })
+      const tipiDuranteLettura: (string | undefined)[] = []
+      a.client.leggiFormulario.mockImplementation(async () => {
+        tipiDuranteLettura.push((await a.sessioni.trovaAperta(TENANT, FIR_ID))?.tipoOperazione)
+        return {
+          stato_formulario: 'FirmaTrasbordoTotale',
+          dati_trasbordo_totale: dellEnte(CF_NUOVO),
+        }
+      })
+
+      await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT }).catch(() => undefined)
+
+      // Prima lettura = riconciliazione (sotto prenotazione); seconda = verifica della firma (prenotazione rilasciata).
+      expect(tipiDuranteLettura[0]).toBe(tipoPrenotazioneInvioTrasbordoTotale())
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+      expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
+    })
+
+    it('senza invii in sospeso la firma non prenota nulla (una sessione di firma da riprendere non si blocca)', async () => {
+      const a = ambienteNuovoTrasportatore()
+      const prenota = jest.spyOn(a.sessioni, 'prenota')
+      await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+      expect(prenota).not.toHaveBeenCalled()
+    })
+
     it('senza AcquisizioneFirmaTrasbordoTotale in /azioni: FIRMA_TRASBORDO_TOTALE_NON_DISPONIBILE, nessuna authorize', async () => {
       const a = ambienteNuovoTrasportatore()
       a.getAzioni.execute.mockResolvedValue({ azioni: [{ operazione: 'Annotazione' }] })

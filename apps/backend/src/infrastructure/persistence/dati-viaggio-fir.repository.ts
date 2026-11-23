@@ -182,6 +182,12 @@ export class DatiViaggioFirRepository extends IDatiViaggioFirRepository {
     // l'estensione imposta il tenant (RLS) per tutta la transazione. Nessun UPDATE su `firs`: `versione` e
     // colonne firmate restano quelle dell'emissione.
     return this.prisma.$transaction(async tx => {
+      // `fir_transporters` non ha vincoli unique: lettura e inserimento in READ COMMITTED non bastano contro due
+      // riconciliazioni concorrenti (invio + firma, o due firme). Il lock sulla riga del FIR le serializza, come
+      // in `fir-prisma.repository.ts` (`FOR NO KEY UPDATE`: non blocca i movimenti del registro che puntano al FIR).
+      await tx.$queryRaw`
+        SELECT 1 FROM firs WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid
+        FOR NO KEY UPDATE`
       const esistenti = await tx.fIRTransporter.findMany({
         where: { firId, tenantId },
         select: {

@@ -334,6 +334,33 @@ describe('FIR in viaggio P6 — trasbordo totale con repository reale (Postgres 
     expect((await owner.fIR.findUnique({ where: { id: firId } }))!.versione).toBe(versione)
   })
 
+  it('aggiungiTrattaTrasbordoTotale: chiamate concorrenti per la stessa tratta ne creano una sola (lock sulla riga del FIR)', async () => {
+    const firId = await firEmessoLegato()
+    const tratta = {
+      trasportatoreId: null,
+      denominazione: 'Trasporti Verdi Srl',
+      partitaIva: CF_NUOVO,
+      codiceFiscale: null,
+      numeroIscrizioneAlbo: null,
+      mezzo: 'FG456HI',
+      conducenteNome: 'Luca',
+      conducenteCognome: 'Bianchi',
+      targaRimorchio: null,
+      percorso: null,
+      dataOraInizioTrasporto: new Date(INIZIO),
+    }
+
+    const esiti = await Promise.all(
+      Array.from({ length: 16 }, () =>
+        nelTenant(() => datiViaggio.aggiungiTrattaTrasbordoTotale(tenantId, firId, tratta))
+      )
+    )
+
+    expect(esiti.filter(e => e.creata)).toHaveLength(1)
+    expect(new Set(esiti.map(e => e.ordine))).toEqual(new Set([2]))
+    expect((await tratte(firId)).map(t => t.ordine)).toEqual([2])
+  })
+
   it('il CF del tenant non e di un trasportatore del FIR salvato: 409, nessuna scrittura verso l ente, nessuna tratta', async () => {
     const firId = await firEmessoLegato({ cfProduttore: 'ZZZZZZ00Z00Z000Z' })
     const h = useCase()
