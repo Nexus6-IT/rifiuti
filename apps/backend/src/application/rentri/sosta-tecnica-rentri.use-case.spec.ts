@@ -417,7 +417,7 @@ describe('SostaTecnicaRentriUseCase', () => {
       expect(await righeSosta(a)).toEqual(['RIFIUTATA', 'INVIATA'])
     })
 
-    it('esito incerto (5xx): INCERTA con la transazione se nota, errore originale, nessuna firma, prenotazione rilasciata', async () => {
+    it('esito incerto (5xx): INCERTA con la transazione se nota, 409 SOSTA_TECNICA_ESITO_INCERTO (non un 500), nessuna firma, prenotazione rilasciata', async () => {
       const a = ambiente()
       const errore = new TrasmissioneRentriIncertaError(
         'ESITO_NON_DISPONIBILE',
@@ -426,7 +426,10 @@ describe('SostaTecnicaRentriUseCase', () => {
         'tr-incerta'
       )
       a.client.inviaSostaTecnica.mockRejectedValue(errore)
-      await expect(a.useCase.invia(comando())).rejects.toBe(errore)
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        code: 'BUSINESS_RULE_VIOLATION',
+        metadata: expect.objectContaining({ rule: 'SOSTA_TECNICA_ESITO_INCERTO' }),
+      })
       const storico = await a.eventi.elenca(TENANT, FIR_ID)
       expect(storico[0]).toMatchObject({
         operazione: 'SostaTecnica',

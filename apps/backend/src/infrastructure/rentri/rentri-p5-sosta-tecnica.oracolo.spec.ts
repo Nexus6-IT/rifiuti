@@ -717,7 +717,9 @@ describe('P5 — sosta tecnica contro la fake RENTRI (in-process)', () => {
       try {
         await expect(
           sostaTecnica.invia({ firId: fir.id, tenantId, ...COMANDO, ...TEMPI })
-        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+        ).rejects.toMatchObject({
+          metadata: { rule: 'SOSTA_TECNICA_ESITO_INCERTO' },
+        })
         expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(
           'FirmaSostaTecnica'
         )
@@ -771,7 +773,9 @@ describe('P5 — sosta tecnica contro la fake RENTRI (in-process)', () => {
       try {
         await expect(
           sostaTecnica.invia({ firId: fir.id, tenantId, ...COMANDO, ...TEMPI })
-        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+        ).rejects.toMatchObject({
+          metadata: { rule: 'SOSTA_TECNICA_ESITO_INCERTO' },
+        })
 
         // Dentro la finestra: l'ente non la mostra ma potrebbe essere in elaborazione.
         await expect(

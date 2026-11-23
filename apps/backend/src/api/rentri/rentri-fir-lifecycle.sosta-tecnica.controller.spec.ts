@@ -97,6 +97,7 @@ describe('RentriFirLifecycleController — sosta tecnica', () => {
       'SOSTA_TECNICA_DA_FIRMARE',
       'SOSTA_TECNICA_DI_ALTRO_SOGGETTO',
       'SOSTA_TECNICA_IN_VERIFICA',
+      'SOSTA_TECNICA_ESITO_INCERTO',
       'SESSIONE_FIRMA_IN_CORSO',
     ])('%s: 409 con codice stabile e messaggio per l utente', async codice => {
       sosta.invia.mockRejectedValue(

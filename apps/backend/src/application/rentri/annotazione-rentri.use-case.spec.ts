@@ -417,12 +417,15 @@ describe('AnnotazioneRentriUseCase', () => {
       expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
     })
 
-    it('esito incerto dal client (5xx): evento INCERTA, errore originale, nessuna firma, prenotazione rilasciata', async () => {
+    it('esito incerto dal client (5xx): evento INCERTA, 409 ANNOTAZIONE_ESITO_INCERTO (non un 500), nessuna firma, prenotazione rilasciata', async () => {
       const a = ambiente()
       const incerto = new TrasmissioneRentriIncertaError('HTTP_5XX', 503, 'annotazione')
       a.client.inviaAnnotazione.mockRejectedValue(incerto)
 
-      await expect(a.useCase.invia(comando())).rejects.toBe(incerto)
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        code: 'BUSINESS_RULE_VIOLATION',
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_ESITO_INCERTO' }),
+      })
 
       expect((await a.eventi.elenca(TENANT, FIR_ID))[0]).toMatchObject({
         operazione: 'Annotazione',
@@ -500,7 +503,7 @@ describe('AnnotazioneRentriUseCase', () => {
       ])
     })
 
-    it('4xx definitivo: RIFIUTATA; errore di rete: INCERTA e errore originale', async () => {
+    it('4xx definitivo: RIFIUTATA; errore di rete: INCERTA e ANNOTAZIONE_ESITO_INCERTO', async () => {
       const a = ambiente()
       a.client.inviaAnnotazione.mockRejectedValue(
         new RentriApiError(422, 'Dati non validi', 'troppo lungo', false)
@@ -513,7 +516,9 @@ describe('AnnotazioneRentriUseCase', () => {
       const b = ambiente()
       const rete = new Error('ECONNRESET')
       b.client.inviaAnnotazione.mockRejectedValue(rete)
-      await expect(b.useCase.invia(comando())).rejects.toBe(rete)
+      await expect(b.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'ANNOTAZIONE_ESITO_INCERTO' }),
+      })
       expect((await b.eventi.elenca(TENANT, FIR_ID))[0].esito).toBe('INCERTA')
       expect(b.completa.execute).not.toHaveBeenCalled()
     })

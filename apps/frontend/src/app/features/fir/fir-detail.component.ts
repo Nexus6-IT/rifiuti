@@ -2568,6 +2568,19 @@ export class FirDetailComponent implements OnInit {
       },
       error: err => {
         this.annotazioneInCorso.set(false)
+        if (this.codiceErrore(err) === 'ANNOTAZIONE_ESITO_INCERTO') {
+          // Esito ignoto: niente secondo invio a caldo. Si chiude il dialog e si ricarica; un nuovo tentativo
+          // controlla prima con l'ente se l'annotazione e' gia' registrata.
+          this.annotazioneDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Esito dell’annotazione da verificare',
+            detail: this.extractError(err, 'L’esito dell’annotazione non è noto.'),
+            life: 12000,
+          })
+          this.reload()
+          return
+        }
         // Il messaggio resta nel dialog: il testo scritto non si perde.
         this.annotazioneErrore.set(
           this.extractError(err, "Errore nell'invio dell'annotazione a RENTRI")
@@ -2739,6 +2752,18 @@ export class FirDetailComponent implements OnInit {
         },
         error: err => {
           this.sostaInCorso.set(false)
+          if (this.codiceErrore(err) === 'SOSTA_TECNICA_ESITO_INCERTO') {
+            // Esito ignoto: niente secondo invio a caldo (v. annotazione). Il dialog si chiude e si ricarica.
+            this.sostaDialogVisible.set(false)
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Esito della sosta tecnica da verificare',
+              detail: this.extractError(err, 'L’esito della sosta tecnica non è noto.'),
+              life: 12000,
+            })
+            this.reload()
+            return
+          }
           // Il messaggio resta nel dialog: i dati scritti non si perdono.
           this.sostaErrore.set(
             this.extractError(err, "Errore nell'invio della sosta tecnica a RENTRI")
@@ -2941,8 +2966,7 @@ export class FirDetailComponent implements OnInit {
         },
         error: err => {
           this.trasbordoInCorso.set(false)
-          const codice = (err as { error?: { codice?: string } })?.error?.codice
-          if (codice === 'TRASBORDO_TOTALE_ESITO_INCERTO') {
+          if (this.codiceErrore(err) === 'TRASBORDO_TOTALE_ESITO_INCERTO') {
             // Esito ignoto: niente secondo invio a caldo. Si chiude il dialog e si ricarica; la verifica con
             // l'ente si chiede dal pulsante «Verifica con l'ente».
             this.trasbordoDialogVisible.set(false)
@@ -2962,6 +2986,11 @@ export class FirDetailComponent implements OnInit {
           this.reload()
         },
       })
+  }
+
+  /** `codice` stabile dell'errore HTTP del backend (es. `ANNOTAZIONE_ESITO_INCERTO`), se c'e'. */
+  private codiceErrore(err: unknown): string | undefined {
+    return (err as { error?: { codice?: string } })?.error?.codice
   }
 
   verificaTrasbordoTotale(fir: FIR): void {

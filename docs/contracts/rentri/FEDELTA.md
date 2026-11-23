@@ -732,7 +732,13 @@ Chi firma: la descrizione dello stato (`FirmaTrasbordoTotale`) dice «firma del 
 il rifiuto con l'operazione di trasbordo totale», cioe' il NUOVO trasportatore, non quello che ha inviato il
 trasbordo. La fake non distingue i soggetti (`/azioni` e `authorize` ignorano l'utenza). WasteFlow invece
 controlla da se' che il CF dell'azienda sia quello del nuovo trasportatore mostrato dall'ente, prima di ogni
-`authorize`.
+`authorize`. Il confronto usa sia il CF sia la P.IVA del tenant (`identificativiTenant`): al trasbordo WasteFlow
+invia `codice_fiscale = P.IVA || CF` dell'anagrafica, e per una ditta individuale il CF del tenant puo' essere quello
+personale. Identificativi esteri senza CF ne' P.IVA nel tenant restano fuori (il tenant ha sempre la P.IVA).
+
+Esito incerto: il POST non si ritenta e la tratta locale non nasce. La riconciliazione (invio nuovo, `firma`, o il
+pulsante «Verifica con l'ente», `POST .../trasbordo-totale/verifica`) confronta SOLO l'identita' (CF del nuovo
+trasportatore, inizio, conducente), firmato o no: la firma e' del nuovo trasportatore e puo' arrivare prima.
 
 Limiti noti (stessi dell'annotazione, §8.3, e della sosta, §8.4): lo stato si controlla solo al POST; non si
 verifica che l'invio sia del trasportatore che ha in carico il rifiuto; non si modella «copia gia' restituita con

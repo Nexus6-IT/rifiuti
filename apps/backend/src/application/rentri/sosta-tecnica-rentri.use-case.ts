@@ -311,7 +311,14 @@ export class SostaTecnicaRentriUseCase {
         statoFormularioDopo: null,
         utenteId: utenteId ?? null,
       })
-      throw errore
+      this.logger.warn('Esito dell’invio RENTRI incerto: nessun reinvio automatico', {
+        firId,
+        tenantId,
+        numeroFir,
+        causa: errore instanceof Error ? errore.message : String(errore),
+        correlationId,
+      })
+      throw this.esitoIncerto()
     }
 
     if (esito.errore) {
@@ -828,6 +835,21 @@ export class SostaTecnicaRentriUseCase {
     return DomainException.businessRuleViolation(
       'SOSTA_TECNICA_IN_VERIFICA',
       `${motivo} Nessuna operazione è stata inviata.`
+    )
+  }
+
+  /**
+   * Esito ignoto (rete, timeout, 5xx): non e' un errore del server ne' un rifiuto, e' uno stato da verificare.
+   * 409 dedicato (mai un 500 generico). La riga INCERTA e' gia' nello storico: al prossimo tentativo la
+   * riconciliazione legge il formulario presso l'ente PRIMA di inviare qualunque cosa, quindi non si duplica.
+   */
+  private esitoIncerto(): DomainException {
+    return DomainException.businessRuleViolation(
+      'SOSTA_TECNICA_ESITO_INCERTO',
+      'Non sappiamo se l’ente ha registrato la sosta tecnica (nessuna risposta o esito non arrivato). ' +
+        'WasteFlow non la reinvia da solo: attendi qualche minuto e riprova a dichiararla, perché prima di ' +
+        'inviare qualunque cosa controlla con l’ente se è già stata registrata, senza duplicarla. ' +
+        'Nessuna firma è stata richiesta.'
     )
   }
 

@@ -697,7 +697,9 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       try {
         await expect(
           annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
-        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+        ).rejects.toMatchObject({
+          metadata: { rule: 'ANNOTAZIONE_ESITO_INCERTO' },
+        })
         expect((await client.leggiStato(tenantId, numeroFir)).stato_formulario).toBe(
           'FirmaAnnotazione'
         )
@@ -743,7 +745,9 @@ describe('P4 — annotazione contro la fake RENTRI (in-process)', () => {
       try {
         await expect(
           annotazione.invia({ firId: fir.id, tenantId, testo: TESTO, ...TEMPI })
-        ).rejects.toBeInstanceOf(TrasmissioneRentriIncertaError)
+        ).rejects.toMatchObject({
+          metadata: { rule: 'ANNOTAZIONE_ESITO_INCERTO' },
+        })
 
         // Dentro la finestra l'ente potrebbe ancora elaborarla: nessun reinvio.
         await expect(

@@ -2769,6 +2769,37 @@ describe('FirDetailComponent', () => {
       expect(rentriFirLifecycleService.firmaAnnotazione).not.toHaveBeenCalled()
     })
 
+    it('409 ANNOTAZIONE_ESITO_INCERTO: dialog chiuso, avviso «da verificare» con il messaggio dell ente, ricarica (non un errore generico)', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
+      rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            codice: 'ANNOTAZIONE_ESITO_INCERTO',
+            message: 'Non sappiamo se l’ente ha registrato l’annotazione.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      component.apriDialogAnnotazione()
+      component['annotazioneTesto'] = 'Testo'
+
+      component.confermaAnnotazione()
+
+      expect(component['annotazioneDialogVisible']()).toBeFalse()
+      expect(component['annotazioneInCorso']()).toBeFalse()
+      expect(component['annotazioneErrore']()).toBeNull()
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Esito dell’annotazione da verificare',
+          detail: jasmine.stringContaining('Non sappiamo se'),
+        })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
     it('errore 409 (CF fuori dal FIR): il messaggio resta nel dialog, il testo scritto non si perde', () => {
       preparaFirLegato('OPERATOR', firLegato, 'Annotazione')
       rentriFirLifecycleService.aggiungiAnnotazione.and.returnValue(
@@ -3088,6 +3119,36 @@ describe('FirDetailComponent', () => {
         jasmine.objectContaining({ severity: 'info', summary: 'Firma non ancora confermata' })
       )
       expect(rentriFirLifecycleService.firmaSostaTecnica).not.toHaveBeenCalled()
+    })
+
+    it('409 SOSTA_TECNICA_ESITO_INCERTO: dialog chiuso, avviso «da verificare» con il messaggio dell ente, ricarica', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'SostaTecnica')
+      rentriFirLifecycleService.dichiaraSostaTecnica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            codice: 'SOSTA_TECNICA_ESITO_INCERTO',
+            message: 'Non sappiamo se l’ente ha registrato la sosta tecnica.',
+          },
+        }))
+      )
+      fixture.detectChanges()
+      const aggiungi = spyOn(messageService, 'add')
+      compila()
+
+      component.confermaSostaTecnica()
+
+      expect(component['sostaDialogVisible']()).toBeFalse()
+      expect(component['sostaInCorso']()).toBeFalse()
+      expect(component['sostaErrore']()).toBeNull()
+      expect(aggiungi).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          severity: 'warn',
+          summary: 'Esito della sosta tecnica da verificare',
+          detail: jasmine.stringContaining('Non sappiamo se'),
+        })
+      )
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
     })
 
     it('errore 409 (non sei il trasportatore): il messaggio resta nel dialog, i campi scritti non si perdono', () => {
