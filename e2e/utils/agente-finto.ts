@@ -29,6 +29,8 @@ const adesso = (): string => new Date().toISOString()
 
 export class AgenteFinto {
   private sequenza = 0
+  /** Ultima ora (ms) data a una lettura: le letture di uno stesso agente hanno ore crescenti. */
+  private ultimaOraMs = 0
 
   private constructor(
     readonly agenteId: string,
@@ -105,7 +107,12 @@ export class AgenteFinto {
   /** Costruisce e firma una lettura SIMULATA stabile. `pesoKg` con il punto e due decimali. */
   private lettura(strumentoId: string, pesoKg: string): { payload: string; firma: string } {
     this.sequenza += 1
-    const ora = adesso()
+    // Letture create nello stesso millisecondo (un lotto costruito con `map`) avrebbero la stessa
+    // ora: il backend rifiuta una seconda pesata la cui lettura non e' STRETTAMENTE successiva
+    // alla prima («La seconda lettura deve essere successiva alla prima.»). Un agente reale non le
+    // produce con ore uguali; qui si forza almeno 1 ms di distanza.
+    this.ultimaOraMs = Math.max(Date.now(), this.ultimaOraMs + 1)
+    const ora = new Date(this.ultimaOraMs).toISOString()
     const payload = {
       v: 1,
       agenteId: this.agenteId,
