@@ -1,4 +1,13 @@
+import { deflateSync } from 'zlib'
+import { leggiPngSicuro } from '../../infrastructure/pdf/png-sicuro'
 import { pngDiProva } from '../../test-support/png-di-prova'
+import {
+  chunkPng,
+  pngBomba,
+  pngConIdat,
+  pngFiltroNonValido,
+  pngIdatNonZlib,
+} from '../../test-support/png-malevoli'
 import { LIMITE_FIRMA_BYTE, mascheraEmail, normalizzaRicevutaCampo } from './ricevute-ritiro.input'
 
 const base = (extra: Record<string, unknown> = {}) => ({
@@ -52,6 +61,34 @@ describe('normalizzaRicevutaCampo', () => {
     expect(no(pngDiProva(5000, 100).toString('base64'))).toBe(false)
     expect(no(pngDiProva(300, 5).toString('base64'))).toBe(false)
     expect(no(Buffer.alloc(LIMITE_FIRMA_BYTE + 1, 1).toString('base64'))).toBe(false)
+  })
+
+  it('rifiuta i PNG che farebbero lanciare il motore PDF (IDAT non zlib, filtro 9, bomba)', () => {
+    const no = (p: Buffer) => normalizzaRicevutaCampo(base({ firmaPng: p.toString('base64') })).ok
+    expect(no(pngIdatNonZlib())).toBe(false)
+    expect(no(pngFiltroNonValido())).toBe(false)
+    expect(no(pngBomba())).toBe(false)
+  })
+
+  it('ammette solo 8 bit RGB/RGBA non interlacciato', () => {
+    const vuoto = (w: number, h: number, bpp: number) =>
+      deflateSync(Buffer.concat(Array.from({ length: h }, () => Buffer.alloc(1 + w * bpp))))
+    const ok = (p: Buffer) => normalizzaRicevutaCampo(base({ firmaPng: p.toString('base64') })).ok
+    expect(ok(pngConIdat(vuoto(300, 120, 3), 300, 120, 8, 2))).toBe(true)
+    expect(ok(pngConIdat(vuoto(300, 120, 1), 300, 120, 8, 0))).toBe(false)
+    expect(ok(pngConIdat(vuoto(300, 120, 8), 300, 120, 16, 6))).toBe(false)
+  })
+
+  it('consegna un PNG rigenerato dal server: i chunk accessori del client sono scartati', () => {
+    const orig = pngDiProva()
+    const conTesto = Buffer.concat([
+      orig.subarray(0, 33),
+      chunkPng('tEXt', Buffer.from('k\0v')),
+      orig.subarray(33),
+    ])
+    const r = normalizzaRicevutaCampo(base({ firmaPng: conTesto.toString('base64') }))
+    expect(r.ok && r.valori.firmaPng.includes(Buffer.from('tEXt'))).toBe(false)
+    expect(r.ok && leggiPngSicuro(r.valori.firmaPng).ok).toBe(true)
   })
 
   it('email del cliente: facoltativa, validata, ripulita', () => {

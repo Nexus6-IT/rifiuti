@@ -1,10 +1,14 @@
+import { leggiPngSicuro, ricodificaPng } from '../../infrastructure/pdf/png-sicuro'
+
 /**
  * Validazione di una ricevuta di ritiro dal campo (P6): forma e limiti, senza accedere al database.
  * La sostanza (ritiro dell'autista, stato, tetto per ritiro) la decide `RicevuteRitiroService`.
  *
- * La firma arriva come PNG in base64 e viene controllata nella STRUTTURA (magic bytes, intestazione
- * IHDR, chiusura IEND, dimensioni): niente decodifica dei pixel, ma un file che non e' un PNG, o che
- * e' troncato o fuori scala, non entra mai nel database ne' nel PDF.
+ * La firma arriva come PNG in base64 e viene VERIFICATA e RICODIFICATA lato server (`png-sicuro`):
+ * chunk e CRC, solo 8 bit RGB/RGBA non interlacciato, zlib con tetto sull'uscita, lunghezza esatta,
+ * byte di filtro validi. Al database e al PDF arriva solo il PNG rigenerato dal server, mai i byte
+ * del client: un IDAT corrotto farebbe lanciare il motore PDF in una callback asincrona (crash del
+ * processo).
  */
 export const LIMITE_FIRMA_BYTE = 131_072
 export const LARGHEZZA_FIRMA = { min: 50, max: 1200 }
@@ -34,9 +38,6 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
 const EMAIL = /^[^\s@<>()[\],;:\\"]+@[^\s@<>()[\],;:\\"]+\.[^\s@<>()[\],;:\\"]{2,}$/
 const ANNO_MINIMO = 2020
 const ANNO_MASSIMO = 2100
-const MAGIC_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-/** Chunk IEND: lunghezza 0, tipo, CRC fisso. */
-const CODA_PNG = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82])
 const LUNGHEZZA_EMAIL_MASSIMA = 254
 
 function leggiPng(base64: unknown): { png: Buffer; w: number; h: number } | string {
@@ -46,14 +47,14 @@ function leggiPng(base64: unknown): { png: Buffer; w: number; h: number } | stri
   if (base64.length % 4 !== 0 || !BASE64.test(base64)) return 'La firma non è valida.'
   const png = Buffer.from(base64, 'base64')
   if (png.length > LIMITE_FIRMA_BYTE) return 'La firma è troppo grande.'
-  // 8 magic + 25 IHDR (len+tipo+13+crc) + IEND (12)
-  if (png.length < 45 || !png.subarray(0, 8).equals(MAGIC_PNG)) return 'La firma non è un PNG.'
-  if (png.subarray(12, 16).toString('ascii') !== 'IHDR' || png.readUInt32BE(8) !== 13) {
-    return 'La firma non è un PNG valido.'
+  const letto = leggiPngSicuro(png)
+  if (!letto.ok) return 'La firma non è un PNG valido.'
+  const p = letto.png
+  if (p.profonditaBit !== 8 || (p.tipoColore !== 2 && p.tipoColore !== 6) || p.interlacciato) {
+    return 'Il formato della firma non è ammesso.'
   }
-  if (!png.subarray(png.length - 12).equals(CODA_PNG)) return 'La firma è incompleta.'
-  const w = png.readUInt32BE(16)
-  const h = png.readUInt32BE(20)
+  const w = p.larghezza
+  const h = p.altezza
   if (
     w < LARGHEZZA_FIRMA.min ||
     w > LARGHEZZA_FIRMA.max ||
@@ -62,7 +63,9 @@ function leggiPng(base64: unknown): { png: Buffer; w: number; h: number } | stri
   ) {
     return 'Le dimensioni della firma non sono ammesse.'
   }
-  return { png, w, h }
+  const rigenerato = ricodificaPng(p)
+  if (rigenerato.length > LIMITE_FIRMA_BYTE) return 'La firma è troppo grande.'
+  return { png: rigenerato, w, h }
 }
 
 export function normalizzaRicevutaCampo(grezzo: {

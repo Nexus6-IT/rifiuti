@@ -1,3 +1,4 @@
+import { pngFiltroNonValido, pngIdatNonZlib } from '../../test-support/png-malevoli'
 import { logoLeggibile } from './logo-leggibile'
 
 const PNG_1X1 =
@@ -22,5 +23,20 @@ describe('logoLeggibile', () => {
   it('JPEG con la sola firma: non leggibile', async () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff]).toString('base64')
     expect(await logoLeggibile(`data:image/jpeg;base64,${jpeg}`)).toBe(false)
+  })
+
+  it('PNG con IDAT non zlib o filtro non valido: non leggibile e nessuna eccezione non gestita', async () => {
+    const eccezioni: unknown[] = []
+    const ascolto = (e: unknown) => eccezioni.push(e)
+    process.on('uncaughtException', ascolto)
+    try {
+      for (const png of [pngIdatNonZlib(), pngFiltroNonValido()]) {
+        expect(await logoLeggibile(`data:image/png;base64,${png.toString('base64')}`)).toBe(false)
+      }
+      await new Promise(r => setTimeout(r, 200))
+    } finally {
+      process.off('uncaughtException', ascolto)
+    }
+    expect(eccezioni).toEqual([])
   })
 })
