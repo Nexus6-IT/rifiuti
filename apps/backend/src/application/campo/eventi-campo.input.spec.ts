@@ -82,4 +82,46 @@ describe('normalizzaEventoCampo', () => {
     const r = normalizzaEventoCampo({ ...base, id: ID.toUpperCase() })
     expect(r).toMatchObject({ ok: true, valori: { id: ID, dati: {} } })
   })
+  describe('posizione al momento dell evento (P5, facoltativa)', () => {
+    const pos = { lat: 45.4642035, lon: 9.189982, accuratezza: 12.4 }
+
+    it.each(['RITIRO_ESEGUITO', 'RITIRO_NON_ESEGUITO'])(
+      'accetta la posizione su %s e la arrotonda (6 decimali, accuratezza al metro)',
+      tipo => {
+        const dati = tipo === 'RITIRO_NON_ESEGUITO' ? { motivo: 'Assente' } : {}
+        const r = normalizzaEventoCampo({ ...base, tipo, dati: { ...dati, posizione: pos } })
+        expect(r).toMatchObject({
+          ok: true,
+          valori: { dati: { posizione: { lat: 45.464204, lon: 9.189982, accuratezza: 12 } } },
+        })
+      }
+    )
+
+    it('senza posizione l evento e valido come prima (app gia installate)', () => {
+      expect(normalizzaEventoCampo({ ...base, dati: {} })).toMatchObject({
+        ok: true,
+        valori: { dati: {} },
+      })
+    })
+
+    it.each([
+      ['latitudine fuori scala', { lat: 91, lon: 9, accuratezza: 5 }],
+      ['longitudine fuori scala', { lat: 45, lon: -181, accuratezza: 5 }],
+      ['accuratezza negativa', { lat: 45, lon: 9, accuratezza: -1 }],
+      ['accuratezza enorme', { lat: 45, lon: 9, accuratezza: 1_000_000 }],
+      ['lat stringa', { lat: '45', lon: 9, accuratezza: 5 }],
+      ['senza accuratezza', { lat: 45, lon: 9 }],
+      ['NaN', { lat: NaN, lon: 9, accuratezza: 5 }],
+      ['campo in piu', { lat: 45, lon: 9, accuratezza: 5, quota: 100 }],
+    ])('una posizione malformata (%s) si scarta senza rifiutare il fatto', (_n, p) => {
+      const r = normalizzaEventoCampo({ ...base, dati: { nota: 'ok', posizione: p } })
+      expect(r).toMatchObject({ ok: true, valori: { dati: { nota: 'ok' } } })
+      expect((r as { valori: { dati: object } }).valori.dati).not.toHaveProperty('posizione')
+    })
+
+    it('una posizione non oggetto si scarta', () => {
+      const r = normalizzaEventoCampo({ ...base, dati: { posizione: 'qui' } })
+      expect(r).toMatchObject({ ok: true, valori: { dati: {} } })
+    })
+  })
 })

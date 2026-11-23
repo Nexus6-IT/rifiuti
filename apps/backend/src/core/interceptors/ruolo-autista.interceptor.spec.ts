@@ -130,6 +130,7 @@ const AMMESSE_ALL_AUTISTA = [
   'AuthController.logout',
   'CampoController.giro',
   'CampoController.registraEvento',
+  'CampoController.registraFoto',
 ]
 
 describe('RuoloAutistaInterceptor: tutte le rotte montate in AppModule', () => {
