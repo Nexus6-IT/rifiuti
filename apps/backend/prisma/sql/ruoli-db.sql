@@ -31,6 +31,7 @@
 -- `tenants_registro_protetto` protegge il registro anche dal proprietario.
 -- `autisti` (app campo, P1): un autista si disattiva, non si cancella.
 -- `eventi_campo` (app campo, P4): append-only, sta in `v_solo_inserimento` (SELECT e INSERT, mai UPDATE/DELETE).
+-- `allegati_campo` (app campo, P5): append-only come `eventi_campo`, in `v_solo_inserimento`.
 -- `fir_sessioni_firma_rentri` (FIR in viaggio, P1): una sessione di firma chiusa resta come traccia.
 -- `lotti_import` (Fase 3, 3.1): un lotto non si cancella, si annulla: sta in `v_senza_cancellazione`.
 -- TABELLE IN SOLO INSERIMENTO (pese, Fase 4 pezzo 8a; `letture_pesa` dal pezzo 8b): `v_solo_inserimento`
@@ -53,7 +54,7 @@ DECLARE
   v_pwd     text;
   v_tabella text;
   v_sola_lettura text[] := ARRAY['causali_registro'];
-  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa', 'notifiche_sdi', 'eventi_campo'];
+  v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa', 'letture_pesa', 'notifiche_sdi', 'eventi_campo', 'allegati_campo'];
   v_senza_cancellazione text[] :=
     ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri', 'agenti_pesa', 'lotti_import', 'autisti', 'fir_sessioni_firma_rentri', 'tenants'];
 BEGIN

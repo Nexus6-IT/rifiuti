@@ -2,7 +2,9 @@ import { Component, OnInit, computed, inject, input, signal } from '@angular/cor
 import { RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso } from '../core/giro.service';
 import type { RitiroVista } from '../core/modelli';
-import { CodaEventi, type TipoEventoCampo } from '../core/coda-eventi';
+import { CodaEventi, fotoDi, type DatiEvento, type TipoEventoCampo } from '../core/coda-eventi';
+import { ElaboratoreFoto, MAX_FOTO_PER_ESITO, type FotoPronta } from '../core/foto';
+import { RilevatorePosizione, type PosizioneRilevata } from '../core/posizione';
 import { StatoCoda, spiegaConflitto } from '../core/stato-coda';
 import { StatoGiro } from '../core/stato-giro';
 
@@ -64,6 +66,21 @@ import { StatoGiro } from '../core/stato-giro';
             @if (e.stato === 'DA_INVIARE' && e.errore) {
               <p class="sotto" data-testid="esito-errore">{{ e.errore }}</p>
             }
+            @if (e.dati.posizione; as p) {
+              <p class="sotto" data-testid="esito-posizione">
+                Posizione allegata (± {{ p.accuratezza }} m).
+              </p>
+            }
+            @if (fotoEsito().length > 0) {
+              <p class="sotto" data-testid="esito-foto">
+                {{ riepilogoFoto() }}
+              </p>
+              @for (f of fotoRifiutate(); track f.id) {
+                <p class="errore" role="alert" data-testid="foto-rifiutata">
+                  Una foto non è stata accettata: {{ f.errore }}
+                </p>
+              }
+            }
           } @else if (r.stato !== 'PROGRAMMATO') {
             <p class="sotto">Questo ritiro non è più da fare.</p>
           } @else {
@@ -106,6 +123,65 @@ import { StatoGiro } from '../core/stato-giro';
                 (input)="testo.set($any($event.target).value)"
                 data-testid="testo-esito"
               ></textarea>
+              <fieldset class="allegati" data-testid="allegati">
+                <legend>Foto e posizione (facoltative)</legend>
+                <p class="sotto" data-testid="informativa">
+                  La posizione viene letta una sola volta, adesso, quando tocchi «Aggiungi la mia
+                  posizione»: l'app non ti segue durante il giro. Foto e posizione sono visibili
+                  all'ufficio insieme all'esito. Non fotografare le persone. Per l'informativa
+                  completa chiedi all'ufficio.
+                </p>
+                <div class="azioni">
+                  <button
+                    type="button"
+                    class="secondario"
+                    (click)="scegliFoto.click()"
+                    [disabled]="elaboro() || foto().length >= maxFoto"
+                    data-testid="aggiungi-foto"
+                  >
+                    Aggiungi foto ({{ foto().length }}/{{ maxFoto }})
+                  </button>
+                  <input
+                    #scegliFoto
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                    (change)="aggiungiFoto($event)"
+                    data-testid="file-foto"
+                  />
+                  <button
+                    type="button"
+                    class="secondario"
+                    (click)="rilevaPosizione()"
+                    [disabled]="rilevo()"
+                    data-testid="aggiungi-posizione"
+                  >
+                    {{ posizione() ? 'Rileva di nuovo la posizione' : 'Aggiungi la mia posizione' }}
+                  </button>
+                </div>
+                @if (elaboro()) {
+                  <p class="sotto" role="status">Preparo la foto…</p>
+                }
+                @if (rilevo()) {
+                  <p class="sotto" role="status">Cerco la posizione…</p>
+                }
+                @for (f of foto(); track $index) {
+                  <p class="sotto" data-testid="foto-pronta">
+                    Foto {{ $index + 1 }} ({{ kb(f) }} kB)
+                    <button type="button" class="link" (click)="togliFoto($index)">Togli</button>
+                  </p>
+                }
+                @if (posizione(); as p) {
+                  <p class="sotto" data-testid="posizione-pronta">
+                    Posizione rilevata (± {{ p.accuratezza }} m)
+                    <button type="button" class="link" (click)="posizione.set(null)">Togli</button>
+                  </p>
+                }
+                @if (erroreAllegati(); as m) {
+                  <p class="errore" role="alert" data-testid="errore-allegati">{{ m }}</p>
+                }
+              </fieldset>
               @if (errore(); as m) {
                 <p class="errore" role="alert" data-testid="esito-errore-form">{{ m }}</p>
               }
@@ -119,7 +195,14 @@ import { StatoGiro } from '../core/stato-giro';
                 >
                   Conferma
                 </button>
-                <button type="button" class="secondario" (click)="annulla()">Indietro</button>
+                <button
+                  type="button"
+                  class="secondario"
+                  (click)="annulla()"
+                  data-testid="indietro-esito"
+                >
+                  Indietro
+                </button>
               </div>
             }
           }
@@ -143,20 +226,90 @@ export class RitiroPagina implements OnInit {
   protected readonly testo = signal('');
   protected readonly errore = signal<string | null>(null);
   protected readonly invio = signal(false);
+  private readonly elaboratore = inject(ElaboratoreFoto);
+  private readonly rilevatore = inject(RilevatorePosizione);
+  protected readonly maxFoto = MAX_FOTO_PER_ESITO;
+  protected readonly foto = signal<FotoPronta[]>([]);
+  protected readonly posizione = signal<PosizioneRilevata | null>(null);
+  protected readonly elaboro = signal(false);
+  protected readonly rilevo = signal(false);
+  protected readonly erroreAllegati = signal<string | null>(null);
   protected readonly spiega = spiegaConflitto;
   /** L'esito dato a questo ritiro (anche in attesa di invio). */
   protected readonly data = computed(() => this.coda.perRitiro(this.id()));
   protected readonly rifiutato = computed(() => this.coda.rifiutatoPerRitiro(this.id()));
+  protected readonly fotoEsito = computed(() => {
+    const e = this.data();
+    return e ? fotoDi(e) : [];
+  });
+  protected readonly fotoRifiutate = computed(() =>
+    this.fotoEsito().filter((f) => f.stato === 'RIFIUTATA'),
+  );
+  protected readonly riepilogoFoto = computed(() => {
+    const f = this.fotoEsito();
+    const inviate = f.filter((x) => x.stato === 'INVIATA').length;
+    const attesa = f.filter((x) => x.stato === 'DA_INVIARE').length;
+    const base = f.length === 1 ? '1 foto' : `${f.length} foto`;
+    if (attesa > 0) return `${base}: ${inviate} inviate, ${attesa} in attesa di invio.`;
+    return inviate === f.length ? `${base} inviate all'ufficio.` : `${base}.`;
+  });
+  protected readonly kb = (f: FotoPronta) => Math.round(f.dimensioneByte / 1024);
 
   protected scegli(tipo: TipoEventoCampo): void {
     this.modo.set(tipo);
     this.testo.set('');
     this.errore.set(null);
+    this.azzeraAllegati();
   }
 
   protected annulla(): void {
     this.modo.set(null);
     this.errore.set(null);
+    this.azzeraAllegati();
+  }
+
+  private azzeraAllegati(): void {
+    this.foto.set([]);
+    this.posizione.set(null);
+    this.erroreAllegati.set(null);
+  }
+
+  protected async aggiungiFoto(ev: Event): Promise<void> {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // permette di riscegliere lo stesso file
+    if (!file || this.foto().length >= this.maxFoto) return;
+    this.erroreAllegati.set(null);
+    this.elaboro.set(true);
+    try {
+      const pronta = await this.elaboratore.prepara(file);
+      this.foto.update((l) => [...l, pronta]);
+    } catch (e) {
+      this.erroreAllegati.set(
+        e instanceof Error && e.message ? e.message : 'Non riesco a preparare la foto.',
+      );
+    } finally {
+      this.elaboro.set(false);
+    }
+  }
+
+  protected togliFoto(i: number): void {
+    this.foto.update((l) => l.filter((_, k) => k !== i));
+  }
+
+  /** Una sola lettura, adesso, su richiesta esplicita dell'autista. */
+  protected async rilevaPosizione(): Promise<void> {
+    this.erroreAllegati.set(null);
+    this.rilevo.set(true);
+    try {
+      this.posizione.set(await this.rilevatore.rileva());
+    } catch (e) {
+      this.erroreAllegati.set(
+        e instanceof Error && e.message ? e.message : 'Posizione non disponibile.',
+      );
+    } finally {
+      this.rilevo.set(false);
+    }
   }
 
   protected scartaRifiutato(id: string): void {
@@ -175,17 +328,23 @@ export class RitiroPagina implements OnInit {
       this.errore.set('Il testo è troppo lungo (massimo 500 caratteri).');
       return;
     }
+    if (this.elaboro() || this.rilevo()) return;
     this.invio.set(true);
     try {
+      const dati: DatiEvento =
+        tipo === 'RITIRO_NON_ESEGUITO' ? { motivo: testo } : testo === '' ? {} : { nota: testo };
+      const posizione = this.posizione();
+      if (posizione) dati.posizione = posizione;
       await this.coda.registra({
         ritiroId: this.id(),
         tipo,
         versioneVista: r.versione,
         dataVista: r.dataPrevista,
         sedeVista: r.produttore.sedeId,
-        dati:
-          tipo === 'RITIRO_NON_ESEGUITO' ? { motivo: testo } : testo === '' ? {} : { nota: testo },
+        dati,
+        foto: this.foto(),
       });
+      this.azzeraAllegati();
       this.modo.set(null);
       this.errore.set(null);
     } catch {

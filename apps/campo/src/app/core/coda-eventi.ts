@@ -2,6 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ArchivioCoda } from './archivio-coda';
+import type { FotoPronta } from './foto';
+import type { PosizioneRilevata } from './posizione';
 import { SessioneService } from './sessione.service';
 
 export type TipoEventoCampo = 'RITIRO_ESEGUITO' | 'RITIRO_NON_ESEGUITO';
@@ -11,6 +13,23 @@ export interface DatiEvento {
   /** Obbligatorio per RITIRO_NON_ESEGUITO. */
   motivo?: string;
   nota?: string;
+  /** Posizione al momento dell'evento (una lettura, facoltativa). Parte nel corpo dell'evento. */
+  posizione?: PosizioneRilevata;
+}
+
+export type StatoFotoCoda = 'DA_INVIARE' | 'INVIATA' | 'RIFIUTATA';
+
+/** Una foto dell'esito: viaggia DOPO l'evento, con il suo uuid (idempotenza) e la sua impronta. */
+export interface FotoInCoda {
+  id: string;
+  mimeType: 'image/jpeg';
+  dimensioneByte: number;
+  sha256: string;
+  stato: StatoFotoCoda;
+  tentativi: number;
+  errore: string | null;
+  /** Byte della foto: solo finche' non e' INVIATA o RIFIUTATA (poi si liberano). */
+  contenuto: ArrayBuffer | null;
 }
 
 /** Cio' che l'autista dichiara: l'identita' (uuid, utente, ora) la aggiunge la coda. */
@@ -23,10 +42,12 @@ export interface NuovoEvento {
   dataVista: string;
   sedeVista: string;
   dati: DatiEvento;
+  /** Foto gia' compresse (massimo 3), facoltative. */
+  foto?: FotoPronta[];
 }
 
 /** Un esito nella coda di uscita (e, una volta confermato, nel promemoria della giornata). */
-export interface EventoInCoda extends NuovoEvento {
+export interface EventoInCoda extends Omit<NuovoEvento, 'foto'> {
   /** UUID generato qui: chiave di idempotenza lato server. */
   id: string;
   /** `sub` di chi l'ha registrato: la coda e' per utente. */
@@ -39,7 +60,13 @@ export interface EventoInCoda extends NuovoEvento {
   errore: string | null;
   esito: 'APPLICATO' | 'DA_RICONCILIARE' | null;
   motivoConflitto: string | null;
+  /** Assente negli eventi salvati dalla versione precedente dell'app: si legge con `fotoDi`. */
+  foto?: FotoInCoda[];
 }
+
+/** Le foto di un evento (anche di uno salvato prima che esistessero). */
+export const fotoDi = (e: EventoInCoda): FotoInCoda[] => e.foto ?? [];
+const haFotoDaInviare = (e: EventoInCoda) => fotoDi(e).some((f) => f.stato === 'DA_INVIARE');
 
 interface RispostaEvento {
   id: string;
@@ -49,6 +76,9 @@ interface RispostaEvento {
 
 const INTERVALLO_MS = 20_000;
 const TIMEOUT_RICHIESTA_MS = 20_000;
+const TIMEOUT_FOTO_MS = 60_000;
+/** Una foto con impronta non corrispondente puo' essere un guasto di rete: si ritenta prima di arrendersi. */
+const TENTATIVI_HASH = 3;
 
 /**
  * Coda di uscita degli esiti dal campo.
@@ -60,6 +90,9 @@ const TIMEOUT_RICHIESTA_MS = 20_000;
  *   passeggero ci si ferma e si riprova (apertura, ritorno della rete, ripresa, ogni 20 secondi).
  * - Un rifiuto definitivo (400/404/409) non si ritenta: l'evento diventa RIFIUTATO e resta visibile
  *   finche' l'autista non lo scarta. Mai un esito sparisce in silenzio.
+ * - Le FOTO partono dopo l'evento (che deve esistere sul server), una alla volta, con il loro uuid:
+ *   stessa idempotenza. Un rifiuto definitivo (troppo grande, tipo, limite, impronta) segna la foto
+ *   RIFIUTATA senza fermare le altre. I byte stanno nell'archivio finche' la foto non e' arrivata.
  * - La coda e' PER UTENTE: si inviano solo gli eventi di chi e' entrato; quelli di un altro utente
  *   restano sul telefono e l'app chiede cosa farne.
  * - Gli eventi CONFERMATI (contengono note) restano solo come promemoria della giornata e spariscono
@@ -90,11 +123,27 @@ export class CodaEventi {
     return io === null ? [] : this._tutti().filter((e) => e.utenteId === io);
   });
   readonly daInviare = computed(() => this.miei().filter((e) => e.stato === 'DA_INVIARE').length);
+  /** Foto accettate in coda ma non ancora arrivate al server (di eventi non rifiutati). */
+  readonly fotoDaInviare = computed(
+    () =>
+      this.miei()
+        .filter((e) => e.stato !== 'RIFIUTATO')
+        .flatMap(fotoDi)
+        .filter((f) => f.stato === 'DA_INVIARE').length,
+  );
+  readonly fotoRifiutate = computed(
+    () =>
+      this.miei()
+        .flatMap(fotoDi)
+        .filter((f) => f.stato === 'RIFIUTATA').length,
+  );
   readonly rifiutati = computed(() => this.miei().filter((e) => e.stato === 'RIFIUTATO').length);
   /** Eventi ancora da inviare registrati da un altro utente di questo telefono. */
   readonly diAltriUtenti = computed(() => {
     const io = this.sessione.utenteId();
-    return this._tutti().filter((e) => e.utenteId !== io && e.stato === 'DA_INVIARE').length;
+    return this._tutti().filter(
+      (e) => e.utenteId !== io && (e.stato === 'DA_INVIARE' || haFotoDaInviare(e)),
+    ).length;
   });
   /** `true` se almeno un evento esiste solo in memoria (il telefono non puo' scrivere l'archivio). */
   readonly nonSalvato = this._nonSalvato.asReadonly();
@@ -115,7 +164,7 @@ export class CodaEventi {
       window.addEventListener('online', this.alRitornoRete);
       document.addEventListener('visibilitychange', this.allaRipresa);
       this.timer = setInterval(() => {
-        if (this.daInviare() > 0) void this.inviaAuto();
+        if (this.daInviare() > 0 || this.fotoDaInviare() > 0) void this.inviaAuto();
       }, INTERVALLO_MS);
     }
     this._bloccata.set(null); // nuovo avvio/accesso: un tentativo si fa
@@ -158,8 +207,19 @@ export class CodaEventi {
     if (!utenteId) throw new Error('Nessuna sessione: accedi per registrare un esito.');
     const esistente = this.perRitiro(nuovo.ritiroId);
     if (esistente) return esistente;
+    const { foto, ...resto } = nuovo;
     const evento: EventoInCoda = {
-      ...nuovo,
+      ...resto,
+      foto: (foto ?? []).map((f) => ({
+        id: crypto.randomUUID(),
+        mimeType: f.mimeType,
+        dimensioneByte: f.dimensioneByte,
+        sha256: f.sha256,
+        stato: 'DA_INVIARE' as const,
+        tentativi: 0,
+        errore: null,
+        contenuto: f.contenuto,
+      })),
       id: crypto.randomUUID(),
       utenteId,
       rilevatoIl: new Date().toISOString(),
@@ -214,8 +274,14 @@ export class CodaEventi {
     try {
       for (;;) {
         const prossimo = this.miei().find((e) => e.stato === 'DA_INVIARE');
-        if (!prossimo) return;
-        if (!(await this.spedisci(prossimo))) return;
+        if (prossimo) {
+          if (!(await this.spedisci(prossimo))) return;
+          continue;
+        }
+        // Prima tutti gli esiti, poi le foto: una foto ha senso solo se l'evento e' sul server.
+        const conFoto = this.miei().find((e) => e.stato === 'CONFERMATO' && haFotoDaInviare(e));
+        if (!conFoto) return;
+        if (!(await this.spedisciFoto(conFoto))) return;
       }
     } finally {
       this._inInvio.set(false);
@@ -271,6 +337,55 @@ export class CodaEventi {
     }
   }
 
+  /** Spedisce la prossima foto di un evento CONFERMATO. `true` se si puo' proseguire. */
+  private async spedisciFoto(e: EventoInCoda): Promise<boolean> {
+    if (e.utenteId !== this.sessione.utenteId()) return false;
+    const foto = fotoDi(e).find((f) => f.stato === 'DA_INVIARE');
+    if (!foto) return true;
+    const aggiorna = (nuova: FotoInCoda) =>
+      this.scrivi({ ...e, foto: fotoDi(e).map((f) => (f.id === nuova.id ? nuova : f)) });
+    if (!foto.contenuto) {
+      // Byte persi (non dovrebbe succedere): inutile ritentare.
+      await aggiorna({ ...foto, stato: 'RIFIUTATA', errore: 'La foto non è più sul telefono.' });
+      return true;
+    }
+    const corpo = new FormData();
+    corpo.append('id', foto.id);
+    corpo.append('sha256', foto.sha256);
+    corpo.append('foto', new Blob([foto.contenuto], { type: foto.mimeType }), 'foto.jpg');
+    try {
+      await firstValueFrom(
+        this.http.post(`/api/v1/campo/eventi/${e.id}/foto`, corpo).pipe(timeout(TIMEOUT_FOTO_MS)),
+      );
+      await aggiorna({ ...foto, stato: 'INVIATA', errore: null, contenuto: null });
+      return true;
+    } catch (err) {
+      const stato = err instanceof HttpErrorResponse ? err.status : 0;
+      const messaggio =
+        err instanceof HttpErrorResponse ? messaggioServer(err) : 'Il server non risponde.';
+      const marcatore = (err as { error?: { error?: unknown } } | null)?.error?.error;
+      const hashDaRitentare =
+        stato === 422 &&
+        marcatore === 'FOTO_HASH_NON_CORRISPONDENTE' &&
+        foto.tentativi + 1 < TENTATIVI_HASH;
+      if (!hashDaRitentare && [400, 404, 409, 413, 415, 422].includes(stato)) {
+        await aggiorna({
+          ...foto,
+          stato: 'RIFIUTATA',
+          tentativi: foto.tentativi + 1,
+          errore: messaggio ?? 'Il server non ha accettato questa foto.',
+          contenuto: null,
+        });
+        return true;
+      }
+      if (stato === 403) {
+        this._bloccata.set(messaggio ?? "Accesso non consentito: contatta l'ufficio.");
+      }
+      await aggiorna({ ...foto, tentativi: foto.tentativi + 1, errore: messaggio });
+      return false;
+    }
+  }
+
   private async carica(): Promise<void> {
     try {
       const salvati = await this.archivio.tutti();
@@ -279,7 +394,10 @@ export class CodaEventi {
       // Promemoria confermati di un giorno passato: non servono piu' e contengono note.
       const oggi = dataLocale(new Date());
       const vecchi = this._tutti().filter(
-        (e) => e.stato === 'CONFERMATO' && dataLocale(new Date(e.rilevatoIl)) !== oggi,
+        (e) =>
+          e.stato === 'CONFERMATO' &&
+          !haFotoDaInviare(e) &&
+          dataLocale(new Date(e.rilevatoIl)) !== oggi,
       );
       if (vecchi.length > 0) await this.togli(vecchi.map((e) => e.id));
     } catch {
@@ -310,13 +428,16 @@ export class CodaEventi {
 
   /** Via i promemoria CONFERMATI (note comprese); gli eventi da inviare o rifiutati restano. */
   private async pulisciConfermati(): Promise<void> {
+    // Le foto non ancora arrivate restano (sono l'unica copia): le togliera' il loro invio.
     const ids = this._tutti()
-      .filter((e) => e.stato === 'CONFERMATO')
+      .filter((e) => e.stato === 'CONFERMATO' && !haFotoDaInviare(e))
       .map((e) => e.id);
     if (ids.length > 0) await this.togli(ids);
     try {
       const salvati = await this.archivio.tutti();
-      await this.togli(salvati.filter((e) => e.stato === 'CONFERMATO').map((e) => e.id));
+      await this.togli(
+        salvati.filter((e) => e.stato === 'CONFERMATO' && !haFotoDaInviare(e)).map((e) => e.id),
+      );
     } catch {
       /* archivio non disponibile */
     }
