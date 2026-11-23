@@ -54,6 +54,11 @@ export interface EventoInCoda extends Omit<NuovoEvento, 'foto'> {
   utenteId: string;
   /** Orologio del telefono (mai data legale). */
   rilevatoIl: string;
+  /**
+   * Numero d'ordine di registrazione: spareggio stabile fra esiti con lo stesso `rilevatoIl`
+   * (stesso millisecondo). Assente negli eventi salvati dalla versione precedente: vale 0.
+   */
+  ordine?: number;
   stato: StatoEventoCoda;
   tentativi: number;
   /** Ultimo errore, in italiano, da mostrare all'autista. */
@@ -109,6 +114,7 @@ export class CodaEventi {
   private readonly _bloccata = signal<string | null>(null);
   private catena: Promise<unknown> = Promise.resolve();
   private cicloInCorso: Promise<void> | null = null;
+  private ultimoOrdine = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private avviata = false;
   private readonly alRitornoRete = () => void this.inviaAuto();
@@ -223,6 +229,7 @@ export class CodaEventi {
       id: crypto.randomUUID(),
       utenteId,
       rilevatoIl: new Date().toISOString(),
+      ordine: this.prossimoOrdine(),
       stato: 'DA_INVIARE',
       tentativi: 0,
       errore: null,
@@ -232,6 +239,13 @@ export class CodaEventi {
     await this.scrivi(evento);
     void this.inviaAuto();
     return evento;
+  }
+
+  /** Mai minore di quello di un evento gia' in coda: cresce a ogni registrazione. */
+  private prossimoOrdine(): number {
+    const massimo = this._tutti().reduce((m, e) => Math.max(m, e.ordine ?? 0), 0);
+    this.ultimoOrdine = Math.max(this.ultimoOrdine, massimo) + 1;
+    return this.ultimoOrdine;
   }
 
   /** Tentativo automatico (rete, ripresa, intervallo): si ferma se il server ha risposto 403. */
@@ -448,8 +462,17 @@ function dataLocale(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** Per orologio del telefono; a pari millisecondo per ordine di registrazione, poi per id. */
 const perData = (a: EventoInCoda, b: EventoInCoda) =>
-  a.rilevatoIl < b.rilevatoIl ? -1 : a.rilevatoIl > b.rilevatoIl ? 1 : a.id < b.id ? -1 : 1;
+  a.rilevatoIl < b.rilevatoIl
+    ? -1
+    : a.rilevatoIl > b.rilevatoIl
+      ? 1
+      : (a.ordine ?? 0) !== (b.ordine ?? 0)
+        ? (a.ordine ?? 0) - (b.ordine ?? 0)
+        : a.id < b.id
+          ? -1
+          : 1;
 
 export function messaggioServer(e: HttpErrorResponse): string | null {
   const m = (e.error as { message?: unknown } | null)?.message;

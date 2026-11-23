@@ -161,6 +161,33 @@ describe('CodaEventi (coda di uscita)', () => {
     expect(coda.daInviare()).toBe(0);
   });
 
+  it('due esiti nello stesso millisecondo: partono nell ordine di registrazione, qualunque sia lo uuid', async () => {
+    accedi('u1');
+    // Orologio del telefono fermo: tutti gli esiti hanno lo stesso rilevatoIl.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-12-01T09:00:00.000Z'));
+    // Gli uuid sono in ordine INVERSO rispetto alla registrazione: uno spareggio per id sbaglierebbe.
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('ffffffff-0000-4000-8000-000000000001')
+      .mockReturnValueOnce('eeeeeeee-0000-4000-8000-000000000002')
+      .mockReturnValueOnce('dddddddd-0000-4000-8000-000000000003');
+    const ids: string[] = [];
+    try {
+      for (const r of ['r1', 'r2', 'r3']) ids.push((await coda.registra(eseguito(r))).id);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(coda.miei().map((e) => e.id)).toEqual(ids);
+    // Il primo parte subito alla registrazione; gli altri uno alla volta, in ordine.
+    for (const atteso of ids) {
+      const req = http.expectOne(URL_EVENTI);
+      expect(req.request.body.id).toBe(atteso);
+      req.flush(ok(atteso));
+      await flush();
+    }
+    expect(coda.daInviare()).toBe(0);
+  });
+
   it('invio in corso: una seconda chiamata non spedisce di nuovo lo stesso evento', async () => {
     accedi('u1');
     await coda.registra(eseguito());
