@@ -11,9 +11,17 @@ import { RentriRegistroCollegamentoController } from './rentri-registro-collegam
 import { ApriRegistroRentriUseCase } from '../../application/rentri/registro/apri-registro-rentri.use-case'
 import { CandidatiRegistroRentriUseCase } from '../../application/rentri/registro/candidati-registro-rentri.use-case'
 import { CollegaRegistroRentriUseCase } from '../../application/rentri/registro/collega-registro-rentri.use-case'
+import { ModificaRegistroRentriUseCase } from '../../application/rentri/registro/modifica-registro-rentri.use-case'
+import { ChiudiRegistroRentriUseCase } from '../../application/rentri/registro/chiudi-registro-rentri.use-case'
+import { AbbandonaAperturaRegistroRentriUseCase } from '../../application/rentri/registro/abbandona-apertura-registro-rentri.use-case'
 import {
   AperturaRegistroInCorsoError,
+  ChiusuraRegistroNonConfermataError,
+  ChiusuraRegistroNonPossibileError,
   IdentificativoGiaUsatoError,
+  NessunaAperturaDaAbbandonareError,
+  RegistroNonCollegatoRentriError,
+  RegistroRentriChiusoError,
   RegistroRentriNonCollegabileError,
   RegistroRentriNonTrovatoError,
   RegistroSenzaSedeRentriError,
@@ -57,6 +65,9 @@ describe('RentriRegistroCollegamentoController — catena HTTP', () => {
   let candidati: { esegui: jest.Mock }
   let collega: { esegui: jest.Mock }
   let apri: { esegui: jest.Mock }
+  let modifica: { esegui: jest.Mock }
+  let chiudi: { esegui: jest.Mock }
+  let abbandona: { esegui: jest.Mock }
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
 
   async function avvia(ruoloNelCliente: string) {
@@ -68,6 +79,17 @@ describe('RentriRegistroCollegamentoController — catena HTTP', () => {
         .fn()
         .mockResolvedValue({ esito: 'APERTO', impostazioni: { registroId: REGISTRO } }),
     }
+    modifica = {
+      esegui: jest
+        .fn()
+        .mockResolvedValue({ esito: 'MODIFICATO', impostazioni: { registroId: REGISTRO } }),
+    }
+    chiudi = {
+      esegui: jest
+        .fn()
+        .mockResolvedValue({ esito: 'CHIUSO', impostazioni: { registroId: REGISTRO } }),
+    }
+    abbandona = { esegui: jest.fn().mockResolvedValue({ registroId: REGISTRO }) }
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -81,6 +103,9 @@ describe('RentriRegistroCollegamentoController — catena HTTP', () => {
         { provide: CandidatiRegistroRentriUseCase, useValue: candidati },
         { provide: CollegaRegistroRentriUseCase, useValue: collega },
         { provide: ApriRegistroRentriUseCase, useValue: apri },
+        { provide: ModificaRegistroRentriUseCase, useValue: modifica },
+        { provide: ChiudiRegistroRentriUseCase, useValue: chiudi },
+        { provide: AbbandonaAperturaRegistroRentriUseCase, useValue: abbandona },
         { provide: LoggerService, useValue: logger },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         {
@@ -216,6 +241,106 @@ describe('RentriRegistroCollegamentoController — catena HTTP', () => {
       )
       expect(r.status).toBe(202)
       expect(r.body).toEqual({ esito: 'INCERTO', messaggio: 'incerto' })
+    })
+  })
+
+  describe('modifica, chiudi, abbandona apertura (eREGI E3)', () => {
+    it('OPERATOR e VIEWER: 403 su tutte e tre, nessun use case', async () => {
+      for (const ruolo of ['OPERATOR', 'VIEWER']) {
+        await avvia(ruolo)
+        expect((await cliente(http().put(base).send({ descrizione: 'x' }))).status).toBe(403)
+        expect(
+          (await cliente(http().post(`${base}/chiudi`).send({ conferma: 'RAB12CD34E5' }))).status
+        ).toBe(403)
+        expect((await cliente(http().post(`${base}/abbandona-apertura`))).status).toBe(403)
+        expect(modifica.esegui).not.toHaveBeenCalled()
+        expect(chiudi.esegui).not.toHaveBeenCalled()
+        expect(abbandona.esegui).not.toHaveBeenCalled()
+        await app.close()
+      }
+    })
+
+    it('ADMIN effettivo: tenant del cliente, utente, ruolo e corpo arrivano allo use case', async () => {
+      await avvia('ADMIN')
+      const m = await cliente(
+        http()
+          .put(base)
+          .send({ descrizione: 'Nuova', attivitaRecSmalt: ['R13'], forza: true })
+      )
+      expect(m.status).toBe(200)
+      expect(modifica.esegui).toHaveBeenCalledWith(CLIENTE, CONSULENTE, 'ADMIN', REGISTRO, {
+        descrizione: 'Nuova',
+        attivitaRecSmalt: ['R13'],
+        forza: true,
+      })
+      const c = await cliente(http().post(`${base}/chiudi`).send({ conferma: 'RAB12CD34E5' }))
+      expect(c.status).toBe(200)
+      expect(chiudi.esegui).toHaveBeenCalledWith(
+        CLIENTE,
+        CONSULENTE,
+        'ADMIN',
+        REGISTRO,
+        'RAB12CD34E5'
+      )
+      const a = await cliente(http().post(`${base}/abbandona-apertura`))
+      expect(a.status).toBe(200)
+      expect(abbandona.esegui).toHaveBeenCalledWith(CLIENTE, CONSULENTE, 'ADMIN', REGISTRO)
+    })
+
+    it('esito INCERTO: 202 (modifica e chiusura)', async () => {
+      await avvia('ADMIN')
+      modifica.esegui.mockResolvedValue({ esito: 'INCERTO', messaggio: 'incerto' })
+      chiudi.esegui.mockResolvedValue({ esito: 'INCERTO', messaggio: 'incerto' })
+      expect((await cliente(http().put(base).send({ descrizione: 'x' }))).status).toBe(202)
+      const c = await cliente(http().post(`${base}/chiudi`).send({ conferma: 'RAB12CD34E5' }))
+      expect(c.status).toBe(202)
+      expect(c.body).toEqual({ esito: 'INCERTO', messaggio: 'incerto' })
+    })
+
+    it('corpo non valido: 400 prima dello use case', async () => {
+      await avvia('ADMIN')
+      for (const corpo of [
+        { extra: 1 },
+        { descrizione: 'x'.repeat(251) },
+        { attivitaRecSmalt: 'R1' },
+        { forza: 'si' },
+      ]) {
+        expect((await cliente(http().put(base).send(corpo))).status).toBe(400)
+      }
+      for (const corpo of [{}, { conferma: '' }, { conferma: 1 }, { conferma: 'R', x: 1 }]) {
+        expect((await cliente(http().post(`${base}/chiudi`).send(corpo))).status).toBe(400)
+      }
+      expect(modifica.esegui).not.toHaveBeenCalled()
+      expect(chiudi.esegui).not.toHaveBeenCalled()
+    })
+
+    it('la chiusura bloccata porta i conteggi nel corpo del 409', async () => {
+      await avvia('ADMIN')
+      chiudi.esegui.mockRejectedValue(
+        new ChiusuraRegistroNonPossibileError('Non si può chiudere', { DA_TRASMETTERE: 3 })
+      )
+      const r = await cliente(http().post(`${base}/chiudi`).send({ conferma: 'RAB12CD34E5' }))
+      expect(r.status).toBe(409)
+      expect(r.body.details.conteggi).toEqual({ DA_TRASMETTERE: 3 })
+    })
+
+    it.each([
+      [new RegistroNonCollegatoRentriError(), 409],
+      [new RegistroRentriChiusoError(), 409],
+      [new ChiusuraRegistroNonConfermataError(), 409],
+      [new NessunaAperturaDaAbbandonareError(), 409],
+      [new RichiestaTrasmissioneNonValidaError('conferma'), 400],
+      [new RentriApiError(404, undefined, undefined, false), 400],
+    ])('%s -> %i', async (errore, stato) => {
+      await avvia('ADMIN')
+      chiudi.esegui.mockRejectedValue(errore)
+      modifica.esegui.mockRejectedValue(errore)
+      abbandona.esegui.mockRejectedValue(errore)
+      expect(
+        (await cliente(http().post(`${base}/chiudi`).send({ conferma: 'RAB12CD34E5' }))).status
+      ).toBe(stato)
+      expect((await cliente(http().put(base).send({ descrizione: 'x' }))).status).toBe(stato)
+      expect((await cliente(http().post(`${base}/abbandona-apertura`))).status).toBe(stato)
     })
   })
 

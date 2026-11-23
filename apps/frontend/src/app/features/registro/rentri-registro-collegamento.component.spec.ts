@@ -27,6 +27,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     rentriAttivitaRecSmalt: [],
     aperturaInCorso: false,
     rentriChiusoIl: null,
+    chiusuraInCorso: false,
     ...p,
   }
 }
@@ -65,6 +66,7 @@ describe('RentriRegistroCollegamentoComponent', () => {
       'candidati',
       'collega',
       'apri',
+      'abbandonaApertura',
     ])
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success', 'info', 'warn'])
     TestBed.configureTestingModule({
@@ -219,5 +221,43 @@ describe('RentriRegistroCollegamentoComponent', () => {
   it('apertura in corso: avviso di non riprovare', () => {
     monta(registro({ aperturaInCorso: true }))
     expect(q('rentri-col-in-corso')!.textContent).toContain('non riprovare')
+  })
+
+  describe('abbandona apertura (E3)', () => {
+    it("compare solo con un'apertura in sospeso e il registro non collegato", () => {
+      monta(registro({ aperturaInCorso: false }))
+      expect(q('rentri-col-abbandona')).toBeNull()
+      fixture.destroy()
+      monta(registro({ aperturaInCorso: true, identificativoRentri: 'RAB12CD34E5' }))
+      expect(q('rentri-col-abbandona')).toBeNull()
+      fixture.destroy()
+      monta(registro({ aperturaInCorso: true }))
+      expect(q('rentri-col-abbandona')).not.toBeNull()
+    })
+
+    it('chiede conferma, poi azzera la prenotazione e fa rileggere (aggiornato false)', () => {
+      servizio.abbandonaApertura.and.returnValue(of(registro()))
+      monta(registro({ aperturaInCorso: true }))
+      clic('rentri-col-abbandona')
+      fixture.detectChanges()
+      expect(servizio.abbandonaApertura).not.toHaveBeenCalled()
+      clic('rentri-col-abbandona-si')
+      expect(servizio.abbandonaApertura).toHaveBeenCalledOnceWith('r1')
+      expect(toast.success).toHaveBeenCalled()
+      expect(aggiornato).toHaveBeenCalledWith(false)
+    })
+
+    it('troppo presto (409): messaggio del backend', () => {
+      servizio.abbandonaApertura.and.returnValue(
+        throwError(() => ({ error: { message: 'Riprova più tardi.' } }))
+      )
+      monta(registro({ aperturaInCorso: true }))
+      clic('rentri-col-abbandona')
+      fixture.detectChanges()
+      clic('rentri-col-abbandona-si')
+      fixture.detectChanges()
+      expect(q('rentri-col-errore')!.textContent).toContain('Riprova più tardi')
+      expect(aggiornato).not.toHaveBeenCalled()
+    })
   })
 })

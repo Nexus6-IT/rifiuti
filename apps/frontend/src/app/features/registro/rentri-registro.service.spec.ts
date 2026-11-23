@@ -90,6 +90,27 @@ describe('RentriRegistroService', () => {
     g.flush({ dichiarate: 5, saltate: 0, saltatePerStato: {}, movimentiNellIntervallo: 5 })
   })
 
+  it('E3: modifica (PUT), chiudi con la conferma (POST) e abbandona apertura', () => {
+    service
+      .modifica('r1', { descrizione: 'Nuova', attivitaRecSmalt: ['R13'], forza: true })
+      .subscribe()
+    const m = http.expectOne(`${base}/registri/r1/rentri`)
+    expect(m.request.method).toBe('PUT')
+    expect(m.request.body).toEqual({ descrizione: 'Nuova', attivitaRecSmalt: ['R13'], forza: true })
+    m.flush({ esito: 'MODIFICATO', impostazioni: {} })
+
+    service.chiudi('r1', 'RAB12CD34E5').subscribe()
+    const c = http.expectOne(`${base}/registri/r1/rentri/chiudi`)
+    expect(c.request.method).toBe('POST')
+    expect(c.request.body).toEqual({ conferma: 'RAB12CD34E5' })
+    c.flush({ esito: 'CHIUSO', impostazioni: {} })
+
+    service.abbandonaApertura('r1').subscribe()
+    const a = http.expectOne(`${base}/registri/r1/rentri/abbandona-apertura`)
+    expect(a.request.method).toBe('POST')
+    a.flush({})
+  })
+
   it('messaggioErroreRentri: messaggio del backend (anche lista) o generico', () => {
     expect(messaggioErroreRentri({ error: { message: 'Spiegazione del dominio.' } })).toBe(
       'Spiegazione del dominio.'
