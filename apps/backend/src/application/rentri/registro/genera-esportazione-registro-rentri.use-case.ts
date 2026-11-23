@@ -15,7 +15,7 @@
  *
  * Fail-closed: un'annotazione non traducibile ferma l'intervallo (e il pannello ne mostra il motivo),
  * un'anomalia della catena o della numerazione blocca tutto senza produrre un file. Una esportazione
- * rifiutata da RENTRI blocca le successive finche' una persona non decide (puo' avere un errore che
+ * rifiutata da RENTRI (in qualunque punto della catena) blocca le successive finche' una persona non decide (puo' avere un errore che
  * le successive ereditano nella catena).
  */
 import { Inject, Injectable, Optional } from '@nestjs/common'
@@ -34,7 +34,7 @@ import {
 import {
   CatenaEsportazioniNonCoerenteError,
   EregiNonDisponibileError,
-  UltimaEsportazioneRifiutataError,
+  EsportazioneRifiutataInCatenaError,
 } from './errori-esportazioni-registro-rentri'
 import { inviiRegistroAttivi } from './invii-registro-attivi'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
@@ -138,7 +138,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
    * @throws RegistroNonCollegatoRentriError / RegistroRentriChiusoError 409
    * @throws EregiNonDisponibileError 502 l'eREGI di RENTRI non e' utilizzabile
    * @throws TenantSenzaCertificatoRentriError 422 l'azienda non ha un certificato RENTRI
-   * @throws UltimaEsportazioneRifiutataError / CatenaEsportazioniNonCoerenteError 409
+   * @throws EsportazioneRifiutataInCatenaError / CatenaEsportazioniNonCoerenteError 409
    * @throws EsportazioneRegistroNonValidaError le annotazioni non producono un XML valido
    * @throws RentriApiError il download dell'eREGI e' stato rifiutato da RENTRI
    */
@@ -272,7 +272,9 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     })
     const catena = ordinaCatena(salvate)
     const ultima = catena.length > 0 ? catena[catena.length - 1] : null
-    if (ultima?.stato === 'RIFIUTATA') throw new UltimaEsportazioneRifiutataError()
+    // Un anello rifiutato in QUALUNQUE posizione (anche tardivo, con la successiva gia' generata): la
+    // catena continuerebbe a citarlo.
+    if (catena.some(e => e.stato === 'RIFIUTATA')) throw new EsportazioneRifiutataInCatenaError()
     if (catena.some(e => !e.firmato || e.digestValue === null)) {
       throw new CatenaEsportazioniNonCoerenteError('contiene un anello non firmato')
     }

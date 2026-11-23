@@ -18,7 +18,7 @@ import {
   EregiNonDisponibileError,
   EsportazioneNonRivalidabileError,
   EsportazioneNonTrovataError,
-  UltimaEsportazioneRifiutataError,
+  EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import { EsportazioniRegistroRentriService } from '../../application/rentri/registro/esportazioni-registro-rentri.service'
 import { GeneraEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/genera-esportazione-registro-rentri.use-case'
@@ -204,7 +204,7 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
     [new RegistroNonTrovatoError(), 404],
     [new RegistroNonCollegatoRentriError(), 409],
     [new RegistroRentriChiusoError(), 409],
-    [new UltimaEsportazioneRifiutataError(), 409],
+    [new EsportazioneRifiutataInCatenaError(), 409],
     [new CatenaEsportazioniNonCoerenteError('motivo'), 409],
     [new EregiNonDisponibileError('forma inattesa'), 502],
     [new EsportazioneRegistroNonValidaError('xsd', ['Elemento X: non valido']), 422],

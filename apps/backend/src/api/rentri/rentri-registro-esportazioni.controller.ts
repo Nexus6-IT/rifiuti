@@ -33,7 +33,7 @@ import {
   EregiNonDisponibileError,
   EsportazioneNonRivalidabileError,
   EsportazioneNonTrovataError,
-  UltimaEsportazioneRifiutataError,
+  EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import {
   EsportazioniRegistroRentriService,
@@ -82,7 +82,7 @@ export class RentriRegistroEsportazioniController {
     if (
       err instanceof RegistroNonCollegatoRentriError ||
       err instanceof RegistroRentriChiusoError ||
-      err instanceof UltimaEsportazioneRifiutataError ||
+      err instanceof EsportazioneRifiutataInCatenaError ||
       err instanceof CatenaEsportazioniNonCoerenteError ||
       err instanceof EsportazioneNonRivalidabileError
     ) {

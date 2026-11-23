@@ -21,15 +21,15 @@ export class EsportazioneNonRivalidabileError extends DomainError {
 }
 
 /**
- * 409: l'ultima esportazione e' stata rifiutata da RENTRI. Una nuova esportazione la citerebbe nella
- * catena dei digest: serve una decisione di una persona prima di proseguire.
+ * 409: una esportazione della catena e' stata rifiutata da RENTRI. Una nuova esportazione la citerebbe
+ * nella catena dei digest: serve una decisione di una persona (sostituzione) prima di proseguire.
  */
-export class UltimaEsportazioneRifiutataError extends DomainError {
+export class EsportazioneRifiutataInCatenaError extends DomainError {
   constructor() {
     super(
-      "L'ultima esportazione è stata rifiutata da RENTRI: una nuova esportazione la citerebbe nella catena. Verifica i messaggi dell'esito prima di proseguire."
+      "Una esportazione del registro è stata rifiutata da RENTRI: una nuova esportazione la citerebbe nella catena. Verifica i messaggi dell'esito e, se serve, sostituiscila prima di proseguire."
     )
-    this.name = 'UltimaEsportazioneRifiutataError'
+    this.name = 'EsportazioneRifiutataInCatenaError'
   }
 }
 

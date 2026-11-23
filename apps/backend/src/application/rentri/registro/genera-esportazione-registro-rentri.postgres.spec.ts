@@ -36,7 +36,7 @@ import { validaXmlRegistro } from '../../../infrastructure/rentri/valida-xml-reg
 import {
   CatenaEsportazioniNonCoerenteError,
   EregiNonDisponibileError,
-  UltimaEsportazioneRifiutataError,
+  EsportazioneRifiutataInCatenaError,
 } from './errori-esportazioni-registro-rentri'
 import {
   RegistroRentriChiusoError,
@@ -298,8 +298,25 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
       data: { stato: 'RIFIUTATA' },
     })
     await aggiungiAnnotazioni(owner, s, 2026, 3, 3)
-    await expect(genera(s)).rejects.toBeInstanceOf(UltimaEsportazioneRifiutataError)
+    await expect(genera(s)).rejects.toBeInstanceOf(EsportazioneRifiutataInCatenaError)
     expect(await righe(s)).toHaveLength(1)
+  })
+
+  it('un rifiuto su un anello che non e l ultimo blocca la generazione', async () => {
+    const s = await scenario()
+    await aggiungiAnnotazioni(owner, s, 2026, 1, 2)
+    await genera(s)
+    await aggiungiAnnotazioni(owner, s, 2026, 3, 4)
+    await genera(s)
+    const [prima] = await righe(s)
+    // Rifiuto tardivo (rivalida o esito in ritardo) sul primo anello, quando il secondo esiste gia'.
+    await owner.esportazioneRegistroRentri.update({
+      where: { id: prima.id },
+      data: { stato: 'RIFIUTATA' },
+    })
+    await aggiungiAnnotazioni(owner, s, 2026, 5, 5)
+    await expect(genera(s)).rejects.toBeInstanceOf(EsportazioneRifiutataInCatenaError)
+    expect(await righe(s)).toHaveLength(2)
   })
 
   it('registro non collegato o con la chiusura in corso: nessun file', async () => {
