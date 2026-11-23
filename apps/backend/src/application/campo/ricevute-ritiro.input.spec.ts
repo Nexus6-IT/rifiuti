@@ -34,7 +34,21 @@ describe('normalizzaRicevutaCampo', () => {
   it('normalizza il nome (spazi) e rifiuta nomi troppo corti, lunghi o senza lettere', () => {
     const ok = normalizzaRicevutaCampo(base({ firmatarioNome: '  Mario   Rossi ' }))
     expect(ok.ok && ok.valori.firmatarioNome).toBe('Mario Rossi')
-    for (const n of ['', ' ', 'A', '12345', 'x'.repeat(121), 'Mario\u0000Rossi', 42]) {
+    for (const n of [
+      '',
+      ' ',
+      'A',
+      '12345',
+      'x'.repeat(121),
+      'Mario\u0000Rossi',
+      'Mario\u202eRossi',
+      'Mario\u2066Rossi',
+      'Mario\u200bRossi',
+      'Mario\u200fRossi',
+      'Mario\ufeffRossi',
+      'Mario\u2060Rossi',
+      42,
+    ]) {
       expect(normalizzaRicevutaCampo(base({ firmatarioNome: n })).ok).toBe(false)
     }
   })

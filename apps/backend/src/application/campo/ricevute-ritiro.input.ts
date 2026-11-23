@@ -38,6 +38,13 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
 const EMAIL = /^[^\s@<>()[\],;:\\"]+@[^\s@<>()[\],;:\\"]+\.[^\s@<>()[\],;:\\"]{2,}$/
 const ANNO_MINIMO = 2020
 const ANNO_MASSIMO = 2100
+/**
+ * Nel nome non ammessi: controlli C0/C1/DEL, bidirezionali (LRE..RLO, isolati, ALM) e invisibili
+ * (zero-width, word joiner, BOM, separatori di riga/paragrafo): falserebbero la resa nel PDF.
+ */
+const CARATTERI_VIETATI_NOME =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/
 const LUNGHEZZA_EMAIL_MASSIMA = 254
 
 function leggiPng(base64: unknown): { png: Buffer; w: number; h: number } | string {
@@ -89,8 +96,7 @@ export function normalizzaRicevutaCampo(grezzo: {
   let nome: string | null = null
   if (typeof grezzo.firmatarioNome === 'string') {
     const grezzoNome = grezzo.firmatarioNome
-    // eslint-disable-next-line no-control-regex
-    if (!/[\u0000-\u001f\u007f]/.test(grezzoNome)) {
+    if (!CARATTERI_VIETATI_NOME.test(grezzoNome)) {
       const pulito = grezzoNome.replace(/\s+/g, ' ').trim()
       if (
         pulito.length >= LUNGHEZZA_NOME_FIRMATARIO.min &&
