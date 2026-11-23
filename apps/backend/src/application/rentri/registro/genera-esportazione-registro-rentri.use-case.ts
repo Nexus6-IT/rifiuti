@@ -266,8 +266,9 @@ export class GeneraEsportazioneRegistroRentriUseCase {
       throw new EregiNonDisponibileError('non ancora scaricato')
     }
 
+    // Catena VIVA: le esportazioni sostituite (`SOSTITUITA`) restano per audit ma non ne fanno parte.
     const salvate = await tx.esportazioneRegistroRentri.findMany({
-      where: { tenantId, registroId },
+      where: { tenantId, registroId, stato: { not: 'SOSTITUITA' } },
       select: selezioneSintesi,
     })
     const catena = ordinaCatena(salvate)

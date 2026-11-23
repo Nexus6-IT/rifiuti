@@ -46,7 +46,7 @@ export class EsportazioniRegistroRentriService {
     return TenantContext.run({ tenantId }, async () => await this.prisma.$transaction(fn))
   }
 
-  /** Dalla piu' recente alla piu' vecchia (come si legge nel pannello). */
+  /** Catena viva dalla piu' recente alla piu' vecchia (come nel pannello), poi le sostituite. */
   async elenca(tenantId: string, registroId: string): Promise<VoceElencoEsportazione[]> {
     return this.nelTenant(tenantId, async tx => {
       const registro = await tx.registroRifiuti.findFirst({
@@ -69,24 +69,28 @@ export class EsportazioniRegistroRentriService {
           precedenteId: true,
           messaggi: true,
           creataDa: true,
+          createdAt: true,
         },
       })
-      return ordinaCatena(righe)
-        .reverse()
-        .map(r => ({
-          id: r.id,
-          anno: r.anno,
-          progressivoDa: r.progressivoDa,
-          progressivoA: r.progressivoA,
-          numeroRegistrazioni: r.numeroRegistrazioni,
-          dataCreazione: r.dataCreazione.toISOString(),
-          stato: r.stato,
-          firmato: r.firmato,
-          digestAbbreviato: r.digestValue ? r.digestValue.slice(0, 12) : null,
-          precedenteId: r.precedenteId,
-          messaggi: Array.isArray(r.messaggi) ? (r.messaggi as unknown as MessaggioSalvato[]) : [],
-          creataDa: r.creataDa,
-        }))
+      // Catena viva dalla piu' recente; in coda le sostituite (audit), dalla piu' recente.
+      const vive = righe.filter(r => r.stato !== 'SOSTITUITA')
+      const sostituite = righe
+        .filter(r => r.stato === 'SOSTITUITA')
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      return [...ordinaCatena(vive).reverse(), ...sostituite].map(r => ({
+        id: r.id,
+        anno: r.anno,
+        progressivoDa: r.progressivoDa,
+        progressivoA: r.progressivoA,
+        numeroRegistrazioni: r.numeroRegistrazioni,
+        dataCreazione: r.dataCreazione.toISOString(),
+        stato: r.stato,
+        firmato: r.firmato,
+        digestAbbreviato: r.digestValue ? r.digestValue.slice(0, 12) : null,
+        precedenteId: r.precedenteId,
+        messaggi: Array.isArray(r.messaggi) ? (r.messaggi as unknown as MessaggioSalvato[]) : [],
+        creataDa: r.creataDa,
+      }))
     })
   }
 

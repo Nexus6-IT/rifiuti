@@ -48,3 +48,13 @@ export class EregiNonDisponibileError extends DomainError {
     this.name = 'EregiNonDisponibileError'
   }
 }
+
+/** 409: si sostituisce solo una esportazione RIFIUTATA ancora nella catena viva. */
+export class EsportazioneNonSostituibileError extends DomainError {
+  constructor() {
+    super(
+      'Si può sostituire solo una esportazione rifiutata da RENTRI e ancora nella catena del registro.'
+    )
+    this.name = 'EsportazioneNonSostituibileError'
+  }
+}
