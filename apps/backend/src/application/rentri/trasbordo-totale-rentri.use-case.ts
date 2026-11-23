@@ -205,7 +205,7 @@ export class TrasbordoTotaleRentriUseCase {
     // --- 1. Precondizioni locali, PRIMA di qualunque rete ---
     const fir = await this.leggiFirLegato(firId, tenantId)
     await this.verificaModulo(tenantId)
-    const cfTenant = await this.cfDelTenant(tenantId)
+    const cfTenant = await this.identificativiTenant(tenantId)
     this.verificaTenantTrasportatore(fir, cfTenant)
     const nuovo = await this.trasportatori.findById(comando.trasportatoreId)
     if (!nuovo) {
@@ -421,7 +421,7 @@ export class TrasbordoTotaleRentriUseCase {
 
     const fir = await this.leggiFirLegato(firId, tenantId)
     await this.verificaModulo(tenantId)
-    const cfTenant = await this.cfDelTenant(tenantId)
+    const cfTenant = await this.identificativiTenant(tenantId)
 
     // Un invio in corso in un altro processo (prenotazione viva) ha la precedenza.
     const aperta = await this.sessioni.trovaAperta(tenantId, firId)
@@ -463,7 +463,7 @@ export class TrasbordoTotaleRentriUseCase {
     if (dellEnte.firmato) {
       throw this.firmaNonTua('Il trasbordo totale risulta già firmato.')
     }
-    if (dellEnte.identita.codiceFiscale !== cfTenant) {
+    if (!cfTenant.includes(dellEnte.identita.codiceFiscale)) {
       throw this.firmaNonTua(
         'Il trasbordo totale va firmato dal nuovo trasportatore, che non è la tua azienda: la firma di chi ha ' +
           'dichiarato il trasbordo, o di un’azienda estranea, non è ammessa.'
@@ -776,11 +776,11 @@ export class TrasbordoTotaleRentriUseCase {
   /** Il nuovo trasportatore non e' chi invia ne' chi ha gia' in carico il rifiuto (l'ultima tratta del FIR). */
   private verificaNuovoTrasportatore(
     fir: FIR,
-    cfTenant: string,
+    cfTenant: string[],
     corpo: TrasbordoTotaleRentri
   ): void {
     const cfNuovo = normalizzaCodiceFiscaleSoggetto(corpo.trasportatore.codice_fiscale)
-    if (cfNuovo === cfTenant) {
+    if (cfTenant.includes(cfNuovo)) {
       throw this.nonValido(
         'Il nuovo trasportatore è la tua stessa azienda: scegli il trasportatore a cui passi il rifiuto.'
       )
@@ -829,37 +829,44 @@ export class TrasbordoTotaleRentriUseCase {
     }
   }
 
-  /** CF (o P.IVA) del tenant, normalizzato. */
-  private async cfDelTenant(tenantId: string): Promise<string> {
+  /**
+   * Identificativi fiscali del tenant, normalizzati: codice fiscale E partita IVA. L'ente identifica un soggetto
+   * con `codice_fiscale` che WasteFlow compila con la P.IVA se c'e' (altrimenti il CF): per una ditta individuale
+   * il CF del tenant puo' essere quello personale e la P.IVA quella inviata, quindi si confrontano entrambi.
+   */
+  private async identificativiTenant(tenantId: string): Promise<string[]> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { codiceFiscale: true },
+      select: { codiceFiscale: true, partitaIva: true },
     })
-    if (!tenant?.codiceFiscale) {
+    const ids = [tenant?.codiceFiscale, tenant?.partitaIva]
+      .filter((v): v is string => !!v)
+      .map(normalizzaCodiceFiscaleSoggetto)
+    if (ids.length === 0) {
       throw DomainException.businessRuleViolation(
         'CF_TENANT_MANCANTE',
         "Codice fiscale dell'azienda non configurato: impossibile gestire il trasbordo totale. " +
           'Configuralo nei dati anagrafici del tenant.'
       )
     }
-    return normalizzaCodiceFiscaleSoggetto(tenant.codiceFiscale)
+    return [...new Set(ids)]
   }
 
-  /** Il CF del tenant deve essere di un trasportatore del FIR (principale o aggiuntivo), altrimenti 409. */
-  private verificaTenantTrasportatore(fir: FIR, cf: string): void {
+  /** Il CF o la P.IVA del tenant deve essere di un trasportatore del FIR (principale o aggiuntivo), altrimenti 409. */
+  private verificaTenantTrasportatore(fir: FIR, identificativi: string[]): void {
     // Contratto (formulari.yaml, `/trasbordo-totale`): lo invia il trasportatore che ha in carico il rifiuto.
     const soggetti = [fir.trasportatore, ...fir.trasportatoriAggiuntivi]
     const presente = soggetti.some(
       s =>
         s &&
         [s.codiceFiscale, s.partitaIva].some(
-          valore => valore && normalizzaCodiceFiscaleSoggetto(valore) === cf
+          valore => valore && identificativi.includes(normalizzaCodiceFiscaleSoggetto(valore))
         )
     )
     if (!presente) {
       throw DomainException.businessRuleViolation(
         'TRASBORDO_TOTALE_SOGGETTO_NON_NEL_FIR',
-        `Il codice fiscale della tua azienda (${cf}) non compare fra i trasportatori di questo formulario: ` +
+        `Il codice fiscale della tua azienda (${identificativi[0]}) non compare fra i trasportatori di questo formulario: ` +
           'il trasbordo totale lo può dichiarare solo il trasportatore che ha in carico il rifiuto.'
       )
     }

@@ -88,6 +88,8 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       azioni?: string[]
       esito?: Record<string, unknown>
       cfTenant?: string | null
+      /** P.IVA del tenant (default: assente nel mock, come i test storici). */
+      partitaIvaTenant?: string
       moduli?: string[]
       firma?: unknown
       /** `dati_trasbordo_totale` del dettaglio dell'ente (default: rispecchia lo storico). */
@@ -171,6 +173,7 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       tenant: {
         findUnique: jest.fn().mockResolvedValue({
           codiceFiscale: opzioni.cfTenant === undefined ? CF_TENANT : opzioni.cfTenant,
+          partitaIva: opzioni.partitaIvaTenant,
         }),
       },
     }
@@ -329,6 +332,22 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       })
       await nessunaRete(a)
       await nessunaRete(b)
+    })
+
+    it('ditta individuale: il tenant con CF personale e P.IVA e riconosciuto nel FIR con la sola P.IVA, e non puo essere il nuovo trasportatore con la P.IVA', async () => {
+      const a = ambiente({ cfTenant: 'RSSMRA80A01H501U', partitaIvaTenant: CF_TENANT })
+      await expect(a.useCase.invia(comando())).resolves.toMatchObject({
+        operazione: 'TrasbordoTotale',
+      })
+
+      const stessa = ambiente({
+        cfTenant: 'RSSMRA80A01H501U',
+        partitaIvaTenant: CF_NUOVO,
+        fir: creaFir({ trasportatore: parte(CF_NUOVO) }),
+      })
+      await expect(stessa.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'TRASBORDO_TOTALE_NON_VALIDO' }),
+      })
     })
 
     it('il tenant puo essere un trasportatore aggiuntivo del FIR', async () => {
@@ -783,6 +802,16 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       })
       return a
     }
+
+    it('ditta individuale: CF personale nel tenant ma l ente ha la P.IVA come identificativo: la firma e comunque del tenant (confronto anche con la P.IVA)', async () => {
+      const a = ambienteNuovoTrasportatore({
+        cfTenant: 'RSSMRA80A01H501U',
+        partitaIvaTenant: CF_NUOVO,
+      })
+      const esito = await a.useCase.firma({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+      expect(esito).toMatchObject({ esito: 'COMPLETATA' })
+      expect(a.completa.execute).toHaveBeenCalledTimes(1)
+    })
 
     it('il nuovo trasportatore firma dal ciclo comune (una authorize), con tipo TRASBORDO_TOTALE, e lo storico registra la firma', async () => {
       const a = ambienteNuovoTrasportatore()
