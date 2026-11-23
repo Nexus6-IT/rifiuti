@@ -133,6 +133,13 @@ export interface EsitoTrasbordoTotale {
   firma: { esito: 'DA_FIRMARE_DAL_NUOVO_TRASPORTATORE'; avviso: string }
 }
 
+/** Esito di `POST /rentri/fir/:id/trasbordo-totale/verifica` («Verifica con l'ente»). */
+export interface EsitoVerificaTrasbordoTotale {
+  operazione: 'TrasbordoTotale'
+  /** `PRESENTE`: l'ente ha il trasbordo; `ASSENTE`: non risulta e l'invio e' chiuso; altrimenti nulla da verificare. */
+  esito: 'PRESENTE' | 'ASSENTE' | 'NIENTE_DA_VERIFICARE'
+}
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
@@ -338,6 +345,20 @@ export class RentriFirLifecycleService {
     dati: DatiTrasbordoTotale
   ): Observable<EsitoTrasbordoTotale> {
     return this.http.post<EsitoTrasbordoTotale>(`${this.API_URL}/${firId}/trasbordo-totale`, dati)
+  }
+
+  /**
+   * «Verifica con l'ente»: chiude un invio di trasbordo totale rimasto senza esito. Solo lettura presso l'ente e
+   * tratta locale se il trasbordo c'e': nessun nuovo invio, nessuna firma.
+   */
+  verificaTrasbordoTotale(
+    firId: string,
+    payload: { correlationId?: string } = {}
+  ): Observable<EsitoVerificaTrasbordoTotale> {
+    return this.http.post<EsitoVerificaTrasbordoTotale>(
+      `${this.API_URL}/${firId}/trasbordo-totale/verifica`,
+      payload
+    )
   }
 
   /** «Firma il trasbordo totale»: solo il NUOVO trasportatore (lo verifica il backend prima della richiesta). */

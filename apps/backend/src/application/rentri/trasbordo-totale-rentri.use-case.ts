@@ -100,6 +100,22 @@ export interface ComandoRiprendiInvioTrasbordoTotale {
   correlationId?: string
 }
 
+/** Comando di {@link TrasbordoTotaleRentriUseCase.verifica}. */
+export interface ComandoVerificaTrasbordoTotale {
+  firId: string
+  tenantId: string
+  utenteId?: string
+  correlationId?: string
+}
+
+/** Esito della riconciliazione di un invio senza esito. */
+export type EsitoRiconciliazione = 'PRESENTE' | 'ASSENTE' | 'NIENTE_DA_VERIFICARE'
+
+export interface EsitoVerificaTrasbordoTotale {
+  operazione: string
+  esito: EsitoRiconciliazione
+}
+
 export interface ComandoFirmaTrasbordoTotale {
   firId: string
   tenantId: string
@@ -325,7 +341,7 @@ export class TrasbordoTotaleRentriUseCase {
         'TRASBORDO_TOTALE_ESITO_INCERTO',
         'Non sappiamo se l’ente ha registrato il trasbordo totale (nessuna risposta o esito non arrivato). ' +
           'WasteFlow non ha aggiunto il nuovo trasportatore al formulario e non lo reinvia da solo: attendi qualche ' +
-          'minuto e riapri il formulario, la verifica con l’ente è automatica al prossimo tentativo.'
+          'minuto, poi usa «Verifica con l’ente» nel dettaglio del formulario.'
       )
     }
 
@@ -377,6 +393,21 @@ export class TrasbordoTotaleRentriUseCase {
       correlationId,
     })
     return { statoDopo, trattaLocaleCreata }
+  }
+
+  /**
+   * «Verifica con l'ente»: azione esplicita dell'utente per chiudere un invio rimasto senza esito (`INVIATA` o
+   * `INCERTA`) quando non c'e' altro modo di arrivarci dall'interfaccia. Esegue SOLO la riconciliazione, sotto
+   * prenotazione: nessun `/azioni`, nessun POST, nessuna authorize. Esiti: `PRESENTE` (l'ente ha il trasbordo:
+   * ACCETTATA riconciliata e tratta locale), `ASSENTE` (finestra passata e nulla presso l'ente: RIFIUTATA),
+   * `NIENTE_DA_VERIFICARE`; ancora in elaborazione = 409 `TRASBORDO_TOTALE_IN_VERIFICA`.
+   */
+  async verifica(comando: ComandoVerificaTrasbordoTotale): Promise<EsitoVerificaTrasbordoTotale> {
+    const { firId, tenantId, utenteId, correlationId } = comando
+    const fir = await this.leggiFirLegato(firId, tenantId)
+    await this.verificaModulo(tenantId)
+    const esito = await this.riconciliaSottoPrenotazione(fir, tenantId, utenteId, correlationId)
+    return { operazione: OPERAZIONE_INVIO, esito }
   }
 
   /**
@@ -535,11 +566,11 @@ export class TrasbordoTotaleRentriUseCase {
     tenantId: string,
     utenteId: string | undefined,
     correlationId?: string
-  ): Promise<void> {
-    if (!(await this.invioSenzaEsito(tenantId, fir.id))) return
+  ): Promise<EsitoRiconciliazione> {
+    if (!(await this.invioSenzaEsito(tenantId, fir.id))) return 'NIENTE_DA_VERIFICARE'
     const prenotazione = await this.prenotaInvio(tenantId, fir.id, utenteId)
     try {
-      await this.riconciliaInvioSenzaEsito(fir, tenantId, correlationId)
+      return await this.riconciliaInvioSenzaEsito(fir, tenantId, correlationId)
     } finally {
       await this.rilascia(prenotazione)
     }
@@ -569,9 +600,9 @@ export class TrasbordoTotaleRentriUseCase {
     fir: FIR,
     tenantId: string,
     correlationId?: string
-  ): Promise<void> {
+  ): Promise<EsitoRiconciliazione> {
     const pendente = await this.invioSenzaEsito(tenantId, fir.id)
-    if (!pendente) return
+    if (!pendente) return 'NIENTE_DA_VERIFICARE'
 
     const inviato = corpoDaPayload(pendente.payload)
 
@@ -634,7 +665,7 @@ export class TrasbordoTotaleRentriUseCase {
           correlationId,
         }
       )
-      return
+      return 'PRESENTE'
     }
 
     if (
@@ -665,6 +696,7 @@ export class TrasbordoTotaleRentriUseCase {
       eventoId: pendente.id,
       correlationId,
     })
+    return 'ASSENTE'
   }
 
   /**

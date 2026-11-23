@@ -510,16 +510,28 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   nuovo trasportatore, che deve confermare dal suo accesso o dall'app RENTRI FIR
                   Digitale.
                 </p>
-                @if (trasbordoDaVerificare()) {
-                  <p
-                    class="firma-in-attesa__testo"
-                    data-testid="fir-detail-trasbordo-totale-verifica"
-                  >
-                    <i class="pi pi-info-circle" aria-hidden="true"></i>
-                    L'esito dell'invio non era arrivato: alla prossima operazione WasteFlow verifica
-                    presso l'ente se il trasbordo è stato registrato.
-                  </p>
-                }
+              </div>
+            }
+            @if (canVerificareTrasbordoTotale(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-trasbordo-totale-verifica"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-info-circle" aria-hidden="true"></i>
+                  L'esito dell'invio del trasbordo totale non è arrivato. WasteFlow non lo reinvia
+                  da solo: controlla con l'ente se il trasbordo è stato registrato.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Verifica con l'ente"
+                    icon="pi pi-refresh"
+                    [loading]="verificaTrasbordoInCorso()"
+                    (onClick)="verificaTrasbordoTotale(f)"
+                    data-testid="fir-detail-trasbordo-totale-verifica-btn"
+                  />
+                </div>
               </div>
             }
             @if (sessioneFirma(); as sessione) {
@@ -1891,6 +1903,7 @@ export class FirDetailComponent implements OnInit {
   // --- Trasbordo totale (FIR in viaggio, P6) ---
   protected readonly trasbordoDialogVisible = signal(false)
   protected readonly trasbordoInCorso = signal(false)
+  protected readonly verificaTrasbordoInCorso = signal(false)
   protected readonly trasbordoErrore = signal<string | null>(null)
   protected readonly trasbordoTrasportatori = signal<Trasportatore[]>([])
   protected tbTrasportatoreId: string | null = null
@@ -2334,6 +2347,7 @@ export class FirDetailComponent implements OnInit {
       this.canDichiararTrasbordoTotale(fir) ||
       this.canFirmareTrasbordoTotale(fir) ||
       this.trasbordoInAttesaDelNuovo(fir) ||
+      this.canVerificareTrasbordoTotale(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
@@ -2802,7 +2816,15 @@ export class FirDetailComponent implements OnInit {
       : 'a un nuovo trasportatore'
   }
 
-  /** L'esito dell'invio e' ignoto (INVIATA/INCERTA): il backend lo riconcilia con l'ente alla prossima operazione. */
+  /**
+   * Il pulsante «Verifica con l'ente» c'e' finche' l'ultimo invio nostro e' senza esito, qualunque cosa proponga
+   * `/azioni` (il nuovo trasportatore puo' avere gia' firmato). Ruolo abilitato e FIR legato, come le altre azioni.
+   */
+  canVerificareTrasbordoTotale(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI() && this.trasbordoDaVerificare()
+  }
+
+  /** L'esito dell'invio e' ignoto (INVIATA/INCERTA): si chiude con «Verifica con l'ente». */
   protected trasbordoDaVerificare(): boolean {
     const esito = this.trasbordoInSospeso()?.esito
     return esito === 'INVIATA' || esito === 'INCERTA'
@@ -2909,7 +2931,7 @@ export class FirDetailComponent implements OnInit {
           const codice = (err as { error?: { codice?: string } })?.error?.codice
           if (codice === 'TRASBORDO_TOTALE_ESITO_INCERTO') {
             // Esito ignoto: niente secondo invio a caldo. Si chiude il dialog e si ricarica; la verifica con
-            // l'ente la fa il backend alla prossima operazione.
+            // l'ente si chiede dal pulsante «Verifica con l'ente».
             this.trasbordoDialogVisible.set(false)
             this.messageService.add({
               severity: 'warn',
@@ -2927,6 +2949,47 @@ export class FirDetailComponent implements OnInit {
           this.reload()
         },
       })
+  }
+
+  verificaTrasbordoTotale(fir: FIR): void {
+    if (this.verificaTrasbordoInCorso()) return
+    this.verificaTrasbordoInCorso.set(true)
+    this.rentriFirLifecycleService.verificaTrasbordoTotale(fir.id).subscribe({
+      next: esito => {
+        this.verificaTrasbordoInCorso.set(false)
+        const messaggi = {
+          PRESENTE: {
+            severity: 'success',
+            detail:
+              "L'ente ha registrato il trasbordo totale: il nuovo trasportatore è stato aggiunto al formulario.",
+          },
+          ASSENTE: {
+            severity: 'warn',
+            detail:
+              "L'ente non mostra nessun trasbordo totale: l'invio è chiuso come non riuscito e puoi dichiararlo di nuovo.",
+          },
+          NIENTE_DA_VERIFICARE: {
+            severity: 'info',
+            detail: 'Non c’è nessun invio da verificare.',
+          },
+        } as const
+        this.messageService.add({
+          summary: 'Verifica con l’ente',
+          ...messaggi[esito.esito],
+        })
+        this.reload()
+      },
+      error: err => {
+        this.verificaTrasbordoInCorso.set(false)
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Verifica con l’ente non conclusa',
+          detail: this.extractError(err, 'Impossibile verificare il trasbordo totale con l’ente'),
+          life: 10000,
+        })
+        this.reload()
+      },
+    })
   }
 
   firmaTrasbordoTotale(fir: FIR): void {

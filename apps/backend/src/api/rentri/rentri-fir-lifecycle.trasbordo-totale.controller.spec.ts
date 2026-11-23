@@ -18,7 +18,7 @@ import { DomainException } from '../../domain/shared/domain-exception'
 describe('RentriFirLifecycleController — trasbordo totale', () => {
   const REQ = { user: { id: 'u1', role: 'ADMIN', tenantId: 'A' } }
   const ruolo = { ruoloEffettivo: jest.fn() }
-  const trasbordo = { invia: jest.fn(), firma: jest.fn() }
+  const trasbordo = { invia: jest.fn(), firma: jest.fn(), verifica: jest.fn() }
   let controller: RentriFirLifecycleController
 
   const dto = (extra: Record<string, unknown> = {}) =>
@@ -176,6 +176,54 @@ describe('RentriFirLifecycleController — trasbordo totale', () => {
       expect(await validate(dto({ annotazioni: 'x'.repeat(10001) }))).not.toHaveLength(0)
       expect(await validate(dto({ dataOraInizioTrasporto: undefined }))).not.toHaveLength(0)
       expect(await validate(dto({ presaInCaricoRimorchioPrecedente: 'si' }))).not.toHaveLength(0)
+    })
+  })
+
+  describe('POST :id/trasbordo-totale/verifica', () => {
+    it('ruolo effettivo nell azienda selezionata, poi solo la verifica con l ente', async () => {
+      const esito = { operazione: 'TrasbordoTotale', esito: 'PRESENTE' }
+      trasbordo.verifica.mockResolvedValue(esito)
+
+      const r = await controller.verificaTrasbordoTotale(
+        'f',
+        { correlationId: 'c1' },
+        'B',
+        'u1',
+        REQ
+      )
+
+      expect(r).toBe(esito)
+      expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(REQ.user, 'B')
+      expect(trasbordo.verifica).toHaveBeenCalledWith({
+        firId: 'f',
+        tenantId: 'B',
+        utenteId: 'u1',
+        correlationId: 'c1',
+      })
+      expect(trasbordo.invia).not.toHaveBeenCalled()
+      expect(trasbordo.firma).not.toHaveBeenCalled()
+    })
+
+    it('VIEWER: 403 e nessuna verifica; IN_VERIFICA e SESSIONE_FIRMA_IN_CORSO: 409 con codice; FIR inesistente: 404', async () => {
+      ruolo.ruoloEffettivo.mockResolvedValueOnce('VIEWER')
+      await expect(
+        controller.verificaTrasbordoTotale('f', {}, 'B', 'u1', REQ)
+      ).rejects.toBeInstanceOf(ForbiddenException)
+      expect(trasbordo.verifica).not.toHaveBeenCalled()
+
+      for (const codice of ['TRASBORDO_TOTALE_IN_VERIFICA', 'SESSIONE_FIRMA_IN_CORSO']) {
+        trasbordo.verifica.mockRejectedValue(DomainException.businessRuleViolation(codice, 'No.'))
+        const errore = await controller
+          .verificaTrasbordoTotale('f', {}, 'B', 'u1', REQ)
+          .catch(e => e)
+        expect(errore).toBeInstanceOf(ConflictException)
+        expect(errore.getResponse()).toMatchObject({ codice })
+      }
+
+      trasbordo.verifica.mockRejectedValue(DomainException.notFound('FIR', 'f'))
+      await expect(
+        controller.verificaTrasbordoTotale('f', {}, 'B', 'u1', REQ)
+      ).rejects.toBeInstanceOf(NotFoundException)
     })
   })
 

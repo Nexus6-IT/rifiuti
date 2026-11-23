@@ -701,6 +701,51 @@ describe('P6 — trasbordo totale contro la fake RENTRI (in-process)', () => {
       }
     }, 60000)
 
+    it('INCERTA -> il nuovo trasportatore firma -> «Verifica con l ente» del mittente: PRESENTE, tratta una volta sola, nessun POST ne authorize', async () => {
+      const tenantId = 'tenant-oracolo-p6-r3'
+      const numeroFir = 'BCDFGH00089ZH'
+      const { fir, client, trasbordo, eventi, datiViaggio } = await preparaMittente(
+        numeroFir,
+        tenantId,
+        'InserimentoAccettazione'
+      )
+      const invia = rispostaPersaDopoIlPost(client)
+      const completatore = avviaCompletatore()
+
+      try {
+        await expect(
+          trasbordo.invia({ firId: fir.id, tenantId, ...COMANDO })
+        ).rejects.toMatchObject({ metadata: { rule: 'TRASBORDO_TOTALE_ESITO_INCERTO' } })
+        expect(datiViaggio.righe.get(fir.id)!.tratteAggiuntive).toEqual([])
+
+        // Il nuovo trasportatore firma prima che il mittente abbia riconciliato.
+        const nuovo = await azienda(numeroFir, 'tenant-oracolo-p6-r3-nuovo', CF_NUOVO)
+        agganciaConfermaAutomatica(nuovo.client)
+        await nuovo.trasbordo.firma({
+          firId: nuovo.fir.id,
+          tenantId: 'tenant-oracolo-p6-r3-nuovo',
+          utenteId: 'u-2',
+          ...TEMPI,
+        })
+
+        const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
+        const esito = await trasbordo.verifica({ firId: fir.id, tenantId, utenteId: 'u-1' })
+        expect(esito).toEqual({ operazione: 'TrasbordoTotale', esito: 'PRESENTE' })
+        await trasbordo.verifica({ firId: fir.id, tenantId, utenteId: 'u-1' })
+
+        expect(invia).toHaveBeenCalledTimes(1)
+        expect(authorize).not.toHaveBeenCalled()
+        expect(datiViaggio.righe.get(fir.id)!.tratteAggiuntive).toHaveLength(1)
+        expect(await storico(eventi, tenantId, fir.id)).toEqual([
+          ['TrasbordoTotale', 'INVIATA'],
+          ['TrasbordoTotale', 'INCERTA'],
+          ['TrasbordoTotale', 'ACCETTATA'],
+        ])
+      } finally {
+        completatore.ferma()
+      }
+    }, 60000)
+
     it('INCERTA -> assente: l ente non lo mostra, passata la finestra si chiude RIFIUTATA e si reinvia UNA volta; la tratta nasce solo dal reinvio', async () => {
       const tenantId = 'tenant-oracolo-p6-r2'
       const numeroFir = 'BCDFGH00088ZH'

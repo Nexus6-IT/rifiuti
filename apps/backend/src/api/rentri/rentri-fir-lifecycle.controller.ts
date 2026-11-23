@@ -74,6 +74,7 @@ import {
 import { SostaTecnicaFirRentriDto } from './dto/sosta-tecnica-fir-rentri.dto'
 import {
   EsitoTrasbordoTotale,
+  EsitoVerificaTrasbordoTotale,
   TrasbordoTotaleRentriUseCase,
 } from '../../application/rentri/trasbordo-totale-rentri.use-case'
 import { TrasbordoTotaleFirRentriDto } from './dto/trasbordo-totale-fir-rentri.dto'
@@ -1086,6 +1087,45 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Firma trasbordo totale RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * «Verifica con l'ente» (FIR in viaggio, P6): chiude un invio di trasbordo totale rimasto senza esito. Fa solo
+   * la riconciliazione (lettura presso l'ente, tratta locale se il trasbordo c'e'): nessun nuovo invio, nessuna firma.
+   */
+  @Post(':id/trasbordo-totale/verifica')
+  @ApiOperation({
+    summary: 'Verifica con l’ente un trasbordo totale rimasto senza esito',
+    description:
+      "Legge il formulario presso l'ente e chiude l'invio rimasto senza esito: se il trasbordo c'e' aggiunge il nuovo trasportatore al formulario (una volta sola), se non c'e' piu' dopo la finestra di attesa lo segna non riuscito. Non invia nulla e non chiede firme.",
+  })
+  @ApiResponse({ status: 201, description: 'PRESENTE, ASSENTE o NIENTE_DA_VERIFICARE' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'TRASBORDO_TOTALE_IN_VERIFICA o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async verificaTrasbordoTotale(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoVerificaTrasbordoTotale> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Verifica trasbordo totale RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.trasbordoTotaleUseCase.verifica({
+        firId,
+        tenantId,
+        utenteId: userId,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Verifica trasbordo totale RENTRI non riuscita', error, { firId, tenantId })
       throw this.mappaErroreDominio(error)
     }
   }

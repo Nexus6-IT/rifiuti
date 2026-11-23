@@ -107,6 +107,7 @@ describe('FirDetailComponent', () => {
       'firmaSostaTecnica',
       'dichiaraTrasbordoTotale',
       'firmaTrasbordoTotale',
+      'verificaTrasbordoTotale',
       'eventi',
       'ultimoTrasporto',
     ])
@@ -3498,6 +3499,91 @@ describe('FirDetailComponent', () => {
       rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoTrasbordo('INCERTA')] }))
       fixture.detectChanges()
       expect(el().querySelector(BANNER_ATTESA)).toBeTruthy()
+    })
+
+    describe('«Verifica con l ente» (esito incerto del mittente)', () => {
+      const VERIFICA = '[data-testid="fir-detail-trasbordo-totale-verifica"]'
+      const PULSANTE = '[data-testid="fir-detail-trasbordo-totale-verifica-btn"]'
+
+      for (const esito of ['INCERTA', 'INVIATA'] as const) {
+        it(`invio ${esito}: compare il pulsante, anche se /azioni non propone piu la firma (il nuovo ha gia firmato); il testo non promette una verifica automatica`, () => {
+          preparaFirLegato('OPERATOR', firLegato, 'Reset')
+          rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoTrasbordo(esito)] }))
+          fixture.detectChanges()
+          expect(el().querySelector(PULSANTE)).toBeTruthy()
+          const testo = el().querySelector(VERIFICA)?.textContent ?? ''
+          expect(testo).toContain('non lo reinvia da solo')
+          expect(testo).not.toContain('alla prossima operazione')
+        })
+      }
+
+      it('nessun pulsante con un invio accettato', () => {
+        preparaFirLegato('OPERATOR', firLegato, 'AcquisizioneFirmaTrasbordoTotale', 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(of({ eventi: [eventoTrasbordo()] }))
+        fixture.detectChanges()
+        expect(el().querySelector(PULSANTE)).toBeFalsy()
+      })
+
+      it('nessun pulsante con un invio chiuso come rifiutato', () => {
+        preparaFirLegato('OPERATOR', firLegato, 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [{ ...eventoTrasbordo('INCERTA'), esito: 'RIFIUTATA' }] })
+        )
+        fixture.detectChanges()
+        expect(el().querySelector(PULSANTE)).toBeFalsy()
+      })
+
+      it('nessun pulsante per un utente che non gestisce RENTRI (VIEWER)', () => {
+        preparaFirLegato('VIEWER', firLegato, 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [eventoTrasbordo('INCERTA')] })
+        )
+        fixture.detectChanges()
+        expect(el().querySelector(PULSANTE)).toBeFalsy()
+      })
+
+      it('il click chiama solo la verifica, mostra l esito e ricarica', () => {
+        preparaFirLegato('OPERATOR', firLegato, 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [eventoTrasbordo('INCERTA')] })
+        )
+        rentriFirLifecycleService.verificaTrasbordoTotale.and.returnValue(
+          of({ operazione: 'TrasbordoTotale', esito: 'PRESENTE' })
+        )
+        fixture.detectChanges()
+        const aggiungi = spyOn(messageService, 'add')
+
+        ;(el().querySelector(PULSANTE) as HTMLElement).querySelector('button')?.click()
+
+        expect(rentriFirLifecycleService.verificaTrasbordoTotale).toHaveBeenCalledOnceWith('fir-1')
+        expect(rentriFirLifecycleService.dichiaraTrasbordoTotale).not.toHaveBeenCalled()
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ severity: 'success', summary: 'Verifica con l’ente' })
+        )
+        expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+      })
+
+      it('409 IN_VERIFICA: messaggio chiaro, nessun crash, il pulsante torna disponibile', () => {
+        preparaFirLegato('OPERATOR', firLegato, 'Reset')
+        rentriFirLifecycleService.eventi.and.returnValue(
+          of({ eventi: [eventoTrasbordo('INCERTA')] })
+        )
+        rentriFirLifecycleService.verificaTrasbordoTotale.and.returnValue(
+          throwError(() => ({
+            status: 409,
+            error: { codice: 'TRASBORDO_TOTALE_IN_VERIFICA', message: 'Ancora in elaborazione.' },
+          }))
+        )
+        fixture.detectChanges()
+        const aggiungi = spyOn(messageService, 'add')
+
+        component.verificaTrasbordoTotale(firLegato)
+
+        expect(aggiungi).toHaveBeenCalledWith(
+          jasmine.objectContaining({ severity: 'warn', detail: 'Ancora in elaborazione.' })
+        )
+        expect(component['verificaTrasbordoInCorso']()).toBeFalse()
+      })
     })
 
     it('lo storico nomina il trasbordo totale e la sua firma', () => {

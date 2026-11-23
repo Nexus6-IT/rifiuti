@@ -684,6 +684,74 @@ describe('TrasbordoTotaleRentriUseCase', () => {
       expect(a.datiViaggio.scritture).toEqual([])
     })
 
+    it('verifica esplicita: trasbordo presso l ente = PRESENTE, tratta creata, nessun /azioni, nessun POST, prenotazione rilasciata', async () => {
+      const a = ambiente({ trasbordo: presenteNonFirmato })
+      await invioSenzaEsito(a, 'INCERTA', null)
+
+      const esito = await a.useCase.verifica({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
+
+      expect(esito).toEqual({ operazione: 'TrasbordoTotale', esito: 'PRESENTE' })
+      expect(await esitiTrasbordo(a)).toEqual(['INCERTA', 'ACCETTATA'])
+      expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
+      expect(a.getAzioni.execute).not.toHaveBeenCalled()
+      expect(a.client.inviaTrasbordoTotale).not.toHaveBeenCalled()
+      expect(a.completa.execute).not.toHaveBeenCalled()
+      expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+    })
+
+    it('verifica esplicita: assente dopo la finestra = ASSENTE (RIFIUTATA), nessuna tratta; dentro la finestra = 409 IN_VERIFICA; senza invii in sospeso = NIENTE_DA_VERIFICARE', async () => {
+      const assente = ambiente({ trasbordo: null })
+      await invioSenzaEsito(assente, 'INVIATA', null, 24 * 3600_000)
+      await expect(
+        assente.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).resolves.toMatchObject({ esito: 'ASSENTE' })
+      expect(await esitiTrasbordo(assente)).toEqual(['INVIATA', 'RIFIUTATA'])
+      expect(assente.datiViaggio.scritture).toEqual([])
+
+      const dentro = ambiente({ trasbordo: null })
+      await invioSenzaEsito(dentro, 'INCERTA', null)
+      await expect(
+        dentro.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'TRASBORDO_TOTALE_IN_VERIFICA' }),
+      })
+      expect(await dentro.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
+
+      const nulla = ambiente()
+      await expect(
+        nulla.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).resolves.toMatchObject({ esito: 'NIENTE_DA_VERIFICARE' })
+      expect(nulla.client.leggiFormulario).not.toHaveBeenCalled()
+    })
+
+    it('verifica esplicita: modulo spento, FIR non legato, invio in corso (prenotazione viva)', async () => {
+      await expect(
+        ambiente({ moduli: ['fir'] }).useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).rejects.toMatchObject({ metadata: expect.objectContaining({ rule: 'MODULO_NON_ATTIVO' }) })
+      await expect(
+        ambiente({ fir: creaFir({ legato: false }) }).useCase.verifica({
+          firId: FIR_ID,
+          tenantId: TENANT,
+        })
+      ).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'FIR_NON_LEGATO_RENTRI' }),
+      })
+
+      const a = ambiente({ trasbordo: presenteNonFirmato })
+      await invioSenzaEsito(a, 'INCERTA', null)
+      await a.sessioni.prenota({
+        tenantId: TENANT,
+        firId: FIR_ID,
+        tipoOperazione: tipoPrenotazioneInvioTrasbordoTotale(),
+        scadenza: new Date(Date.now() + 60_000),
+        utenteId: 'u1',
+      })
+      await expect(a.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'SESSIONE_FIRMA_IN_CORSO' }),
+      })
+      expect(a.client.leggiFormulario).not.toHaveBeenCalled()
+    })
+
     it('un errore nel leggere il dettaglio dell’ente si propaga (fail-closed)', async () => {
       const a = ambiente()
       await invioSenzaEsito(a, 'INCERTA', null)
