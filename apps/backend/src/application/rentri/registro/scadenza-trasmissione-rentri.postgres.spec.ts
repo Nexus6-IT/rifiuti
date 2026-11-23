@@ -137,6 +137,16 @@ describe('E0: termine della trasmissione mensile nelle impostazioni del registro
     await owner.$disconnect()
   })
 
+  it('E3: un registro chiuso su RENTRI non ha termine (nessun invio possibile)', async () => {
+    const az = await azienda()
+    await movimento(az, '2026-02-10T10:00:00Z', 'NON_TRASMISSIBILE')
+    await owner.registroRifiuti.update({
+      where: { id: az.registroId },
+      data: { rentriChiusoIl: new Date('2026-05-01T00:00:00Z') },
+    })
+    expect(await termine(az)).toBeNull()
+  })
+
   it('registro senza annotazioni: nessun termine', async () => {
     const az = await azienda()
     expect(await termine(az)).toBeNull()

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	RENTRI
+	rentri-registro-1.0.xsd
+
+	16/04/2024 - Versione 1.0   - Primo rilascio
+	13/12/2024 - Versione 1.0.1 - Inserito maxOccurs a unbounded per l'elemento Signature per supportare la controfirma per la messa in conservazione
+-->
+<xs:schema xmlns:reg="urn:it:rentri:registri:1.0" xmlns:mov="urn:it:rentri:movimenti:1.0" xmlns:com="urn:it:rentri:common:1.0" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:it:rentri:registri:1.0" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:import namespace="urn:it:rentri:movimenti:1.0" schemaLocation="rentri-movimenti-1.0.xsd"/>
+	<xs:import namespace="urn:it:rentri:common:1.0" schemaLocation="rentri-common-1.0.xsd"/>
+	<xs:import namespace="http://www.w3.org/2000/09/xmldsig#" schemaLocation="https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd"/>
+	<xs:element name="eREGI" type="reg:VidimazioneRegistro"/>
+	<xs:element name="Registro" type="reg:Registro"/>
+	<xs:simpleType name="VidimazioneRegistroV0">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="eREGI-CS-0"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="VidimazioneRegistro">
+		<xs:sequence>
+			<xs:element name="Identificativo" type="com:IdentificativoRegistro"/>
+			<xs:element name="Operatore" type="reg:Soggetto"/>
+			<xs:element name="SoggettoDelegato" type="reg:Soggetto" minOccurs="0"/>
+			<xs:element name="NumIscrSito" type="com:NumIscrSito"/>
+			<xs:element name="IndirizzoSito" type="xs:string"/>
+			<xs:element name="DataRichiesta" type="xs:dateTime"/>
+			<xs:element name="IdentificativoRichiesta" type="xs:string"/>
+			<xs:element name="AutoreRichiesta" type="xs:string"/>
+			<xs:element name="CCIAANome" type="xs:string"/>
+			<xs:element ref="ds:Signature" minOccurs="0"/>
+		</xs:sequence>
+		<xs:attribute name="Id" type="reg:VidimazioneRegistroV0" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="Soggetto">
+		<xs:sequence>
+			<xs:element name="NumIscr" type="xs:string"/>
+			<xs:element name="CodiceFiscale" type="com:CodiceFiscale"/>
+			<xs:element name="Denominazione" type="xs:string"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="Registro">
+		<xs:sequence>
+			<xs:element name="eREGI" type="reg:VidimazioneRegistro"/>
+			<xs:element name="RiferimentiPrecedenti" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence maxOccurs="unbounded">
+						<xs:element name="Ref" type="reg:RiferimentoDocumento"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="Registrazioni" type="reg:Registrazioni" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element ref="ds:Signature" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="Registrazioni">
+		<xs:choice maxOccurs="unbounded">
+			<xs:element name="Movimento" type="mov:Movimento"/>
+			<xs:element name="AnnullamentoMovimento" type="mov:AnnullamentoMovimento"/>
+		</xs:choice>
+		<xs:attribute name="Anno" type="xs:short" use="required"/>
+		<xs:attribute name="ProgressivoDa" type="xs:int" use="required"/>
+		<xs:attribute name="ProgressivoA" type="xs:int" use="required"/>
+		<xs:attribute name="NumeroRegistrazioni" type="xs:int" use="required"/>
+		<xs:attribute name="DataCreazione" type="xs:dateTime" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="RiferimentoDocumento">
+		<xs:attribute name="DigestValue" type="xs:string" use="required"/>
+		<xs:attribute name="DataCreazione" type="xs:dateTime" use="required"/>
+	</xs:complexType>
+</xs:schema>

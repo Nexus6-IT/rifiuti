@@ -902,7 +902,11 @@ export class DeadlineCheckerService {
         where: escludiPiattaforma({
           AND: [
             { OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO },
-            { registriRifiuti: { some: { identificativoRentri: { not: null } } } },
+            {
+              registriRifiuti: {
+                some: { identificativoRentri: { not: null }, rentriChiusoIl: null },
+              },
+            },
           ],
         }),
         select: { id: true, ragioneSociale: true },
@@ -946,7 +950,7 @@ export class DeadlineCheckerService {
   ): Promise<number> {
     const { registri, piuVecchie } = await this.nelContestoAzienda(tenantId, async () => ({
       registri: await this.prisma.registroRifiuti.findMany({
-        where: { tenantId, identificativoRentri: { not: null } },
+        where: { tenantId, identificativoRentri: { not: null }, rentriChiusoIl: null },
         select: { id: true, descrizione: true },
       }),
       piuVecchie: await this.prisma.$transaction(
