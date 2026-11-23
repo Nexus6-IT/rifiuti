@@ -2340,6 +2340,9 @@ model RegistroRifiuti {
   rentriAperturaDescrizione String?  @map("rentri_apertura_descrizione") @db.VarChar(250)
   /// Registro chiuso su RENTRI: niente piu' invii. CHECK: richiede l'identificativo.
   rentriChiusoIl           DateTime? @map("rentri_chiuso_il") @db.Timestamptz(3)
+  /// Prenotazione della chiusura su RENTRI (DELETE irreversibile, mai ritentata): ferma subito gli
+  /// invii e resta finche' l'esito e' incerto. A chiusura confermata si scrive `rentriChiusoIl`.
+  rentriChiusuraRichiestaIl DateTime? @map("rentri_chiusura_richiesta_il") @db.Timestamptz(3)
   /// Ultima lettura del registro da RENTRI (collegamento o modifica).
   rentriSincronizzatoIl    DateTime? @map("rentri_sincronizzato_il") @db.Timestamptz(3)
 

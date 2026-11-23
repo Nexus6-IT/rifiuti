@@ -62,6 +62,10 @@ export interface EsitoDichiarazione {
   movimentiNellIntervallo: number
 }
 
+/** Messaggio comune: annotazione su un registro chiuso su RENTRI (E3). */
+export const MESSAGGIO_REGISTRO_CHIUSO =
+  "Il registro è chiuso su RENTRI: l'annotazione resta nel registro locale ma non sarà trasmessa."
+
 const unici = <T>(xs: T[]) => [...new Set(xs)]
 
 @Injectable()
@@ -77,12 +81,29 @@ export class AccodaTrasmissioneRentriUseCase {
     return TenantContext.run({ tenantId }, async () => await this.prisma.$transaction(fn))
   }
 
-  private async registroDellAzienda(tx: Tx, tenantId: string, registroId: string) {
+  private async registroDellAzienda(
+    tx: Tx,
+    tenantId: string,
+    registroId: string,
+    ammettiChiuso = false
+  ) {
+    // eREGI E3: stesso lock dei lotti e della chiusura, preso PRIMA di leggere i flag: o la
+    // chiusura ha gia' prenotato (e qui si rifiuta) o questa transazione crea le righe prima del
+    // suo conteggio e la chiusura le trova. Stessa chiave di `escludi`/`reincludi`.
+    if (!ammettiChiuso) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
+    }
     const registro = await tx.registroRifiuti.findFirst({
       where: { id: registroId, tenantId },
-      select: { id: true },
+      select: { id: true, rentriChiusoIl: true, rentriChiusuraRichiestaIl: true },
     })
     if (!registro) throw new RegistroNonTrovatoError()
+    // eREGI E3: la registrazione locale e' nostra e resta; verso un registro chiuso non si accoda.
+    if (
+      !ammettiChiuso &&
+      (registro.rentriChiusoIl !== null || registro.rentriChiusuraRichiestaIl !== null)
+    )
+      throw new TrasmissioneNonModificabileError(MESSAGGIO_REGISTRO_CHIUSO)
   }
 
   /**
@@ -639,7 +660,7 @@ export class AccodaTrasmissioneRentriUseCase {
     }
 
     return this.nelTenant(tenantId, async tx => {
-      await this.registroDellAzienda(tx, tenantId, registroId)
+      await this.registroDellAzienda(tx, tenantId, registroId, true)
       const movimenti = await tx.wasteMovement.findMany({
         where: {
           tenantId,

@@ -34,6 +34,19 @@ describe('Registro: colonne di collegamento a RENTRI (M1) — Postgres reale', (
     await owner.$disconnect()
   })
 
+  it('E3: la prenotazione della chiusura richiede l identificativo e parte vuota', async () => {
+    const r = await registro()
+    expect(r.rentriChiusuraRichiestaIl).toBeNull()
+    await expect(registro({ rentriChiusuraRichiestaIl: new Date() })).rejects.toThrow(
+      /registri_rifiuti_chiusura_con_identificativo_check/
+    )
+    const ok = await registro({
+      identificativoRentri: 'RAB12CD34E5',
+      rentriChiusuraRichiestaIl: new Date(),
+    })
+    expect(ok.rentriChiusuraRichiestaIl).not.toBeNull()
+  })
+
   it('un registro nuovo ha liste vuote e nessuna data', async () => {
     const r = await registro()
     expect(r.rentriAttivita).toEqual([])
