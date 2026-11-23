@@ -3270,6 +3270,9 @@ enum StatoEsportazioneRegistroRentri {
   RIFIUTATA
   /// Errore tecnico (rete, 5xx, esito non leggibile): riprovabile con `rivalida`.
   VALIDAZIONE_NON_DISPONIBILE
+  /// Una persona (ADMIN) ha sostituito questo anello e le successive: restano per audit, escono dalla
+  /// catena viva. Stato terminale (trigger); nessun DELETE.
+  SOSTITUITA
 
   @@map("stato_esportazione_registro_rentri")
 }
@@ -3277,9 +3280,10 @@ enum StatoEsportazioneRegistroRentri {
 /// Esportazione XML firmata del registro cronologico (eREGI E6). Una riga per file generato: il
 /// contenuto (XML compresso gzip), il digest della firma e i numeri coperti non cambiano mai
 /// (trigger); cambiano solo lo stato e l'esito della validazione. La catena dei digest e'
-/// `precedente_id` (una sola successiva per esportazione, una sola prima per registro). Trigger,
-/// CHECK e indici parziali stanno solo nella migration: Prisma non li conosce, `migrate diff` resta
-/// pulito.
+/// `precedente_id` (una sola successiva viva per esportazione, una sola prima viva per registro: gli
+/// unici su `precedente_id`, `(registro_id, anno, progressivo_a)` e «prima» sono PARZIALI,
+/// `WHERE stato <> 'SOSTITUITA'`). Trigger, CHECK e indici parziali stanno solo nella migration:
+/// Prisma non li conosce, `migrate diff` resta pulito.
 model EsportazioneRegistroRentri {
   id                       String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                 String                          @map("tenant_id") @db.Uuid
@@ -3310,13 +3314,11 @@ model EsportazioneRegistroRentri {
   tenant     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "esportazioni_registro_rentri_tenant_fkey")
   registro   RegistroRifiuti              @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "esportazioni_registro_rentri_registro_fkey")
   precedente EsportazioneRegistroRentri?  @relation("CatenaEsportazioni", fields: [precedenteId, registroId, tenantId], references: [id, registroId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "esportazioni_registro_rentri_precedente_fkey")
-  /// Al massimo una (unico `precedente_id`); lista perche' Prisma non vede l'unico sul solo `precedente_id`.
+  /// Al massimo una viva (unico parziale su `precedente_id`); lista perche' Prisma non vede l'unico parziale.
   successive EsportazioneRegistroRentri[] @relation("CatenaEsportazioni")
 
   @@unique([id, tenantId], map: "esportazioni_registro_rentri_id_tenant_id_key")
   @@unique([id, registroId, tenantId], map: "esportazioni_registro_rentri_id_registro_tenant_key")
-  @@unique([registroId, anno, progressivoA], map: "esportazioni_registro_rentri_registro_anno_a_key")
-  @@unique([precedenteId], map: "esportazioni_registro_rentri_precedente_id_key")
   @@index([tenantId], map: "esportazioni_registro_rentri_tenant_id_idx")
   @@index([registroId, createdAt], map: "esportazioni_registro_rentri_registro_creata_idx")
   @@map("esportazioni_registro_rentri")

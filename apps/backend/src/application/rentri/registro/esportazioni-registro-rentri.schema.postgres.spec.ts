@@ -219,6 +219,58 @@ describe('Esportazioni XML del registro RENTRI, schema — Postgres reale, ruolo
       expect(seconda.precedenteId).toBe(prima.id)
     })
 
+    it('una esportazione SOSTITUITA esce dagli unici: la riga nuova riusa precedente e intervallo', async () => {
+      const az = await azienda()
+      const prima = await owner.esportazioneRegistroRentri.create({ data: dati(az) })
+      const seconda = await owner.esportazioneRegistroRentri.create({
+        data: dati(az, {
+          progressivoDa: 4,
+          progressivoA: 5,
+          numeroRegistrazioni: 2,
+          precedenteId: prima.id,
+          stato: 'RIFIUTATA',
+        }),
+      })
+      // Finche' e viva, la stessa successiva e lo stesso intervallo sono vietati.
+      const nuova = (extra: Record<string, unknown> = {}) =>
+        owner.esportazioneRegistroRentri.create({
+          data: dati(az, {
+            progressivoDa: 4,
+            progressivoA: 5,
+            numeroRegistrazioni: 2,
+            precedenteId: prima.id,
+            sha256File: sha('nuova'),
+            ...extra,
+          }),
+        })
+      expect(await errore(nuova())).toMatch(/Unique constraint|esportazioni_registro_rentri_/)
+      await owner.esportazioneRegistroRentri.update({
+        where: { id: seconda.id },
+        data: { stato: 'SOSTITUITA' },
+      })
+      const sostitutiva = await nuova()
+      expect(sostitutiva.precedenteId).toBe(prima.id)
+      // La nuova e viva: una terza con la stessa precedente e di nuovo vietata.
+      expect(await errore(nuova({ progressivoA: 6, numeroRegistrazioni: 3 }))).toMatch(
+        /Unique constraint|esportazioni_registro_rentri_precedente/
+      )
+      expect(await owner.esportazioneRegistroRentri.count({ where: { id: seconda.id } })).toBe(1)
+    })
+
+    it('la «prima» sostituita libera il posto di prima del registro', async () => {
+      const az = await azienda()
+      const prima = await owner.esportazioneRegistroRentri.create({
+        data: dati(az, { stato: 'RIFIUTATA' }),
+      })
+      await owner.esportazioneRegistroRentri.update({
+        where: { id: prima.id },
+        data: { stato: 'SOSTITUITA' },
+      })
+      await expect(
+        owner.esportazioneRegistroRentri.create({ data: dati(az, { sha256File: sha('n') }) })
+      ).resolves.toBeDefined()
+    })
+
     it('la precedente deve essere dello stesso registro e della stessa azienda', async () => {
       const a = await azienda()
       const b = await azienda()
@@ -261,6 +313,34 @@ describe('Esportazioni XML del registro RENTRI, schema — Postgres reale, ruolo
         expect(msg).toContain('esportazioni_registro_rentri: dato immutabile')
       })
     }
+
+    it('SOSTITUITA e terminale: non torna indietro e non cambia piu esito; si arriva da qualunque stato', async () => {
+      const az = await azienda()
+      for (const stato of ['GENERATA', 'VALIDATA', 'RIFIUTATA'] as const) {
+        const r = await owner.esportazioneRegistroRentri.create({
+          data: dati(az, {
+            stato,
+            anno: 2020 + ['GENERATA', 'VALIDATA', 'RIFIUTATA'].indexOf(stato),
+          }),
+        })
+        await expect(
+          owner.esportazioneRegistroRentri.update({
+            where: { id: r.id },
+            data: { stato: 'SOSTITUITA' },
+          })
+        ).resolves.toMatchObject({ stato: 'SOSTITUITA' })
+        for (const extra of [
+          { stato: 'VALIDATA' },
+          { transazioneValidazioneId: randomUUID() },
+          { messaggi: [{ codice: 'x', tipo: 'Errore', campo: null }] },
+        ]) {
+          const msg = await errore(
+            owner.esportazioneRegistroRentri.update({ where: { id: r.id }, data: extra as never })
+          )
+          expect(msg).toContain('una esportazione sostituita non cambia piu')
+        }
+      }
+    })
 
     it('precedente_id, registro e azienda non si modificano', async () => {
       const az = await azienda()

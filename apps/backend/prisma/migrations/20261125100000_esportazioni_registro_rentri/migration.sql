@@ -13,9 +13,13 @@
 --      (controllo a fine statement: la cascata dell'azienda toglie registri ed esportazioni insieme,
 --      con RESTRICT non passerebbe). La precedente e' legata anche al registro. Unici: una sola
 --      esportazione per (registro, anno, progressivo_a) = idempotenza; una sola successiva per
---      esportazione; una sola «prima» per registro (indice parziale: Prisma non conosce il WHERE);
---   5. trigger: i dati del file non si modificano (cambiano solo stato, transazione, messaggi,
---      updated_at); il DELETE diretto e' vietato, la cascata dell'azienda passa;
+--      esportazione; una sola «prima» per registro. Gli unici sono PARZIALI (`WHERE stato <> 'SOSTITUITA'`,
+--      Prisma non conosce il WHERE): una esportazione rifiutata e le successive passano a `SOSTITUITA`
+--      (azione ADMIN «sostituisci da qui», mai un DELETE) e la catena riparte dall'ultimo anello valido
+--      con una riga nuova che ha lo stesso `precedente_id` e puo' riusare il `progressivo_a`;
+--   5. trigger: i dati del file (compreso l'id) non si modificano (cambiano solo stato, transazione,
+--      messaggi, updated_at); `SOSTITUITA` e' terminale (stato, transazione e messaggi non cambiano
+--      piu'); il DELETE diretto e' vietato, la cascata dell'azienda passa;
 --   6. RLS ENABLE + FORCE e le policy `isolamento_azienda` e `sola_lettura` in FONDO.
 --
 -- Additiva: la tabella nasce vuota, le colonne sono nullable, nessun backfill. Nessun GRANT:
@@ -39,7 +43,7 @@ SET LOCAL lock_timeout = '5s';
 -- 1. Enum.
 CREATE TYPE "stato_esportazione_registro_rentri" AS ENUM (
   'GENERATA', 'IN_VALIDAZIONE', 'VALIDATA', 'VALIDATA_CON_AVVISI', 'RIFIUTATA',
-  'VALIDAZIONE_NON_DISPONIBILE'
+  'VALIDAZIONE_NON_DISPONIBILE', 'SOSTITUITA'
 );
 
 -- 2. eREGI sul registro.
@@ -97,13 +101,18 @@ CREATE UNIQUE INDEX "esportazioni_registro_rentri_id_tenant_id_key"
   ON "esportazioni_registro_rentri"("id", "tenant_id");
 CREATE UNIQUE INDEX "esportazioni_registro_rentri_id_registro_tenant_key"
   ON "esportazioni_registro_rentri"("id", "registro_id", "tenant_id");
+-- Unici PARZIALI: le righe `SOSTITUITA` restano per audit ma escono dalla catena viva. Prisma non
+-- conosce il WHERE (nel schema.prisma questi tre unici non compaiono).
 CREATE UNIQUE INDEX "esportazioni_registro_rentri_registro_anno_a_key"
-  ON "esportazioni_registro_rentri"("registro_id", "anno", "progressivo_a");
+  ON "esportazioni_registro_rentri"("registro_id", "anno", "progressivo_a")
+  WHERE "stato" <> 'SOSTITUITA';
 CREATE UNIQUE INDEX "esportazioni_registro_rentri_precedente_id_key"
-  ON "esportazioni_registro_rentri"("precedente_id");
--- Una sola «prima» esportazione per registro (la catena non si biforca all'origine). Prisma non conosce il WHERE.
+  ON "esportazioni_registro_rentri"("precedente_id")
+  WHERE "stato" <> 'SOSTITUITA';
+-- Una sola «prima» esportazione viva per registro (la catena non si biforca all'origine).
 CREATE UNIQUE INDEX "esportazioni_registro_rentri_prima_key"
-  ON "esportazioni_registro_rentri"("registro_id") WHERE "precedente_id" IS NULL;
+  ON "esportazioni_registro_rentri"("registro_id")
+  WHERE "precedente_id" IS NULL AND "stato" <> 'SOSTITUITA';
 CREATE INDEX "esportazioni_registro_rentri_tenant_id_idx"
   ON "esportazioni_registro_rentri"("tenant_id");
 CREATE INDEX "esportazioni_registro_rentri_registro_creata_idx"
@@ -124,7 +133,7 @@ ALTER TABLE "esportazioni_registro_rentri"
 
 -- 5. Trigger. Fuori da Prisma (`migrate diff` non li confronta).
 -- Il file e la catena non si toccano: cambiano solo stato, transazione di validazione, messaggi e
--- updated_at.
+-- updated_at. `SOSTITUITA` e' terminale: una riga sostituita non cambia piu' stato ne' esito.
 CREATE FUNCTION esportazioni_registro_rentri_immutabile() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -145,6 +154,13 @@ BEGIN
      OR NEW.creata_da IS DISTINCT FROM OLD.creata_da
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'esportazioni_registro_rentri: dato immutabile (il file firmato e la catena non si modificano)'
+      USING ERRCODE = '23514';
+  END IF;
+  IF OLD.stato = 'SOSTITUITA'
+     AND (NEW.stato IS DISTINCT FROM OLD.stato
+          OR NEW.transazione_validazione_id IS DISTINCT FROM OLD.transazione_validazione_id
+          OR NEW.messaggi IS DISTINCT FROM OLD.messaggi) THEN
+    RAISE EXCEPTION 'esportazioni_registro_rentri: una esportazione sostituita non cambia piu'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
