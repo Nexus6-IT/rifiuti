@@ -71,6 +71,31 @@ export function giornoItaliano(giorni = 0): string {
 /** Tetto complessivo di attesa dei 429 per una chiamata (la finestra del throttler e' di 60 s). */
 const ATTESA_MAX_429_MS = 75_000
 
+/** Errore di socket chiuso dal server prima di rispondere (connessione keep-alive scaduta). */
+function socketChiuso(e: unknown): boolean {
+  const causa = (e as { cause?: { code?: string; message?: string } } | null)?.cause
+  return causa?.code === 'UND_ERR_SOCKET' || /other side closed/i.test(causa?.message ?? '')
+}
+
+/**
+ * fetch che ripete UNA volta la richiesta se il server aveva gia' chiuso la connessione keep-alive
+ * riusata (`other side closed`: Node chiude le connessioni inattive dopo 5 s, e un processo di test
+ * occupato non se ne accorge in tempo). Solo per GET/HEAD: sono idempotenti, quindi la ripetizione
+ * e' sicura anche se, in teoria, la prima fosse arrivata. Per gli altri metodi l'errore resta.
+ */
+export async function fetchRiprovandoSocket(
+  url: string,
+  init: RequestInit & { method: string }
+): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (e) {
+    const idempotente = ['GET', 'HEAD'].includes(init.method.toUpperCase())
+    if (!idempotente || !socketChiuso(e)) throw e
+    return await fetch(url, init)
+  }
+}
+
 /** fetch con lo stesso retry su 429 di `chiama` (il throttler risponde prima del controller). */
 async function fetchRiprovando429(
   metodo: string,
@@ -82,7 +107,7 @@ async function fetchRiprovando429(
   let attesaTotaleMs = 0
   for (;;) {
     tentativo++
-    const r = await fetch(`${getApiUrl()}${percorso}`, {
+    const r = await fetchRiprovandoSocket(`${getApiUrl()}${percorso}`, {
       method: metodo,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
