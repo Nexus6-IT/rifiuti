@@ -17,12 +17,14 @@ import {
   CatenaEsportazioniNonCoerenteError,
   EregiNonDisponibileError,
   EsportazioneNonRivalidabileError,
+  EsportazioneNonSostituibileError,
   EsportazioneNonTrovataError,
   EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import { EsportazioniRegistroRentriService } from '../../application/rentri/registro/esportazioni-registro-rentri.service'
 import { GeneraEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/genera-esportazione-registro-rentri.use-case'
 import { ValidaEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/valida-esportazione-registro-rentri.use-case'
+import { SostituisciEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/sostituisci-esportazione-registro-rentri.use-case'
 import { RegistroNonTrovatoError } from '../../application/registro/registri.service'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
@@ -61,6 +63,7 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
   let app: INestApplication
   let genera: { genera: jest.Mock }
   let valida: { rivalida: jest.Mock }
+  let sostituisci: { sostituisciDa: jest.Mock }
   let esportazioni: { elenca: jest.Mock; scarica: jest.Mock }
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
 
@@ -75,6 +78,9 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
     }
     valida = {
       rivalida: jest.fn().mockResolvedValue({ id: ESPORTAZIONE, stato: 'VALIDATA', messaggi: [] }),
+    }
+    sostituisci = {
+      sostituisciDa: jest.fn().mockResolvedValue({ sostituite: 2, ultimaValidaId: null }),
     }
     esportazioni = {
       elenca: jest.fn().mockResolvedValue([{ id: ESPORTAZIONE }]),
@@ -95,6 +101,7 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
       providers: [
         { provide: GeneraEsportazioneRegistroRentriUseCase, useValue: genera },
         { provide: ValidaEsportazioneRegistroRentriUseCase, useValue: valida },
+        { provide: SostituisciEsportazioneRegistroRentriUseCase, useValue: sostituisci },
         { provide: EsportazioniRegistroRentriService, useValue: esportazioni },
         { provide: LoggerService, useValue: logger },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
@@ -230,6 +237,41 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
     expect(
       (await cliente(http().post(`${base}/esportazioni/${ESPORTAZIONE}/rivalida`))).status
     ).toBe(409)
+  })
+
+  describe('sostituisci da qui (solo ADMIN effettivo)', () => {
+    const rotta = `${base}/esportazioni/${ESPORTAZIONE}/sostituisci`
+
+    it.each(['VIEWER', 'OPERATOR'])('%s nell azienda: 403 e nessun use case', async ruolo => {
+      await avvia(ruolo)
+      expect((await cliente(http().post(rotta))).status).toBe(403)
+      expect(sostituisci.sostituisciDa).not.toHaveBeenCalled()
+    })
+
+    it('ruolo del token ADMIN ma OPERATOR nell azienda del cliente: conta il ruolo effettivo', async () => {
+      await avvia('OPERATOR')
+      expect((await cliente(http().post(rotta))).status).toBe(403)
+      expect(sostituisci.sostituisciDa).not.toHaveBeenCalled()
+    })
+
+    it('ADMIN nell azienda: 200 con l esito, tenant del cliente', async () => {
+      await avvia('ADMIN')
+      const r = await cliente(http().post(rotta))
+      expect(r.status).toBe(200)
+      expect(r.body).toEqual({ sostituite: 2, ultimaValidaId: null })
+      expect(sostituisci.sostituisciDa).toHaveBeenCalledWith(CLIENTE, ESPORTAZIONE)
+    })
+
+    it('non trovata 404, non sostituibile 409, id non uuid 400', async () => {
+      await avvia('ADMIN')
+      sostituisci.sostituisciDa.mockRejectedValueOnce(new EsportazioneNonTrovataError())
+      expect((await cliente(http().post(rotta))).status).toBe(404)
+      sostituisci.sostituisciDa.mockRejectedValueOnce(new EsportazioneNonSostituibileError())
+      expect((await cliente(http().post(rotta))).status).toBe(409)
+      expect(
+        (await cliente(http().post(`${base}/esportazioni/non-un-uuid/sostituisci`))).status
+      ).toBe(400)
+    })
   })
 
   it('file di un altra esportazione: 404', async () => {

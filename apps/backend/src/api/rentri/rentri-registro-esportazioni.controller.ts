@@ -32,6 +32,7 @@ import {
   CatenaEsportazioniNonCoerenteError,
   EregiNonDisponibileError,
   EsportazioneNonRivalidabileError,
+  EsportazioneNonSostituibileError,
   EsportazioneNonTrovataError,
   EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
@@ -44,11 +45,18 @@ import {
   type EsitoGenerazioneEsportazione,
 } from '../../application/rentri/registro/genera-esportazione-registro-rentri.use-case'
 import {
+  SostituisciEsportazioneRegistroRentriUseCase,
+  type EsitoSostituzioneEsportazioni,
+} from '../../application/rentri/registro/sostituisci-esportazione-registro-rentri.use-case'
+import {
   ValidaEsportazioneRegistroRentriUseCase,
   type EsitoValidazioneEsportazione,
 } from '../../application/rentri/registro/valida-esportazione-registro-rentri.use-case'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { traduciRentriApiError } from './traduci-rentri-api-error'
+
+/** Ruoli che possono sostituire una esportazione rifiutata (decisione sulla catena firmata). */
+const RUOLI_SOSTITUZIONE_ESPORTAZIONE: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
 
 const uuid = (messaggio: string) =>
   new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException(messaggio) })
@@ -59,7 +67,8 @@ const uuidEsportazione = uuid("Identificativo dell'esportazione non valido.")
  * Esportazioni XML firmate del registro (eREGI E6). Stesso prefisso del controller del registro.
  * Lettura (elenco, file): qualunque ruolo dell'azienda selezionata, e' solo database. Generare e
  * rivalidare chiamano RENTRI (quota condivisa dell'azienda): stesso ruolo di chi trasmette.
- * Il ruolo e' sempre quello EFFETTIVO nell'azienda selezionata.
+ * «Sostituisci da qui» (sblocco dopo un rifiuto di RENTRI) e' una decisione sulla catena dei file
+ * firmati: solo ADMIN (o SUPER_ADMIN). Il ruolo e' sempre quello EFFETTIVO nell'azienda selezionata.
  */
 @ApiTags('rentri-registro')
 @Controller('rentri/registro')
@@ -70,6 +79,7 @@ export class RentriRegistroEsportazioniController {
   constructor(
     private readonly genera: GeneraEsportazioneRegistroRentriUseCase,
     private readonly valida: ValidaEsportazioneRegistroRentriUseCase,
+    private readonly sostituisci: SostituisciEsportazioneRegistroRentriUseCase,
     private readonly esportazioni: EsportazioniRegistroRentriService,
     private readonly membership: RuoloEffettivoService
   ) {}
@@ -84,7 +94,8 @@ export class RentriRegistroEsportazioniController {
       err instanceof RegistroRentriChiusoError ||
       err instanceof EsportazioneRifiutataInCatenaError ||
       err instanceof CatenaEsportazioniNonCoerenteError ||
-      err instanceof EsportazioneNonRivalidabileError
+      err instanceof EsportazioneNonRivalidabileError ||
+      err instanceof EsportazioneNonSostituibileError
     ) {
       return new ConflictException(err.message)
     }
@@ -112,6 +123,15 @@ export class RentriRegistroEsportazioniController {
     if (!(RUOLI_SCRITTURA_RENTRI as readonly string[]).includes(ruolo)) {
       throw new ForbiddenException(
         'Il tuo ruolo in questa azienda non consente di generare o validare le esportazioni del registro.'
+      )
+    }
+  }
+
+  private async richiediAdmin(req: any, tenantId: string): Promise<void> {
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    if (!RUOLI_SOSTITUZIONE_ESPORTAZIONE.includes(ruolo)) {
+      throw new ForbiddenException(
+        'Solo un amministratore dell’azienda può sostituire le esportazioni del registro.'
       )
     }
   }
@@ -185,5 +205,23 @@ export class RentriRegistroEsportazioniController {
     const tenantId = requireRequestTenantId(req)
     await this.richiediScrittura(req, tenantId)
     return this.conErrori(() => this.valida.rivalida(tenantId, esportazioneId))
+  }
+
+  @Post('esportazioni/:esportazioneId/sostituisci')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Sostituisci da qui: segna come sostituite l’esportazione rifiutata e le successive; la catena riparte dall’ultimo anello valido',
+  })
+  @ApiResponse({ status: 200, description: 'Quante esportazioni sono state sostituite' })
+  @ApiResponse({ status: 403, description: 'Solo ADMIN' })
+  @ApiResponse({ status: 409, description: 'Non rifiutata o già fuori dalla catena' })
+  async sostituisciDa(
+    @Param('esportazioneId', uuidEsportazione) esportazioneId: string,
+    @Req() req: any
+  ): Promise<EsitoSostituzioneEsportazioni> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediAdmin(req, tenantId)
+    return this.conErrori(() => this.sostituisci.sostituisciDa(tenantId, esportazioneId))
   }
 }

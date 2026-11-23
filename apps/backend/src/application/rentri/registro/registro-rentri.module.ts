@@ -25,6 +25,7 @@ import { ChiudiRegistroRentriUseCase } from './chiudi-registro-rentri.use-case'
 import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-registro-rentri.use-case'
 import { GeneraEsportazioneRegistroRentriUseCase } from './genera-esportazione-registro-rentri.use-case'
 import { ValidaEsportazioneRegistroRentriUseCase } from './valida-esportazione-registro-rentri.use-case'
+import { SostituisciEsportazioneRegistroRentriUseCase } from './sostituisci-esportazione-registro-rentri.use-case'
 import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentri.service'
 
 /**
@@ -66,6 +67,7 @@ import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentr
     AbbandonaAperturaRegistroRentriUseCase,
     GeneraEsportazioneRegistroRentriUseCase,
     ValidaEsportazioneRegistroRentriUseCase,
+    SostituisciEsportazioneRegistroRentriUseCase,
     EsportazioniRegistroRentriService,
     RentriRegistroTrasmissioneJob,
   ],
