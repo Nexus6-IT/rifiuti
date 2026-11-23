@@ -32,7 +32,7 @@
 --     DROP CONSTRAINT registri_rifiuti_ereg_completo_check,
 --     DROP COLUMN ereg_xml, DROP COLUMN ereg_digest, DROP COLUMN ereg_data_richiesta,
 --     DROP COLUMN ereg_scaricato_il;
---   DELETE FROM _prisma_migrations WHERE migration_name = '20261124100000_esportazioni_registro_rentri';
+--   DELETE FROM _prisma_migrations WHERE migration_name = '20261125100000_esportazioni_registro_rentri';
 
 SET LOCAL lock_timeout = '5s';
 
