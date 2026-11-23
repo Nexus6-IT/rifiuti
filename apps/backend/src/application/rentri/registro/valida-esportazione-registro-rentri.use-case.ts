@@ -39,6 +39,12 @@ const STATI_SENZA_ESITO: StatoEsportazioneRegistroRentri[] = [
 const TENTATIVI_ESITO = 10
 const MAX_MESSAGGI_SALVATI = 100
 
+/**
+ * Tempo oltre il quale una prenotazione della POST /valida (`IN_VALIDAZIONE` senza transazione) si
+ * considera abbandonata (processo caduto fra la prenotazione e la POST) e si puo' riprendere.
+ */
+export const PRENOTAZIONE_VALIDAZIONE_SCADE_MS = 5 * 60_000
+
 export interface MessaggioSalvato {
   codice: string | null
   tipo: 'Errore' | 'Avvertimento'
@@ -131,6 +137,11 @@ export class ValidaEsportazioneRegistroRentriUseCase {
     if (transazioneId === null) {
       // Interruttore spento: nessuna POST. Con una transazione gia' salvata si legge l'esito.
       if (!inviiRegistroAttivi()) return { id: riga.id, stato: riga.stato, messaggi: riga.messaggi }
+      // Prenotazione condizionale: fra due validazioni insieme parte una sola POST /valida.
+      if (!(await this.prenota(tenantId, riga.id))) {
+        const attuale = await this.leggi(tenantId, riga.id)
+        return { id: attuale.id, stato: attuale.stato, messaggi: attuale.messaggi }
+      }
       transazioneId = await this.avvia(tenantId, riga)
       if (transazioneId === null) {
         return this.registra(tenantId, riga.id, 'VALIDAZIONE_NON_DISPONIBILE', [], null)
@@ -189,6 +200,30 @@ export class ValidaEsportazioneRegistroRentriUseCase {
         ? (riga.messaggi as unknown as MessaggioSalvato[])
         : [],
     }
+  }
+
+  /**
+   * Prenota la POST /valida: `updateMany` condizionale (stato senza esito, nessuna transazione, e
+   * nessuna prenotazione recente) che porta la riga a `IN_VALIDAZIONE`. Vince una sola richiesta.
+   * Non serve un lock: la POST non va tenuta dentro una transazione di database.
+   */
+  private async prenota(tenantId: string, id: string): Promise<boolean> {
+    const scaduta = new Date(Date.now() - PRENOTAZIONE_VALIDAZIONE_SCADE_MS)
+    const { count } = await this.nelTenant(tenantId, tx =>
+      tx.esportazioneRegistroRentri.updateMany({
+        where: {
+          id,
+          tenantId,
+          transazioneValidazioneId: null,
+          OR: [
+            { stato: { in: ['GENERATA', 'VALIDAZIONE_NON_DISPONIBILE'] } },
+            { stato: 'IN_VALIDAZIONE', updatedAt: { lt: scaduta } },
+          ],
+        },
+        data: { stato: 'IN_VALIDAZIONE' },
+      })
+    )
+    return count === 1
   }
 
   /** POST /valida: `transazione_id`, oppure `null` se RENTRI non l'ha accettata (errore tecnico). */

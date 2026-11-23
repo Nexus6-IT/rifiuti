@@ -285,6 +285,39 @@ describe('ValidaEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
     )
   })
 
+  it('due validazioni insieme: una sola POST /valida, l altra vede lo stato corrente', async () => {
+    const { s, id } = await esportazione()
+    validaRegistro.mockImplementation(async () => {
+      await new Promise(r => setTimeout(r, 300))
+      return { transazioneId: randomUUID() }
+    })
+    const [a, b] = await Promise.all([
+      useCase().valida(s.tenantId, id),
+      useCase().valida(s.tenantId, id),
+    ])
+    expect(validaRegistro).toHaveBeenCalledTimes(1)
+    expect([a.stato, b.stato]).toContain('VALIDATA')
+    expect((await riga(id)).stato).toBe('VALIDATA')
+  })
+
+  it('una prenotazione abbandonata (processo caduto prima della POST) si riprende dopo il tempo massimo', async () => {
+    const { s, id } = await esportazione()
+    // Prenotazione fresca: nessuna seconda POST.
+    await owner.esportazioneRegistroRentri.update({
+      where: { id },
+      data: { stato: 'IN_VALIDAZIONE' },
+    })
+    expect((await useCase().valida(s.tenantId, id)).stato).toBe('IN_VALIDAZIONE')
+    expect(validaRegistro).not.toHaveBeenCalled()
+    // Prenotazione vecchia: si riprende.
+    await owner.esportazioneRegistroRentri.update({
+      where: { id },
+      data: { updatedAt: new Date(Date.now() - 60 * 60_000) },
+    })
+    expect((await useCase().valida(s.tenantId, id)).stato).toBe('VALIDATA')
+    expect(validaRegistro).toHaveBeenCalledTimes(1)
+  })
+
   it('errore=true senza messaggi: RIFIUTATA con il messaggio sintetico salvato', async () => {
     const { s, id } = await esportazione()
     attendiEsitoMovimenti.mockResolvedValue(esito([], true))
