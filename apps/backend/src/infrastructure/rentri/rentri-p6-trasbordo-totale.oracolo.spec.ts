@@ -730,7 +730,11 @@ describe('P6 — trasbordo totale contro la fake RENTRI (in-process)', () => {
 
         const authorize = jest.spyOn(client, 'autorizzaFirmaRemota')
         const esito = await trasbordo.verifica({ firId: fir.id, tenantId, utenteId: 'u-1' })
-        expect(esito).toEqual({ operazione: 'TrasbordoTotale', esito: 'PRESENTE' })
+        expect(esito).toEqual({
+          operazione: 'TrasbordoTotale',
+          esito: 'PRESENTE',
+          trattaLocaleCreata: true,
+        })
         await trasbordo.verifica({ firId: fir.id, tenantId, utenteId: 'u-1' })
 
         expect(invia).toHaveBeenCalledTimes(1)

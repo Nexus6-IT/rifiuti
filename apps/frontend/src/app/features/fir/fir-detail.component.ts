@@ -3000,15 +3000,27 @@ export class FirDetailComponent implements OnInit {
       next: esito => {
         this.verificaTrasbordoInCorso.set(false)
         const messaggi = {
-          PRESENTE: {
-            severity: 'success',
-            detail:
-              "L'ente ha registrato il trasbordo totale: il nuovo trasportatore è stato aggiunto al formulario.",
-          },
+          PRESENTE:
+            esito.trattaLocaleCreata === false
+              ? {
+                  severity: 'warn',
+                  detail:
+                    "L'ente ha registrato il trasbordo totale, ma qui il nuovo trasportatore non è stato aggiunto al formulario: il formulario presso l'ente è corretto, la copia locale va completata.",
+                }
+              : {
+                  severity: 'success',
+                  detail:
+                    "L'ente ha registrato il trasbordo totale: il nuovo trasportatore è stato aggiunto al formulario.",
+                },
           ASSENTE: {
             severity: 'warn',
             detail:
               "L'ente non mostra nessun trasbordo totale: l'invio è chiuso come non riuscito e puoi dichiararlo di nuovo.",
+          },
+          ALTRO_TRASBORDO: {
+            severity: 'warn',
+            detail:
+              "L'ente non mostra il trasbordo inviato dalla tua azienda: l'invio è chiuso come non riuscito. Controlla il formulario sul portale RENTRI prima di dichiararlo di nuovo.",
           },
           NIENTE_DA_VERIFICARE: {
             severity: 'info',

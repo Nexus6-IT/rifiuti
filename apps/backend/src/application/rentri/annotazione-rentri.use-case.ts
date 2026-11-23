@@ -331,6 +331,19 @@ export class AnnotazioneRentriUseCase {
         statoFormularioDopo: null,
         utenteId: utenteId ?? null,
       })
+      // Un errore che non e' di rete/RENTRI e' quasi certamente un bug del client: l'utente vede comunque
+      // «da verificare» (dopo il POST l'esito e' ignoto), ma lo stack deve restare nei log. Nessun dato personale:
+      // solo identificativi tecnici.
+      if (
+        !(errore instanceof TrasmissioneRentriIncertaError) &&
+        !(errore instanceof RentriApiError)
+      ) {
+        this.logger.error(
+          'Errore imprevisto nell’invio a RENTRI: esito trattato come incerto',
+          errore instanceof Error ? errore : new Error(String(errore)),
+          { firId, tenantId, numeroFir, correlationId }
+        )
+      }
       this.logger.warn('Esito dell’invio RENTRI incerto: nessun reinvio automatico', {
         firId,
         tenantId,
@@ -880,8 +893,9 @@ export class AnnotazioneRentriUseCase {
     return DomainException.businessRuleViolation(
       'ANNOTAZIONE_ESITO_INCERTO',
       'Non sappiamo se l’ente ha registrato l’annotazione (nessuna risposta o esito non arrivato). ' +
-        'WasteFlow non la reinvia da solo: attendi qualche minuto e riprova a dichiararla, perché prima di ' +
-        'inviare qualunque cosa controlla con l’ente se è già stata registrata, senza duplicarla. ' +
+        'WasteFlow non la reinvia da solo: verifica con l’ente se è già stata registrata. Attendi qualche minuto e ' +
+        'riapri il formulario: al passo successivo (nuovo invio o firma, secondo quanto propone l’ente) WasteFlow ' +
+        'controlla prima con l’ente, senza duplicare nulla. ' +
         'Nessuna firma è stata richiesta.'
     )
   }

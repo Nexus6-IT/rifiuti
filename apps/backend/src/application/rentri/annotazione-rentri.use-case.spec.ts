@@ -149,6 +149,7 @@ describe('AnnotazioneRentriUseCase', () => {
       prisma as any
     )
     return {
+      logger,
       useCase,
       fir,
       eventi,
@@ -521,6 +522,12 @@ describe('AnnotazioneRentriUseCase', () => {
       })
       expect((await b.eventi.elenca(TENANT, FIR_ID))[0].esito).toBe('INCERTA')
       expect(b.completa.execute).not.toHaveBeenCalled()
+      // Errore non RENTRI: lo stack resta nei log (senza dati personali), l'utente vede comunque «da verificare».
+      expect(b.logger.error).toHaveBeenCalledWith(
+        expect.any(String),
+        rete,
+        expect.not.objectContaining({ testo: expect.anything() })
+      )
     })
 
     it('firma che solleva dopo l annotazione accettata: DA_COMPLETARE con avviso, annotazione non persa', async () => {

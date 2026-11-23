@@ -709,7 +709,11 @@ describe('TrasbordoTotaleRentriUseCase', () => {
 
       const esito = await a.useCase.verifica({ firId: FIR_ID, tenantId: TENANT, utenteId: 'u1' })
 
-      expect(esito).toEqual({ operazione: 'TrasbordoTotale', esito: 'PRESENTE' })
+      expect(esito).toEqual({
+        operazione: 'TrasbordoTotale',
+        esito: 'PRESENTE',
+        trattaLocaleCreata: true,
+      })
       expect(await esitiTrasbordo(a)).toEqual(['INCERTA', 'ACCETTATA'])
       expect(a.datiViaggio.righe.get(FIR_ID)?.tratteAggiuntive).toHaveLength(1)
       expect(a.getAzioni.execute).not.toHaveBeenCalled()
@@ -741,6 +745,29 @@ describe('TrasbordoTotaleRentriUseCase', () => {
         nulla.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
       ).resolves.toMatchObject({ esito: 'NIENTE_DA_VERIFICARE' })
       expect(nulla.client.leggiFormulario).not.toHaveBeenCalled()
+    })
+
+    it('verifica esplicita: l ente mostra un trasbordo DIVERSO dopo la finestra = ALTRO_TRASBORDO (non ASSENTE); tratta non salvata = PRESENTE con trattaLocaleCreata false', async () => {
+      const diverso = ambiente({
+        trasbordo: {
+          trasportatore: { ...CORPO.trasportatore, codice_fiscale: '99999999999' },
+          presa_in_carico: { ...CORPO.presa_in_carico, dati_firma_trasportatore: null },
+        },
+      })
+      await invioSenzaEsito(diverso, 'INVIATA', null, 24 * 3600_000)
+      await expect(
+        diverso.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).resolves.toMatchObject({ esito: 'ALTRO_TRASBORDO' })
+      expect(diverso.datiViaggio.scritture).toEqual([])
+
+      const nonSalvata = ambiente({ trasbordo: presenteNonFirmato })
+      await invioSenzaEsito(nonSalvata, 'INCERTA', null)
+      jest
+        .spyOn(nonSalvata.datiViaggio, 'aggiungiTrattaTrasbordoTotale')
+        .mockRejectedValue(new Error('db giu'))
+      await expect(
+        nonSalvata.useCase.verifica({ firId: FIR_ID, tenantId: TENANT })
+      ).resolves.toMatchObject({ esito: 'PRESENTE', trattaLocaleCreata: false })
     })
 
     it('verifica esplicita: modulo spento, FIR non legato, invio in corso (prenotazione viva)', async () => {

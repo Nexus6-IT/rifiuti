@@ -3660,6 +3660,48 @@ describe('FirDetailComponent', () => {
         expect(firService.getFIRById).toHaveBeenCalledTimes(2)
       })
 
+      const casiVerifica: [string, Record<string, unknown>, string, string][] = [
+        [
+          'PRESENTE',
+          { esito: 'PRESENTE', trattaLocaleCreata: true },
+          'success',
+          'è stato aggiunto',
+        ],
+        [
+          'PRESENTE con tratta locale non salvata',
+          { esito: 'PRESENTE', trattaLocaleCreata: false },
+          'warn',
+          'copia locale va completata',
+        ],
+        ['ASSENTE', { esito: 'ASSENTE' }, 'warn', 'non mostra nessun trasbordo totale'],
+        [
+          'ALTRO_TRASBORDO',
+          { esito: 'ALTRO_TRASBORDO' },
+          'warn',
+          'non mostra il trasbordo inviato',
+        ],
+        ['NIENTE_DA_VERIFICARE', { esito: 'NIENTE_DA_VERIFICARE' }, 'info', 'nessun invio'],
+      ]
+      for (const [nome, risposta, severity, testo] of casiVerifica) {
+        it(`esito ${nome}: il messaggio dice solo quello che e vero`, () => {
+          preparaFirLegato('OPERATOR', firLegato, 'Reset')
+          rentriFirLifecycleService.eventi.and.returnValue(
+            of({ eventi: [eventoTrasbordo('INCERTA')] })
+          )
+          rentriFirLifecycleService.verificaTrasbordoTotale.and.returnValue(
+            of({ operazione: 'TrasbordoTotale', ...risposta } as any)
+          )
+          fixture.detectChanges()
+          const aggiungi = spyOn(messageService, 'add')
+
+          component.verificaTrasbordoTotale(firLegato)
+
+          expect(aggiungi).toHaveBeenCalledWith(
+            jasmine.objectContaining({ severity, detail: jasmine.stringContaining(testo) })
+          )
+        })
+      }
+
       it('409 IN_VERIFICA: messaggio chiaro, nessun crash, il pulsante torna disponibile', () => {
         preparaFirLegato('OPERATOR', firLegato, 'Reset')
         rentriFirLifecycleService.eventi.and.returnValue(

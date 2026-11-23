@@ -137,7 +137,9 @@ export interface EsitoTrasbordoTotale {
 export interface EsitoVerificaTrasbordoTotale {
   operazione: 'TrasbordoTotale'
   /** `PRESENTE`: l'ente ha il trasbordo; `ASSENTE`: non risulta e l'invio e' chiuso; altrimenti nulla da verificare. */
-  esito: 'PRESENTE' | 'ASSENTE' | 'NIENTE_DA_VERIFICARE'
+  esito: 'PRESENTE' | 'ASSENTE' | 'ALTRO_TRASBORDO' | 'NIENTE_DA_VERIFICARE'
+  /** Solo con `PRESENTE`: `false` se la tratta locale non si e' potuta salvare. */
+  trattaLocaleCreata?: boolean
 }
 
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */

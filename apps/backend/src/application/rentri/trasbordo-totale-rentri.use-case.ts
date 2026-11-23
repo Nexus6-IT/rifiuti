@@ -109,11 +109,23 @@ export interface ComandoVerificaTrasbordoTotale {
 }
 
 /** Esito della riconciliazione di un invio senza esito. */
-export type EsitoRiconciliazione = 'PRESENTE' | 'ASSENTE' | 'NIENTE_DA_VERIFICARE'
+export type EsitoRiconciliazione =
+  | 'PRESENTE'
+  | 'ASSENTE'
+  | 'ALTRO_TRASBORDO'
+  | 'NIENTE_DA_VERIFICARE'
+
+/** Esito interno della riconciliazione: `trattaLocaleCreata` solo con `PRESENTE`. */
+interface RisultatoRiconciliazione {
+  esito: EsitoRiconciliazione
+  trattaLocaleCreata?: boolean
+}
 
 export interface EsitoVerificaTrasbordoTotale {
   operazione: string
   esito: EsitoRiconciliazione
+  /** Solo con `PRESENTE`: `false` se la tratta locale non si e' potuta salvare (l'ente ha comunque il trasbordo). */
+  trattaLocaleCreata?: boolean
 }
 
 export interface ComandoFirmaTrasbordoTotale {
@@ -406,8 +418,8 @@ export class TrasbordoTotaleRentriUseCase {
     const { firId, tenantId, utenteId, correlationId } = comando
     const fir = await this.leggiFirLegato(firId, tenantId)
     await this.verificaModulo(tenantId)
-    const esito = await this.riconciliaSottoPrenotazione(fir, tenantId, utenteId, correlationId)
-    return { operazione: OPERAZIONE_INVIO, esito }
+    const r = await this.riconciliaSottoPrenotazione(fir, tenantId, utenteId, correlationId)
+    return { operazione: OPERAZIONE_INVIO, ...r }
   }
 
   /**
@@ -566,8 +578,8 @@ export class TrasbordoTotaleRentriUseCase {
     tenantId: string,
     utenteId: string | undefined,
     correlationId?: string
-  ): Promise<EsitoRiconciliazione> {
-    if (!(await this.invioSenzaEsito(tenantId, fir.id))) return 'NIENTE_DA_VERIFICARE'
+  ): Promise<RisultatoRiconciliazione> {
+    if (!(await this.invioSenzaEsito(tenantId, fir.id))) return { esito: 'NIENTE_DA_VERIFICARE' }
     const prenotazione = await this.prenotaInvio(tenantId, fir.id, utenteId)
     try {
       return await this.riconciliaInvioSenzaEsito(fir, tenantId, correlationId)
@@ -600,9 +612,9 @@ export class TrasbordoTotaleRentriUseCase {
     fir: FIR,
     tenantId: string,
     correlationId?: string
-  ): Promise<EsitoRiconciliazione> {
+  ): Promise<RisultatoRiconciliazione> {
     const pendente = await this.invioSenzaEsito(tenantId, fir.id)
-    if (!pendente) return 'NIENTE_DA_VERIFICARE'
+    if (!pendente) return { esito: 'NIENTE_DA_VERIFICARE' }
 
     const inviato = corpoDaPayload(pendente.payload)
 
@@ -665,7 +677,7 @@ export class TrasbordoTotaleRentriUseCase {
           correlationId,
         }
       )
-      return 'PRESENTE'
+      return { esito: 'PRESENTE', trattaLocaleCreata: creata }
     }
 
     if (
@@ -696,7 +708,7 @@ export class TrasbordoTotaleRentriUseCase {
       eventoId: pendente.id,
       correlationId,
     })
-    return 'ASSENTE'
+    return { esito: dellEnte ? 'ALTRO_TRASBORDO' : 'ASSENTE' }
   }
 
   /**

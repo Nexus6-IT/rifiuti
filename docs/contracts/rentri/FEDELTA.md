@@ -740,6 +740,12 @@ Esito incerto: il POST non si ritenta e la tratta locale non nasce. La riconcili
 pulsante «Verifica con l'ente», `POST .../trasbordo-totale/verifica`) confronta SOLO l'identita' (CF del nuovo
 trasportatore, inizio, conducente), firmato o no: la firma e' del nuovo trasportatore e puo' arrivare prima.
 
+Da verificare alla demo (secondo trasbordo): `dati_trasbordo_totale` e' UNO solo. Se il nostro invio incerto e'
+stato registrato e firmato e il nuovo trasportatore ne fa a sua volta un altro, la verifica del mittente vede un
+trasbordo «diverso»: senza `transazioneId` chiude l'invio come RIFIUTATA (esito `ALTRO_TRASBORDO`, nessuna tratta),
+con `transazioneId` resta 409 `TRASBORDO_TOTALE_IN_VERIFICA` perche' lo stato della transazione si legge solo come
+«in elaborazione o no». Se la demo conferma che un secondo trasbordo e' ammesso, usare l'esito della transazione.
+
 Limiti noti (stessi dell'annotazione, §8.3, e della sosta, §8.4): lo stato si controlla solo al POST; non si
 verifica che l'invio sia del trasportatore che ha in carico il rifiuto; non si modella «copia gia' restituita con
 accettazione totale -> non consentita»; il POST `/trasbordo-totale` non si ritenta mai su 5xx/timeout (esito

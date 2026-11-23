@@ -440,6 +440,20 @@ describe('SostaTecnicaRentriUseCase', () => {
       expect(await a.sessioni.trovaAperta(TENANT, FIR_ID)).toBeNull()
     })
 
+    it('errore non RENTRI nel POST (bug del client): 409 ESITO_INCERTO e stack nei log, senza dati personali', async () => {
+      const a = ambiente()
+      const bug = new TypeError('x is undefined')
+      a.client.inviaSostaTecnica.mockRejectedValue(bug)
+      await expect(a.useCase.invia(comando())).rejects.toMatchObject({
+        metadata: expect.objectContaining({ rule: 'SOSTA_TECNICA_ESITO_INCERTO' }),
+      })
+      expect(a.logger.error).toHaveBeenCalledWith(
+        expect.any(String),
+        bug,
+        expect.not.objectContaining({ luogoStazionamento: expect.anything() })
+      )
+    })
+
     it("la riga INVIATA e' scritta PRIMA del POST: se non si puo' scrivere il POST non parte", async () => {
       const a = ambiente()
       jest.spyOn(a.eventi, 'registra').mockRejectedValue(new Error('db giu'))
