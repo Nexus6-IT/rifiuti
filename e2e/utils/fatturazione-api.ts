@@ -1,11 +1,18 @@
 import { expect } from '@playwright/test'
-import { execFileSync } from 'child_process'
+import { execFile } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { inflateRawSync } from 'zlib'
 import { getApiUrl } from './env'
-import { chiama, codiceCasuale, giornoItaliano, ok, creaListinoLegami } from './legami-api'
+import {
+  chiama,
+  codiceCasuale,
+  fetchRiprovandoSocket,
+  giornoItaliano,
+  ok,
+  creaListinoLegami,
+} from './legami-api'
 import type { Creato, ListinoLegami, Risposta, Versionata } from './legami-api'
 import { conPrefissoUnico } from './run-id'
 import type { StatoElaborazione } from '../../apps/frontend/src/app/features/fatturazione/fatturazione.model'
@@ -260,7 +267,7 @@ export async function scarica(
   corpo?: unknown
 ): Promise<Scaricato> {
   for (let tentativo = 1; ; tentativo++) {
-    const r = await fetch(`${getApiUrl()}${percorso}`, {
+    const r = await fetchRiprovandoSocket(`${getApiUrl()}${percorso}`, {
       method: metodo,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
@@ -313,24 +320,30 @@ export function leggiZip(zip: Buffer): Map<string, Buffer> {
 /**
  * Valida un XML FatturaPA con `apps/backend/scripts/valida-fatturapa.ts` (XSD ufficiale), lanciato
  * da `apps/backend` (scansione P45: l'e2e non importa il codice del backend). Il file temporaneo
- * si rimuove sempre.
+ * si rimuove sempre. ASINCRONA di proposito: `npx ts-node` impiega diversi secondi e un
+ * `execFileSync` bloccava l'event loop del test, che non vedeva piu' chiudersi le connessioni
+ * keep-alive verso l'API (la fetch successiva falliva con `other side closed`).
  */
-export function validaConScript(xml: Buffer | string): { valido: boolean; messaggi: string } {
+export async function validaConScript(
+  xml: Buffer | string
+): Promise<{ valido: boolean; messaggi: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'valida-fatturapa-'))
   try {
     const file = join(dir, 'fattura.xml')
     writeFileSync(file, xml)
-    try {
-      execFileSync('npx', ['ts-node', '-P', 'tsconfig.json', 'scripts/valida-fatturapa.ts', file], {
-        cwd: resolve(__dirname, '../../apps/backend'),
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 120_000,
-      })
-      return { valido: true, messaggi: '' }
-    } catch (e) {
-      const err = e as { stderr?: Buffer; stdout?: Buffer }
-      return { valido: false, messaggi: `${err.stdout ?? ''}${err.stderr ?? ''}` }
-    }
+    return await new Promise(res => {
+      execFile(
+        'npx',
+        ['ts-node', '-P', 'tsconfig.json', 'scripts/valida-fatturapa.ts', file],
+        { cwd: resolve(__dirname, '../../apps/backend'), timeout: 120_000 },
+        (errore, stdout, stderr) =>
+          res(
+            errore
+              ? { valido: false, messaggi: `${stdout}${stderr}` }
+              : { valido: true, messaggi: '' }
+          )
+      )
+    })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
