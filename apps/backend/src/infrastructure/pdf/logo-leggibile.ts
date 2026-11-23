@@ -1,5 +1,5 @@
 import { creaStampantePdf } from './pdf.service'
-import { leggiPngSicuro } from './png-sicuro'
+import { leggiPngSicuro } from '../../core/png-sicuro'
 
 /**
  * Prova che il logo si possa DAVVERO incorporare in un PDF (4.7, revisione I1): i magic bytes

@@ -1,5 +1,5 @@
 import { deflateSync } from 'zlib'
-import { leggiPngSicuro } from '../../infrastructure/pdf/png-sicuro'
+import { leggiPngSicuro } from '../../core/png-sicuro'
 import { pngDiProva } from '../../test-support/png-di-prova'
 import {
   chunkPng,

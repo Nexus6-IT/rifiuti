@@ -1,4 +1,4 @@
-import { leggiPngSicuro, ricodificaPng } from '../../infrastructure/pdf/png-sicuro'
+import { leggiPngSicuro, ricodificaPng } from '../../core/png-sicuro'
 
 /**
  * Validazione di una ricevuta di ritiro dal campo (P6): forma e limiti, senza accedere al database.

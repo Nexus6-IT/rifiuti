@@ -147,6 +147,9 @@ export function leggiPngSicuro(buf: Buffer): EsitoPngSicuro {
   if (ihdr[10] !== 0 || ihdr[11] !== 0 || ihdr[12] > 1) return no('IHDR non valido')
   if (tipoColore === 3 && !plte) return no('palette mancante')
   const interlacciato = ihdr[12] === 1
+  // png-js (usato da pdfkit) perde l'allineamento sulle passate Adam7 vuote (immagini strette) e
+  // lancia in una callback: i PNG interlacciati, rari, non si accettano mai.
+  if (interlacciato) return no('PNG interlacciato non supportato')
   const bppBit = CANALI[tipoColore] * profondita
   const attesa = dimensioneAttesa(w, h, bppBit, interlacciato)
   if (attesa > BYTE_DECOMPRESSI_MASSIMI) return no('immagine troppo grande')

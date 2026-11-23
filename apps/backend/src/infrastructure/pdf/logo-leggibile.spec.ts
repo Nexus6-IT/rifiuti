@@ -1,4 +1,8 @@
-import { pngFiltroNonValido, pngIdatNonZlib } from '../../test-support/png-malevoli'
+import {
+  pngFiltroNonValido,
+  pngIdatNonZlib,
+  pngInterlacciato,
+} from '../../test-support/png-malevoli'
 import { logoLeggibile } from './logo-leggibile'
 
 const PNG_1X1 =
@@ -33,6 +37,20 @@ describe('logoLeggibile', () => {
       for (const png of [pngIdatNonZlib(), pngFiltroNonValido()]) {
         expect(await logoLeggibile(`data:image/png;base64,${png.toString('base64')}`)).toBe(false)
       }
+      await new Promise(r => setTimeout(r, 200))
+    } finally {
+      process.off('uncaughtException', ascolto)
+    }
+    expect(eccezioni).toEqual([])
+  })
+
+  it('PNG interlacciato 3x3 valido: non leggibile e nessuna eccezione non gestita', async () => {
+    const png = pngInterlacciato(3, 3)
+    const eccezioni: unknown[] = []
+    const ascolto = (e: unknown) => eccezioni.push(e)
+    process.on('uncaughtException', ascolto)
+    try {
+      expect(await logoLeggibile(`data:image/png;base64,${png.toString('base64')}`)).toBe(false)
       await new Promise(r => setTimeout(r, 200))
     } finally {
       process.off('uncaughtException', ascolto)

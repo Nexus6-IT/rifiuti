@@ -54,3 +54,24 @@ export function pngFiltroNonValido(w = 300, h = 120): Buffer {
 
 /** Bomba: dichiara 300x120 ma l'IDAT decompresso e' molto piu' grande. */
 export const pngBomba = (): Buffer => pngConIdat(deflateSync(Buffer.alloc(50_000_000)))
+
+/** PNG Adam7 RGBA 8 bit valido secondo la specifica (passate vuote senza scanline). */
+export function pngInterlacciato(w: number, h: number): Buffer {
+  const passate = [
+    [0, 0, 8, 8],
+    [4, 0, 8, 8],
+    [0, 4, 4, 8],
+    [2, 0, 4, 4],
+    [0, 2, 2, 4],
+    [1, 0, 2, 2],
+    [0, 1, 1, 2],
+  ]
+  const righe: Buffer[] = []
+  for (const [x0, y0, dx, dy] of passate) {
+    const pw = Math.ceil((w - x0) / dx)
+    const ph = Math.ceil((h - y0) / dy)
+    if (pw <= 0 || ph <= 0) continue
+    for (let r = 0; r < ph; r++) righe.push(Buffer.alloc(1 + pw * 4))
+  }
+  return pngConIdat(deflateSync(Buffer.concat(righe)), w, h, 8, 6, 1)
+}

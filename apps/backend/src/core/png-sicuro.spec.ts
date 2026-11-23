@@ -1,12 +1,13 @@
 import { deflateSync } from 'zlib'
-import { pngDiProva } from '../../test-support/png-di-prova'
+import { pngDiProva } from '../test-support/png-di-prova'
 import {
   chunkPng,
   pngBomba,
   pngConIdat,
   pngFiltroNonValido,
   pngIdatNonZlib,
-} from '../../test-support/png-malevoli'
+  pngInterlacciato,
+} from '../test-support/png-malevoli'
 import { leggiPngSicuro, ricodificaPng } from './png-sicuro'
 
 const PNG_1X1 = Buffer.from(
@@ -86,23 +87,13 @@ describe('leggiPngSicuro', () => {
     expect(leggiPngSicuro(pngConIdat(deflateSync(Buffer.alloc(10)), 3, 3, 3, 2)).ok).toBe(false)
   })
 
-  it('verifica anche Adam7', () => {
-    // 8x8 RGBA interlacciato: passate 1..7 con righe 1,1,1,2,2,4,4 per 4 byte/pixel
-    const passate: [number, number][] = [
-      [1, 1],
-      [1, 1],
-      [2, 1],
-      [2, 2],
-      [4, 2],
-      [4, 4],
-      [8, 4],
-    ]
-    const buon = Buffer.concat(
-      passate.flatMap(([pw, ph]) => Array.from({ length: ph }, () => Buffer.alloc(1 + pw * 4)))
-    )
-    expect(leggiPngSicuro(pngConIdat(deflateSync(buon), 8, 8, 8, 6, 1)).ok).toBe(true)
-    const brutto = Buffer.from(buon)
-    brutto[0] = 7
-    expect(leggiPngSicuro(pngConIdat(deflateSync(brutto), 8, 8, 8, 6, 1)).ok).toBe(false)
+  it('rifiuta ogni PNG interlacciato (png-js perde l allineamento sulle passate vuote)', () => {
+    for (const [w, h] of [
+      [3, 3],
+      [1, 8],
+      [8, 8],
+    ]) {
+      expect(leggiPngSicuro(pngInterlacciato(w, h)).ok).toBe(false)
+    }
   })
 })
