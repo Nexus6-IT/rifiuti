@@ -239,12 +239,33 @@ describe('ValidaEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
     expect(validaRegistro).toHaveBeenCalledTimes(1)
   })
 
-  it('interruttore di emergenza spento: nessuna chiamata a RENTRI, stato invariato', async () => {
+  it('interruttore spento: la POST /valida non parte, lo stato resta invariato', async () => {
     const { s, id } = await esportazione()
     process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
     const r = await useCase().valida(s.tenantId, id)
     expect(r.stato).toBe('GENERATA')
     expect(validaRegistro).not.toHaveBeenCalled()
+    expect(attendiEsitoMovimenti).not.toHaveBeenCalled()
+    expect((await riga(id)).transazioneValidazioneId).toBeNull()
+  })
+
+  it('interruttore spento: con la transazione gia salvata l esito si legge comunque (solo GET), senza POST', async () => {
+    const { s, id } = await esportazione()
+    attendiEsitoMovimenti.mockRejectedValueOnce(new EsitoRentriNonDisponibileError('t', 10))
+    expect((await useCase().valida(s.tenantId, id)).stato).toBe('IN_VALIDAZIONE')
+    const transazione = (await riga(id)).transazioneValidazioneId
+    expect(transazione).toBeTruthy()
+
+    process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+    validaRegistro.mockClear()
+    const r = await useCase().rivalida(s.tenantId, id)
+    expect(r.stato).toBe('VALIDATA')
+    expect(validaRegistro).not.toHaveBeenCalled()
+    expect(attendiEsitoMovimenti).toHaveBeenLastCalledWith(
+      transazione,
+      s.tenantId,
+      expect.anything()
+    )
   })
 
   it('esportazione di un altra azienda o inesistente: non trovata', async () => {

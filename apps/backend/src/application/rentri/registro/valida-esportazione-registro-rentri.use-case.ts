@@ -102,17 +102,20 @@ export class ValidaEsportazioneRegistroRentriUseCase {
 
   /**
    * Avvia (o riprende) la validazione. Non lancia per errori tecnici di RENTRI: li registra come
-   * stato. Se l'esito e' gia' definitivo lo restituisce senza richiamare RENTRI. Se gli invii sono
-   * sospesi (interruttore di emergenza) non chiama RENTRI e lascia lo stato com'e'.
+   * stato. Se l'esito e' gia' definitivo lo restituisce senza richiamare RENTRI. Con gli invii
+   * sospesi (interruttore di emergenza) non parte la POST /valida e lo stato resta com'e', ma la
+   * lettura dell'esito di una transazione gia' avviata continua (solo GET, come in F2-9).
    */
   async valida(tenantId: string, esportazioneId: string): Promise<EsitoValidazioneEsportazione> {
     const riga = await this.leggi(tenantId, esportazioneId)
-    if (!STATI_SENZA_ESITO.includes(riga.stato) || !inviiRegistroAttivi()) {
+    if (!STATI_SENZA_ESITO.includes(riga.stato)) {
       return { id: riga.id, stato: riga.stato, messaggi: riga.messaggi }
     }
 
     let transazioneId = riga.transazioneValidazioneId
     if (transazioneId === null) {
+      // Interruttore spento: nessuna POST. Con una transazione gia' salvata si legge l'esito.
+      if (!inviiRegistroAttivi()) return { id: riga.id, stato: riga.stato, messaggi: riga.messaggi }
       transazioneId = await this.avvia(tenantId, riga)
       if (transazioneId === null) {
         return this.registra(tenantId, riga.id, 'VALIDAZIONE_NON_DISPONIBILE', [], null)
