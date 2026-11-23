@@ -57,6 +57,9 @@ type Tx = Prisma.TransactionClient
  */
 export const ANNOTAZIONI_PER_ESPORTAZIONE = 1000
 
+/** Token del tetto per file, iniettabile (solo per i test: in produzione vale `ANNOTAZIONI_PER_ESPORTAZIONE`). */
+export const TETTO_ANNOTAZIONI_ESPORTAZIONE = 'TETTO_ANNOTAZIONI_ESPORTAZIONE'
+
 const AUTORE_PREDEFINITO = 'WasteFlow'
 const MOTIVO_NUMERO_MANCANTE =
   'Manca l’annotazione con questo numero nel registro: la numerazione non è continua.'
@@ -120,7 +123,11 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     // Solo per i test: in produzione resta `traduciAnnotazione`.
     @Optional()
     @Inject(TRADUTTORE_REGISTRAZIONE_RENTRI)
-    private readonly traduci: (a: AnnotazionePerRentri) => EsitoTraduzione = traduciAnnotazione
+    private readonly traduci: (a: AnnotazionePerRentri) => EsitoTraduzione = traduciAnnotazione,
+    // Solo per i test: in produzione resta `ANNOTAZIONI_PER_ESPORTAZIONE`.
+    @Optional()
+    @Inject(TETTO_ANNOTAZIONI_ESPORTAZIONE)
+    private readonly tetto: number = ANNOTAZIONI_PER_ESPORTAZIONE
   ) {
     this.logger.setContext('GeneraEsportazioneRegistroRentriUseCase')
   }
@@ -298,7 +305,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
         progressiveYear: cursore.anno,
         progressiveNumber: {
           gte: cursore.progressivo,
-          lt: cursore.progressivo + ANNOTAZIONI_PER_ESPORTAZIONE,
+          lt: cursore.progressivo + this.tetto,
         },
       },
       orderBy: { progressiveNumber: 'asc' },

@@ -70,7 +70,7 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
   /** Progressivi (anno-progressivo) che il traduttore finto dichiara non traducibili. */
   let nonTraducibili: Set<string>
 
-  function creaUseCase(): GeneraEsportazioneRegistroRentriUseCase {
+  function creaUseCase(tetto?: number): GeneraEsportazioneRegistroRentriUseCase {
     const traduttore = (a: AnnotazionePerRentri): EsitoTraduzione =>
       nonTraducibili.has(`${a.numero.anno}-${a.numero.progressivo}`)
         ? { ok: false, motivi: ['Dato mancante di prova'] }
@@ -82,7 +82,8 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
       { resolve } as any,
       { valida } as any,
       logger,
-      traduttore
+      traduttore,
+      tetto
     )
   }
 
@@ -200,6 +201,27 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
       salvate[0].digestValue,
       salvate[1].digestValue,
     ])
+  })
+
+  it('il tetto di annotazioni per file spezza l intervallo e la catena prosegue dal numero successivo', async () => {
+    const s = await scenario()
+    await aggiungiAnnotazioni(owner, s, 2026, 1, 7)
+    const g = creaUseCase(3)
+    const richiedi = () => g.genera(s.tenantId, s.registroId, { creataDa: null, valida: false })
+    const prima = await richiedi()
+    // Il tetto non e una fermata: nessun motivo, il giro successivo prosegue.
+    expect(prima).toMatchObject({ esito: 'CREATA', fermataA: null })
+    await richiedi()
+    await richiedi()
+    expect(
+      (await righe(s)).map(r => [r.progressivoDa, r.progressivoA, r.numeroRegistrazioni])
+    ).toEqual([
+      [1, 3, 3],
+      [4, 6, 3],
+      [7, 7, 1],
+    ])
+    expect((await richiedi()).esito).toBe('NIENTE_DA_ESPORTARE')
+    expect(await righe(s)).toHaveLength(3)
   })
 
   it('idempotente: senza annotazioni nuove restituisce l ultima, nessuna riga nuova', async () => {
