@@ -260,6 +260,7 @@ describe('Ruoli database (Postgres reale)', () => {
     'eventi_campo',
     'ricevute_ritiro',
     'invii_ricevuta_ritiro',
+    'allegati_campo',
   ]
   const SENZA_CANCELLAZIONE = [
     'accessi_pesa',

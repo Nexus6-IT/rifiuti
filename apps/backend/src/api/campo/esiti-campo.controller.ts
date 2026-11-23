@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
+import { AllegatiCampoService } from '../../application/campo/allegati-campo.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
 import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import { EsitiCampoQueryDto, RicevuteCampoQueryDto } from './dto/campo.dto'
@@ -32,7 +33,8 @@ import { comeHttpCampo } from './errori-http'
 export class EsitiCampoController {
   constructor(
     private readonly eventi: EventiCampoService,
-    private readonly ricevute: RicevuteRitiroService
+    private readonly ricevute: RicevuteRitiroService,
+    private readonly foto: AllegatiCampoService
   ) {}
 
   @Get()
@@ -72,5 +74,25 @@ export class EsitiCampoController {
     res.setHeader('Cache-Control', 'private, no-store')
     res.setHeader('Content-Length', String(pdf.contenuto.length))
     res.end(pdf.contenuto)
+  }
+
+  /** Byte di una foto di un esito: tipo salvato, `nosniff`, `sandbox`, mai in cache. */
+  @Get('foto/:id')
+  @ApiOperation({ summary: 'Scarica una foto allegata a un esito dal campo' })
+  async scaricaFoto(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const f = await comeHttpCampo(() => this.foto.leggi(tenantId, id))
+    res.status(HttpStatus.OK)
+    res.setHeader('Content-Type', f.mimeType)
+    res.setHeader('Content-Disposition', 'inline; filename="foto-campo"')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', 'sandbox')
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('Content-Length', String(f.contenuto.length))
+    res.end(f.contenuto)
   }
 }

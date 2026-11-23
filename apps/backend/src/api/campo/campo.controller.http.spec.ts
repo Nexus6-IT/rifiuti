@@ -18,9 +18,15 @@ import {
 } from '../../application/campo/errori-campo'
 import { GiroService } from '../../application/campo/giro.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
-import { EventoCampoDiAltroUtenteError } from '../../application/campo/errori-campo'
-import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import {
+  EventoCampoDiAltroUtenteError,
+  EventoCampoNonTrovatoError,
+  FotoCampoGiaUsataError,
+  FotoCampoHashNonCorrispondenteError,
+  FotoCampoLimiteEventoError,
+  FotoCampoNonTrovataError,
+  FotoCampoTipoNonAmmessoError,
+  FotoCampoTroppoGrandeError,
   RicevutaAlterataError,
   RicevutaDiAltroUtenteError,
   RicevutaLimiteRitiroError,
@@ -28,6 +34,9 @@ import {
   RicevutaNonTrovataError,
   RicevutaTroppoGrandeError,
 } from '../../application/campo/errori-campo'
+import { AllegatiCampoService } from '../../application/campo/allegati-campo.service'
+import { MAX_BYTE_FOTO_CAMPO } from '../../application/campo/allegati-campo.input'
+import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import { pngDiProva } from '../../test-support/png-di-prova'
 import { RitiroNonTrovatoError } from '../../application/ritiri/errori-ritiri'
 import { EsitiCampoController } from './esiti-campo.controller'
@@ -45,7 +54,10 @@ const TENANT = '5a5a5a5a-0000-4000-8000-00000000000a'
 const UTENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const ID = '3b3b3b3b-0000-4000-8000-000000000006'
 const EVENTO = '4c4c4c4c-0000-4000-8000-000000000007'
-const RICEVUTA = '5d5d5d5d-0000-4000-8000-000000000008'
+const FOTO = '5d5d5d5d-0000-4000-8000-000000000008'
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(100, 7)])
+const SHA = 'b'.repeat(64)
+const RICEVUTA = '5d5d5d5d-0000-4000-8000-000000000009'
 const corpoRicevuta = {
   id: RICEVUTA,
   ritiroId: ID,
@@ -76,6 +88,7 @@ describe('Campo - catena HTTP', () => {
     elenca: jest.Mock
     leggiPdf: jest.Mock
   }
+  let foto: { registra: jest.Mock; leggi: jest.Mock }
   let autisti: Record<string, jest.Mock>
   let ritiri: Record<string, jest.Mock>
 
@@ -99,6 +112,14 @@ describe('Campo - catena HTTP', () => {
         contenuto: Buffer.from('%PDF-1.7 prova'),
       }),
     }
+    foto = {
+      registra: jest.fn().mockResolvedValue({ id: FOTO, eventoId: EVENTO }),
+      leggi: jest.fn().mockResolvedValue({
+        mimeType: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        contenuto: JPEG,
+      }),
+    }
     autisti = {
       elenca: jest.fn().mockResolvedValue([]),
       crea: jest.fn().mockResolvedValue({ id: ID }),
@@ -117,6 +138,7 @@ describe('Campo - catena HTTP', () => {
         { provide: GiroService, useValue: giro },
         { provide: EventiCampoService, useValue: eventi },
         { provide: RicevuteRitiroService, useValue: ricevute },
+        { provide: AllegatiCampoService, useValue: foto },
         { provide: AutistiService, useValue: autisti },
         { provide: RitiriService, useValue: ritiri },
         { provide: GENERA_FIR_DA_RITIRI, useValue: { genera: jest.fn() } },
@@ -328,6 +350,98 @@ describe('Campo - catena HTTP', () => {
       expect(ricevute.leggiPdf).not.toHaveBeenCalled()
     })
 
+    it('un esito con la posizione passa al servizio; senza posizione resta valido (app gia installate)', async () => {
+      const conPosizione = {
+        ...corpoEvento,
+        dati: { nota: 'x', posizione: { lat: 45.1, lon: 9.2, accuratezza: 8 } },
+      }
+      await http().post('/campo/eventi').send(conPosizione).expect(200)
+      expect(eventi.registra).toHaveBeenLastCalledWith(TENANT, UTENTE, conPosizione)
+      await http().post('/campo/eventi').send(corpoEvento).expect(200)
+    })
+
+    describe('foto', () => {
+      const invia = (
+        b: Buffer = JPEG,
+        campi: Record<string, string> = { id: FOTO, sha256: SHA }
+      ) => {
+        let r = http().post(`/campo/eventi/${EVENTO}/foto`)
+        for (const [k, v] of Object.entries(campi)) r = r.field(k, v)
+        return b.length ? r.attach('foto', b, { filename: 'f.jpg', contentType: 'image/jpeg' }) : r
+      }
+
+      it('il servizio riceve azienda, utente del token, evento, id, impronta e byte', async () => {
+        const r = await invia().expect(200)
+        expect(r.body).toEqual({ id: FOTO, eventoId: EVENTO })
+        expect(foto.registra).toHaveBeenCalledWith(TENANT, UTENTE, EVENTO, {
+          id: FOTO,
+          sha256: SHA,
+          contenuto: JPEG,
+        })
+      })
+
+      it('senza file il servizio riceve contenuto assente (lo rifiuta: 400); campi mancanti o in piu: 400', async () => {
+        await invia(Buffer.alloc(0)).expect(200)
+        expect(foto.registra).toHaveBeenLastCalledWith(TENANT, UTENTE, EVENTO, {
+          id: FOTO,
+          sha256: SHA,
+          contenuto: undefined,
+        })
+        foto.registra.mockClear()
+        await invia(JPEG, { id: FOTO }).expect(400)
+        await invia(JPEG, { id: FOTO, sha256: SHA, utenteId: UTENTE }).expect(400)
+        await invia(JPEG, { id: 'x', sha256: SHA }).expect(400)
+        await invia(JPEG, { id: FOTO, sha256: 'zz' }).expect(400)
+        expect(foto.registra).not.toHaveBeenCalled()
+      })
+
+      it('un evento con id non uuid: 400', async () => {
+        await http().post('/campo/eventi/x/foto').field('id', FOTO).field('sha256', SHA).expect(400)
+      })
+
+      it('oltre il tetto per foto multer si ferma: 413 FOTO_TROPPO_GRANDE senza arrivare al servizio', async () => {
+        const r = await invia(Buffer.alloc(MAX_BYTE_FOTO_CAMPO + 2, 1)).expect(413)
+        expect(JSON.stringify(r.body)).toContain('FOTO_TROPPO_GRANDE')
+        expect(foto.registra).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        ['404 evento', new EventoCampoNonTrovatoError(), 404, 'Evento non trovato'],
+        ['409 altro utente', new EventoCampoDiAltroUtenteError(), 409, 'EVENTO_DI_ALTRO_UTENTE'],
+        ['409 foto gia usata', new FotoCampoGiaUsataError(), 409, 'FOTO_GIA_USATA'],
+        ['413 troppo grande', new FotoCampoTroppoGrandeError('x'), 413, 'FOTO_TROPPO_GRANDE'],
+        ['415 tipo', new FotoCampoTipoNonAmmessoError(), 415, 'FOTO_TIPO_NON_AMMESSO'],
+        [
+          '422 hash',
+          new FotoCampoHashNonCorrispondenteError(),
+          422,
+          'FOTO_HASH_NON_CORRISPONDENTE',
+        ],
+        ['422 limite', new FotoCampoLimiteEventoError(3), 422, 'FOTO_LIMITE_EVENTO'],
+      ])('errori del servizio: %s', async (_n, errore, stato, marcatore) => {
+        foto.registra.mockRejectedValueOnce(errore)
+        const r = await invia().expect(stato)
+        expect(JSON.stringify(r.body)).toContain(marcatore)
+      })
+
+      it('un utente d ufficio non puo inviare foto: 403', async () => {
+        utente.role = 'ADMIN'
+        await invia().expect(403)
+        expect(foto.registra).not.toHaveBeenCalled()
+      })
+
+      it('senza il modulo campo: 403 MODULO_NON_ATTIVO', async () => {
+        moduliAttivi = ['ritiri']
+        const r = await invia().expect(403)
+        expect(JSON.stringify(r.body)).toContain('MODULO_NON_ATTIVO')
+      })
+
+      it('non scarica le foto d ufficio: 403', async () => {
+        await http().get(`/esiti-campo/foto/${FOTO}`).expect(403)
+        expect(foto.leggi).not.toHaveBeenCalled()
+      })
+    })
+
     it('non legge gli esiti d ufficio: 403 e il servizio non gira', async () => {
       const r = await http().get('/esiti-campo').expect(403)
       expect(JSON.stringify(r.body)).toContain('ROTTA_NON_CONSENTITA_ALL_AUTISTA')
@@ -414,6 +528,25 @@ describe('Campo - catena HTTP', () => {
       ricevute.leggiPdf.mockRejectedValueOnce(new RicevutaAlterataError())
       const alt = await http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`).expect(409)
       expect(JSON.stringify(alt.body)).toContain('RICEVUTA_ALTERATA')
+    })
+
+    it('scarica una foto: byte, tipo salvato, nosniff, sandbox e niente cache', async () => {
+      ruoloEffettivo = 'VIEWER'
+      const r = await http().get(`/esiti-campo/foto/${FOTO}`).expect(200)
+      expect(r.headers['content-type']).toContain('image/jpeg')
+      expect(r.headers['x-content-type-options']).toBe('nosniff')
+      expect(r.headers['content-security-policy']).toBe('sandbox')
+      expect(r.headers['cache-control']).toBe('private, no-store')
+      expect(Buffer.from(r.body).equals(JPEG)).toBe(true)
+      expect(foto.leggi).toHaveBeenCalledWith(TENANT, FOTO)
+    })
+
+    it('foto inesistente o id non valido: 404 / 400; senza il modulo campo 403', async () => {
+      foto.leggi.mockRejectedValueOnce(new FotoCampoNonTrovataError())
+      await http().get(`/esiti-campo/foto/${FOTO}`).expect(404)
+      await http().get('/esiti-campo/foto/x').expect(400)
+      moduliAttivi = ['ritiri']
+      await http().get(`/esiti-campo/foto/${FOTO}`).expect(403)
     })
 
     it('gli esiti richiedono il modulo campo', async () => {

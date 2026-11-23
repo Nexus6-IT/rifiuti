@@ -132,6 +132,7 @@ const AMMESSE_ALL_AUTISTA = [
   'CampoController.registraEvento',
   'CampoController.configurazioneRicevute',
   'CampoController.registraRicevuta',
+  'CampoController.registraFoto',
 ]
 
 describe('RuoloAutistaInterceptor: tutte le rotte montate in AppModule', () => {

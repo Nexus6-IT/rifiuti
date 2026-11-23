@@ -44,7 +44,7 @@ describe('EsitiCampoComponent (DOM)', () => {
   }
 
   beforeEach(async () => {
-    servizio = jasmine.createSpyObj<EsitiCampoService>('EsitiCampoService', ['elenca'])
+    servizio = jasmine.createSpyObj<EsitiCampoService>('EsitiCampoService', ['elenca', 'apriFoto'])
     await TestBed.configureTestingModule({
       imports: [EsitiCampoComponent, HttpClientTestingModule],
       providers: [provideNoopAnimations(), { provide: EsitiCampoService, useValue: servizio }],
@@ -106,5 +106,53 @@ describe('EsitiCampoComponent (DOM)', () => {
     await apri('errore')
     expect(q('ec-errore')?.textContent).toContain('Impossibile leggere gli esiti dal campo.')
     expect(q('ec-riga-e1')).toBeNull()
+  })
+  describe('foto e posizione (P5)', () => {
+    const conAllegati = () =>
+      esito({
+        id: 'e9',
+        esito: 'APPLICATO',
+        motivoConflitto: null,
+        dati: { nota: 'ok', posizione: { lat: 45.46427, lon: 9.18951, accuratezza: 12 } },
+        foto: [
+          { id: 'f1', mimeType: 'image/jpeg', dimensioneByte: 250_000, sha256: 'a'.repeat(64) },
+          { id: 'f2', mimeType: 'image/jpeg', dimensioneByte: 100, sha256: 'b'.repeat(64) },
+        ],
+      })
+
+    it('mostra la posizione con l accuratezza e un link alla mappa che si apre solo al click', async () => {
+      await apri({ righe: [conAllegati()], totale: 1 })
+      const testo = q('ec-posizione-e9')?.textContent ?? ''
+      expect(testo).toMatch(/45[.,]46427/)
+      expect(testo).toContain('± 12 m')
+      const a = q('ec-mappa-e9') as HTMLAnchorElement
+      expect(a.href).toContain('openstreetmap.org')
+      expect(a.rel).toContain('noopener')
+      expect(a.target).toBe('_blank')
+    })
+
+    it('elenca le foto con la dimensione e le apre per id', async () => {
+      servizio.apriFoto.and.returnValue(of(undefined))
+      await apri({ righe: [conAllegati()], totale: 1 })
+      const blocco = q('ec-foto-e9')?.textContent ?? ''
+      expect(blocco).toContain('Foto 1 (244 kB)')
+      expect(blocco).toContain('Foto 2 (1 kB)')
+      ;(q('ec-foto-apri-f2') as HTMLElement).click()
+      expect(servizio.apriFoto).toHaveBeenCalledOnceWith('f2')
+    })
+
+    it('se la foto non si apre lo dice', async () => {
+      servizio.apriFoto.and.returnValue(throwError(() => ({ status: 404, error: {} })))
+      await apri({ righe: [conAllegati()], totale: 1 })
+      ;(q('ec-foto-apri-f1') as HTMLElement).click()
+      fixture.detectChanges()
+      expect(q('ec-errore-foto')).not.toBeNull()
+    })
+
+    it('un esito senza foto ne posizione (o da un backend precedente) non mostra nulla di tutto cio', async () => {
+      await apri({ righe: [esito({ id: 'e5' })], totale: 1 })
+      expect(q('ec-foto-e5')).toBeNull()
+      expect(q('ec-posizione-e5')).toBeNull()
+    })
   })
 })

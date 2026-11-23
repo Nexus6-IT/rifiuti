@@ -5,7 +5,7 @@ import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.servi
 import { CodaEventi } from '../core/coda-eventi';
 import { CodaRicevute } from '../core/coda-ricevute';
 import { SessioneService } from '../core/sessione.service';
-import { StatoCoda } from '../core/stato-coda';
+import { StatoCoda, riepilogoDaInviare } from '../core/stato-coda';
 import { StatoGiro } from '../core/stato-giro';
 
 @Component({
@@ -90,17 +90,18 @@ export class GiroPagina {
 
   protected esci(): void {
     const n = this.coda.daInviare();
+    const foto = this.coda.fotoDaInviare();
     const nr = this.ricevute.daInviare();
-    if (n + nr > 0) {
+    if (n + foto + nr > 0) {
       const cosa = [
-        n > 0 ? `${n} ${n === 1 ? 'esito' : 'esiti'}` : '',
-        nr > 0 ? `${nr} ${nr === 1 ? 'ricevuta' : 'ricevute'}` : '',
+        riepilogoDaInviare(n, foto),
+        nr > 0 ? `${nr} ${nr === 1 ? 'ricevuta' : 'ricevute'} da inviare` : '',
       ]
         .filter(Boolean)
         .join(' e ');
       if (
         !window.confirm(
-          `Hai ${cosa} non ancora inviat${n + nr === 1 ? 'o' : 'i'}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
+          `Hai ${cosa}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
         )
       ) {
         return;

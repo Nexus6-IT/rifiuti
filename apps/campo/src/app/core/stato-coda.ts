@@ -30,11 +30,9 @@ export function spiegaConflitto(motivo: string | null): string {
 @Component({
   selector: 'app-stato-coda',
   template: `
-    @if (coda.daInviare() > 0) {
+    @if (coda.daInviare() > 0 || coda.fotoDaInviare() > 0) {
       <p class="avviso-offline" role="status" data-testid="da-inviare">
-        {{
-          coda.daInviare() === 1 ? '1 esito da inviare' : coda.daInviare() + ' esiti da inviare'
-        }}.
+        {{ riepilogo() }}.
         @if (!rete.online()) {
           Sei offline: partiranno appena torna la rete (tieni aperta l'app).
         }
@@ -126,6 +124,11 @@ export class StatoCoda {
   protected readonly ricevute = inject(CodaRicevute);
   protected readonly rete = inject(StatoRete);
 
+  /** «N esiti da inviare», «N foto da inviare» o entrambi (foto di esiti gia' confermati). */
+  protected riepilogo(): string {
+    return riepilogoDaInviare(this.coda.daInviare(), this.coda.fotoDaInviare());
+  }
+
   protected scarta(): void {
     if (
       window.confirm(
@@ -135,4 +138,12 @@ export class StatoCoda {
       void this.coda.scartaDiAltriUtenti();
     }
   }
+}
+
+/** Testo di cio' che aspetta la rete: esiti e foto (le foto partono dopo il loro esito). */
+export function riepilogoDaInviare(esiti: number, foto: number): string {
+  const parti: string[] = [];
+  if (esiti > 0) parti.push(esiti === 1 ? '1 esito da inviare' : `${esiti} esiti da inviare`);
+  if (foto > 0) parti.push(`${foto} foto da inviare`);
+  return parti.join(' e ');
 }
