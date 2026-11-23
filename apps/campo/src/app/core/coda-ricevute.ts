@@ -20,8 +20,10 @@ export interface NuovaRicevuta {
 }
 
 /**
- * Una ricevuta nella coda di uscita. `firmaPng` ed `emailCliente` sono dati personali: restano sul
- * telefono SOLO finche' la ricevuta non e' arrivata (o rifiutata), poi si azzerano.
+ * Una ricevuta nella coda di uscita. `firmaPng` ed `emailCliente` sono dati personali: la firma
+ * resta sul telefono finche' la ricevuta non e' arrivata, ANCHE se il server la rifiuta (la firma di
+ * un ritiro avvenuto non si perde: si toglie solo quando l'autista scarta a mano); l'email si
+ * azzera a ricevuta arrivata o rifiutata.
  */
 export interface RicevutaInCoda {
   id: string;
@@ -39,6 +41,8 @@ export interface RicevutaInCoda {
   pdfSha256: string | null;
   contenutoSha256: string | null;
   invio: InvioRicevuta | null;
+  /** `DA_RICONCILIARE`: archiviata, ma il ritiro era cambiato mentre il telefono era offline. */
+  esitoServer?: 'REGISTRATA' | 'DA_RICONCILIARE' | null;
 }
 
 interface RispostaRicevuta {
@@ -47,6 +51,7 @@ interface RispostaRicevuta {
   pdfSha256: string;
   contenutoSha256: string;
   invio: InvioRicevuta;
+  esito?: 'REGISTRATA' | 'DA_RICONCILIARE';
 }
 
 const INTERVALLO_MS = 20_000;
@@ -56,7 +61,7 @@ const TIMEOUT_RICHIESTA_MS = 40_000;
 /**
  * Coda di uscita delle ricevute di ritiro firmate. Stesse regole della coda degli esiti:
  * scrittura sul telefono PRIMA dell'invio, uuid identico a ogni reinvio (il server non duplica),
- * un invio alla volta in ordine, rifiuto definitivo (400/404/409/422) = RIFIUTATA e visibile,
+ * un invio alla volta in ordine, rifiuto definitivo (400/404/409/413/422) = RIFIUTATA e visibile (la firma resta sul telefono),
  * 403 ferma i tentativi automatici, coda PER UTENTE.
  *
  * La ricevuta e' una firma elettronica SEMPLICE e non sostituisce il FIR: lo dice l'interfaccia e
@@ -229,6 +234,7 @@ export class CodaRicevute {
         pdfSha256: risp.pdfSha256,
         contenutoSha256: risp.contenutoSha256,
         invio: risp.invio,
+        esitoServer: risp.esito ?? 'REGISTRATA',
       });
       return true;
     } catch (err) {
@@ -239,7 +245,7 @@ export class CodaRicevute {
         await this.scrivi({
           ...r,
           stato: 'RIFIUTATO',
-          firmaPng: null,
+          // La firma resta: si libera solo quando l'autista scarta a mano (o rifa la ricevuta).
           emailCliente: null,
           errore: messaggio ?? 'Il server non ha accettato questa ricevuta.',
         });

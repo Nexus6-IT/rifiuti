@@ -234,6 +234,9 @@ describe('RicevutaPagina', () => {
     expect(q(f, 'stato-ricevuta')?.textContent).toContain('Non accettata dal server');
     expect(q(f, 'stato-ricevuta')?.textContent).toContain('non è più assegnato a te');
     http.expectNone(URL_RICEVUTE);
+    // La firma non si perde: resta nell'archivio finche' l'autista non scarta.
+    const [r] = await archivio.tutte();
+    expect(r).toMatchObject({ stato: 'RIFIUTATO', firmaPng: 'iVBORw0KGgo=' });
   });
 
   it('senza rete la ricevuta resta sul telefono (firma in archivio) e il form non si ripresenta', async () => {

@@ -19,6 +19,8 @@ const ricevuta = (p: Partial<RicevutaCampo> = {}): RicevutaCampo => ({
   dimensionePdf: 20480,
   pdfSha256: 'abcdef0123456789'.repeat(4),
   contenutoSha256: 'f'.repeat(64),
+  esito: 'REGISTRATA',
+  motivoConflitto: null,
   invio: null,
   ...p,
 })
@@ -72,6 +74,19 @@ describe('RicevuteCampoComponent (DOM)', () => {
     expect(q('rc-invio-x1')?.textContent).toContain('Non inviata')
     expect(q('rc-impronta-x1')?.textContent).toContain('SHA-256 abcdef012345')
     expect(q('rc-impronta-x1')?.getAttribute('title')).toBe(ricevuta().pdfSha256)
+  })
+
+  it('segnala «Da riconciliare» col motivo; una ricevuta regolare non ha il segno', async () => {
+    await apri({
+      righe: [
+        ricevuta({ id: 'x1' }),
+        ricevuta({ id: 'x2', esito: 'DA_RICONCILIARE', motivoConflitto: 'RITIRO_ANNULLATO' }),
+      ],
+      totale: 2,
+    })
+    expect(q('rc-conflitto-x1')).toBeNull()
+    expect(q('rc-conflitto-x2')?.textContent).toContain('Da riconciliare')
+    expect(q('rc-conflitto-x2')?.textContent).toContain('annullato')
   })
 
   it('mostra l esito dell invio al cliente con l indirizzo mascherato', async () => {

@@ -79,6 +79,8 @@ function nuovoServer() {
     perdiRisposte: 0,
     /** Se impostato, risponde con questo errore invece di accettare. */
     rifiuta: null as null | { status: number; message: string },
+    /** Se true il server archivia «da riconciliare» (ritiro cambiato mentre il telefono era offline). */
+    daRiconciliare: false,
   }
 }
 type Server = ReturnType<typeof nuovoServer>
@@ -111,6 +113,7 @@ async function preparaApi(page: Page, server: Server) {
       pdfSha256: 'a'.repeat(64),
       contenutoSha256: 'b'.repeat(64),
       invio: corpo.emailCliente ? 'INVIATO' : 'NON_RICHIESTO',
+      esito: server.daRiconciliare ? 'DA_RICONCILIARE' : 'REGISTRATA',
     })
   })
   await ctx.route('**/api/v1/auth/logout', route => json(route, { message: 'ok' }))
@@ -311,13 +314,31 @@ test.describe('App campo P6: ricevuta di ritiro con firma su schermo', () => {
     expect(await ricevuteSalvate(page)).toHaveLength(0)
   })
 
-  test('il server rifiuta (ritiro non piu tuo): lo dice col motivo, nessun ritentativo, firma liberata', async ({
+  test('il server archivia «da riconciliare» (ritiro cambiato a telefono offline): la ricevuta non si perde e l autista lo vede', async ({
+    page,
+  }) => {
+    const server = nuovoServer()
+    server.daRiconciliare = true
+    await preparaApi(page, server)
+    await entra(page, 'u1')
+    await apriRicevuta(page)
+    await page.getByTestId('nome-firmatario').fill('Mario Verdi')
+    await firma(page)
+    await page.getByTestId('conferma-firma').click()
+    await expect(page.getByTestId('stato-ricevuta')).toContainText('archiviata')
+    await expect(page.getByTestId('stato-ricevuta')).toContainText("l'ufficio la verificherà")
+    expect(server.richieste).toBe(1)
+    const [r] = await ricevuteSalvate(page)
+    expect(r).toMatchObject({ stato: 'CONFERMATO', firmaPng: null })
+  })
+
+  test('il server rifiuta (es. limite di ricevute per ritiro): lo dice col motivo, nessun ritentativo, la firma NON si perde', async ({
     page,
   }) => {
     const server = nuovoServer()
     server.rifiuta = {
       status: 409,
-      message: 'Il ritiro non è più assegnato a te: contatta l’ufficio.',
+      message: 'Per questo ritiro ci sono già 5 ricevute: contatta l’ufficio.',
     }
     await preparaApi(page, server)
     await entra(page, 'u1')
@@ -326,11 +347,12 @@ test.describe('App campo P6: ricevuta di ritiro con firma su schermo', () => {
     await firma(page)
     await page.getByTestId('conferma-firma').click()
     await expect(page.getByTestId('stato-ricevuta')).toContainText('Non accettata dal server')
-    await expect(page.getByTestId('stato-ricevuta')).toContainText('non è più assegnato a te')
+    await expect(page.getByTestId('stato-ricevuta')).toContainText('già 5 ricevute')
     await page.waitForTimeout(1200)
     expect(server.richieste).toBe(1)
     const [r] = await ricevuteSalvate(page)
-    expect(r).toMatchObject({ stato: 'RIFIUTATO', firmaPng: null })
+    expect(r).toMatchObject({ stato: 'RIFIUTATO' })
+    expect(typeof r.firmaPng).toBe('string')
   })
 
   test('con l invio al cliente acceso compare il campo email e parte nel corpo; spento non parte mai', async ({

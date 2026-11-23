@@ -20,6 +20,9 @@ export interface RicevutaCampo {
   dimensionePdf: number
   pdfSha256: string
   contenutoSha256: string
+  /** `DA_RICONCILIARE`: il ritiro e' cambiato mentre il telefono era offline. */
+  esito: 'REGISTRATA' | 'DA_RICONCILIARE'
+  motivoConflitto: string | null
   invio: { esito: 'INVIATO' | 'FALLITO'; destinatario: string } | null
 }
 

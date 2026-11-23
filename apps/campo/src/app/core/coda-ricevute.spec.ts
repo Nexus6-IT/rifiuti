@@ -126,20 +126,40 @@ describe('CodaRicevute (coda di uscita delle ricevute)', () => {
     expect(coda.daInviare()).toBe(0);
   });
 
-  it('rifiuto definitivo (400/404/409/413/422): RIFIUTATO col messaggio, firma liberata, nessun ritentativo', async () => {
+  it('rifiuto definitivo (400/404/409/413/422): RIFIUTATO col messaggio, firma CONSERVATA, nessun ritentativo', async () => {
     accedi('u1');
     for (const status of [400, 404, 409, 413, 422]) {
       const r = await coda.registra(nuova(`r${status}`));
       await rispondi(conStato(status, { message: `No ${status}` }));
       const x = coda.mie().find((y) => y.id === r.id);
-      expect(x).toMatchObject({ stato: 'RIFIUTATO', errore: `No ${status}`, firmaPng: null });
+      expect(x).toMatchObject({
+        stato: 'RIFIUTATO',
+        errore: `No ${status}`,
+        firmaPng: 'iVBORw0KGgo=',
+        emailCliente: null,
+      });
     }
     expect(coda.rifiutate()).toBe(5);
     await coda.invia();
     http.expectNone(URL_RICEVUTE);
+    // Anche nell'archivio la firma resta, finche' l'autista non scarta a mano.
+    expect((await archivio.tutte()).every((x) => x.firmaPng === 'iVBORw0KGgo=')).toBe(true);
     await coda.scarta(coda.mie()[0].id);
     expect(coda.rifiutate()).toBe(4);
     expect(await archivio.tutte()).toHaveLength(4);
+  });
+
+  it('il server archivia «da riconciliare»: la ricevuta e CONFERMATA, firma azzerata e il segno resta', async () => {
+    accedi('u1');
+    const r = await coda.registra(nuova());
+    await rispondi((req) => req.flush({ ...ok(r.id), esito: 'DA_RICONCILIARE' }));
+    expect(coda.mie()[0]).toMatchObject({
+      stato: 'CONFERMATO',
+      esitoServer: 'DA_RICONCILIARE',
+      firmaPng: null,
+    });
+    const [inArchivio] = await archivio.tutte();
+    expect(inArchivio.esitoServer).toBe('DA_RICONCILIARE');
   });
 
   it('un 5xx, un 401 o un 429 NON rifiutano: restano da inviare', async () => {

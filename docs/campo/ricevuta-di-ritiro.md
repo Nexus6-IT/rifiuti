@@ -42,3 +42,16 @@ non spedita».
   completo ex art. 13 GDPR da mostrare o consegnare).
 - Tempo di conservazione e procedura di cancellazione di una ricevuta (oggi: nessuna scadenza).
 - Il nome del firmatario e un dato personale e compare nel PDF e nell'archivio d'ufficio.
+
+## Ritiro cambiato mentre il telefono era offline
+
+Se il ritiro e stato riassegnato, annullato o chiuso prima che la ricevuta arrivasse, il server la
+**archivia lo stesso** con `esito = DA_RICONCILIARE` e il motivo (`motivo_conflitto`): la firma di un
+ritiro avvenuto davvero non si perde e l'ufficio la riconcilia (segno visibile nell'archivio). La
+ricevuta riporta l'autista che ha firmato, non quello oggi sul ritiro, e l'email al cliente non parte.
+Restano rifiuti: ritiro di un'altra azienda o inesistente (404), utente non autista (403), tetto di
+5 ricevute per ritiro (409). Sul telefono la firma si conserva anche dopo un rifiuto, finche
+l'autista non scarta a mano.
+
+La firma PNG si verifica e si **ricodifica lato server** prima del PDF (solo 8 bit RGB/RGBA, non
+interlacciato; CRC, zlib con tetto, filtri validi): al PDF arriva solo il PNG rigenerato.

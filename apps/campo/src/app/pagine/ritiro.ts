@@ -140,6 +140,9 @@ import { StatoGiro } from '../core/stato-giro';
                   }
                   @case ('CONFERMATO') {
                     inviata all'ufficio.
+                    @if (v.esitoServer === 'DA_RICONCILIARE') {
+                      Il ritiro era cambiato: l'ufficio la verificherà.
+                    }
                   }
                   @case ('RIFIUTATO') {
                     non accettata dal server: {{ v.errore }}

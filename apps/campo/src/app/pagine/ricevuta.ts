@@ -61,6 +61,10 @@ const LIMITE_BASE64 = Math.ceil((131_072 * 4) / 3);
                 Salvata sul telefono, in attesa di invio all'ufficio.
               } @else if (s.stato === 'CONFERMATO') {
                 Inviata all'ufficio e archiviata.
+                @if (s.esitoServer === 'DA_RICONCILIARE') {
+                  Il ritiro era cambiato in ufficio: la ricevuta è stata conservata e l'ufficio la
+                  verificherà.
+                }
                 @switch (s.invio) {
                   @case ('INVIATO') {
                     Copia spedita al cliente.

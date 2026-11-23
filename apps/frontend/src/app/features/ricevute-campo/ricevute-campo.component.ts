@@ -15,6 +15,14 @@ import { RicevuteCampoService, RicevutaCampo } from './ricevute-campo.service'
 
 const PER_PAGINA = 50
 
+const MOTIVI_CONFLITTO: Record<string, string> = {
+  RITIRO_RIASSEGNATO:
+    'Il ritiro non era più assegnato a questo autista quando la ricevuta è arrivata.',
+  RITIRO_ANNULLATO: 'Il ritiro era stato annullato in ufficio.',
+  RITIRO_NON_ESEGUITO: 'Il ritiro era già stato chiuso come non eseguito.',
+  RITIRO_STATO_CAMBIATO: 'Il ritiro non era più da fare.',
+}
+
 @Component({
   selector: 'app-ricevute-campo',
   standalone: true,
@@ -58,6 +66,13 @@ const PER_PAGINA = 50
                 {{ r.dataRitiro | date: 'dd/MM/yyyy' }} · {{ r.cerCode }} · {{ r.descrizione }}
               </div>
               <div class="rc-nota">Autista: {{ r.autista }}</div>
+              <div
+                *ngIf="r.esito === 'DA_RICONCILIARE'"
+                [attr.data-testid]="'rc-conflitto-' + r.id"
+              >
+                <span class="rc-badge rc-badge-attenzione">Da riconciliare</span>
+                <div class="rc-nota">{{ motivo(r.motivoConflitto) }}</div>
+              </div>
             </td>
             <td>
               {{ r.firmatarioNome }}
@@ -165,6 +180,10 @@ const PER_PAGINA = 50
   ],
 })
 export class RicevuteCampoComponent implements OnInit {
+  motivo(codice: string | null): string {
+    return (codice && MOTIVI_CONFLITTO[codice]) || 'Il ritiro è cambiato dopo la firma.'
+  }
+
   private readonly servizio = inject(RicevuteCampoService)
 
   readonly perPagina = PER_PAGINA
