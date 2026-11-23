@@ -334,6 +334,26 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
     expect(await righe(inChiusura)).toHaveLength(0)
   })
 
+  it('registro chiuso su RENTRI (chiusura confermata): la generazione e ammessa, con l eREGI gia salvato', async () => {
+    const s = await scenario()
+    await aggiungiAnnotazioni(owner, s, 2026, 1, 3)
+    await genera(s)
+    await aggiungiAnnotazioni(owner, s, 2026, 4, 5)
+    // Chiusura confermata dall'ente: `rentriChiusoIl` valorizzato, nessuna richiesta pendente.
+    await owner.registroRifiuti.update({
+      where: { id: s.registroId },
+      data: { rentriChiusoIl: new Date(), rentriChiusuraRichiestaIl: null },
+    })
+    const esito = await genera(s)
+    expect(esito.esito).toBe('CREATA')
+    expect((await righe(s)).map(r => [r.progressivoDa, r.progressivoA])).toEqual([
+      [1, 3],
+      [4, 5],
+    ])
+    // L'eREGI si e scaricato una volta sola, prima della chiusura: dopo si riusa la copia salvata.
+    expect(scaricaVidimazioneXml).toHaveBeenCalledTimes(1)
+  })
+
   it('un eREGI di un altro registro o illeggibile non si salva e blocca l esportazione', async () => {
     const s = await scenario()
     await aggiungiAnnotazioni(owner, s, 2026, 1, 1)
