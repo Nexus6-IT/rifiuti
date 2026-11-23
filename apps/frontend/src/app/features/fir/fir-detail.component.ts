@@ -1237,6 +1237,13 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             [(ngModel)]="tbTrasportatoreId"
             data-testid="fir-detail-rentri-trasbordo-trasportatore"
           ></p-dropdown>
+          @if (trasbordoTrasportatoriTotale() > trasbordoTrasportatori().length) {
+            <small class="text-tertiary" data-testid="fir-detail-rentri-trasbordo-troncato">
+              Mostrati i primi {{ trasbordoTrasportatori().length }} trasportatori su
+              {{ trasbordoTrasportatoriTotale() }}: se non trovi quello che cerchi, completane
+              l'anagrafica dalla scheda Trasportatori.
+            </small>
+          }
         </div>
         <div class="form-field">
           <label for="tb-nome">Nome del conducente *</label>
@@ -1906,6 +1913,8 @@ export class FirDetailComponent implements OnInit {
   protected readonly verificaTrasbordoInCorso = signal(false)
   protected readonly trasbordoErrore = signal<string | null>(null)
   protected readonly trasbordoTrasportatori = signal<Trasportatore[]>([])
+  /** Totale in anagrafica: se supera quelli caricati (100) il dialog lo dice. */
+  protected readonly trasbordoTrasportatoriTotale = signal(0)
   protected tbTrasportatoreId: string | null = null
   protected tbNome = ''
   protected tbCognome = ''
@@ -2860,10 +2869,14 @@ export class FirDetailComponent implements OnInit {
     this.tbInizio = this.adessoPerDatetimeLocal()
     this.trasbordoErrore.set(null)
     this.trasbordoTrasportatori.set([])
+    this.trasbordoTrasportatoriTotale.set(0)
     this.trasbordoDialogVisible.set(true)
     // Il nuovo trasportatore si sceglie dall'anagrafica dell'azienda (snapshot letto dal backend).
     this.registryService.getTrasportatori(1, 100).subscribe({
-      next: r => this.trasbordoTrasportatori.set(r.items),
+      next: r => {
+        this.trasbordoTrasportatori.set(r.items)
+        this.trasbordoTrasportatoriTotale.set(r.total ?? r.items.length)
+      },
       error: () =>
         this.trasbordoErrore.set(
           "Impossibile caricare l'elenco dei trasportatori dall'anagrafica: chiudi e riprova."

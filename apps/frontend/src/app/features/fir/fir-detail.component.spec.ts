@@ -3245,6 +3245,42 @@ describe('FirDetailComponent', () => {
       expect(component['trasbordoDialogVisible']()).toBeTrue()
     })
 
+    it('anagrafica oltre i 100 trasportatori: il dialog avvisa che ne mostra solo i primi 100', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      registryService.getTrasportatori.and.returnValue(
+        of({
+          items: Array.from({ length: 100 }, (_, i) => ({
+            id: `tr-${i}`,
+            ragioneSociale: `Trasporti ${i}`,
+          })),
+          total: 130,
+          page: 1,
+          limit: 100,
+          totalPages: 2,
+        } as any)
+      )
+      fixture.detectChanges()
+
+      component.apriDialogTrasbordoTotale(firLegato)
+      fixture.detectChanges()
+
+      const avviso = document.body.querySelector(
+        '[data-testid="fir-detail-rentri-trasbordo-troncato"]'
+      )
+      expect(avviso?.textContent).toContain('primi 100')
+      expect(avviso?.textContent).toContain('130')
+    })
+
+    it('anagrafica entro i 100: nessun avviso di elenco troncato', () => {
+      preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
+      fixture.detectChanges()
+      component.apriDialogTrasbordoTotale(firLegato)
+      fixture.detectChanges()
+      expect(
+        document.body.querySelector('[data-testid="fir-detail-rentri-trasbordo-troncato"]')
+      ).toBeFalsy()
+    })
+
     it('anagrafica non caricabile: errore nel dialog, nessun invio possibile', () => {
       preparaFirLegato('OPERATOR', firLegato, 'TrasbordoTotale')
       registryService.getTrasportatori.and.returnValue(throwError(() => ({ status: 500 })))
