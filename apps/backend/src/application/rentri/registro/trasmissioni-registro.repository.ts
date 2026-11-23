@@ -31,7 +31,7 @@ type Tx = Prisma.TransactionClient
 
 export type EsitoPrenotazione =
   | { esito: 'PRENOTATO'; lottoId: string; movimentoIds: string[] }
-  | { esito: 'GIA_IN_CORSO' | 'NIENTE' | 'SENZA_IDENTIFICATIVO' }
+  | { esito: 'GIA_IN_CORSO' | 'NIENTE' | 'SENZA_IDENTIFICATIVO' | 'REGISTRO_CHIUSO' }
 
 export interface PreparazioneLotto {
   /** Annotazioni scelte per il lotto, nell'ordine d'invio (sottoinsieme delle candidate). */
@@ -89,9 +89,18 @@ export class TrasmissioniRegistroRepository {
 
         const registro = await tx.registroRifiuti.findFirst({
           where: { id: registroId, tenantId },
-          select: { identificativoRentri: true },
+          select: {
+            identificativoRentri: true,
+            rentriChiusoIl: true,
+            rentriChiusuraRichiestaIl: true,
+          },
         })
         if (!registro?.identificativoRentri) return { esito: 'SENZA_IDENTIFICATIVO' }
+        // eREGI E3: nessun invio verso un registro chiuso (o in chiusura) su RENTRI. Il controllo
+        // sta DOPO il lock: la chiusura imposta il flag sotto lo stesso lock.
+        if (registro.rentriChiusoIl !== null || registro.rentriChiusuraRichiestaIl !== null) {
+          return { esito: 'REGISTRO_CHIUSO' }
+        }
 
         const inCorso = await tx.movimentoTrasmissioneRentri.count({
           where: { tenantId, registroId, stato: { in: ['IN_INVIO', 'ATTESA_ESITO'] } },
@@ -493,10 +502,9 @@ export class TrasmissioniRegistroRepository {
    * un importato `DA_RICONCILIARE` non si adottano mai (hanno gia' la loro riga di blocco o nessuna).
    */
   async adottaAutomatiche(tenantId: string, limite: number): Promise<number> {
-    return this.nelTenant(
-      tenantId,
-      tx =>
-        tx.$executeRaw`
+    return this.nelTenant(tenantId, async tx => {
+      await this.bloccaRegistri(tx, tenantId, 'invio_rentri_automatico_dal')
+      return tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "updated_at")
         SELECT m."tenant_id", m."id", m."registro_id", m."type", 'AUTOMATICA', now()
@@ -506,6 +514,8 @@ export class TrasmissioniRegistroRepository {
           ON p."id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
         WHERE m."tenant_id" = ${tenantId}::uuid
           AND r."invio_rentri_automatico_dal" IS NOT NULL
+          AND r."rentri_chiuso_il" IS NULL
+          AND r."rentri_chiusura_richiesta_il" IS NULL
           AND m."import_source" IS NULL
           AND ${NESSUNA_CATENA_DA_RICONCILIARE}
           AND m."created_at" >= r."invio_rentri_automatico_dal"
@@ -516,7 +526,7 @@ export class TrasmissioniRegistroRepository {
         ORDER BY m."progressive_year", m."progressive_number"
         LIMIT ${limite}
         ON CONFLICT ("movimento_id") DO NOTHING`
-    )
+    })
   }
 
   /**
@@ -524,17 +534,19 @@ export class TrasmissioniRegistroRepository {
    * (origine `CORREZIONE`). Quelle di un predecessore rifiutato o mai trasmesso non partono.
    */
   async adottaCorrezioni(tenantId: string, limite: number): Promise<number> {
-    return this.nelTenant(
-      tenantId,
-      tx =>
-        tx.$executeRaw`
+    return this.nelTenant(tenantId, async tx => {
+      await this.bloccaRegistri(tx, tenantId)
+      return tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "updated_at")
         SELECT m."tenant_id", m."id", m."registro_id", m."type", 'CORREZIONE', now()
         FROM "waste_movements" m
         JOIN "movimenti_trasmissione_rentri" p
           ON p."movimento_id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
+        JOIN "registri_rifiuti" r ON r."id" = m."registro_id" AND r."tenant_id" = m."tenant_id"
         WHERE m."tenant_id" = ${tenantId}::uuid
+          AND r."rentri_chiuso_il" IS NULL
+          AND r."rentri_chiusura_richiesta_il" IS NULL
           AND m."movimento_rettificato_id" IS NOT NULL
           AND p."stato" IN ('TRASMESSA', 'GIA_SU_RENTRI')
           AND m."import_source" IS NULL
@@ -544,6 +556,33 @@ export class TrasmissioniRegistroRepository {
         ORDER BY m."progressive_year", m."progressive_number"
         LIMIT ${limite}
         ON CONFLICT ("movimento_id") DO NOTHING`
-    )
+    })
+  }
+
+  /**
+   * eREGI E3: prende il lock dei lotti (`rentri-registro|<id>`, lo stesso di `prenota` e della
+   * chiusura) dei registri su cui l'adozione puo' scrivere, in ordine di id (nessun deadlock fra
+   * due adozioni), PRIMA dell'INSERT: l'INSERT rilegge i flag di chiusura con uno snapshot nuovo,
+   * quindi non crea righe dopo il conteggio di una chiusura. Non e' un try-lock: attende al piu'
+   * il tempo di una prenotazione.
+   */
+  private async bloccaRegistri(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    colonnaObbligatoria?: 'invio_rentri_automatico_dal'
+  ): Promise<void> {
+    const registri = colonnaObbligatoria
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "registri_rifiuti"
+          WHERE "tenant_id" = ${tenantId}::uuid AND "rentri_chiuso_il" IS NULL
+            AND "invio_rentri_automatico_dal" IS NOT NULL
+          ORDER BY "id"`
+      : await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "registri_rifiuti"
+          WHERE "tenant_id" = ${tenantId}::uuid AND "rentri_chiuso_il" IS NULL
+          ORDER BY "id"`
+    for (const r of registri) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + r.id}))`
+    }
   }
 }
