@@ -1,8 +1,20 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common'
+import type { Response } from 'express'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
+import { AllegatiCampoService } from '../../application/campo/allegati-campo.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
 import { EsitiCampoQueryDto } from './dto/campo.dto'
 import { comeHttpCampo } from './errori-http'
@@ -18,7 +30,10 @@ import { comeHttpCampo } from './errori-http'
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class EsitiCampoController {
-  constructor(private readonly eventi: EventiCampoService) {}
+  constructor(
+    private readonly eventi: EventiCampoService,
+    private readonly foto: AllegatiCampoService
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -27,5 +42,25 @@ export class EsitiCampoController {
   elenca(@Req() req: any, @Query() q: EsitiCampoQueryDto) {
     const tenantId = requireRequestTenantId(req)
     return comeHttpCampo(() => this.eventi.elenca(tenantId, { esito: q.esito, pagina: q.pagina }))
+  }
+
+  /** Byte di una foto di un esito: tipo salvato, `nosniff`, `sandbox`, mai in cache. */
+  @Get('foto/:id')
+  @ApiOperation({ summary: 'Scarica una foto allegata a un esito dal campo' })
+  async scaricaFoto(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const f = await comeHttpCampo(() => this.foto.leggi(tenantId, id))
+    res.status(HttpStatus.OK)
+    res.setHeader('Content-Type', f.mimeType)
+    res.setHeader('Content-Disposition', 'inline; filename="foto-campo"')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', 'sandbox')
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('Content-Length', String(f.contenuto.length))
+    res.end(f.contenuto)
   }
 }

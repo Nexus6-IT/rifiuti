@@ -134,6 +134,7 @@ model Tenant {
   automezzi             Automezzo[]
   autisti               Autista[]
   eventiCampo           EventoCampo[]
+  allegatiCampo         AllegatoCampo[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
@@ -288,6 +289,7 @@ model User {
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
   eventiCampo             EventoCampo[]
+  allegatiCampo           AllegatoCampo[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
 
   @@unique([tenantId, fiscalCode])
@@ -4770,12 +4772,37 @@ model EventoCampo {
   ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_ritiro_fkey")
   autista Autista @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_autista_fkey")
   utente  User    @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_utente_fkey")
+  allegati AllegatoCampo[]
 
   @@unique([id, tenantId], map: "eventi_campo_id_tenant_id_key")
   @@unique([tenantId, eventoUuid], map: "eventi_campo_evento_uuid_key")
   @@index([tenantId, esito, ricevutoIl(sort: Desc)], map: "eventi_campo_esito_idx")
   @@index([tenantId, ritiroId, ricevutoIl], map: "eventi_campo_ritiro_idx")
   @@map("eventi_campo")
+}
+
+/// Foto scattate dall'autista per un evento dal campo (app campo, P5). Append-only: i byte stanno nel
+/// database (come `AllegatoPesa`), con impronta SHA-256 verificata dal server. `fotoUuid` e' generato dal
+/// telefono (idempotenza). Mai nei log.
+model AllegatoCampo {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  fotoUuid       String   @map("foto_uuid") @db.Uuid
+  eventoId       String   @map("evento_id") @db.Uuid
+  utenteId       String   @map("utente_id") @db.Uuid
+  mimeType       String   @map("mime_type") @db.VarChar(20)
+  dimensioneByte Int      @map("dimensione_byte")
+  sha256         String   @db.VarChar(64)
+  contenuto      Bytes
+  ricevutoIl     DateTime @default(now()) @map("ricevuto_il") @db.Timestamptz(3)
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evento EventoCampo @relation(fields: [eventoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "allegati_campo_evento_fkey")
+  utente User        @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "allegati_campo_utente_fkey")
+
+  @@unique([tenantId, fotoUuid], map: "allegati_campo_foto_uuid_key")
+  @@index([tenantId, eventoId], map: "allegati_campo_evento_idx")
+  @@map("allegati_campo")
 }
 
 enum EsitoEventoCampo {

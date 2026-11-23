@@ -13,6 +13,7 @@ import {
   EsitiCampoService,
   EsitoCampo,
   EsitoEventoCampo,
+  PosizioneEsitoCampo,
   spiegaConflitto,
 } from './esiti-campo.service'
 
@@ -67,6 +68,9 @@ const PER_PAGINA = 50
       </div>
 
       <p *ngIf="caricamento()" role="status" class="ec-nota">Caricamento…</p>
+      <p *ngIf="erroreFoto() as e" role="alert" class="field-error" data-testid="ec-errore-foto">
+        {{ e }}
+      </p>
       <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="ec-errore">{{ e }}</p>
 
       <p-table [value]="righe()" styleClass="p-datatable-sm" data-testid="ec-tabella">
@@ -100,6 +104,33 @@ const PER_PAGINA = 50
               {{ e.tipo === 'RITIRO_ESEGUITO' ? 'Ritiro eseguito' : 'Ritiro non eseguito' }}
               <div class="ec-nota" *ngIf="e.dati.motivo">Motivo: {{ e.dati.motivo }}</div>
               <div class="ec-nota" *ngIf="e.dati.nota">Nota: {{ e.dati.nota }}</div>
+              <div
+                class="ec-nota"
+                *ngIf="e.dati.posizione as p"
+                [attr.data-testid]="'ec-posizione-' + e.id"
+              >
+                Posizione al momento dell'esito: {{ p.lat | number: '1.5-6' }},
+                {{ p.lon | number: '1.5-6' }} (± {{ p.accuratezza }} m)
+                <a
+                  [href]="linkMappa(p)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  [attr.data-testid]="'ec-mappa-' + e.id"
+                  >Apri sulla mappa</a
+                >
+              </div>
+              <div class="ec-foto" *ngIf="e.foto?.length" [attr.data-testid]="'ec-foto-' + e.id">
+                <button
+                  type="button"
+                  class="ec-filtro"
+                  *ngFor="let f of e.foto; let i = index"
+                  (click)="apriFoto(f.id)"
+                  [attr.aria-label]="'Apri la foto ' + (i + 1) + ' di ' + e.foto.length"
+                  [attr.data-testid]="'ec-foto-apri-' + f.id"
+                >
+                  Foto {{ i + 1 }} ({{ kb(f.dimensioneByte) }} kB)
+                </button>
+              </div>
             </td>
             <td [attr.data-testid]="'ec-esito-' + e.id">
               <ng-container *ngIf="e.esito === 'DA_RICONCILIARE'; else applicato">
@@ -194,6 +225,12 @@ const PER_PAGINA = 50
         color: #5c3d00;
         border: 1px solid #c58b00;
       }
+      .ec-foto {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+      }
       .ec-paginazione {
         display: flex;
         align-items: center;
@@ -213,6 +250,7 @@ export class EsitiCampoComponent implements OnInit {
   readonly filtro = signal<EsitoEventoCampo | null>('DA_RICONCILIARE')
   readonly caricamento = signal(false)
   readonly errore = signal<string | null>(null)
+  readonly erroreFoto = signal<string | null>(null)
   readonly spiega = spiegaConflitto
 
   ngOnInit(): void {
@@ -228,6 +266,22 @@ export class EsitiCampoComponent implements OnInit {
   vai(pagina: number): void {
     this.pagina.set(Math.min(Math.max(pagina, 1), this.pagine()))
     this.carica()
+  }
+
+  kb(byte: number): number {
+    return Math.max(1, Math.round(byte / 1024))
+  }
+
+  /** Mappa pubblica: si apre solo al click dell'operatore (le coordinate escono dall'applicazione). */
+  linkMappa(p: PosizioneEsitoCampo): string {
+    return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`
+  }
+
+  apriFoto(id: string): void {
+    this.erroreFoto.set(null)
+    this.servizio.apriFoto(id).subscribe({
+      error: err => this.erroreFoto.set(messaggioErroreRitiri(err, 'Impossibile aprire la foto.')),
+    })
   }
 
   pagine(): number {
