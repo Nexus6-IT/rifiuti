@@ -78,3 +78,21 @@ export class RicevutaNonTrovataError extends DomainError {
     this.name = 'RicevutaNonTrovataError'
   }
 }
+
+/** 422 `RICEVUTA_TROPPO_GRANDE`: il PDF generato supera il limite dell'archivio (mai ritentabile). */
+export class RicevutaTroppoGrandeError extends DomainError {
+  readonly code = 'RICEVUTA_TROPPO_GRANDE'
+  constructor() {
+    super('La ricevuta generata è troppo grande: rifai la firma più semplice.')
+    this.name = 'RicevutaTroppoGrandeError'
+  }
+}
+
+/** 409 `RICEVUTA_ALTERATA`: i byte archiviati non corrispondono all'impronta salvata (integrita'). */
+export class RicevutaAlterataError extends DomainError {
+  readonly code = 'RICEVUTA_ALTERATA'
+  constructor() {
+    super('La ricevuta archiviata non è integra e non si consegna: contatta il supporto.')
+    this.name = 'RicevutaAlterataError'
+  }
+}

@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   HttpException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common'
 import { DomainError } from '../../core/domain/errors'
 import {
@@ -12,10 +13,12 @@ import {
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
   EventoCampoDiAltroUtenteError,
+  RicevutaAlterataError,
   RicevutaDiAltroUtenteError,
   RicevutaLimiteRitiroError,
   RicevutaNonConsentitaError,
   RicevutaNonTrovataError,
+  RicevutaTroppoGrandeError,
 } from '../../application/campo/errori-campo'
 import {
   RitiroDatiNonValidiError,
@@ -39,9 +42,13 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
       err instanceof EventoCampoDiAltroUtenteError ||
       err instanceof RicevutaDiAltroUtenteError ||
       err instanceof RicevutaNonConsentitaError ||
-      err instanceof RicevutaLimiteRitiroError
+      err instanceof RicevutaLimiteRitiroError ||
+      err instanceof RicevutaAlterataError
     ) {
       throw new ConflictException({ message: err.message, error: err.code })
+    }
+    if (err instanceof RicevutaTroppoGrandeError) {
+      throw new UnprocessableEntityException({ message: err.message, error: err.code })
     }
     if (err instanceof AutistaNonCollegatoError) {
       throw new ForbiddenException({ message: err.message, error: err.code })

@@ -4,6 +4,7 @@
  * facoltativo al cliente ed elenco/scarico d'ufficio. Lo schema e' in `ricevute-ritiro.schema.postgres.spec.ts`.
  */
 import { createHash } from 'crypto'
+import { Logger } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
@@ -30,15 +31,19 @@ import {
   type AziendaCampo,
 } from '../../test-support/campo-di-test'
 import { pngDiProva } from '../../test-support/png-di-prova'
+import { pngBomba, pngFiltroNonValido, pngIdatNonZlib } from '../../test-support/png-malevoli'
 import { RitiroDatiNonValidiError, RitiroNonTrovatoError } from '../ritiri/errori-ritiri'
 import {
   AutistaNonCollegatoError,
+  RicevutaAlterataError,
   RicevutaDiAltroUtenteError,
   RicevutaLimiteRitiroError,
-  RicevutaNonConsentitaError,
   RicevutaNonTrovataError,
+  RicevutaTroppoGrandeError,
 } from './errori-campo'
+import * as pdfModulo from './ricevuta-pdf'
 import {
+  LIMITE_PDF_BYTE,
   RICEVUTE_MASSIME_PER_RITIRO,
   RicevuteRitiroService,
   VARIABILE_INVIO_EMAIL_RICEVUTE,
@@ -171,16 +176,10 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
     expect(await righe(a)).toHaveLength(1)
   })
 
-  it('ritiro di un altro autista, senza autista, non piu da fare: rifiutata e non scritta', async () => {
+  it('ritiro riassegnato, senza autista, annullato o non eseguito: la ricevuta si archivia DA_RICONCILIARE col motivo', async () => {
     const a = await azienda()
-    const altrui = await creaRitiroCampo(owner, a, a.autista2)
+    const riassegnato = await creaRitiroCampo(owner, a, a.autista2)
     const libero = await creaRitiroCampo(owner, a, null)
-    await expect(registra(a, a.utente1, ricevuta(altrui))).rejects.toBeInstanceOf(
-      RicevutaNonConsentitaError
-    )
-    await expect(registra(a, a.utente1, ricevuta(libero))).rejects.toBeInstanceOf(
-      RicevutaNonConsentitaError
-    )
     const annullato = await creaRitiroCampo(owner, a, a.autista1)
     await owner.ritiro.update({
       where: { id: annullato },
@@ -191,12 +190,82 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
       where: { id: nonEseguito },
       data: { stato: 'NON_ESEGUITO', motivo: 'Cliente assente' },
     })
-    await expect(registra(a, a.utente1, ricevuta(annullato))).rejects.toBeInstanceOf(
-      RicevutaNonConsentitaError
-    )
-    await expect(registra(a, a.utente1, ricevuta(nonEseguito))).rejects.toBeInstanceOf(
-      RicevutaNonConsentitaError
-    )
+    const attesi: [string, string][] = [
+      [riassegnato, 'RITIRO_RIASSEGNATO'],
+      [libero, 'RITIRO_RIASSEGNATO'],
+      [annullato, 'RITIRO_ANNULLATO'],
+      [nonEseguito, 'RITIRO_NON_ESEGUITO'],
+    ]
+    for (const [ritiro, motivo] of attesi) {
+      const r = ricevuta(ritiro)
+      const risp = await registra(a, a.utente1, r)
+      expect(risp).toMatchObject({ id: r.id, esito: 'DA_RICONCILIARE', invio: 'NON_RICHIESTO' })
+      const riga = await owner.ricevutaRitiro.findFirstOrThrow({
+        where: { tenantId: a.t, ritiroId: ritiro },
+      })
+      expect(riga).toMatchObject({ esito: 'DA_RICONCILIARE', motivoConflitto: motivo })
+      expect(riga.autistaId).toBe(a.autista1) // chi ha firmato davvero, non chi e' sul ritiro
+      expect(Buffer.from(riga.pdf).subarray(0, 5).toString('ascii')).toBe('%PDF-')
+    }
+    expect(await righe(a)).toHaveLength(4)
+    // Il ritiro non cambia: la riconciliazione e' dell'ufficio.
+    const dopo = await owner.ritiro.findUniqueOrThrow({ where: { id: annullato } })
+    expect(dopo.stato).toBe('ANNULLATO')
+  })
+
+  it('un reinvio di una ricevuta DA_RICONCILIARE risponde con lo stesso esito, senza duplicare', async () => {
+    const a = await azienda()
+    const altrui = await creaRitiroCampo(owner, a, a.autista2)
+    const r = ricevuta(altrui)
+    const p = await registra(a, a.utente1, r)
+    const s = await registra(a, a.utente1, r)
+    expect(s).toEqual(p)
+    expect(s.esito).toBe('DA_RICONCILIARE')
+    expect(await righe(a)).toHaveLength(1)
+  })
+
+  it('ricevuta DA_RICONCILIARE: l’email al cliente non parte mai, anche con l’invio acceso', async () => {
+    process.env[VARIABILE_INVIO_EMAIL_RICEVUTE] = 'true'
+    const a = await azienda()
+    const altrui = await creaRitiroCampo(owner, a, a.autista2)
+    const risp = await registra(a, a.utente1, ricevuta(altrui, { emailCliente: 'c@esempio.it' }))
+    expect(risp.invio).toBe('NON_RICHIESTO')
+    expect(invia).not.toHaveBeenCalled()
+  })
+
+  it('firma PNG corrotta (IDAT non zlib, filtro 9, bomba): corpo non valido, nessuna riga e il processo non cade', async () => {
+    const a = await azienda()
+    const rit = await creaRitiroCampo(owner, a, a.autista1)
+    const eccezioni: unknown[] = []
+    const ascolto = (e: unknown) => eccezioni.push(e)
+    process.on('uncaughtException', ascolto)
+    try {
+      for (const png of [pngIdatNonZlib(), pngFiltroNonValido(), pngBomba()]) {
+        await expect(
+          registra(a, a.utente1, ricevuta(rit, { firmaPng: png.toString('base64') }))
+        ).rejects.toBeInstanceOf(RitiroDatiNonValidiError)
+      }
+      await new Promise(r => setTimeout(r, 200))
+    } finally {
+      process.off('uncaughtException', ascolto)
+    }
+    expect(eccezioni).toEqual([])
+    expect(await righe(a)).toHaveLength(0)
+  })
+
+  it('un PDF oltre 1 MiB: RicevutaTroppoGrandeError prima dell’INSERT, nessuna riga', async () => {
+    const a = await azienda()
+    const rit = await creaRitiroCampo(owner, a, a.autista1)
+    const spy = jest
+      .spyOn(pdfModulo, 'generaPdfRicevuta')
+      .mockResolvedValueOnce(Buffer.alloc(LIMITE_PDF_BYTE + 1, 1))
+    try {
+      await expect(registra(a, a.utente1, ricevuta(rit))).rejects.toBeInstanceOf(
+        RicevutaTroppoGrandeError
+      )
+    } finally {
+      spy.mockRestore()
+    }
     expect(await righe(a)).toHaveLength(0)
   })
 
@@ -375,7 +444,7 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
       ).rejects.toBeInstanceOf(RicevutaNonTrovataError)
     })
 
-    it('se i byte archiviati non corrispondono all’impronta, non si consegnano', async () => {
+    it('se i byte archiviati non corrispondono all’impronta, non si consegnano: RICEVUTA_ALTERATA con log d’allarme', async () => {
       const a = await azienda()
       const rit = await creaRitiroCampo(owner, a, a.autista1)
       await registra(a, a.utente1, ricevuta(rit))
@@ -387,9 +456,16 @@ describe('Ricevute di ritiro P6 — Postgres reale, ruolo wasteflow_app', () => 
         await owner.$executeRawUnsafe(
           `UPDATE ricevute_ritiro SET pdf_sha256 = '${'0'.repeat(64)}' WHERE id = '${riga.id}'`
         )
-        await expect(nelTenant(a.t, () => servizio.leggiPdf(a.t, riga.id))).rejects.toThrow(
-          /impronta del PDF non corrispondente/
-        )
+        const errore = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+        try {
+          await expect(
+            nelTenant(a.t, () => servizio.leggiPdf(a.t, riga.id))
+          ).rejects.toBeInstanceOf(RicevutaAlterataError)
+          // Evento di integrita': log d'allarme con codice, senza byte ne' dati personali.
+          expect(errore).toHaveBeenCalledWith(expect.stringContaining('RICEVUTA_ALTERATA'))
+        } finally {
+          errore.mockRestore()
+        }
       } finally {
         await owner.$executeRawUnsafe(
           `ALTER TABLE ricevute_ritiro ENABLE TRIGGER ricevute_ritiro_no_update`

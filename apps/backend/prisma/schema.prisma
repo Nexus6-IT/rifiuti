@@ -4807,6 +4807,9 @@ model RicevutaRitiro {
   contenutoSha256 String   @map("contenuto_sha256") @db.VarChar(64)
   pdf             Bytes
   pdfSha256       String   @map("pdf_sha256") @db.VarChar(64)
+  /// `REGISTRATA` oppure `DA_RICONCILIARE` (ritiro riassegnato/annullato/chiuso con il telefono offline).
+  esito           String   @default("REGISTRATA") @db.VarChar(16)
+  motivoConflitto String?  @map("motivo_conflitto") @db.VarChar(40)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ricevute_ritiro_ritiro_fkey")

@@ -21,10 +21,12 @@ import { EventiCampoService } from '../../application/campo/eventi-campo.service
 import { EventoCampoDiAltroUtenteError } from '../../application/campo/errori-campo'
 import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import {
+  RicevutaAlterataError,
   RicevutaDiAltroUtenteError,
   RicevutaLimiteRitiroError,
   RicevutaNonConsentitaError,
   RicevutaNonTrovataError,
+  RicevutaTroppoGrandeError,
 } from '../../application/campo/errori-campo'
 import { pngDiProva } from '../../test-support/png-di-prova'
 import { RitiroNonTrovatoError } from '../../application/ritiri/errori-ritiri'
@@ -298,6 +300,10 @@ describe('Campo - catena HTTP', () => {
       }
       ricevute.registra.mockRejectedValueOnce(new AutistaNonCollegatoError())
       await http().post('/campo/ricevute').send(corpoRicevuta).expect(403)
+      // PDF oltre il limite: 422 definitivo (il telefono non ritenta), con codice.
+      ricevute.registra.mockRejectedValueOnce(new RicevutaTroppoGrandeError())
+      const g = await http().post('/campo/ricevute').send(corpoRicevuta).expect(422)
+      expect(JSON.stringify(g.body)).toContain('RICEVUTA_TROPPO_GRANDE')
     })
 
     it('legge se l invio al cliente e acceso (spento per default)', async () => {
@@ -404,6 +410,10 @@ describe('Campo - catena HTTP', () => {
       await http().get('/esiti-campo/ricevute/non-un-uuid/pdf').expect(400)
       ricevute.leggiPdf.mockRejectedValueOnce(new RicevutaNonTrovataError())
       await http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`).expect(404)
+      // Integrita' violata: errore con codice (non un 500 anonimo).
+      ricevute.leggiPdf.mockRejectedValueOnce(new RicevutaAlterataError())
+      const alt = await http().get(`/esiti-campo/ricevute/${RICEVUTA}/pdf`).expect(409)
+      expect(JSON.stringify(alt.body)).toContain('RICEVUTA_ALTERATA')
     })
 
     it('gli esiti richiedono il modulo campo', async () => {

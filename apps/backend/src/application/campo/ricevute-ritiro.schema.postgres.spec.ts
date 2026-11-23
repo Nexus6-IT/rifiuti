@@ -50,6 +50,8 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
       nome?: string
       firma?: string
       pdf?: string
+      esito?: string
+      motivo?: string | null
       hashFirma?: string
       dati?: string
       autista?: string
@@ -57,12 +59,13 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
     } = {}
   ) =>
     `INSERT INTO ricevute_ritiro (tenant_id, ricevuta_uuid, ritiro_id, autista_id, utente_id,
-       firmatario_nome, firmato_il, dati, firma_png, firma_sha256, contenuto_sha256, pdf, pdf_sha256)
+       firmatario_nome, firmato_il, dati, firma_png, firma_sha256, contenuto_sha256, pdf, pdf_sha256, esito, motivo_conflitto)
      VALUES ('${a.t}', '${extra.uuid ?? crypto.randomUUID()}', '${ritiroId}',
        '${extra.autista ?? a.autista1}', '${extra.utente ?? a.utente1}',
        '${extra.nome ?? 'Mario Rossi'}', now(), '${extra.dati ?? '{}'}'::jsonb,
        ${extra.firma ?? "'\\x89504e47'::bytea"}, '${extra.hashFirma ?? HASH}', '${HASH}',
-       ${extra.pdf ?? "'\\x255044462d'::bytea"}, '${HASH}')
+       ${extra.pdf ?? "'\\x255044462d'::bytea"}, '${HASH}',
+       '${extra.esito ?? 'REGISTRATA'}', ${extra.motivo === undefined || extra.motivo === null ? 'NULL' : `'${extra.motivo}'`})
      RETURNING id`
   const inserisci = async (a: AziendaCampo, ritiroId: string, extra = {}) => {
     const r = await nelTenant(a.t, () =>
@@ -193,6 +196,15 @@ describe('ricevute_ritiro — schema, Postgres reale, ruolo wasteflow_app', () =
       /ricevute_ritiro_firma_sha256_formato/
     )
     await expect(prova({ dati: '[]' })).rejects.toThrow(/ricevute_ritiro_dati_oggetto/)
+    // esito: valori ammessi e motivo presente se e solo se DA_RICONCILIARE.
+    await expect(prova({ esito: 'BOH' })).rejects.toThrow(/ricevute_ritiro_esito_ammesso/)
+    await expect(prova({ esito: 'DA_RICONCILIARE' })).rejects.toThrow(
+      /ricevute_ritiro_conflitto_coerente/
+    )
+    await expect(prova({ motivo: 'RITIRO_ANNULLATO' })).rejects.toThrow(
+      /ricevute_ritiro_conflitto_coerente/
+    )
+    await prova({ esito: 'DA_RICONCILIARE', motivo: 'RITIRO_ANNULLATO' })
     await prova({})
     await expect(
       owner.$executeRawUnsafe(

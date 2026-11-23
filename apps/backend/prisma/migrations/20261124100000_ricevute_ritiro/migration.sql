@@ -7,6 +7,11 @@
 -- firmato ha una propria impronta (`contenuto_sha256`) che compare nel PDF. Byte nel database come
 -- `allegati_pesa` (firma <= 128 KiB, PDF <= 1 MiB).
 --
+-- `esito`: `REGISTRATA` (ritiro dell'autista, ancora da fare) oppure `DA_RICONCILIARE` quando il
+-- ritiro e' stato riassegnato, annullato o chiuso mentre il telefono era offline: la firma di un
+-- ritiro avvenuto davvero non si perde, l'ufficio la riconcilia (`motivo_conflitto` obbligatorio
+-- se e solo se DA_RICONCILIARE, come `eventi_campo`).
+--
 -- `ricevuta_uuid` e' generato dal telefono: unico per azienda (idempotenza del reinvio).
 -- `invii_ricevuta_ritiro` registra l'esito dell'invio FACOLTATIVO al cliente (spento per default);
 -- l'indirizzo email NON viene conservato, solo una forma mascherata (`m***@dominio.it`).
@@ -37,8 +42,12 @@ CREATE TABLE "ricevute_ritiro" (
     "contenuto_sha256" VARCHAR(64) NOT NULL,
     "pdf" BYTEA NOT NULL,
     "pdf_sha256" VARCHAR(64) NOT NULL,
+    "esito" VARCHAR(16) NOT NULL DEFAULT 'REGISTRATA',
+    "motivo_conflitto" VARCHAR(40),
 
     CONSTRAINT "ricevute_ritiro_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "ricevute_ritiro_esito_ammesso" CHECK ("esito" IN ('REGISTRATA', 'DA_RICONCILIARE')),
+    CONSTRAINT "ricevute_ritiro_conflitto_coerente" CHECK (("esito" = 'DA_RICONCILIARE') = ("motivo_conflitto" IS NOT NULL)),
     CONSTRAINT "ricevute_ritiro_nome_non_vuoto" CHECK (length(btrim("firmatario_nome")) BETWEEN 2 AND 120),
     CONSTRAINT "ricevute_ritiro_dati_oggetto" CHECK (jsonb_typeof("dati") = 'object' AND octet_length("dati"::text) <= 8192),
     CONSTRAINT "ricevute_ritiro_firma_dimensione" CHECK (octet_length("firma_png") BETWEEN 1 AND 131072),

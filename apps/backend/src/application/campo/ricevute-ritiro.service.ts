@@ -14,7 +14,7 @@
  * L'indirizzo del cliente non si conserva (solo la forma mascherata) e non finisce nei log.
  */
 import { createHash } from 'crypto'
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -23,10 +23,11 @@ import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { RitiroDatiNonValidiError, RitiroNonTrovatoError } from '../ritiri/errori-ritiri'
 import {
   AutistaNonCollegatoError,
+  RicevutaAlterataError,
   RicevutaDiAltroUtenteError,
   RicevutaLimiteRitiroError,
-  RicevutaNonConsentitaError,
   RicevutaNonTrovataError,
+  RicevutaTroppoGrandeError,
 } from './errori-campo'
 import {
   calcolaContenutoSha256,
@@ -43,6 +44,15 @@ import {
 /** Nome della variabile che accende l'invio al cliente (assente = spento). */
 export const VARIABILE_INVIO_EMAIL_RICEVUTE = 'CAMPO_RICEVUTE_INVIO_EMAIL'
 export const RICEVUTE_MASSIME_PER_RITIRO = 5
+/** Stesso tetto del CHECK `ricevute_ritiro_pdf_dimensione`: lo si controlla PRIMA dell'INSERT. */
+export const LIMITE_PDF_BYTE = 1_048_576
+
+export type EsitoRicevuta = 'REGISTRATA' | 'DA_RICONCILIARE'
+export type MotivoConflittoRicevuta =
+  | 'RITIRO_RIASSEGNATO'
+  | 'RITIRO_ANNULLATO'
+  | 'RITIRO_NON_ESEGUITO'
+  | 'RITIRO_STATO_CAMBIATO'
 
 export type StatoInvioRicevuta = 'NON_RICHIESTO' | 'NON_ABILITATO' | 'INVIATO' | 'FALLITO'
 
@@ -53,6 +63,8 @@ export interface RispostaRicevutaCampo {
   pdfSha256: string
   contenutoSha256: string
   invio: StatoInvioRicevuta
+  /** `DA_RICONCILIARE`: archiviata, ma il ritiro non era piu' dell'autista o da fare. */
+  esito: EsitoRicevuta
 }
 
 export interface RicevutaVista {
@@ -69,6 +81,8 @@ export interface RicevutaVista {
   dimensionePdf: number
   pdfSha256: string
   contenutoSha256: string
+  esito: EsitoRicevuta
+  motivoConflitto: MotivoConflittoRicevuta | null
   invio: { esito: 'INVIATO' | 'FALLITO'; destinatario: string } | null
 }
 
@@ -81,6 +95,8 @@ export interface PdfRicevuta {
   nomeFile: string
   contenuto: Buffer
 }
+
+const logger = new Logger('RicevuteRitiro')
 
 const DIMENSIONE_PREDEFINITA = 50
 const DIMENSIONE_MASSIMA = 200
@@ -109,6 +125,8 @@ interface RigaRicevuta {
   dimensione_pdf: number
   pdf_sha256: string
   contenuto_sha256: string
+  esito: EsitoRicevuta
+  motivo_conflitto: MotivoConflittoRicevuta | null
   invio_esito: 'INVIATO' | 'FALLITO' | null
   invio_destinatario: string | null
   totale: number
@@ -157,7 +175,10 @@ export class RicevuteRitiroService {
       }
     })
     if (risultato.nuova === null) return risultato.risposta
-    if (ric.emailCliente === null) return risultato.risposta
+    // Nessuna email per una ricevuta da riconciliare: il ritiro non e' (piu') quello dell'autista.
+    if (ric.emailCliente === null || risultato.risposta.esito === 'DA_RICONCILIARE') {
+      return risultato.risposta
+    }
     if (!this.invioPossibile()) return { ...risultato.risposta, invio: 'NON_ABILITATO' }
     const invio = await this.inviaAlCliente(tenantId, ric.emailCliente, risultato.nuova)
     return { ...risultato.risposta, invio }
@@ -175,7 +196,7 @@ export class RicevuteRitiroService {
 
     const autista = await tx.autista.findFirst({
       where: { tenantId, userId: utenteId, attivo: true },
-      select: { id: true },
+      select: { id: true, nome: true, cognome: true },
     })
     if (!autista) throw new AutistaNonCollegatoError()
 
@@ -183,15 +204,14 @@ export class RicevuteRitiroService {
     if (!bloccato) throw new RitiroNonTrovatoError()
     const vista = await this.repo.leggi(tx, tenantId, ric.ritiroId, { dettaglio: false })
     if (!vista) throw new RitiroNonTrovatoError()
-    // La ricevuta mostra i dati del cliente: solo per un ritiro che e' dell'autista, ancora da fare.
-    if (vista.autista?.id !== autista.id) {
-      throw new RicevutaNonConsentitaError(
-        "Il ritiro non è più assegnato a te: contatta l'ufficio."
-      )
-    }
-    if (bloccato.stato !== 'PROGRAMMATO') {
-      throw new RicevutaNonConsentitaError('Il ritiro non è più da fare: contatta l’ufficio.')
-    }
+    // Il telefono era offline: il ritiro puo' essere stato riassegnato, annullato o chiuso nel
+    // frattempo. La firma di un ritiro avvenuto davvero non si perde: si archivia «da riconciliare»
+    // col motivo (stessa logica degli esiti P4). Un altro tenant non arriva qui (404 sopra).
+    const motivoConflitto = motivoDaRiconciliare(
+      vista.autista?.id ?? null,
+      autista.id,
+      bloccato.stato
+    )
     const gia = await tx.ricevutaRitiro.count({ where: { tenantId, ritiroId: ric.ritiroId } })
     if (gia >= RICEVUTE_MASSIME_PER_RITIRO) {
       throw new RicevutaLimiteRitiroError(RICEVUTE_MASSIME_PER_RITIRO)
@@ -205,7 +225,8 @@ export class RicevuteRitiroService {
       versione: 1,
       azienda: tenant.ragioneSociale,
       trasportatore: vista.trasportatore.nome,
-      autista: vista.autista.nome,
+      // Chi ha firmato davvero (non chi e' oggi sul ritiro, se e' stato riassegnato).
+      autista: `${autista.cognome} ${autista.nome}`,
       targa: vista.automezzo?.targa ?? null,
       dataRitiro: vista.dataPrevista,
       cliente: vista.produttore.nome,
@@ -229,6 +250,8 @@ export class RicevuteRitiroService {
     }
     const contenutoSha256 = calcolaContenutoSha256(ingresso)
     const pdf = await generaPdfRicevuta(ingresso, contenutoSha256)
+    // Il CHECK del database rifiuterebbe l'INSERT con un 500 che il telefono ritenterebbe all'infinito.
+    if (pdf.length > LIMITE_PDF_BYTE) throw new RicevutaTroppoGrandeError()
     const pdfSha256 = sha256(pdf)
 
     const riga = await tx.ricevutaRitiro.create({
@@ -247,6 +270,8 @@ export class RicevuteRitiroService {
         contenutoSha256,
         pdf,
         pdfSha256,
+        esito: motivoConflitto ? 'DA_RICONCILIARE' : 'REGISTRATA',
+        motivoConflitto,
       },
       select: { id: true },
     })
@@ -257,6 +282,7 @@ export class RicevuteRitiroService {
         pdfSha256,
         contenutoSha256,
         invio: 'NON_RICHIESTO',
+        esito: motivoConflitto ? 'DA_RICONCILIARE' : 'REGISTRATA',
       },
       nuova: { ricevutaId: riga.id, dataRitiro: dati.dataRitiro, pdf },
     }
@@ -275,6 +301,7 @@ export class RicevuteRitiroService {
         ricevutoIl: true,
         pdfSha256: true,
         contenutoSha256: true,
+        esito: true,
         invio: { select: { esito: true } },
       },
     })
@@ -286,6 +313,7 @@ export class RicevuteRitiroService {
       pdfSha256: riga.pdfSha256,
       contenutoSha256: riga.contenutoSha256,
       invio: riga.invio ? (riga.invio.esito as 'INVIATO' | 'FALLITO') : 'NON_RICHIESTO',
+      esito: riga.esito as EsitoRicevuta,
     }
   }
 
@@ -355,6 +383,7 @@ export class RicevuteRitiroService {
                  rr.firmatario_nome, rr.firmato_il, rr.ricevuto_il,
                  (au.cognome || ' ' || au.nome) AS autista,
                  octet_length(rr.pdf)::int AS dimensione_pdf, rr.pdf_sha256, rr.contenuto_sha256,
+                 rr.esito, rr.motivo_conflitto,
                  iv.esito AS invio_esito, iv.destinatario_mascherato AS invio_destinatario,
                  count(*) OVER ()::int AS totale
           FROM ricevute_ritiro rr
@@ -380,6 +409,8 @@ export class RicevuteRitiroService {
             dimensionePdf: r.dimensione_pdf,
             pdfSha256: r.pdf_sha256,
             contenutoSha256: r.contenuto_sha256,
+            esito: r.esito,
+            motivoConflitto: r.motivo_conflitto,
             invio:
               r.invio_esito && r.invio_destinatario
                 ? { esito: r.invio_esito, destinatario: r.invio_destinatario }
@@ -406,11 +437,28 @@ export class RicevuteRitiroService {
     if (!riga) throw new RicevutaNonTrovataError()
     const contenuto = Buffer.from(riga.pdf)
     if (sha256(contenuto) !== riga.pdfSha256) {
-      throw new Error('Ricevuta di ritiro: impronta del PDF non corrispondente')
+      // Evento di integrita' da indagare: allarme nel log (solo l'id, mai byte ne' dati personali).
+      logger.error(
+        `RICEVUTA_ALTERATA: impronta del PDF non corrispondente (ricevuta ${id}, azienda ${tenantId})`
+      )
+      throw new RicevutaAlterataError()
     }
     const data = (riga.dati as { dataRitiro?: string } | null)?.dataRitiro ?? 'senza-data'
     return { nomeFile: `ricevuta-ritiro-${data.replace(/[^0-9-]/g, '')}.pdf`, contenuto }
   }
+}
+
+/** `null` = ritiro dell'autista e da fare (ricevuta regolare); altrimenti il motivo del conflitto. */
+function motivoDaRiconciliare(
+  autistaDelRitiro: string | null,
+  autistaFirmatario: string,
+  stato: string
+): MotivoConflittoRicevuta | null {
+  if (autistaDelRitiro !== autistaFirmatario) return 'RITIRO_RIASSEGNATO'
+  if (stato === 'PROGRAMMATO') return null
+  if (stato === 'ANNULLATO') return 'RITIRO_ANNULLATO'
+  if (stato === 'NON_ESEGUITO') return 'RITIRO_NON_ESEGUITO'
+  return 'RITIRO_STATO_CAMBIATO'
 }
 
 interface NuovaRicevuta {
