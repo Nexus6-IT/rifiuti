@@ -19,6 +19,7 @@ import { PrismaService } from '../../../infrastructure/persistence/prisma.servic
 import {
   EsportazioneNonSostituibileError,
   EsportazioneNonTrovataError,
+  SostituzioneNonDallaPrimaRifiutataError,
 } from './errori-esportazioni-registro-rentri'
 import { ordinaCatena } from './ordina-catena-esportazioni'
 
@@ -43,15 +44,19 @@ export class SostituisciEsportazioneRegistroRentriUseCase {
   /**
    * @throws EsportazioneNonTrovataError 404 assente o di un'altra azienda
    * @throws EsportazioneNonSostituibileError 409 non rifiutata o gia' fuori dalla catena viva
+   * @throws SostituzioneNonDallaPrimaRifiutataError 409 c'e' una rifiutata piu' indietro
    */
   async sostituisciDa(
     tenantId: string,
-    esportazioneId: string
+    esportazioneId: string,
+    utenteId: string | null
   ): Promise<EsitoSostituzioneEsportazioni> {
     const esito = await TenantContext.run(
       { tenantId },
       async () =>
-        await this.prisma.$transaction(tx => this.nellaTransazione(tx, tenantId, esportazioneId))
+        await this.prisma.$transaction(tx =>
+          this.nellaTransazione(tx, tenantId, esportazioneId, utenteId)
+        )
     )
     this.logger.info('Esportazioni del registro sostituite', { sostituite: esito.sostituite })
     return esito
@@ -60,7 +65,8 @@ export class SostituisciEsportazioneRegistroRentriUseCase {
   private async nellaTransazione(
     tx: Tx,
     tenantId: string,
-    esportazioneId: string
+    esportazioneId: string,
+    utenteId: string | null
   ): Promise<EsitoSostituzioneEsportazioni> {
     const scelta = await tx.esportazioneRegistroRentri.findFirst({
       where: { id: esportazioneId, tenantId },
@@ -82,13 +88,27 @@ export class SostituisciEsportazioneRegistroRentriUseCase {
     if (posizione === -1 || catena[posizione].stato !== 'RIFIUTATA') {
       throw new EsportazioneNonSostituibileError()
     }
+    // Si riparte sempre dalla PRIMA rifiutata: una rifiutata piu' indietro terrebbe comunque bloccata la
+    // generazione e `ultimaValidaId` indicherebbe un anello ancora rifiutato.
+    if (catena.slice(0, posizione).some(e => e.stato === 'RIFIUTATA')) {
+      throw new SostituzioneNonDallaPrimaRifiutataError()
+    }
+    const ids = catena.slice(posizione).map(e => e.id)
+    const ultimaValidaId = posizione > 0 ? catena[posizione - 1].id : null
     const { count } = await tx.esportazioneRegistroRentri.updateMany({
-      where: { tenantId, registroId, id: { in: catena.slice(posizione).map(e => e.id) } },
+      where: { tenantId, registroId, id: { in: ids } },
       data: { stato: 'SOSTITUITA' },
     })
-    return {
-      sostituite: count,
-      ultimaValidaId: posizione > 0 ? catena[posizione - 1].id : null,
-    }
+    // Chi ha deciso: nella stessa transazione, come la chiusura del registro.
+    await tx.activityLog.create({
+      data: {
+        tenantId,
+        userId: utenteId,
+        action: 'RENTRI_ESPORTAZIONI_SOSTITUITE',
+        description: 'Esportazioni del registro sostituite dopo un rifiuto di RENTRI',
+        metadata: { registroId, esportazioneId, sostituite: ids, ultimaValidaId },
+      },
+    })
+    return { sostituite: count, ultimaValidaId }
   }
 }

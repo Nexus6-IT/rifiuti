@@ -34,6 +34,7 @@ import {
   EsportazioneNonRivalidabileError,
   EsportazioneNonSostituibileError,
   EsportazioneNonTrovataError,
+  SostituzioneNonDallaPrimaRifiutataError,
   EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import {
@@ -95,7 +96,8 @@ export class RentriRegistroEsportazioniController {
       err instanceof EsportazioneRifiutataInCatenaError ||
       err instanceof CatenaEsportazioniNonCoerenteError ||
       err instanceof EsportazioneNonRivalidabileError ||
-      err instanceof EsportazioneNonSostituibileError
+      err instanceof EsportazioneNonSostituibileError ||
+      err instanceof SostituzioneNonDallaPrimaRifiutataError
     ) {
       return new ConflictException(err.message)
     }
@@ -222,6 +224,8 @@ export class RentriRegistroEsportazioniController {
   ): Promise<EsitoSostituzioneEsportazioni> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediAdmin(req, tenantId)
-    return this.conErrori(() => this.sostituisci.sostituisciDa(tenantId, esportazioneId))
+    return this.conErrori(() =>
+      this.sostituisci.sostituisciDa(tenantId, esportazioneId, req.user.id)
+    )
   }
 }

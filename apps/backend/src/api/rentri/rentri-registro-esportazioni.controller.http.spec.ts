@@ -18,6 +18,7 @@ import {
   EregiNonDisponibileError,
   EsportazioneNonRivalidabileError,
   EsportazioneNonSostituibileError,
+  SostituzioneNonDallaPrimaRifiutataError,
   EsportazioneNonTrovataError,
   EsportazioneRifiutataInCatenaError,
 } from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
@@ -259,7 +260,7 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
       const r = await cliente(http().post(rotta))
       expect(r.status).toBe(200)
       expect(r.body).toEqual({ sostituite: 2, ultimaValidaId: null })
-      expect(sostituisci.sostituisciDa).toHaveBeenCalledWith(CLIENTE, ESPORTAZIONE)
+      expect(sostituisci.sostituisciDa).toHaveBeenCalledWith(CLIENTE, ESPORTAZIONE, CONSULENTE)
     })
 
     it('non trovata 404, non sostituibile 409, id non uuid 400', async () => {
@@ -267,6 +268,8 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
       sostituisci.sostituisciDa.mockRejectedValueOnce(new EsportazioneNonTrovataError())
       expect((await cliente(http().post(rotta))).status).toBe(404)
       sostituisci.sostituisciDa.mockRejectedValueOnce(new EsportazioneNonSostituibileError())
+      expect((await cliente(http().post(rotta))).status).toBe(409)
+      sostituisci.sostituisciDa.mockRejectedValueOnce(new SostituzioneNonDallaPrimaRifiutataError())
       expect((await cliente(http().post(rotta))).status).toBe(409)
       expect(
         (await cliente(http().post(`${base}/esportazioni/non-un-uuid/sostituisci`))).status

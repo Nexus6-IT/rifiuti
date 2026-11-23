@@ -49,6 +49,16 @@ export class EregiNonDisponibileError extends DomainError {
   }
 }
 
+/** 409: nella catena c'e' una rifiutata piu' indietro: si sostituisce dalla PRIMA rifiutata. */
+export class SostituzioneNonDallaPrimaRifiutataError extends DomainError {
+  constructor() {
+    super(
+      'Nella catena c’è una esportazione rifiutata più indietro: sostituisci a partire dalla prima esportazione rifiutata.'
+    )
+    this.name = 'SostituzioneNonDallaPrimaRifiutataError'
+  }
+}
+
 /** 409: si sostituisce solo una esportazione RIFIUTATA ancora nella catena viva. */
 export class EsportazioneNonSostituibileError extends DomainError {
   constructor() {
