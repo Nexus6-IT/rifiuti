@@ -133,7 +133,8 @@ ALTER TABLE "esportazioni_registro_rentri"
 
 -- 5. Trigger. Fuori da Prisma (`migrate diff` non li confronta).
 -- Il file e la catena non si toccano: cambiano solo stato, transazione di validazione, messaggi e
--- updated_at. `SOSTITUITA` e' terminale: una riga sostituita non cambia piu' stato ne' esito.
+-- updated_at. `SOSTITUITA` e' terminale: una riga sostituita non cambia piu' stato ne' esito; un esito definitivo
+-- (VALIDATA, VALIDATA_CON_AVVISI, RIFIUTATA) cambia solo verso SOSTITUITA.
 CREATE FUNCTION esportazioni_registro_rentri_immutabile() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -154,6 +155,16 @@ BEGIN
      OR NEW.creata_da IS DISTINCT FROM OLD.creata_da
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'esportazioni_registro_rentri: dato immutabile (il file firmato e la catena non si modificano)'
+      USING ERRCODE = '23514';
+  END IF;
+  -- Un esito definitivo non si rimette in discussione: da VALIDATA, VALIDATA_CON_AVVISI o RIFIUTATA si
+  -- esce solo verso SOSTITUITA (altrimenti un UPDATE errato sbloccherebbe la catena senza sostituzione).
+  IF OLD.stato IN ('VALIDATA', 'VALIDATA_CON_AVVISI', 'RIFIUTATA')
+     AND NEW.stato <> 'SOSTITUITA'
+     AND (NEW.stato IS DISTINCT FROM OLD.stato
+          OR NEW.transazione_validazione_id IS DISTINCT FROM OLD.transazione_validazione_id
+          OR NEW.messaggi IS DISTINCT FROM OLD.messaggi) THEN
+    RAISE EXCEPTION 'esportazioni_registro_rentri: un esito definitivo non cambia (si esce solo verso SOSTITUITA)'
       USING ERRCODE = '23514';
   END IF;
   IF OLD.stato = 'SOSTITUITA'

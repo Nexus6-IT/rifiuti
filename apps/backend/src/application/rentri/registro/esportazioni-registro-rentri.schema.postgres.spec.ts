@@ -314,6 +314,39 @@ describe('Esportazioni XML del registro RENTRI, schema — Postgres reale, ruolo
       })
     }
 
+    it('un esito definitivo non cambia: si esce solo verso SOSTITUITA', async () => {
+      const az = await azienda()
+      let anno = 2030
+      for (const definitivo of ['VALIDATA', 'VALIDATA_CON_AVVISI', 'RIFIUTATA'] as const) {
+        const r = await owner.esportazioneRegistroRentri.create({
+          data: dati(az, { stato: definitivo, anno: anno++ }),
+        })
+        for (const extra of [
+          { stato: 'GENERATA' },
+          { stato: 'IN_VALIDAZIONE' },
+          { stato: 'VALIDATA' === definitivo ? 'RIFIUTATA' : 'VALIDATA' },
+          { transazioneValidazioneId: randomUUID() },
+          { messaggi: [{ codice: 'x', tipo: 'Errore', campo: null }] },
+        ]) {
+          const msg = await errore(
+            owner.esportazioneRegistroRentri.update({ where: { id: r.id }, data: extra as never })
+          )
+          expect(msg).toContain('un esito definitivo non cambia')
+        }
+        // Lo stesso stato con solo updated_at e innocuo; verso SOSTITUITA si passa.
+        await owner.esportazioneRegistroRentri.update({
+          where: { id: r.id },
+          data: { stato: definitivo },
+        })
+        await expect(
+          owner.esportazioneRegistroRentri.update({
+            where: { id: r.id },
+            data: { stato: 'SOSTITUITA' },
+          })
+        ).resolves.toMatchObject({ stato: 'SOSTITUITA' })
+      }
+    })
+
     it('SOSTITUITA e terminale: non torna indietro e non cambia piu esito; si arriva da qualunque stato', async () => {
       const az = await azienda()
       for (const stato of ['GENERATA', 'VALIDATA', 'RIFIUTATA'] as const) {
