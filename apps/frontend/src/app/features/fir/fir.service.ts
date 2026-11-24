@@ -43,9 +43,27 @@ export interface CreateFIRDto {
     numeroColli?: number
     /** Campo 3 FIR: codice operazione R/D specifico (es. "R13", "D1"). */
     codiceOperazione?: string
+    /** Rifiuto alla rinfusa (non partizionato in colli): i colli non si inviano a RENTRI. */
+    rinfusa?: boolean
+    /** Quantita' verificata in partenza (contratto RENTRI). */
+    verificatoInPartenza?: boolean
   }
+  /**
+   * Dati del trasporto terrestre noti alla creazione (FIR in viaggio, P2). Con conducente (nome e cognome)
+   * e almeno una targa il formulario nasce su RENTRI col trasporto di partenza. In modifica, se presente
+   * (anche con campi vuoti) sostituisce i dati di trasporto.
+   */
+  datiTrasporto?: DatiTrasportoDto
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
   annotazioni?: string
+}
+
+export interface DatiTrasportoDto {
+  targaAutomezzo?: string
+  conducenteNome?: string
+  conducenteCognome?: string
+  targaRimorchio?: string
+  percorso?: string
 }
 
 /**
@@ -107,8 +125,10 @@ export class FirService {
    * produce invocando il sottosistema crittografico e la persiste (task 4,
    * pipeline P3). Il frontend chiede solo di firmare, non firma da sé.
    */
-  emettiFIR(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {})
+  emettiFIR(id: string, opzioni: { firmaRentri?: boolean } = {}): Observable<FIR> {
+    // `firmaRentri`: se il FIR e' legato a RENTRI, dopo l'emissione il backend propone la firma di
+    // partenza (un suo fallimento non annulla l'emissione: v. `FIR.firmaRentri`).
+    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, opzioni)
   }
 
   /**

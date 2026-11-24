@@ -488,3 +488,319 @@ describe('Reset e rollback-firma: effetto sullo stato', () => {
     expect(await stato(app)).toBe('Annullato')
   })
 })
+
+describe('Quantita e trasporto: fase iniziale del formulario (FIR in viaggio, P2)', () => {
+  async function avvia(
+    app: ReturnType<typeof creaApp>,
+    segmento: string,
+    corpo: Record<string, unknown>
+  ): Promise<string> {
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/${segmento}`,
+      headers: await intestazioniAutenticate(),
+      payload: corpo,
+    })
+    expect(risposta.statusCode).toBe(202)
+    return risposta.json().transazione_id as string
+  }
+
+  async function completa(app: ReturnType<typeof creaApp>, transazioneId: string): Promise<void> {
+    const risposta = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: transazioneId, errore: false },
+    })
+    expect(risposta.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  it.each([
+    ['InserimentoQuantitaTrasportoIniziale', 'quantita', 'InserimentoTrasportoIniziale'],
+    ['InserimentoQuantita', 'quantita', 'FirmaProduttoreTrasportatoreIniziale'],
+    ['InserimentoQuantitaTrasportoIniziale', 'trasporto', 'InserimentoQuantita'],
+    ['InserimentoTrasportoIniziale', 'trasporto', 'FirmaProduttoreTrasportatoreIniziale'],
+  ])('da %s, completata `%s`, il formulario passa a %s', async (partenza, segmento, atteso) => {
+    const app = creaApp()
+    await seminaFormulario(app, partenza)
+    const corpo = segmento === 'quantita' ? corpoQuantitaValido() : corpoTrasportoTerrestreValido()
+
+    await completa(app, await avvia(app, segmento, corpo))
+
+    expect(await stato(app)).toBe(atteso)
+  })
+
+  it.each([
+    ['FirmaProduttoreTrasportatoreIniziale', 'quantita', corpoQuantitaValido],
+    ['FirmaProduttoreTrasportatoreIniziale', 'trasporto', corpoTrasportoTerrestreValido],
+  ])('la correzione in %s (%s) non cambia lo stato', async (partenza, segmento, corpo) => {
+    const app = creaApp()
+    await seminaFormulario(app, partenza)
+
+    await completa(app, await avvia(app, segmento, corpo()))
+
+    expect(await stato(app)).toBe(partenza)
+  })
+})
+
+describe('Firme di partenza: acquisizione-firma nella fase iniziale (FIR in viaggio, P3)', () => {
+  async function firma(app: ReturnType<typeof creaApp>): Promise<void> {
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/acquisizione-firma`,
+      headers: await intestazioniAutenticate(),
+      payload: { certificato: 'c', token: 't', firma: 'f' },
+    })
+    expect(avvio.statusCode).toBe(202)
+    const esito = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: false },
+    })
+    expect(esito.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  // Ipotesi dedotta dai NOMI degli stati (FEDELTA.md §8.2): da verificare sulla demo.
+  it.each([
+    ['FirmaProduttoreTrasportatoreIniziale', 'InserimentoAccettazione'],
+    ['FirmaTrasportatoreIniziale', 'InserimentoAccettazione'],
+    ['FirmaProduttore', 'FirmaTrasportatoreIniziale'],
+  ])('da %s, acquisita la firma, il formulario passa a %s', async (partenza, atteso) => {
+    const app = creaApp()
+    await seminaFormulario(app, partenza)
+
+    await firma(app)
+
+    expect(await stato(app)).toBe(atteso)
+  })
+
+  it('dopo la firma di partenza il rollback-firma riporta alla firma precedente', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'FirmaProduttoreTrasportatoreIniziale')
+    await firma(app)
+
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/rollback-firma`,
+      headers: await intestazioniAutenticate(),
+    })
+    expect(avvio.statusCode).toBe(202)
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: false },
+    })
+
+    expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+
+  it("una firma rifiutata dall'ente lascia lo stato invariato", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'FirmaProduttoreTrasportatoreIniziale')
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/acquisizione-firma`,
+      headers: await intestazioniAutenticate(),
+      payload: { certificato: 'c', token: 't', firma: 'f' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore: true },
+    })
+
+    expect(await stato(app)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+})
+
+describe('Annotazione: FirmaAnnotazione e ritorno allo stato di prima (FIR in viaggio, P4)', () => {
+  const CORPO = { annotazione: 'Carico pesato due volte', identificativo_soggetto: '01234567897' }
+
+  async function completa(
+    app: ReturnType<typeof creaApp>,
+    segmento: string,
+    corpo: Record<string, unknown>,
+    errore = false
+  ): Promise<void> {
+    const avvio = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/${segmento}`,
+      headers: await intestazioniAutenticate(),
+      payload: corpo,
+    })
+    expect(avvio.statusCode).toBe(202)
+    const esito = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: avvio.json().transazione_id, errore },
+    })
+    expect(esito.statusCode).toBe(200)
+  }
+
+  async function stato(app: ReturnType<typeof creaApp>): Promise<string> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().stato_formulario as string
+  }
+
+  const FIRMA = { certificato: 'c', token: 't', firma: 'f' }
+
+  it.each(['InserimentoAccettazione', 'Accettato', 'RespintoAccettatoParzialmente'])(
+    'da %s: annotazione -> FirmaAnnotazione -> firma -> stato di prima',
+    async partenza => {
+      const app = creaApp()
+      await seminaFormulario(app, partenza)
+
+      await completa(app, 'annotazione', CORPO)
+      expect(await stato(app)).toBe('FirmaAnnotazione')
+
+      await completa(app, 'acquisizione-firma', FIRMA)
+      expect(await stato(app)).toBe(partenza)
+    }
+  )
+
+  it("un'annotazione rifiutata dall'ente lascia lo stato invariato", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'annotazione', CORPO, true)
+
+    expect(await stato(app)).toBe('InserimentoAccettazione')
+  })
+
+  it("una firma rifiutata lascia FirmaAnnotazione; il reset annulla l'annotazione non firmata", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+    await completa(app, 'annotazione', CORPO)
+
+    await completa(app, 'acquisizione-firma', FIRMA, true)
+    expect(await stato(app)).toBe('FirmaAnnotazione')
+
+    await completa(app, 'reset', {})
+    expect(await stato(app)).toBe('InserimentoAccettazione')
+  })
+
+  async function annotazioni(app: ReturnType<typeof creaApp>): Promise<unknown> {
+    const risposta = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}`,
+      headers: await intestazioniAutenticate(),
+    })
+    return risposta.json().dati_annotazioni
+  }
+
+  it('il dettaglio (GET /{numero_fir}) espone le annotazioni: non firmata, firmata, annullata dal reset', async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    await completa(app, 'annotazione', CORPO)
+    expect(await annotazioni(app)).toEqual([{ ...CORPO, dati_firma: null }])
+
+    await completa(app, 'acquisizione-firma', FIRMA)
+    expect(await annotazioni(app)).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+
+    const seconda = { ...CORPO, annotazione: 'Seconda annotazione' }
+    await completa(app, 'annotazione', seconda)
+    expect(await annotazioni(app)).toHaveLength(2)
+    await completa(app, 'reset', {})
+    expect(await annotazioni(app)).toEqual([
+      { ...CORPO, dati_firma: expect.objectContaining({ data_firma: expect.any(String) }) },
+    ])
+  })
+
+  it("un'annotazione senza identificativo_soggetto e respinta dal contratto (400)", async () => {
+    const app = creaApp()
+    await seminaFormulario(app, 'InserimentoAccettazione')
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/annotazione`,
+      headers: await intestazioniAutenticate(),
+      payload: { annotazione: 'x' },
+    })
+
+    expect(risposta.statusCode).toBe(400)
+  })
+})
+
+describe('POST / : stato iniziale dedotto da quantita e trasporto di partenza (FIR in viaggio, P2)', () => {
+  async function crea(corpo: Record<string, unknown>): Promise<string> {
+    const app = creaApp()
+    const risposta = await app.inject({
+      method: 'POST',
+      url: `${PREFISSO}/`,
+      headers: await intestazioniAutenticate(),
+      payload: corpo,
+    })
+    expect(risposta.statusCode).toBe(202)
+    const id = risposta.json().transazione_id as string
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: {
+        transazione_id: id,
+        errore: false,
+        esito: { numero_fir: NUMERO_FIR_VIAGGIO },
+      },
+    })
+    const stato = await app.inject({
+      method: 'GET',
+      url: `${PREFISSO}/${NUMERO_FIR_VIAGGIO}/stato`,
+      headers: await intestazioniAutenticate(),
+    })
+    return stato.json().stato_formulario as string
+  }
+
+  const base = (): Record<string, unknown> => ({
+    num_iscr_sito: 'OP1234ABC000001-AB0001',
+    dati_partenza: {
+      destinatario: { num_iscr_sito: 'OP1234ABC000002-AB0002' },
+      trasportatori: [{ num_iscr_sito: 'OP1234ABC000003-AB0003', tipo_trasporto: 'Terrestre' }],
+      rifiuto: { codice_eer: '150106', provenienza: 'S', stato_fisico: 'S' },
+    },
+  })
+
+  const conQuantita = (corpo: Record<string, unknown>): Record<string, unknown> => {
+    const partenza = corpo.dati_partenza as { rifiuto: Record<string, unknown> }
+    partenza.rifiuto = { ...partenza.rifiuto, ...corpoQuantitaValido() }
+    return corpo
+  }
+
+  it('con quantita e trasporto: gia in attesa di firma', async () => {
+    const corpo = conQuantita(base())
+    corpo.dati_trasporto_partenza = corpoTrasportoTerrestreValido()
+    expect(await crea(corpo)).toBe('FirmaProduttoreTrasportatoreIniziale')
+  })
+
+  it('con la sola quantita: manca il trasporto', async () => {
+    expect(await crea(conQuantita(base()))).toBe('InserimentoTrasportoIniziale')
+  })
+
+  it('con il solo trasporto: manca la quantita', async () => {
+    const corpo = base()
+    corpo.dati_trasporto_partenza = corpoTrasportoTerrestreValido()
+    expect(await crea(corpo)).toBe('InserimentoQuantita')
+  })
+})

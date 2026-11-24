@@ -7,6 +7,15 @@ import {
   CompletaOperazioneConFirmaUseCase,
   EsitoCompletamentoFirma,
 } from './completa-operazione-con-firma.use-case'
+import {
+  AnnotazioneRentriUseCase,
+  tipoOperazioneAnnotazione,
+  tipoPrenotazioneInvioAnnotazione,
+} from './annotazione-rentri.use-case'
+import {
+  FirmaPartenzaRentriUseCase,
+  operazionePartenzaDaTipo,
+} from './firma-partenza-rentri.use-case'
 import { ISessioniFirmaRentriRepository, STATI_SESSIONE_APERTA } from './sessioni-firma-rentri.port'
 
 /** Vista della sessione per l'interfaccia: mai token, digest o handle. */
@@ -49,7 +58,9 @@ export class GestisciSessioneFirmaRentriUseCase {
     private readonly firRepository: IFIRRepository,
     private readonly sessioni: ISessioniFirmaRentriRepository,
     private readonly completaOperazioneConFirma: CompletaOperazioneConFirmaUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly firmaPartenza: FirmaPartenzaRentriUseCase,
+    private readonly annotazione: AnnotazioneRentriUseCase
   ) {
     this.logger.setContext('GestisciSessioneFirmaRentriUseCase')
   }
@@ -63,6 +74,9 @@ export class GestisciSessioneFirmaRentriUseCase {
     const fir = await this.verificaFir(firId, tenantId)
     const ultima = await this.sessioni.ultima(tenantId, firId)
     if (!ultima) return null
+    // La prenotazione dell'invio di un'annotazione non e' una firma da confermare sul telefono: niente
+    // banner (si riprende solo dall'annotazione, che riconcilia l'invio prima di qualunque authorize).
+    if (ultima.tipoOperazione === tipoPrenotazioneInvioAnnotazione()) return null
     if (STATI_SESSIONE_APERTA.includes(ultima.stato)) {
       return {
         id: ultima.id,
@@ -136,6 +150,44 @@ export class GestisciSessioneFirmaRentriUseCase {
         'SESSIONE_FIRMA_NON_ATTIVA',
         `Questa richiesta di firma è già conclusa (${sessione.stato}): non c'è nulla da riprendere.`
       )
+    }
+
+    // Prenotazione dell'invio di un'annotazione (R2): MAI il ciclo comune, che firmerebbe senza `/azioni` e
+    // senza il controllo «annotazione propria». Passa sempre dallo use case dell'annotazione.
+    if (sessione.tipoOperazione === tipoPrenotazioneInvioAnnotazione()) {
+      return this.annotazione.riprendiInvio({
+        firId,
+        tenantId,
+        sessioneId: sessione.id,
+        utenteId,
+        correlationId,
+      })
+    }
+
+    // Firma di partenza: passa dal suo use case, cosi' lo storico registra l'esito della ripresa e una nuova
+    // richiesta ricontrolla `/azioni` prima di una nuova `authorize`.
+    const operazionePartenza = operazionePartenzaDaTipo(sessione.tipoOperazione)
+    if (operazionePartenza) {
+      const { firma } = await this.firmaPartenza.execute({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+        ammesse: [operazionePartenza],
+      })
+      return firma
+    }
+
+    // Annotazione: stessa strada (storico della ripresa, `/azioni` ricontrollato prima di una nuova `authorize`).
+    if (sessione.tipoOperazione === tipoOperazioneAnnotazione()) {
+      return this.annotazione.firma({
+        firId,
+        tenantId,
+        utenteId,
+        nuovaSessione: comando.nuovaSessione,
+        correlationId,
+      })
     }
 
     return this.completaOperazioneConFirma.execute({

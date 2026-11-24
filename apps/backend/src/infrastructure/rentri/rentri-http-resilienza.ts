@@ -36,6 +36,24 @@ export class RentriApiError extends Error {
 }
 
 /**
+ * Risposta di errore NON ritentabile e diversa dal 403 (tipicamente un 400 di validazione o un 404): per
+ * l'ente la richiesta e' definitivamente rifiutata. Il MESSAGGIO e' quello storico («Risposta inattesa da
+ * <contesto>: HTTP <status>»), da cui dipendono altri chiamanti; in piu' porta `status` e il
+ * `ProblemDetails` (`title`/`detail`), che dicono PERCHE' l'ente ha rifiutato.
+ */
+export class RispostaRentriInattesaError extends Error {
+  constructor(
+    contesto: string,
+    readonly status: number,
+    readonly problemTitle: string | undefined,
+    readonly problemDetail: string | undefined
+  ) {
+    super(`Risposta inattesa da ${contesto}: HTTP ${status}`)
+    this.name = 'RispostaRentriInattesaError'
+  }
+}
+
+/**
  * Estrae `title`/`detail` da un corpo `application/problem+json`
  * (`ProblemDetails`, contratto ufficiale). Sono gli UNICI campi del corpo di
  * errore che i client riportano nei log: il contenuto grezzo della risposta
@@ -123,7 +141,7 @@ export async function gestisciRispostaErroreRentri(
   const ritentabile = status === 429 || status === 423 || status >= 500
 
   if (!ritentabile) {
-    throw new Error(`Risposta inattesa da ${contesto}: HTTP ${status}`)
+    throw new RispostaRentriInattesaError(contesto, status, problema.title, problema.detail)
   }
 
   // 423 è distinto da 429/5xx nel tipo di errore riportato: la regola di

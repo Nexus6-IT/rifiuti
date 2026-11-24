@@ -14,11 +14,19 @@ import { RadioButtonModule } from 'primeng/radiobutton'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { InputNumberModule } from 'primeng/inputnumber'
+import { InputTextModule } from 'primeng/inputtext'
+import { CheckboxModule } from 'primeng/checkbox'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
 import { puoModificareFir } from './fir-permissions'
 import { testoMotivoNonModificabile } from './fir-form'
-import { FIR, FIRStato, ParteFIR, ScostamentoPeso } from '../../shared/models/fir.model'
+import {
+  EsitoFirmaPartenzaDopoAzione,
+  FIR,
+  FIRStato,
+  ParteFIR,
+  ScostamentoPeso,
+} from '../../shared/models/fir.model'
 import { TONO_STATO_FIR, TonoStato } from '../../shared/models/stati-fir'
 import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
 import {
@@ -38,6 +46,9 @@ import {
   AllegatoFirRentri,
   AzioneRentri,
   EsitoFirmaRemota,
+  EventoFirRentri,
+  OPERAZIONI_FIRMA_PARTENZA,
+  ANNOTAZIONE_RENTRI_MAX,
   SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -102,6 +113,8 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     DropdownModule,
     InputTextareaModule,
     InputNumberModule,
+    InputTextModule,
+    CheckboxModule,
     NumeroItalianoDirective,
     RENTRISyncBadgeComponent,
     RENTRISyncLogsComponent,
@@ -288,6 +301,21 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 <span class="detail-value">{{ f.rifiuto.numeroColli }}</span>
               </div>
             }
+            @if (f.datiViaggio?.dichiarato?.quantita; as dq) {
+              <div class="detail-field" data-testid="fir-detail-dichiarato-quantita">
+                <span class="detail-label">Quantità dichiarata a RENTRI</span>
+                <span class="detail-value"
+                  >{{ dq.valore }} {{ dq.unitaMisura
+                  }}{{ dq.numeroColli ? ' · ' + dq.numeroColli + ' colli' : ' · rinfusa' }}</span
+                >
+              </div>
+            }
+            @if (f.datiViaggio?.dichiarato?.trasporto?.targaAutomezzo; as dt) {
+              <div class="detail-field" data-testid="fir-detail-dichiarato-trasporto">
+                <span class="detail-label">Targa dichiarata a RENTRI</span>
+                <span class="detail-value">{{ dt }}</span>
+              </div>
+            }
             @if (f.rifiuto.codiceOperazione) {
               <div class="detail-field">
                 <span class="detail-label">Operazione destinatario R/D</span>
@@ -337,6 +365,66 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 styleClass="w-full mb-3"
                 data-testid="fir-detail-rentri-messaggio-errore"
               />
+            }
+            @if (canFirmarePartenza(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-partenza-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: la partenza di questo formulario non è ancora firmata
+                  su RENTRI, quindi il viaggio non risulta avviato presso l'ente.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Firma la partenza su RENTRI"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaPartenza(f)"
+                    data-testid="fir-detail-firma-partenza"
+                  />
+                </div>
+              </div>
+            }
+            @if (canFirmareAnnotazione(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-annotazione-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: l'annotazione è stata registrata presso l'ente ma non
+                  è ancora firmata. Stai per firmare questo testo:
+                </p>
+                <blockquote
+                  class="firma-in-attesa__testo"
+                  data-testid="fir-detail-firma-annotazione-testo"
+                >
+                  {{ annotazioneDaFirmare() }}
+                </blockquote>
+                @if (annotazioneDaVerificare()) {
+                  <p
+                    class="firma-in-attesa__testo"
+                    data-testid="fir-detail-firma-annotazione-verifica"
+                  >
+                    <i class="pi pi-info-circle" aria-hidden="true"></i>
+                    L'esito dell'invio non era arrivato: prima di chiedere la firma WasteFlow
+                    verifica presso l'ente che l'annotazione in attesa sia proprio questa.
+                  </p>
+                }
+                <div class="row-actions">
+                  <p-button
+                    label="Firma l'annotazione"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaAnnotazione(f)"
+                    data-testid="fir-detail-firma-annotazione"
+                  />
+                </div>
+              </div>
             }
             @if (sessioneFirma(); as sessione) {
               <div
@@ -446,6 +534,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               }
               @if (f.stato === 'BOZZA') {
                 <p-button
+                  [loading]="azioneInCorso()"
                   label="Emetti"
                   icon="pi pi-send"
                   (onClick)="emettiFIR(f)"
@@ -453,8 +542,9 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [attr.aria-label]="'Emetti FIR ' + (f.numeroProgressivo || f.id)"
                 />
               }
-              @if (f.stato === 'EMESSO') {
+              @if (f.stato === 'EMESSO' && !canFirmarePartenza(f)) {
                 <p-button
+                  [loading]="azioneInCorso()"
                   label="Presa in carico"
                   icon="pi pi-truck"
                   (onClick)="presaInCarico(f)"
@@ -589,6 +679,43 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canIndicareQuantita(f)) {
+                <p-button
+                  [label]="etichettaQuantita()"
+                  icon="pi pi-box"
+                  [outlined]="true"
+                  (onClick)="apriDialogQuantita(f)"
+                  data-testid="fir-detail-rentri-indica-quantita"
+                  [attr.aria-label]="
+                    'Indica o correggi la quantità del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
+              @if (canIndicareTrasporto(f)) {
+                <p-button
+                  [label]="etichettaTrasporto()"
+                  icon="pi pi-truck"
+                  [outlined]="true"
+                  (onClick)="apriDialogTrasporto(f)"
+                  data-testid="fir-detail-rentri-indica-trasporto"
+                  [attr.aria-label]="
+                    'Indica o correggi i dati del trasporto del FIR ' +
+                    (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
+              @if (canAggiungereAnnotazione(f)) {
+                <p-button
+                  label="Aggiungi un'annotazione"
+                  icon="pi pi-comment"
+                  [outlined]="true"
+                  (onClick)="apriDialogAnnotazione()"
+                  data-testid="fir-detail-rentri-aggiungi-annotazione"
+                  [attr.aria-label]="
+                    'Aggiungi una annotazione al FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
               @if (canAnnullareRentri(f)) {
                 <p-button
                   label="Annulla il formulario"
@@ -686,6 +813,37 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           </section>
         }
 
+        <!-- Storico delle operazioni inviate a RENTRI (FIR in viaggio, P2) -->
+        @if (mostraStoricoViaggio(f)) {
+          <section
+            class="surface-card detail-section"
+            aria-label="Storico delle operazioni inviate a RENTRI"
+            data-testid="fir-detail-storico-viaggio"
+          >
+            <h2 class="section-title">Storico delle operazioni</h2>
+            <ul class="storico-list">
+              @for (e of eventi(); track e.id) {
+                <li class="storico-row" [attr.data-testid]="'fir-detail-storico-riga-' + e.id">
+                  <span class="storico-quando">{{ e.createdAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+                  <span class="storico-cosa">{{ etichettaEvento(e.operazione) }}</span>
+                  <span
+                    class="storico-esito"
+                    [class.storico-esito--ko]="e.esito === 'RIFIUTATA' || e.esito === 'INCERTA'"
+                    >{{ etichettaEsitoEvento(e.esito) }}</span
+                  >
+                  @if (e.statoFormularioDopo) {
+                    <span class="storico-stato">Stato: {{ e.statoFormularioDopo }}</span>
+                  }
+                </li>
+              } @empty {
+                <li class="allegati-vuoto" data-testid="fir-detail-storico-vuoto">
+                  Nessuna operazione inviata da WasteFlow.
+                </li>
+              }
+            </ul>
+          </section>
+        }
+
         <!-- Cronologia delle trasmissioni: chiama /rentri/sync/logs, solo con il modulo rentri -->
         @if (ff.has('rentri')) {
           <section class="detail-section" aria-label="Cronologia delle trasmissioni RENTRI">
@@ -700,6 +858,242 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       key="rentri-rilascia-legame"
       data-testid="fir-detail-rentri-rilascia-legame-confirm-dialog"
     ></p-confirmDialog>
+
+    <!-- Quantita' del rifiuto (FIR in viaggio, P2) -->
+    <p-dialog
+      [header]="etichettaQuantita()"
+      [(visible)]="quantitaDialogVisible"
+      [modal]="true"
+      [style]="{ width: '30rem' }"
+      data-testid="fir-detail-rentri-quantita-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="qta-valore">Quantità *</label>
+          <p-inputNumber
+            appNumeroIt
+            locale="it-IT"
+            [useGrouping]="false"
+            mode="decimal"
+            inputId="qta-valore"
+            [(ngModel)]="qtaValore"
+            [min]="0"
+            [maxFractionDigits]="2"
+            data-testid="fir-detail-rentri-quantita-valore"
+          ></p-inputNumber>
+        </div>
+        <div class="form-field">
+          <label for="qta-unita">Unità di misura</label>
+          <p-dropdown
+            inputId="qta-unita"
+            [options]="unitaQuantita"
+            [(ngModel)]="qtaUnita"
+            data-testid="fir-detail-rentri-quantita-unita"
+          ></p-dropdown>
+        </div>
+        <label class="check-row" for="qta-rinfusa">
+          <p-checkbox
+            inputId="qta-rinfusa"
+            [binary]="true"
+            [(ngModel)]="qtaRinfusa"
+            data-testid="fir-detail-rentri-quantita-rinfusa"
+          ></p-checkbox>
+          <span>Alla rinfusa (senza colli)</span>
+        </label>
+        @if (!qtaRinfusa) {
+          <div class="form-field">
+            <label for="qta-colli">Numero di colli *</label>
+            <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              soloIntero
+              [useGrouping]="false"
+              inputId="qta-colli"
+              [(ngModel)]="qtaColli"
+              [min]="1"
+              [maxFractionDigits]="0"
+              data-testid="fir-detail-rentri-quantita-colli"
+            ></p-inputNumber>
+          </div>
+        }
+        <label class="check-row" for="qta-verificato">
+          <p-checkbox
+            inputId="qta-verificato"
+            [binary]="true"
+            [(ngModel)]="qtaVerificato"
+            data-testid="fir-detail-rentri-quantita-verificato"
+          ></p-checkbox>
+          <span>Quantità verificata in partenza</span>
+        </label>
+        @if (quantitaErrore()) {
+          <small class="form-error" role="alert" data-testid="fir-detail-rentri-quantita-errore">{{
+            quantitaErrore()
+          }}</small>
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="quantitaDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-quantita-cancel"
+        />
+        <p-button
+          label="Invia a RENTRI"
+          [disabled]="!quantitaValida()"
+          [loading]="quantitaInCorso()"
+          (onClick)="confermaQuantita()"
+          data-testid="fir-detail-rentri-quantita-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Annotazione (FIR in viaggio, P4) -->
+    <p-dialog
+      header="Aggiungi un'annotazione"
+      [(visible)]="annotazioneDialogVisible"
+      [modal]="true"
+      [style]="{ width: '34rem' }"
+      data-testid="fir-detail-rentri-annotazione-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="annotazione-testo">Testo dell'annotazione *</label>
+          <textarea
+            id="annotazione-testo"
+            pInputTextarea
+            rows="6"
+            [attr.maxlength]="annotazioneMax"
+            [(ngModel)]="annotazioneTesto"
+            data-testid="fir-detail-rentri-annotazione-testo"
+          ></textarea>
+          <small class="text-tertiary" data-testid="fir-detail-rentri-annotazione-contatore"
+            >{{ annotazioneTesto.length }} / {{ annotazioneMax }} caratteri. L'annotazione è a nome
+            della tua azienda e va firmata sull'app RENTRI FIR Digitale.</small
+          >
+        </div>
+        @if (annotazioneErrore()) {
+          <small
+            class="form-error"
+            role="alert"
+            data-testid="fir-detail-rentri-annotazione-errore"
+            >{{ annotazioneErrore() }}</small
+          >
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="annotazioneDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-annotazione-cancel"
+        />
+        <p-button
+          label="Invia e firma"
+          [disabled]="!annotazioneValida()"
+          [loading]="annotazioneInCorso()"
+          (onClick)="confermaAnnotazione()"
+          data-testid="fir-detail-rentri-annotazione-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Dati del trasporto (FIR in viaggio, P2) -->
+    <p-dialog
+      [header]="etichettaTrasporto()"
+      [(visible)]="trasportoDialogVisible"
+      [modal]="true"
+      [style]="{ width: '32rem' }"
+      data-testid="fir-detail-rentri-trasporto-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="trp-nome">Nome del conducente *</label>
+          <input
+            id="trp-nome"
+            pInputText
+            maxlength="50"
+            [(ngModel)]="trpNome"
+            data-testid="fir-detail-rentri-trasporto-nome"
+          />
+        </div>
+        <div class="form-field">
+          <label for="trp-cognome">Cognome del conducente *</label>
+          <input
+            id="trp-cognome"
+            pInputText
+            maxlength="50"
+            [(ngModel)]="trpCognome"
+            data-testid="fir-detail-rentri-trasporto-cognome"
+          />
+        </div>
+        <div class="form-field">
+          <label for="trp-targa">Targa automezzo</label>
+          <input
+            id="trp-targa"
+            pInputText
+            maxlength="10"
+            [(ngModel)]="trpTargaAutomezzo"
+            (blur)="precompilaTrasportoDaTarga()"
+            data-testid="fir-detail-rentri-trasporto-targa"
+          />
+        </div>
+        <div class="form-field">
+          <label for="trp-rimorchio">Targa rimorchio</label>
+          <input
+            id="trp-rimorchio"
+            pInputText
+            maxlength="10"
+            [(ngModel)]="trpTargaRimorchio"
+            data-testid="fir-detail-rentri-trasporto-rimorchio"
+          />
+        </div>
+        <div class="form-field">
+          <label for="trp-percorso">Percorso (se diverso dal più breve)</label>
+          <input
+            id="trp-percorso"
+            pInputText
+            maxlength="250"
+            [(ngModel)]="trpPercorso"
+            data-testid="fir-detail-rentri-trasporto-percorso"
+          />
+        </div>
+        <div class="form-field">
+          <label for="trp-inizio">Inizio del trasporto</label>
+          <input
+            id="trp-inizio"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="trpInizio"
+            data-testid="fir-detail-rentri-trasporto-inizio"
+          />
+          <small class="text-tertiary">Se lo lasci vuoto vale la data indicata sul FIR.</small>
+        </div>
+        @if (trasportoErrore()) {
+          <small class="form-error" role="alert" data-testid="fir-detail-rentri-trasporto-errore">{{
+            trasportoErrore()
+          }}</small>
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="trasportoDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-trasporto-cancel"
+        />
+        <p-button
+          label="Invia a RENTRI"
+          [disabled]="!trasportoValido()"
+          [loading]="trasportoInCorso()"
+          (onClick)="confermaTrasporto()"
+          data-testid="fir-detail-rentri-trasporto-confirm"
+        />
+      </ng-template>
+    </p-dialog>
 
     <!-- Accettazione/respingimento del carico (R3 Task 4) -->
     <p-dialog
@@ -1035,6 +1429,44 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         gap: var(--spacing-xs);
       }
 
+      .check-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        cursor: pointer;
+      }
+
+      .form-error {
+        color: var(--color-danger);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .storico-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
+
+      .storico-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        align-items: baseline;
+      }
+
+      .storico-quando {
+        color: var(--color-text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .storico-esito--ko {
+        color: var(--color-danger);
+        font-weight: var(--font-weight-medium);
+      }
+
       .form-field label {
         font-weight: var(--font-weight-medium);
       }
@@ -1116,6 +1548,40 @@ export class FirDetailComponent implements OnInit {
 
   // --- Annullamento del formulario, con nota (R3 Task 5) ---
   protected readonly annullamentoDialogVisible = signal(false)
+
+  // --- Annotazione (FIR in viaggio, P4) ---
+  protected readonly annotazioneMax = ANNOTAZIONE_RENTRI_MAX
+  protected readonly annotazioneDialogVisible = signal(false)
+  protected readonly annotazioneInCorso = signal(false)
+  protected readonly annotazioneErrore = signal<string | null>(null)
+  protected annotazioneTesto = ''
+
+  // --- Quantita' e dati di trasporto (FIR in viaggio, P2) ---
+  protected readonly unitaQuantita = [
+    { label: 'kg', value: 'kg' },
+    { label: 'litri', value: 'litri' },
+    { label: 't', value: 't' },
+  ]
+  protected readonly quantitaDialogVisible = signal(false)
+  protected readonly quantitaInCorso = signal(false)
+  protected readonly quantitaErrore = signal<string | null>(null)
+  protected qtaValore: number | null = null
+  protected qtaUnita = 'kg'
+  protected qtaColli: number | null = null
+  protected qtaRinfusa = false
+  protected qtaVerificato = false
+  protected readonly trasportoDialogVisible = signal(false)
+  protected readonly trasportoInCorso = signal(false)
+  protected readonly trasportoErrore = signal<string | null>(null)
+  protected trpNome = ''
+  protected trpCognome = ''
+  protected trpTargaAutomezzo = ''
+  protected trpTargaRimorchio = ''
+  protected trpPercorso = ''
+  /** `datetime-local` (ora locale, senza fuso): vuoto = vale la data del FIR. */
+  protected trpInizio = ''
+  /** Storico delle operazioni inviate all'ente, dal piu' recente. */
+  protected readonly eventi = signal<EventoFirRentri[]>([])
   /** Dialog «Conferma consegna» (destinatario): peso verificato a destino. */
   protected consegnaDialogVisible = false
   protected consegnaPeso: number | null = null
@@ -1293,6 +1759,11 @@ export class FirDetailComponent implements OnInit {
             next: risultato => this.azioniRentri.set(risultato.azioni),
             error: () => this.azioniRentri.set([]),
           })
+          // Storico delle operazioni del viaggio (P2): silenzioso se fallisce.
+          this.rentriFirLifecycleService.eventi(fir.id).subscribe({
+            next: r => this.eventi.set(r.eventi),
+            error: () => this.eventi.set([]),
+          })
           // Banner della firma in attesa: stesso criterio fail-closed (silenzioso se fallisce).
           this.rentriFirLifecycleService.firmaInAttesa(fir.id).subscribe({
             next: r => this.sessioneFirma.set(r.sessione),
@@ -1301,6 +1772,7 @@ export class FirDetailComponent implements OnInit {
         } else {
           this.azioniRentri.set([])
           this.sessioneFirma.set(null)
+          this.eventi.set([])
         }
       },
       error: err => {
@@ -1507,27 +1979,245 @@ export class FirDetailComponent implements OnInit {
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
       this.canAccettareCarico(fir) ||
+      this.canFirmarePartenza(fir) ||
+      this.canAggiungereAnnotazione(fir) ||
+      this.canFirmareAnnotazione(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
   }
 
+  /** Emissione o presa in carico in corso: la firma RENTRI puo' attendere fino a 20 s la conferma sul telefono. */
+  protected readonly azioneInCorso = signal(false)
+
   emettiFIR(fir: FIR): void {
-    this.firService.emettiFIR(fir.id).subscribe({
+    this.azioneInCorso.set(true)
+    // `firmaRentri`: se il FIR e' legato a RENTRI il backend propone anche la firma di partenza; un suo
+    // fallimento non annulla l'emissione (arriva come avviso in `firmaRentri`).
+    this.firService.emettiFIR(fir.id, { firmaRentri: true }).subscribe({
       next: updated => {
+        this.azioneInCorso.set(false)
         this.fir.set(updated)
         this.messageService.add({
           severity: 'success',
           summary: 'FIR emesso',
           detail: 'Il formulario è stato emesso correttamente',
         })
+        this.mostraFirmaRentriDopoAzione(updated.firmaRentri)
       },
       error: err => {
+        this.azioneInCorso.set(false)
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, "Errore nell'emissione del FIR"),
         })
+      },
+    })
+  }
+
+  /**
+   * Esito della firma di partenza proposta da «Emetti» / «Presa in carico». L'azione locale e' gia'
+   * riuscita (ha il suo messaggio): qui si dice solo cosa resta da fare su RENTRI, e si ricarica per far
+   * comparire il banner (firma in attesa o da completare).
+   */
+  private mostraFirmaRentriDopoAzione(esito: EsitoFirmaPartenzaDopoAzione | undefined): void {
+    if (!esito || esito.stato === 'NON_APPLICABILE') return
+    switch (esito.stato) {
+      case 'NON_ANCORA_LEGATO':
+        // Trasmissione in corso: nessun avviso di errore, e' il percorso normale.
+        this.messageService.add({
+          severity: 'info',
+          summary: 'Firma RENTRI più tardi',
+          detail: esito.avviso,
+        })
+        return
+      case 'COMPLETATA':
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Partenza firmata su RENTRI',
+          detail: 'RENTRI ha registrato la firma: il viaggio è avviato.',
+        })
+        break
+      case 'IN_ATTESA':
+        this.messageService.add({
+          severity: 'info',
+          summary: 'Conferma la firma sul telefono',
+          detail:
+            "Apri l'app RENTRI FIR Digitale e conferma la richiesta, poi premi «Ho confermato, controlla».",
+        })
+        break
+      default:
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Firma RENTRI da completare',
+          detail: esito.avviso,
+        })
+    }
+    this.reload()
+  }
+
+  /**
+   * «Firma la partenza su RENTRI» compare solo per un FIR legato quando l'ente propone una firma di
+   * partenza fra le azioni (mai dedotta dallo stato locale) e non c'e' gia' una richiesta in attesa
+   * (che ha il suo banner con «Ho confermato, controlla»).
+   */
+  canFirmarePartenza(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      OPERAZIONI_FIRMA_PARTENZA.some(o => this.haOperazioneRentri(o)) &&
+      !this.sessioneFirma()
+    )
+  }
+
+  firmaPartenza(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaPartenza(fir.id).subscribe({
+      next: r => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(r.firma)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile firmare la partenza su RENTRI'),
+        })
+        this.reload()
+      },
+    })
+  }
+
+  // --- Annotazione (FIR in viaggio, P4) ---
+
+  /** Il pulsante nasce SOLO da `/azioni` (`Annotazione`), per un FIR legato, un ruolo abilitato e senza una firma gia' in attesa. */
+  canAggiungereAnnotazione(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('Annotazione') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  /** Un'annotazione gia' registrata presso l'ente e non ancora firmata: lo dice `/azioni`, mai lo stato locale. */
+  canFirmareAnnotazione(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaAnnotazione') &&
+      !this.sessioneFirma() &&
+      this.annotazioneDaFirmare() !== null
+    )
+  }
+
+  /**
+   * Il testo dell'ultima annotazione della nostra azienda accettata dall'ente e non ancora firmata, dallo
+   * storico (dal piu' recente). `null` se non c'e': un'annotazione in attesa inserita da un altro soggetto
+   * non si firma da qui, perche' non ne conosciamo il testo.
+   */
+  protected annotazioneDaFirmare(): string | null {
+    const evento = this.annotazioneInSospeso()
+    const testo = (evento?.payload as { annotazione?: unknown } | null | undefined)?.annotazione
+    return typeof testo === 'string' ? testo : null
+  }
+
+  /**
+   * L'annotazione in sospeso ha un esito ignoto (INVIATA/INCERTA): il backend la riconcilia con l'ente prima
+   * della firma (la firma parte solo se l'ente la mostra con il nostro soggetto e lo stesso testo).
+   */
+  protected annotazioneDaVerificare(): boolean {
+    const esito = this.annotazioneInSospeso()?.esito
+    return esito === 'INVIATA' || esito === 'INCERTA'
+  }
+
+  /**
+   * Come il backend: l'ultimo invio dopo l'ultima firma accettata. ACCETTATA = nostra e accettata;
+   * INVIATA/INCERTA = esito ignoto, da riconciliare; RIFIUTATA = chiuso (si guarda l'invio precedente).
+   */
+  private annotazioneInSospeso(): EventoFirRentri | null {
+    for (const e of this.eventi()) {
+      if (e.operazione === 'AcquisizioneFirmaAnnotazione' && e.esito === 'ACCETTATA') return null
+      // Un reset o un rollback accettati cambiano cio' che c'e' presso l'ente (R4): lo storico precedente non vale.
+      if (
+        (e.operazione === 'Reset' || e.operazione === 'RollbackFirma') &&
+        e.esito === 'ACCETTATA'
+      ) {
+        return null
+      }
+      if (e.operazione === 'Annotazione' && e.esito !== 'RIFIUTATA') return e
+    }
+    return null
+  }
+
+  apriDialogAnnotazione(): void {
+    this.annotazioneTesto = ''
+    this.annotazioneErrore.set(null)
+    this.annotazioneDialogVisible.set(true)
+  }
+
+  /** Almeno un carattere che non sia spazio, al massimo 10.000 (limite del contratto). */
+  annotazioneValida(): boolean {
+    return (
+      this.annotazioneTesto.trim().length > 0 && this.annotazioneTesto.length <= this.annotazioneMax
+    )
+  }
+
+  confermaAnnotazione(): void {
+    const fir = this.fir()
+    if (!fir || !this.annotazioneValida() || this.annotazioneInCorso()) return
+    this.annotazioneInCorso.set(true)
+    this.annotazioneErrore.set(null)
+    this.rentriFirLifecycleService.aggiungiAnnotazione(fir.id, this.annotazioneTesto).subscribe({
+      next: esito => {
+        this.annotazioneInCorso.set(false)
+        this.annotazioneDialogVisible.set(false)
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Annotazione inviata a RENTRI',
+          detail: "L'ente ha registrato l'annotazione.",
+        })
+        if (esito.firma.esito === 'DA_COMPLETARE') {
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Firma RENTRI da completare',
+            detail: esito.firma.avviso,
+          })
+        } else {
+          this.mostraEsitoFirma(esito.firma)
+        }
+        this.reload()
+      },
+      error: err => {
+        this.annotazioneInCorso.set(false)
+        // Il messaggio resta nel dialog: il testo scritto non si perde.
+        this.annotazioneErrore.set(
+          this.extractError(err, "Errore nell'invio dell'annotazione a RENTRI")
+        )
+        this.reload()
+      },
+    })
+  }
+
+  firmaAnnotazione(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaAnnotazione(fir.id).subscribe({
+      next: esito => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(esito)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, "Impossibile firmare l'annotazione su RENTRI"),
+        })
+        this.reload()
       },
     })
   }
@@ -1565,9 +2255,16 @@ export class FirDetailComponent implements OnInit {
   }
 
   presaInCarico(fir: FIR): void {
+    this.azioneInCorso.set(true)
     this.firService.presaInCarico(fir.id).subscribe({
       next: updated => {
+        this.azioneInCorso.set(false)
         this.fir.set(updated)
+        // FIR legato a RENTRI: la presa in carico e' la firma di partenza del trasportatore (`firmaRentri`).
+        if (updated.firmaRentri) {
+          this.mostraFirmaRentriDopoAzione(updated.firmaRentri)
+          return
+        }
         this.messageService.add({
           severity: 'success',
           summary: 'Presa in carico registrata',
@@ -1575,6 +2272,7 @@ export class FirDetailComponent implements OnInit {
         })
       },
       error: err => {
+        this.azioneInCorso.set(false)
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
@@ -1752,6 +2450,223 @@ export class FirDetailComponent implements OnInit {
     return (
       !!fir.rentriNumeroFir && this.canManageRENTRI() && this.haOperazioneRentri('Accettazione')
     )
+  }
+
+  // --- Quantita' e dati di trasporto (FIR in viaggio, P2) ---
+
+  /** `DatiQuantita` (prima indicazione) o `DatiQuantitaUpdate` (correzione): lo dice l'ente da `/azioni`. */
+  private operazioneQuantita(): 'DatiQuantita' | 'DatiQuantitaUpdate' | null {
+    if (this.haOperazioneRentri('DatiQuantita')) return 'DatiQuantita'
+    if (this.haOperazioneRentri('DatiQuantitaUpdate')) return 'DatiQuantitaUpdate'
+    return null
+  }
+
+  private operazioneTrasporto(): 'Trasporto' | 'TrasportoUpdate' | null {
+    if (this.haOperazioneRentri('Trasporto')) return 'Trasporto'
+    if (this.haOperazioneRentri('TrasportoUpdate')) return 'TrasportoUpdate'
+    return null
+  }
+
+  /** I pulsanti nascono SOLO dalle azioni dell'ente (`/azioni`), per un FIR legato e un ruolo abilitato. */
+  canIndicareQuantita(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI() && this.operazioneQuantita() !== null
+  }
+
+  canIndicareTrasporto(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      fir.tipoTrattaPrincipale === 'TERRESTRE' &&
+      this.operazioneTrasporto() !== null
+    )
+  }
+
+  etichettaQuantita(): string {
+    return this.operazioneQuantita() === 'DatiQuantitaUpdate'
+      ? 'Correggi la quantità'
+      : 'Indica la quantità'
+  }
+
+  etichettaTrasporto(): string {
+    return this.operazioneTrasporto() === 'TrasportoUpdate'
+      ? 'Correggi i dati del trasporto'
+      : 'Indica i dati del trasporto'
+  }
+
+  mostraStoricoViaggio(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.ff.has('rentri') && this.canManageRENTRI()
+  }
+
+  etichettaEvento(operazione: string): string {
+    switch (operazione) {
+      case 'DatiQuantita':
+        return 'Quantità indicata'
+      case 'DatiQuantitaUpdate':
+        return 'Quantità corretta'
+      case 'Trasporto':
+        return 'Dati di trasporto indicati'
+      case 'TrasportoUpdate':
+        return 'Dati di trasporto corretti'
+      case 'Reset':
+        return 'Richiesta annullata'
+      case 'RollbackFirma':
+        return 'Firma annullata'
+      case 'Annotazione':
+        return 'Annotazione aggiunta'
+      case 'AcquisizioneFirmaAnnotazione':
+        return 'Annotazione firmata'
+      default:
+        return operazione
+    }
+  }
+
+  etichettaEsitoEvento(esito: EventoFirRentri['esito']): string {
+    switch (esito) {
+      case 'ACCETTATA':
+        return "Accettata dall'ente"
+      case 'RIFIUTATA':
+        return "Rifiutata dall'ente"
+      case 'INCERTA':
+        return 'Esito incerto: controlla lo stato'
+      default:
+        return 'Inviata'
+    }
+  }
+
+  apriDialogQuantita(fir: FIR): void {
+    // Se l'ente ha gia' una quantita' dichiarata si parte da quella; il firmato resta quello emesso.
+    const dq = fir.datiViaggio?.dichiarato?.quantita
+    this.qtaValore = dq?.valore ?? fir.rifiuto?.quantita ?? null
+    this.qtaUnita = dq?.unitaMisura ?? fir.rifiuto?.unitaMisura ?? 'kg'
+    this.qtaColli = dq ? dq.numeroColli : (fir.rifiuto?.numeroColli ?? null)
+    this.qtaRinfusa = fir.datiViaggio?.rinfusa === true
+    this.qtaVerificato = fir.datiViaggio?.verificatoInPartenza === true
+    this.quantitaErrore.set(null)
+    this.quantitaDialogVisible.set(true)
+  }
+
+  /** Quantita' maggiore di zero e, se non e' alla rinfusa, almeno un collo (il contratto vuole l'uno o l'altra). */
+  quantitaValida(): boolean {
+    if (this.qtaValore === null || this.qtaValore === undefined || this.qtaValore <= 0) return false
+    return this.qtaRinfusa || (this.qtaColli !== null && this.qtaColli >= 1)
+  }
+
+  confermaQuantita(): void {
+    const fir = this.fir()
+    if (!fir || !this.quantitaValida()) return
+    this.quantitaInCorso.set(true)
+    this.quantitaErrore.set(null)
+    this.rentriFirLifecycleService
+      .inviaQuantita(fir.id, {
+        quantita: this.qtaValore as number,
+        unitaMisura: this.qtaUnita,
+        numeroColli: this.qtaRinfusa ? undefined : (this.qtaColli ?? undefined),
+        rinfusa: this.qtaRinfusa,
+        verificatoInPartenza: this.qtaVerificato,
+      })
+      .subscribe({
+        next: esito => {
+          this.quantitaInCorso.set(false)
+          this.quantitaDialogVisible.set(false)
+          this.messageService.add({
+            severity: esito?.copiaLocaleAggiornata === false ? 'warn' : 'success',
+            summary: 'Quantità inviata a RENTRI',
+            detail:
+              esito?.copiaLocaleAggiornata === false
+                ? "L'ente ha accettato, ma qui il dato dichiarato non è stato salvato: ripeti l'invio per vederlo nel dettaglio."
+                : "L'ente ha accettato la quantità del formulario.",
+          })
+          this.reload()
+        },
+        error: err => {
+          this.quantitaInCorso.set(false)
+          // Il messaggio resta nel dialog: l'utente corregge senza perdere cio' che ha scritto.
+          this.quantitaErrore.set(
+            this.extractError(err, "Errore nell'invio della quantità a RENTRI")
+          )
+          this.reload()
+        },
+      })
+  }
+
+  apriDialogTrasporto(fir: FIR): void {
+    const v = fir.datiViaggio
+    this.trpNome = v?.conducenteNome ?? ''
+    this.trpCognome = v?.conducenteCognome ?? ''
+    this.trpTargaAutomezzo =
+      fir.datiViaggio?.dichiarato?.trasporto?.targaAutomezzo ??
+      fir.trasportatore?.targaVeicolo ??
+      ''
+    this.trpTargaRimorchio = v?.targaRimorchio ?? ''
+    this.trpPercorso = v?.percorso ?? ''
+    this.trpInizio = ''
+    this.trasportoErrore.set(null)
+    this.trasportoDialogVisible.set(true)
+  }
+
+  /** Conducente (nome e cognome) e almeno una targa: lo stesso che chiede l'ente, impossibile da aggirare dal pulsante. */
+  trasportoValido(): boolean {
+    return (
+      this.trpNome.trim() !== '' &&
+      this.trpCognome.trim() !== '' &&
+      (this.trpTargaAutomezzo.trim() !== '' || this.trpTargaRimorchio.trim() !== '')
+    )
+  }
+
+  /** Precompila conducente e rimorchio dall'ultimo trasporto con quella targa, solo a campi vuoti (D3). */
+  precompilaTrasportoDaTarga(): void {
+    const targa = this.trpTargaAutomezzo.trim()
+    if (!targa || this.trpNome.trim() || this.trpCognome.trim()) return
+    this.rentriFirLifecycleService.ultimoTrasporto(targa).subscribe({
+      next: r => {
+        const u = r.trasporto
+        if (!u || this.trpNome.trim() || this.trpCognome.trim()) return
+        this.trpNome = u.conducenteNome
+        this.trpCognome = u.conducenteCognome
+        if (!this.trpTargaRimorchio.trim() && u.targaRimorchio) {
+          this.trpTargaRimorchio = u.targaRimorchio
+        }
+      },
+      error: () => undefined,
+    })
+  }
+
+  confermaTrasporto(): void {
+    const fir = this.fir()
+    if (!fir || !this.trasportoValido()) return
+    this.trasportoInCorso.set(true)
+    this.trasportoErrore.set(null)
+    this.rentriFirLifecycleService
+      .inviaTrasporto(fir.id, {
+        conducenteNome: this.trpNome.trim(),
+        conducenteCognome: this.trpCognome.trim(),
+        targaAutomezzo: this.trpTargaAutomezzo.trim() || undefined,
+        targaRimorchio: this.trpTargaRimorchio.trim() || undefined,
+        percorso: this.trpPercorso.trim() || undefined,
+        dataOraInizioTrasporto: this.trpInizio ? new Date(this.trpInizio).toISOString() : undefined,
+      })
+      .subscribe({
+        next: esito => {
+          this.trasportoInCorso.set(false)
+          this.trasportoDialogVisible.set(false)
+          this.messageService.add({
+            severity: esito?.copiaLocaleAggiornata === false ? 'warn' : 'success',
+            summary: 'Dati di trasporto inviati a RENTRI',
+            detail:
+              esito?.copiaLocaleAggiornata === false
+                ? "L'ente ha accettato, ma qui il dato dichiarato non è stato salvato: ripeti l'invio per vederlo nel dettaglio."
+                : "L'ente ha accettato i dati del trasporto.",
+          })
+          this.reload()
+        },
+        error: err => {
+          this.trasportoInCorso.set(false)
+          this.trasportoErrore.set(
+            this.extractError(err, "Errore nell'invio dei dati di trasporto a RENTRI")
+          )
+          this.reload()
+        },
+      })
   }
 
   apriDialogAccettazione(fir: FIR): void {

@@ -136,6 +136,7 @@ model Tenant {
   eventiCampo           EventoCampo[]
   allegatiCampo         AllegatoCampo[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
+  eventiFirRentri       FirEventoRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
   rettifichePeso        RettificaPeso[]
@@ -291,6 +292,7 @@ model User {
   eventiCampo             EventoCampo[]
   allegatiCampo           AllegatoCampo[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
+  eventiFirRentri         FirEventoRentri[]
 
   @@unique([tenantId, fiscalCode])
   @@unique([id, tenantId], map: "users_id_tenant_id_key")
@@ -470,6 +472,18 @@ model FIR {
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
 
+  /// FIR in viaggio P2: campi di `QuantitaRifiutoModel` e dati di trasporto della tratta PRINCIPALE
+  /// (il trasportatore principale e' inline su questo modello; inizio trasporto = `transportDate`,
+  /// targa = `carrierVehiclePlate`). Tutti nullable e fuori dall'hash di integrita'.
+  verificatoInPartenza Boolean? @map("verificato_in_partenza")
+  rinfusa              Boolean?
+  conducenteNome       String?  @map("conducente_nome") @db.VarChar(50)
+  conducenteCognome    String?  @map("conducente_cognome") @db.VarChar(50)
+  targaRimorchio       String?  @map("targa_rimorchio") @db.VarChar(10)
+  percorso             String?  @db.VarChar(250)
+  /// Copia SEPARATA di quantita' e targa accettate dall'ente (JSON); le colonne firmate non si riscrivono dopo l'emissione.
+  rentriDichiarato     Json?    @map("rentri_dichiarato")
+
   rentriSyncStatus        RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
   // DEPRECATO: nonostante il nome, in pratica avrebbe dovuto contenere il
   // transazione_id della trasmissione (identificativo tecnico della singola
@@ -569,6 +583,7 @@ model FIR {
   rentriSyncLogs RENTRISyncLog[]
   allegatiRentri FIRAllegatoRentri[]
   sessioniFirmaRentri FirSessioneFirmaRentri[]
+  eventiRentri        FirEventoRentri[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
@@ -795,6 +810,13 @@ model FIRTransporter {
   // Mezzo/identificativo: targa (terrestre), numero treno o nome nave.
   mezzo             String?   @map("mezzo") @db.VarChar(100)
   dataPresaInCarico DateTime? @map("data_presa_in_carico")
+
+  // FIR in viaggio P2: dati di trasporto della tratta (conducente obbligatorio per il terrestre).
+  conducenteNome         String?   @map("conducente_nome") @db.VarChar(50)
+  conducenteCognome      String?   @map("conducente_cognome") @db.VarChar(50)
+  targaRimorchio         String?   @map("targa_rimorchio") @db.VarChar(10)
+  percorso               String?   @db.VarChar(250)
+  dataOraInizioTrasporto DateTime? @map("data_ora_inizio_trasporto") @db.Timestamptz(3)
 
   fir FIR @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
@@ -5184,4 +5206,38 @@ model FirSessioneFirmaRentri {
   @@unique([id, tenantId], map: "fir_sessioni_firma_rentri_id_tenant_id_key")
   @@index([tenantId, firId, createdAt], map: "fir_sessioni_firma_rentri_fir_idx")
   @@map("fir_sessioni_firma_rentri")
+}
+
+enum EsitoEventoRentri {
+  INVIATA
+  ACCETTATA
+  RIFIUTATA
+  INCERTA
+
+  @@map("esito_evento_rentri")
+}
+
+/// Storico delle operazioni del viaggio inviate all'ente (FIR in viaggio P2): una riga per operazione, scritta a
+/// esito noto. SOLO INSERIMENTO (`v_solo_inserimento` in `ruoli-db.sql`). `payload` = corpo di dominio inviato,
+/// senza dati di firma, token ne' certificati.
+model FirEventoRentri {
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                 @map("tenant_id") @db.Uuid
+  firId               String                 @map("fir_id") @db.Uuid
+  operazione          String                 @db.VarChar(60)
+  payload             Json?
+  transazioneId       String?                @map("transazione_id") @db.VarChar(100)
+  esito               EsitoEventoRentri
+  dettaglioEnte       String?                @map("dettaglio_ente")
+  statoFormularioDopo RentriStatoFormulario? @map("stato_formulario_dopo")
+  utenteId            String?                @map("utente_id") @db.Uuid
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fir    FIR    @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "fir_eventi_rentri_fir_fkey")
+  utente User?  @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "fir_eventi_rentri_utente_fkey")
+
+  @@unique([id, tenantId], map: "fir_eventi_rentri_id_tenant_id_key")
+  @@index([tenantId, firId, createdAt], map: "fir_eventi_rentri_fir_idx")
+  @@map("fir_eventi_rentri")
 }

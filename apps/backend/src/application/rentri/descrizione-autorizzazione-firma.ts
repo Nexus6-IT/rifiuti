@@ -13,6 +13,13 @@ const CARATTERE_AMMESSO = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s.,;:!?\-()/€%&@]$/
 
 const LUNGHEZZA_MASSIMA = 1000
 
+/** Firme di partenza (FIR in viaggio P3): il testo sul telefono nomina la veste in cui si firma. */
+const VESTE_PARTENZA: Readonly<Record<string, string>> = {
+  PARTENZA_PRODUTTORE: 'come produttore',
+  PARTENZA_TRASPORTATORE: 'come trasportatore',
+  PARTENZA_PRODUTTORE_TRASPORTATORE: 'come produttore e trasportatore',
+}
+
 /**
  * `Firma del formulario <numero> - operazione <tipo>`, con ogni carattere
  * fuori dal pattern del contratto sostituito da `-`.
@@ -22,7 +29,10 @@ const LUNGHEZZA_MASSIMA = 1000
  * non sia vuota).
  */
 export function descrizioneAutorizzazioneFirma(numeroFir: string, tipoOperazione: string): string {
-  const testo = `Firma del formulario ${String(numeroFir)} - operazione ${String(tipoOperazione)}`
+  const veste = VESTE_PARTENZA[String(tipoOperazione)]
+  const testo = veste
+    ? `Firma del formulario ${String(numeroFir)} - firma di partenza ${veste}`
+    : `Firma del formulario ${String(numeroFir)} - operazione ${String(tipoOperazione)}`
 
   // Per code point, non per unità UTF-16: un carattere fuori dal BMP (emoji)
   // vale un solo `-`, e dopo la sostituzione ogni carattere è nel BMP, quindi

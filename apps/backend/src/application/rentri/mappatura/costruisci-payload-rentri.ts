@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { RentriUnitaLocaleService } from '../../../infrastructure/rentri/rentri-unita-locale.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { FIR, ParteFIR } from '../../../domain/fir/aggregates/fir.aggregate'
+import { FIR, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import { IDatiViaggioFirRepository } from '../dati-viaggio-fir.port'
 import { RisolutoreComuneIstat } from './risolutore-comune-istat'
 import { mappaNuovoFormulario } from './mappa-nuovo-formulario'
 import { DatoMancantePerRentriError, TipoTrasporto } from './mappa-parti'
@@ -29,7 +30,8 @@ export class CostruisciPayloadRentri {
   constructor(
     private readonly prisma: PrismaService,
     private readonly unitaLocale: RentriUnitaLocaleService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly datiViaggio: IDatiViaggioFirRepository
   ) {
     this.logger.setContext('CostruisciPayloadRentri')
     this.risolutoreComune = new RisolutoreComuneIstat(this.prisma)
@@ -49,11 +51,44 @@ export class CostruisciPayloadRentri {
     const destinatario = await this.leggiRegistro('destinatario', fir.destinatario, tenantId)
     const trasportatore = await this.leggiRegistro('trasportatore', fir.trasportatore, tenantId)
 
+    // Dati noti del viaggio (FIR in viaggio P2, D2): quantita' e trasporto di partenza entrano nel corpo
+    // di creazione SOLO se completi; altrimenti li invia l'utente dopo, dai due dialog.
+    const viaggio = await this.datiViaggio.leggi(tenantId, fir.id)
+    const tipoTrasporto = this.tipoTrasportoDelContratto(fir)
+    const rifiutoFir = fir.rifiuto
+    const targaAutomezzo = fir.trasportatore?.targaVeicolo?.trim() ?? ''
+
     return mappaNuovoFormulario(
       {
         numIscrSito: sede.numIscrSito,
         provenienza: this.codiceProvenienza(fir),
-        tipoTrasporto: this.tipoTrasportoDelContratto(fir),
+        tipoTrasporto,
+        caratteristichePericolo: rifiutoFir?.caratteristichePericolo ?? null,
+        quantita:
+          rifiutoFir && (viaggio?.rinfusa === true || rifiutoFir.numeroColli)
+            ? {
+                valore: rifiutoFir.quantita.valore,
+                unitaMisura: rifiutoFir.quantita.unitaMisura,
+                numeroColli: rifiutoFir.numeroColli ?? null,
+                rinfusa: viaggio?.rinfusa ?? null,
+                verificatoInPartenza: viaggio?.verificatoInPartenza ?? null,
+              }
+            : null,
+        datiTrasportoPartenza:
+          viaggio &&
+          tipoTrasporto === 'Terrestre' &&
+          viaggio.principale.conducenteNome?.trim() &&
+          viaggio.principale.conducenteCognome?.trim() &&
+          (targaAutomezzo || viaggio.principale.targaRimorchio?.trim())
+            ? {
+                conducenteNome: viaggio.principale.conducenteNome,
+                conducenteCognome: viaggio.principale.conducenteCognome,
+                targaAutomezzo,
+                targaRimorchio: viaggio.principale.targaRimorchio,
+                percorso: viaggio.principale.percorso,
+                dataOraInizioTrasporto: viaggio.dataTrasporto,
+              }
+            : null,
         produttore: {
           ragioneSociale: produttore.ragioneSociale,
           partitaIVA: produttore.partitaIVA,
@@ -70,6 +105,13 @@ export class CostruisciPayloadRentri {
             partitaIVA: trasportatore.partitaIVA,
             numeroIscrizione: trasportatore.numeroIscrizione ?? null,
           },
+          // Intermodale: ogni tratta aggiuntiva e' un trasportatore con la sua modalita'.
+          ...fir.trasportatoriAggiuntivi.map(tratta => ({
+            ragioneSociale: tratta.denominazione,
+            partitaIVA: tratta.codiceFiscale ?? tratta.partitaIva ?? '',
+            numeroIscrizione: tratta.numeroIscrizioneAlbo ?? null,
+            tipoTrasporto: this.tipoTrasportoDiTratta(tratta.tipoTratta),
+          })),
         ],
         rifiuto: {
           cerCode: fir.rifiuto?.cerCode ?? '',
@@ -104,7 +146,11 @@ export class CostruisciPayloadRentri {
    * scoprirlo, non la lettura del codice.
    */
   private tipoTrasportoDelContratto(fir: FIR): TipoTrasporto | null {
-    switch (fir.tipoTrattaPrincipale) {
+    return this.tipoTrasportoDiTratta(fir.tipoTrattaPrincipale)
+  }
+
+  private tipoTrasportoDiTratta(tratta: TipoTratta | string | null): TipoTrasporto | null {
+    switch (tratta) {
       case 'TERRESTRE':
         return 'Terrestre'
       case 'FERROVIARIA':
