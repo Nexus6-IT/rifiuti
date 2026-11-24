@@ -67,6 +67,28 @@ export class FirDetailPage {
   readonly firmaRiprendi: Locator
   readonly firmaRichiediDiNuovo: Locator
   readonly firmaAnnullaRichiesta: Locator
+  readonly firmaPartenzaBanner: Locator
+  readonly firmaPartenza: Locator
+  readonly aggiungiAnnotazione: Locator
+  readonly annotazioneDialog: Locator
+  readonly annotazioneTesto: Locator
+  readonly annotazioneContatore: Locator
+  readonly annotazioneConferma: Locator
+  readonly annotazioneErrore: Locator
+  readonly firmaAnnotazioneBanner: Locator
+  readonly indicaQuantita: Locator
+  readonly indicaTrasporto: Locator
+  readonly quantitaDialog: Locator
+  readonly quantitaValore: Locator
+  readonly quantitaColli: Locator
+  readonly quantitaRinfusa: Locator
+  readonly quantitaConferma: Locator
+  readonly trasportoDialog: Locator
+  readonly trasportoNome: Locator
+  readonly trasportoCognome: Locator
+  readonly trasportoTarga: Locator
+  readonly trasportoConferma: Locator
+  readonly storicoViaggio: Locator
   readonly rentriAnnullaDialog: Locator
   readonly rentriAnnullaMotivoInput: Locator
   readonly rentriAnnullaCancelButton: Locator
@@ -154,6 +176,28 @@ export class FirDetailPage {
     this.firmaRiprendi = page.getByTestId('fir-detail-firma-riprendi')
     this.firmaRichiediDiNuovo = page.getByTestId('fir-detail-firma-richiedi-di-nuovo')
     this.firmaAnnullaRichiesta = page.getByTestId('fir-detail-firma-annulla-richiesta')
+    this.firmaPartenzaBanner = page.getByTestId('fir-detail-firma-partenza-banner')
+    this.firmaPartenza = page.getByTestId('fir-detail-firma-partenza')
+    this.aggiungiAnnotazione = page.getByTestId('fir-detail-rentri-aggiungi-annotazione')
+    this.annotazioneDialog = page.getByTestId('fir-detail-rentri-annotazione-dialog')
+    this.annotazioneTesto = page.getByTestId('fir-detail-rentri-annotazione-testo')
+    this.annotazioneContatore = page.getByTestId('fir-detail-rentri-annotazione-contatore')
+    this.annotazioneConferma = page.getByTestId('fir-detail-rentri-annotazione-confirm')
+    this.annotazioneErrore = page.getByTestId('fir-detail-rentri-annotazione-errore')
+    this.firmaAnnotazioneBanner = page.getByTestId('fir-detail-firma-annotazione-banner')
+    this.indicaQuantita = page.getByTestId('fir-detail-rentri-indica-quantita')
+    this.indicaTrasporto = page.getByTestId('fir-detail-rentri-indica-trasporto')
+    this.quantitaDialog = page.getByTestId('fir-detail-rentri-quantita-dialog')
+    this.quantitaValore = page.getByTestId('fir-detail-rentri-quantita-valore').locator('input')
+    this.quantitaColli = page.getByTestId('fir-detail-rentri-quantita-colli').locator('input')
+    this.quantitaRinfusa = page.getByTestId('fir-detail-rentri-quantita-rinfusa')
+    this.quantitaConferma = page.getByTestId('fir-detail-rentri-quantita-confirm')
+    this.trasportoDialog = page.getByTestId('fir-detail-rentri-trasporto-dialog')
+    this.trasportoNome = page.getByTestId('fir-detail-rentri-trasporto-nome')
+    this.trasportoCognome = page.getByTestId('fir-detail-rentri-trasporto-cognome')
+    this.trasportoTarga = page.getByTestId('fir-detail-rentri-trasporto-targa')
+    this.trasportoConferma = page.getByTestId('fir-detail-rentri-trasporto-confirm')
+    this.storicoViaggio = page.getByTestId('fir-detail-storico-viaggio')
     this.rentriAnnullaDialog = page.getByTestId('fir-detail-rentri-annulla-dialog')
     this.rentriAnnullaMotivoInput = page.getByTestId('fir-detail-rentri-annulla-motivo-input')
     this.rentriAnnullaCancelButton = page.getByTestId('fir-detail-rentri-annulla-cancel-button')

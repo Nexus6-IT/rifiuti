@@ -7,6 +7,7 @@ import {
   Body,
   Res,
   Req,
+  Query,
   UseGuards,
   NotFoundException,
   BadRequestException,
@@ -49,6 +50,26 @@ import {
   SessioneFirmaInAttesa,
 } from '../../application/rentri/gestisci-sessione-firma-rentri.use-case'
 import { EsitoCompletamentoFirma } from '../../application/rentri/completa-operazione-con-firma.use-case'
+import {
+  EsitoInviaDatiViaggio,
+  InviaDatiViaggioFirRentriUseCase,
+} from '../../application/rentri/invia-dati-viaggio-fir-rentri.use-case'
+import { ElencaEventiFirRentriUseCase } from '../../application/rentri/elenca-eventi-fir-rentri.use-case'
+import { EventoFirRentri } from '../../application/rentri/eventi-fir-rentri.port'
+import { TrovaUltimoTrasportoAutomezzoUseCase } from '../../application/rentri/trova-ultimo-trasporto-automezzo.use-case'
+import {
+  EsitoFirmaPartenza,
+  FirmaPartenzaRentriUseCase,
+} from '../../application/rentri/firma-partenza-rentri.use-case'
+import { FirmaPartenzaFirRentriDto } from './dto/firma-partenza-fir-rentri.dto'
+import {
+  AnnotazioneRentriUseCase,
+  EsitoAnnotazione,
+} from '../../application/rentri/annotazione-rentri.use-case'
+import { AnnotazioneFirRentriDto } from './dto/annotazione-fir-rentri.dto'
+import { UltimoTrasportoAutomezzo } from '../../application/rentri/dati-viaggio-fir.port'
+import { InviaQuantitaFirRentriDto } from './dto/invia-quantita-fir-rentri.dto'
+import { InviaTrasportoFirRentriDto } from './dto/invia-trasporto-fir-rentri.dto'
 import { RiprendiFirmaRentriDto } from './dto/riprendi-firma-rentri.dto'
 import { RollbackOResetFirRentriDto } from './dto/rollback-o-reset-fir-rentri.dto'
 import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
@@ -83,10 +104,29 @@ const RULE_TRADOTTE_TASK_9 = new Set([
  * non e' disponibile ora (lo dice l'ente) oppure c'e' gia' una firma in corso. Il messaggio e' gia'
  * scritto per l'utente; il `rule` viaggia nel corpo (`codice`) per il FE.
  */
+/**
+ * `rule` degli errori di VALIDAZIONE dei dati di viaggio (FIR in viaggio, P2): 400 con `codice` stabile e il
+ * messaggio gia' scritto per l'utente (senza il prefisso tecnico di `DomainException`).
+ */
+const RULE_DATI_VIAGGIO = new Set([
+  'DATI_VIAGGIO_NON_VALIDI',
+  'TRASPORTO_NON_TERRESTRE',
+  'QUANTITA_RENTRI_RIFIUTATA',
+  'TRASPORTO_RENTRI_RIFIUTATO',
+  'ANNOTAZIONE_NON_VALIDA',
+  'ANNOTAZIONE_RENTRI_RIFIUTATA',
+])
+
 const RULE_CONFLITTO = new Set([
   'OPERAZIONE_NON_DISPONIBILE',
+  'FIRMA_PARTENZA_NON_DISPONIBILE',
   'SESSIONE_FIRMA_IN_CORSO',
   'SESSIONE_FIRMA_NON_ATTIVA',
+  'ANNOTAZIONE_SOGGETTO_NON_NEL_FIR',
+  'ANNOTAZIONE_DA_FIRMARE',
+  'ANNOTAZIONE_DI_ALTRO_SOGGETTO',
+  'ANNOTAZIONE_IN_VERIFICA',
+  'FIRMA_ANNOTAZIONE_NON_DISPONIBILE',
 ])
 
 /**
@@ -123,9 +163,31 @@ export class RentriFirLifecycleController {
     private readonly logger: LoggerService,
     private readonly ruoloEffettivo: RuoloEffettivoService,
     private readonly rollbackEResetUseCase: RollbackEResetFirRentriUseCase,
-    private readonly sessioneFirmaUseCase: GestisciSessioneFirmaRentriUseCase
+    private readonly sessioneFirmaUseCase: GestisciSessioneFirmaRentriUseCase,
+    private readonly inviaDatiViaggioUseCase: InviaDatiViaggioFirRentriUseCase,
+    private readonly elencaEventiUseCase: ElencaEventiFirRentriUseCase,
+    private readonly ultimoTrasportoUseCase: TrovaUltimoTrasportoAutomezzoUseCase,
+    private readonly firmaPartenzaUseCase: FirmaPartenzaRentriUseCase,
+    private readonly annotazioneUseCase: AnnotazioneRentriUseCase
   ) {
     this.logger.setContext('RentriFirLifecycleController')
+  }
+
+  /**
+   * Conducente e rimorchio dell'ultimo trasporto fatto con una targa: precompila il form del FIR
+   * (decisione D3). Rotta fissa, prima delle `:id/...`: nessuna ambiguita' con un id.
+   */
+  @Get('ultimo-trasporto')
+  @ApiOperation({
+    summary: "Conducente dell'ultimo trasporto con una targa",
+    description: 'Cerca fra i FIR dell’azienda l’ultimo con quella targa e un conducente indicato.',
+  })
+  @ApiResponse({ status: 200, description: 'Conducente e rimorchio, oppure null' })
+  async ultimoTrasporto(
+    @Query('targa') targa: string,
+    @TenantId() tenantId: string
+  ): Promise<{ trasporto: UltimoTrasportoAutomezzo | null }> {
+    return { trasporto: await this.ultimoTrasportoUseCase.execute(tenantId, targa ?? '') }
   }
 
   /**
@@ -603,6 +665,243 @@ export class RentriFirLifecycleController {
   }
 
   /**
+   * Quantita' del rifiuto, colli e rinfusa (FIR in viaggio, P2): chiude la fase iniziale quando la creazione
+   * non portava la quantita', oppure la corregge. La disponibilita' la decide l'ente (`/azioni`); la copia
+   * locale si aggiorna solo dopo il suo esito positivo.
+   */
+  @Post(':id/quantita')
+  @ApiOperation({
+    summary: 'Indica o correggi la quantità del rifiuto',
+    description:
+      'Verifica /azioni (DatiQuantita o DatiQuantitaUpdate), invia quantità, colli o rinfusa e verifica ' +
+      'in partenza, rilegge lo stato e aggiorna la copia locale solo a esito positivo.',
+  })
+  @ApiResponse({ status: 201, description: "Quantità accettata dall'ente, stato riletto" })
+  @ApiResponse({ status: 400, description: "Dati non validi o rifiutati dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({ status: 409, description: 'OPERAZIONE_NON_DISPONIBILE' })
+  async inviaQuantita(
+    @Param('id') firId: string,
+    @Body() dto: InviaQuantitaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoInviaDatiViaggio> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Quantità RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.inviaDatiViaggioUseCase.inviaQuantita({
+        firId,
+        tenantId,
+        quantita: dto.quantita,
+        unitaMisura: dto.unitaMisura,
+        numeroColli: dto.numeroColli,
+        rinfusa: dto.rinfusa,
+        verificatoInPartenza: dto.verificatoInPartenza,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Quantità RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Dati del trasporto terrestre (conducente, targhe, percorso): stessa sequenza e stesse garanzie di
+   * {@link inviaQuantita}.
+   */
+  @Post(':id/trasporto')
+  @ApiOperation({
+    summary: 'Indica o correggi i dati del trasporto',
+    description:
+      'Verifica /azioni (Trasporto o TrasportoUpdate), invia conducente, targhe e percorso, rilegge lo ' +
+      'stato e aggiorna la copia locale solo a esito positivo. Solo trasporto terrestre.',
+  })
+  @ApiResponse({ status: 201, description: "Trasporto accettato dall'ente, stato riletto" })
+  @ApiResponse({ status: 400, description: "Dati non validi o rifiutati dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({ status: 409, description: 'OPERAZIONE_NON_DISPONIBILE' })
+  async inviaTrasporto(
+    @Param('id') firId: string,
+    @Body() dto: InviaTrasportoFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoInviaDatiViaggio> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Trasporto RENTRI richiesto', { firId, tenantId, userId })
+
+    try {
+      return await this.inviaDatiViaggioUseCase.inviaTrasporto({
+        firId,
+        tenantId,
+        conducenteNome: dto.conducenteNome,
+        conducenteCognome: dto.conducenteCognome,
+        targaAutomezzo: dto.targaAutomezzo,
+        targaRimorchio: dto.targaRimorchio,
+        percorso: dto.percorso,
+        dataOraInizioTrasporto: dto.dataOraInizioTrasporto
+          ? new Date(dto.dataOraInizioTrasporto)
+          : undefined,
+        annotazioni: dto.annotazioni,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Trasporto RENTRI non riuscito', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma di partenza (FIR in viaggio, P3): produttore e/o trasportatore firmano l'avvio del viaggio. L'operazione
+   * la sceglie `/azioni`; la firma passa dal ciclo comune (una sola richiesta sul telefono, ripresa della
+   * sessione aperta), e lo stato di viaggio e' RILETTO dall'ente.
+   */
+  @Post(':id/firma-partenza')
+  @ApiOperation({
+    summary: 'Firma la partenza su RENTRI',
+    description:
+      'Verifica /azioni (firma di produttore e/o trasportatore), chiede la firma remota e, a conferma, rilegge lo stato di viaggio. ' +
+      'Esiti: COMPLETATA, IN_ATTESA (conferma sul telefono), SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Operazione scelta ed esito della firma' })
+  @ApiResponse({ status: 400, description: 'FIR non legato a RENTRI o firma rifiutata' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'FIRMA_PARTENZA_NON_DISPONIBILE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaPartenza(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoFirmaPartenza> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma di partenza RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.firmaPartenzaUseCase.execute({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma di partenza RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Annotazione (FIR in viaggio, P4): un testo libero del soggetto (l'azienda selezionata) aggiunto al
+   * formulario e firmato con la firma remota. La disponibilita' la decide `/azioni`; se la firma non si
+   * conclude l'annotazione resta registrata presso l'ente e si firma dopo da `firma-annotazione`.
+   */
+  @Post(':id/annotazione')
+  @ApiOperation({
+    summary: "Aggiungi un'annotazione al formulario",
+    description:
+      "Verifica che il CF dell'azienda compaia nel FIR e che /azioni proponga l'annotazione, la invia e " +
+      'chiede la firma remota. Esiti della firma: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA, DA_COMPLETARE.',
+  })
+  @ApiResponse({ status: 201, description: "Annotazione accettata dall'ente, esito della firma" })
+  @ApiResponse({ status: 400, description: "Testo non valido o annotazione rifiutata dall'ente" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'OPERAZIONE_NON_DISPONIBILE, ANNOTAZIONE_SOGGETTO_NON_NEL_FIR, ANNOTAZIONE_DA_FIRMARE, ANNOTAZIONE_DI_ALTRO_SOGGETTO, ANNOTAZIONE_IN_VERIFICA o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async aggiungiAnnotazione(
+    @Param('id') firId: string,
+    @Body() dto: AnnotazioneFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoAnnotazione> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Annotazione RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.annotazioneUseCase.invia({
+        firId,
+        tenantId,
+        testo: dto.testo,
+        utenteId: userId,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Annotazione RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
+   * Firma dell'annotazione in attesa (FIR in viaggio, P4): quando la firma dopo l'invio non si e' conclusa
+   * (conferma sul telefono mancata, rete) o va richiesta di nuovo. Una sola richiesta sul telefono.
+   */
+  @Post(':id/firma-annotazione')
+  @ApiOperation({
+    summary: "Firma l'annotazione su RENTRI",
+    description:
+      'Verifica /azioni (AcquisizioneFirmaAnnotazione), chiede la firma remota e rilegge lo stato. Esiti: COMPLETATA, IN_ATTESA, SCADUTA, RIFIUTATA.',
+  })
+  @ApiResponse({ status: 201, description: 'Esito della firma' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'FIRMA_ANNOTAZIONE_NON_DISPONIBILE o SESSIONE_FIRMA_IN_CORSO',
+  })
+  async firmaAnnotazione(
+    @Param('id') firId: string,
+    @Body() dto: FirmaPartenzaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Req() req: any
+  ): Promise<EsitoCompletamentoFirma> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
+    this.logger.debug('Firma annotazione RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.annotazioneUseCase.firma({
+        firId,
+        tenantId,
+        utenteId: userId,
+        nuovaSessione: dto?.nuovaSessione,
+        correlationId: dto?.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Firma annotazione RENTRI non riuscita', error, { firId, tenantId })
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /** Storico delle operazioni del viaggio inviate all'ente (sola lettura, nessuna chiamata a RENTRI). */
+  @Get(':id/eventi')
+  @ApiOperation({
+    summary: 'Storico delle operazioni inviate a RENTRI',
+    description: 'Dal più recente: operazione, esito, utente, stato del formulario dopo.',
+  })
+  @ApiResponse({ status: 200, description: 'Elenco eventi' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async elencaEventi(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string
+  ): Promise<{ eventi: EventoFirRentri[] }> {
+    try {
+      return { eventi: await this.elencaEventiUseCase.execute(firId, tenantId) }
+    } catch (error: any) {
+      throw this.mappaErroreDominio(error)
+    }
+  }
+
+  /**
    * Mappa una `DomainException` sull'eccezione HTTP corrispondente,
    * traducendo in italiano-utente i sei `errorCode` del Task 9 quando la
    * regola violata è una di quelle (R3 Task 9/10, debito chiuso qui: prima
@@ -637,6 +936,13 @@ export class RentriFirLifecycleController {
       if (rule && RULE_CONFLITTO.has(rule)) {
         return new ConflictException({
           statusCode: 409,
+          codice: rule,
+          message: error.metadata?.details ?? error.message,
+        })
+      }
+      if (rule && RULE_DATI_VIAGGIO.has(rule)) {
+        return new BadRequestException({
+          statusCode: 400,
           codice: rule,
           message: error.metadata?.details ?? error.message,
         })

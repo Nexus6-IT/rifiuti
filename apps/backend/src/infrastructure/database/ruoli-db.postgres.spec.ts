@@ -257,6 +257,8 @@ describe('Ruoli database (Postgres reale)', () => {
     'allegati_pesa',
     'letture_pesa',
     'notifiche_sdi',
+    'eventi_campo',
+    'allegati_campo',
   ]
   const SENZA_CANCELLAZIONE = [
     'accessi_pesa',

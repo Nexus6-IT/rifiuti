@@ -617,6 +617,72 @@ di proposito. Adottarli renderebbe la fake meno fedele e porterebbe i client su 
 in dismissione. Resta valido il punto della checklist demo: verificare cosa risponde
 l'ente al path generico per una transazione di copia o trasmissione.
 
+### 8.1 Quantita' e trasporto della fase iniziale (2026-11-21, FIR in viaggio, P2)
+
+Le **transizioni** della fase iniziale, ipotesi dedotta dai NOMI degli stati (il contratto non le
+documenta; da verificare sulla demo, punto 1 della checklist):
+- creazione (`POST /`): con quantita' (`rifiuto.quantita`) e trasporto (`dati_trasporto_partenza`) il
+  formulario nasce in `FirmaProduttoreTrasportatoreIniziale`; con la sola quantita' in
+  `InserimentoTrasportoIniziale`; con il solo trasporto in `InserimentoQuantita`;
+- `quantita` completata: `InserimentoQuantitaTrasportoIniziale` -> `InserimentoTrasportoIniziale`,
+  `InserimentoQuantita` -> `FirmaProduttoreTrasportatoreIniziale`;
+- `trasporto` completata: `InserimentoQuantitaTrasportoIniziale` -> `InserimentoQuantita`,
+  `InserimentoTrasportoIniziale` -> `FirmaProduttoreTrasportatoreIniziale`;
+- negli stati di correzione (`DatiQuantitaUpdate`, `TrasportoUpdate`) lo stato non cambia.
+
+Divergenza dichiarata: **senza quantita' ne' trasporto** la creazione resta nello stato storico della fake
+(`InserimentoQuantita`), mantenuto per non cambiare le suite esistenti; il nome piu' fedele sarebbe
+`InserimentoQuantitaTrasportoIniziale`. Il corpo di creazione e' validato contro `NuovoFormularioModel`, quindi
+`rifiuto.quantita`, `numero_colli`, `rinfusa`, `caratteristiche_pericolo` e `dati_trasporto_partenza` sono
+giudicati dal contratto. Non modellato: `numero_colli` obbligatorio se non c'e' `rinfusa` (il contratto lo dice
+solo in prosa; lo impone il client, `mappaQuantitaRifiuto`) e «`caratteristiche_pericolo` se e solo se l'EER e'
+pericoloso».
+
+### 8.2 Firme di partenza (2026-11-22, FIR in viaggio, P3)
+
+`acquisizione-firma` senza operazione in attesa (la firma non segue `accettazione` ne `annulla-fir`) nella fase
+iniziale: ipotesi dedotta dai NOMI degli stati (il contratto non documenta la macchina; da verificare sulla demo,
+punto 1 della checklist):
+- `FirmaProduttoreTrasportatoreIniziale` -> `InserimentoAccettazione` (viaggio);
+- `FirmaTrasportatoreIniziale` -> `InserimentoAccettazione`;
+- `FirmaProduttore` -> `FirmaTrasportatoreIniziale` (resta la firma del trasportatore);
+- il `rollback-firma` successivo riporta allo stato precedente (la fake memorizza `ultimaFirma` senza operazione
+  pendente da ripristinare); una firma rifiutata dall'ente (`errore: true`) lascia lo stato invariato.
+
+Da chiedere alla demo: quale firma propone l'ente quando produttore e trasportatore coincidono (nel codice si
+sceglie quella combinata se presente in `/azioni`), se `FirmaProduttore` precede davvero `FirmaTrasportatoreIniziale`,
+e quale stato segue l'ultima firma di partenza.
+
+### 8.3 Annotazione (2026-11-23, FIR in viaggio, P4)
+
+`annotazione` completata con successo: il formulario passa a `FirmaAnnotazione` e la fake ricorda lo stato di
+prima (`pendingOperazione` di tipo `Annotazione`); `acquisizione-firma` completata lo riporta a quello stato
+(viaggio, `Accettato` o `RespintoAccettatoParzialmente`: sono gli stati in cui il contratto ammette
+l'annotazione); `reset` in `FirmaAnnotazione` annulla l'annotazione non firmata. Ipotesi dedotta dai NOMI degli
+stati, da verificare sulla demo. Il corpo e' validato con `DatiAnnotazioneModel` (`annotazione` 1..10.000,
+`identificativo_soggetto` obbligatorio); la fake NON verifica che il CF sia uno dei soggetti del formulario
+(il contratto dice che deve esserlo): lo garantisce WasteFlow prima dell'invio.
+
+Limiti noti della fake (review-finale P4, M6): controlla lo stato solo al POST (la transizione avviene
+all'elaborazione, quindi due POST ravvicinati danno due 202: per questo WasteFlow serializza gli invii con una
+prenotazione locale), non esclude il produttore (il contratto, formulari.yaml:1046, ammette l'annotazione solo
+al trasportatore o al destinatario che ha in carico il rifiuto: WasteFlow lo controlla prima dell'invio), non
+modella «copia gia' restituita con accettazione totale -> non consentita» (r. 1052) e non verifica che la firma
+sia del soggetto che ha inserito l'annotazione (r. 6154: WasteFlow firma solo annotazioni proprie, di cui
+conosce il testo). Il POST `/annotazione` non si ritenta mai su 5xx/timeout (esito incerto, come la creazione).
+
+Annotazioni nel dettaglio (correzione R1, 2026-11-20): `GET /{numero_fir}` espone `dati_annotazioni`
+(`DatiAnnotazioneResultModel`: `annotazione`, `identificativo_soggetto`, `dati_firma`). Un'annotazione accettata
+entra con `dati_firma: null`; la firma la valorizza (la fake mette solo `data_firma`), il `reset` toglie quella non
+firmata, il `rollback-firma` la riporta a non firmata. WasteFlow ci riconcilia un invio rimasto senza esito
+(INCERTA, o INVIATA di un processo morto): propria = non firmata, stesso soggetto, stesso testo (SHA-256). Ipotesi
+da verificare sulla demo: che il dettaglio riporti davvero le annotazioni non ancora firmate e il testo
+identico a quello inviato (senza normalizzazioni); se non lo facesse, un'annotazione con esito ignoto non
+sarebbe mai adottata (fail-closed: si sblocca con il `reset`).
+
+Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
+sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in
