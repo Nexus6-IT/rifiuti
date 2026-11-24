@@ -74,3 +74,127 @@ export class PushEndpointDiAltroUtenteError extends DomainError {
     this.name = 'PushEndpointDiAltroUtenteError'
   }
 }
+
+/** 409 `RICEVUTA_DI_ALTRO_UTENTE`: l'identificativo della ricevuta e' gia' stato usato da un altro autista. */
+export class RicevutaDiAltroUtenteError extends DomainError {
+  readonly code = 'RICEVUTA_DI_ALTRO_UTENTE'
+  constructor() {
+    super("La ricevuta risulta gia' registrata da un altro utente.")
+    this.name = 'RicevutaDiAltroUtenteError'
+  }
+}
+
+/** 409 `RICEVUTA_NON_CONSENTITA`: il ritiro non e' (piu') dell'autista o non e' piu' da fare. */
+export class RicevutaNonConsentitaError extends DomainError {
+  readonly code = 'RICEVUTA_NON_CONSENTITA'
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RicevutaNonConsentitaError'
+  }
+}
+
+/** 409 `RICEVUTA_LIMITE_RITIRO`: troppe ricevute per lo stesso ritiro. */
+export class RicevutaLimiteRitiroError extends DomainError {
+  readonly code = 'RICEVUTA_LIMITE_RITIRO'
+  constructor(massimo: number) {
+    super(`Per questo ritiro ci sono già ${massimo} ricevute: contatta l'ufficio.`)
+    this.name = 'RicevutaLimiteRitiroError'
+  }
+}
+
+/** 404: la ricevuta non esiste in questa azienda. */
+export class RicevutaNonTrovataError extends DomainError {
+  constructor() {
+    super('Ricevuta non trovata.')
+    this.name = 'RicevutaNonTrovataError'
+  }
+}
+
+/** 422 `RICEVUTA_TROPPO_GRANDE`: il PDF generato supera il limite dell'archivio (mai ritentabile). */
+export class RicevutaTroppoGrandeError extends DomainError {
+  readonly code = 'RICEVUTA_TROPPO_GRANDE'
+  constructor() {
+    super('La ricevuta generata è troppo grande: rifai la firma più semplice.')
+    this.name = 'RicevutaTroppoGrandeError'
+  }
+}
+
+/** 409 `RICEVUTA_ALTERATA`: i byte archiviati non corrispondono all'impronta salvata (integrita'). */
+export class RicevutaAlterataError extends DomainError {
+  readonly code = 'RICEVUTA_ALTERATA'
+  constructor() {
+    super('La ricevuta archiviata non è integra e non si consegna: contatta il supporto.')
+    this.name = 'RicevutaAlterataError'
+  }
+}
+
+/** 404: l'evento a cui si allega la foto non esiste (per questa azienda). */
+export class EventoCampoNonTrovatoError extends DomainError {
+  readonly code = 'EVENTO_CAMPO_NON_TROVATO'
+  constructor() {
+    super('Evento non trovato.')
+    this.name = 'EventoCampoNonTrovatoError'
+  }
+}
+
+/** 400: foto vuota o campi del multipart non validi (porta i messaggi). */
+export class FotoCampoNonValidaError extends DomainError {
+  constructor(public readonly messaggi: string[]) {
+    super(messaggi.join(' '))
+    this.name = 'FotoCampoNonValidaError'
+  }
+}
+
+/** 413: la foto supera il tetto per foto (dopo la compressione sul telefono). */
+export class FotoCampoTroppoGrandeError extends DomainError {
+  readonly code = 'FOTO_TROPPO_GRANDE'
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'FotoCampoTroppoGrandeError'
+  }
+}
+
+/** 415: non e' una JPEG o PNG (si guardano i primi byte, non il tipo dichiarato). */
+export class FotoCampoTipoNonAmmessoError extends DomainError {
+  readonly code = 'FOTO_TIPO_NON_AMMESSO'
+  constructor() {
+    super('Sono ammesse solo foto JPEG o PNG.')
+    this.name = 'FotoCampoTipoNonAmmessoError'
+  }
+}
+
+/** 422: l'impronta SHA-256 dichiarata dal telefono non corrisponde ai byte ricevuti. */
+export class FotoCampoHashNonCorrispondenteError extends DomainError {
+  readonly code = 'FOTO_HASH_NON_CORRISPONDENTE'
+  constructor() {
+    super("L'impronta della foto non corrisponde: il file e' arrivato danneggiato.")
+    this.name = 'FotoCampoHashNonCorrispondenteError'
+  }
+}
+
+/** 422: l'evento ha gia' il massimo di foto. */
+export class FotoCampoLimiteEventoError extends DomainError {
+  readonly code = 'FOTO_LIMITE_EVENTO'
+  constructor(massimo: number) {
+    super(`Un esito puo' avere al massimo ${massimo} foto.`)
+    this.name = 'FotoCampoLimiteEventoError'
+  }
+}
+
+/** 409: l'identificativo della foto e' gia' stato usato per altro contenuto, evento o utente. */
+export class FotoCampoGiaUsataError extends DomainError {
+  readonly code = 'FOTO_GIA_USATA'
+  constructor() {
+    super("L'identificativo della foto risulta gia' usato per un altro file.")
+    this.name = 'FotoCampoGiaUsataError'
+  }
+}
+
+/** 404: la foto non esiste (per questa azienda). */
+export class FotoCampoNonTrovataError extends DomainError {
+  readonly code = 'FOTO_CAMPO_NON_TROVATA'
+  constructor() {
+    super('Foto non trovata.')
+    this.name = 'FotoCampoNonTrovataError'
+  }
+}

@@ -145,7 +145,7 @@ test.describe('Fatturazione: XML, emissione ed export (API)', () => {
     expect(r.stato, r.corpo.toString('utf8').slice(0, 300)).toBe(200)
     expect(r.tipo).toContain('xml')
     expect(r.corpo.toString('utf8').startsWith('<?xml')).toBe(true)
-    const esito = validaConScript(r.corpo)
+    const esito = await validaConScript(r.corpo)
     expect(esito.valido, `XSD: ${esito.messaggi}`).toBe(true)
 
     const dopo = await dettaglioDocumento(tok.admin, d1.id)
@@ -197,7 +197,7 @@ test.describe('Fatturazione: XML, emissione ed export (API)', () => {
     expect(r.stato, r.corpo.toString('utf8').slice(0, 300)).toBe(200)
     const xml = r.corpo.toString('utf8')
     expect(xml, 'tipo documento nel file').toContain('<TipoDocumento>TD04</TipoDocumento>')
-    const esito = validaConScript(r.corpo)
+    const esito = await validaConScript(r.corpo)
     expect(esito.valido, `XSD: ${esito.messaggi}`).toBe(true)
   })
 
@@ -232,7 +232,7 @@ test.describe('Fatturazione: XML, emissione ed export (API)', () => {
     const xml = [...file.entries()].filter(([nome]) => nome.endsWith('.xml'))
     expect(xml, 'un file XML per documento').toHaveLength(1)
     for (const [nome, contenuto] of xml) {
-      const esito = validaConScript(contenuto)
+      const esito = await validaConScript(contenuto)
       expect(esito.valido, `${nome}: ${esito.messaggi}`).toBe(true)
     }
     expect((await dettaglioDocumento(tok.admin, d2.id)).emessoIl, 'd2 emesso').not.toBeNull()

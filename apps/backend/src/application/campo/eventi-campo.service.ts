@@ -47,12 +47,22 @@ export interface FiltriEsitiCampo {
   dimensione?: number
 }
 
+/** Foto di un esito, senza byte: il contenuto si scarica a parte (`GET /esiti-campo/foto/:id`). */
+export interface FotoEsitoVista {
+  id: string
+  mimeType: string
+  dimensioneByte: number
+  sha256: string
+}
+
 export interface EsitoCampoVista {
   id: string
   tipo: TipoEventoCampo
   esito: EsitoEventoCampo
   motivoConflitto: MotivoConflittoEvento | null
+  /** Include la `posizione` al momento dell'evento, se l'autista l'ha data (P5). */
   dati: DatiEventoCampo
+  foto: FotoEsitoVista[]
   versioneVista: number
   rilevatoIl: string
   ricevutoIl: string
@@ -267,6 +277,12 @@ export class EventiCampoService {
                  r.id::text AS ritiro_id, to_char(r.data_prevista, 'YYYY-MM-DD') AS data_prevista,
                  dp.ragione_sociale AS produttore, r.cer_code, r.descrizione,
                  r.stato::text AS stato, r.versione,
+                 COALESCE((SELECT json_agg(json_build_object(
+                             'id', a.foto_uuid::text, 'mimeType', a.mime_type,
+                             'dimensioneByte', a.dimensione_byte, 'sha256', a.sha256)
+                           ORDER BY a.ricevuto_il, a.id)
+                           FROM allegati_campo a
+                           WHERE a.evento_id = e.id AND a.tenant_id = e.tenant_id), '[]'::json) AS foto,
                  count(*) OVER ()::int AS totale
           FROM eventi_campo e
           JOIN ritiri r ON r.id = e.ritiro_id AND r.tenant_id = e.tenant_id
@@ -284,6 +300,7 @@ export class EventiCampoService {
             esito: r.esito as EsitoEventoCampo,
             motivoConflitto: r.motivo_conflitto as MotivoConflittoEvento | null,
             dati: r.dati,
+            foto: r.foto,
             versioneVista: r.versione_vista,
             rilevatoIl: r.rilevato_il.toISOString(),
             ricevutoIl: r.ricevuto_il.toISOString(),
@@ -310,6 +327,7 @@ interface RigaEsito {
   esito: string
   motivo_conflitto: string | null
   dati: DatiEventoCampo
+  foto: FotoEsitoVista[]
   versione_vista: number
   rilevato_il: Date
   ricevuto_il: Date

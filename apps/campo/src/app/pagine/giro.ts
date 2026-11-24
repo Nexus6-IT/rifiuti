@@ -4,8 +4,9 @@ import { Router, RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso, nonRaggiungibile } from '../core/giro.service';
 import { Notifiche } from '../core/notifiche';
 import { CodaEventi } from '../core/coda-eventi';
+import { CodaRicevute } from '../core/coda-ricevute';
 import { SessioneService } from '../core/sessione.service';
-import { StatoCoda } from '../core/stato-coda';
+import { StatoCoda, riepilogoDaInviare } from '../core/stato-coda';
 import { StatoGiro } from '../core/stato-giro';
 
 @Component({
@@ -64,6 +65,7 @@ export class GiroPagina {
   protected readonly giro = inject(GiroService);
   private readonly sessione = inject(SessioneService);
   protected readonly coda = inject(CodaEventi);
+  private readonly ricevute = inject(CodaRicevute);
   private readonly router = inject(Router);
   protected readonly caricamento = signal(false);
   protected readonly errore = signal<string | null>(null);
@@ -90,13 +92,22 @@ export class GiroPagina {
 
   protected esci(): void {
     const n = this.coda.daInviare();
-    if (
-      n > 0 &&
-      !window.confirm(
-        `Hai ${n} ${n === 1 ? 'esito' : 'esiti'} non ancora inviat${n === 1 ? 'o' : 'i'}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
-      )
-    ) {
-      return;
+    const foto = this.coda.fotoDaInviare();
+    const nr = this.ricevute.daInviare();
+    if (n + foto + nr > 0) {
+      const cosa = [
+        riepilogoDaInviare(n, foto),
+        nr > 0 ? `${nr} ${nr === 1 ? 'ricevuta' : 'ricevute'} da inviare` : '',
+      ]
+        .filter(Boolean)
+        .join(' e ');
+      if (
+        !window.confirm(
+          `Hai ${cosa}. Se esci restano sul telefono e partiranno al tuo prossimo accesso. Uscire?`,
+        )
+      ) {
+        return;
+      }
     }
     this.sessione.esci().subscribe(() => {
       this.giro.svuota();

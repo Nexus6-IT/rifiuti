@@ -5,19 +5,26 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ConsentitoAutista } from '../../core/decorators/consentito-autista.decorator'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
+import { AllegatiCampoService } from '../../application/campo/allegati-campo.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
+import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import { GiroService } from '../../application/campo/giro.service'
-import { EventoCampoDto, GiroQueryDto } from './dto/campo.dto'
+import { EventoCampoDto, FotoCampoDto, GiroQueryDto, RicevutaCampoDto } from './dto/campo.dto'
+import { FotoCampoInterceptor, type FotoMulter } from './foto-campo-upload'
 import { comeHttpCampo } from './errori-http'
 
 /**
@@ -34,7 +41,9 @@ import { comeHttpCampo } from './errori-http'
 export class CampoController {
   constructor(
     private readonly giroService: GiroService,
-    private readonly eventi: EventiCampoService
+    private readonly eventi: EventiCampoService,
+    private readonly ricevute: RicevuteRitiroService,
+    private readonly foto: AllegatiCampoService
   ) {}
 
   @Get('giro')
@@ -68,5 +77,81 @@ export class CampoController {
     }
     const tenantId = requireRequestTenantId(req)
     return comeHttpCampo(() => this.eventi.registra(tenantId, req.user.id, dto))
+  }
+
+  /** L'app chiede se mostrare l'invio al cliente (spento per default). */
+  @Get('ricevute/configurazione')
+  @ApiOperation({ summary: 'Impostazioni delle ricevute di ritiro (invio al cliente acceso o no)' })
+  configurazioneRicevute(@Req() req: any) {
+    if (req.user?.role !== 'AUTISTA') {
+      throw new ForbiddenException({
+        message: 'Le ricevute dal campo sono riservate agli autisti.',
+        error: 'GIRO_RISERVATO_AGLI_AUTISTI',
+      })
+    }
+    return this.ricevute.configurazione()
+  }
+
+  /**
+   * Ricevuta di ritiro con la firma del cliente sullo schermo. Idempotente sull'`id` (uuid del
+   * telefono). Il PDF lo genera il server: la ricevuta e' una firma elettronica SEMPLICE e non
+   * sostituisce il FIR.
+   */
+  @Post('ricevute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Registra una ricevuta di ritiro firmata (idempotente sull’id)' })
+  @ApiResponse({ status: 403, description: 'AUTISTA_NON_COLLEGATO / GIRO_RISERVATO_AGLI_AUTISTI' })
+  @ApiResponse({
+    status: 409,
+    description: 'RICEVUTA_DI_ALTRO_UTENTE / RICEVUTA_NON_CONSENTITA / RICEVUTA_LIMITE_RITIRO',
+  })
+  registraRicevuta(@Req() req: any, @Body() dto: RicevutaCampoDto) {
+    if (req.user?.role !== 'AUTISTA') {
+      throw new ForbiddenException({
+        message: 'Le ricevute dal campo sono riservate agli autisti.',
+        error: 'GIRO_RISERVATO_AGLI_AUTISTI',
+      })
+    }
+    const tenantId = requireRequestTenantId(req)
+    return comeHttpCampo(() => this.ricevute.registra(tenantId, req.user.id, dto))
+  }
+
+  /**
+   * Foto di un esito GIA' registrato dallo stesso autista (multipart: `foto`, `id`, `sha256`).
+   * Idempotente sull'`id` della foto. Il server ricalcola lo SHA-256 e rifiuta se non coincide.
+   * Tetti: 1 MB per foto, 3 foto per esito. Un'app che non manda foto non e' toccata (rotta nuova).
+   */
+  @Post('eventi/:eventoId/foto')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FotoCampoInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Allega una foto a un esito dal campo (idempotente sull’id della foto)',
+  })
+  @ApiResponse({ status: 404, description: 'Evento non trovato' })
+  @ApiResponse({ status: 409, description: 'EVENTO_DI_ALTRO_UTENTE / FOTO_GIA_USATA' })
+  @ApiResponse({ status: 413, description: 'FOTO_TROPPO_GRANDE' })
+  @ApiResponse({ status: 415, description: 'FOTO_TIPO_NON_AMMESSO' })
+  @ApiResponse({ status: 422, description: 'FOTO_HASH_NON_CORRISPONDENTE / FOTO_LIMITE_EVENTO' })
+  registraFoto(
+    @Req() req: any,
+    @Param('eventoId', ParseUUIDPipe) eventoId: string,
+    @Body() dto: FotoCampoDto,
+    @UploadedFile() file?: FotoMulter
+  ) {
+    if (req.user?.role !== 'AUTISTA') {
+      throw new ForbiddenException({
+        message: 'Le foto dal campo sono riservate agli autisti.',
+        error: 'GIRO_RISERVATO_AGLI_AUTISTI',
+      })
+    }
+    const tenantId = requireRequestTenantId(req)
+    return comeHttpCampo(() =>
+      this.foto.registra(tenantId, req.user.id, eventoId.toLowerCase(), {
+        id: dto.id,
+        sha256: dto.sha256,
+        contenuto: file?.buffer,
+      })
+    )
   }
 }

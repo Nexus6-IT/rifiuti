@@ -30,6 +30,8 @@ export interface ImpostazioniRegistroRentri {
   aperturaInCorso: boolean
   /** Chiusura del registro su RENTRI (ISO), `null` se aperto. */
   rentriChiusoIl: string | null
+  /** Chiusura richiesta a RENTRI e non ancora confermata: gli invii sono già fermi. */
+  chiusuraInCorso: boolean
 }
 
 /** Registro aperto su RENTRI, proposto per il collegamento. */
@@ -53,6 +55,22 @@ export interface DatiApriRegistroRentri {
 /** 201 aperto / ritrovato; 202 `INCERTO`: non riprovare, il backend verifica. */
 export type EsitoAperturaRegistroRentri =
   | { esito: 'APERTO' | 'COLLEGATO_DOPO_VERIFICA'; impostazioni: ImpostazioniRegistroRentri }
+  | { esito: 'INCERTO'; messaggio: string }
+
+export interface DatiModificaRegistroRentri {
+  descrizione?: string
+  attivitaRecSmalt?: string[]
+  forza?: boolean
+}
+
+/** 200 modificato; 202 `INCERTO`: il registro non risulta cambiato, si può riprovare. */
+export type EsitoModificaRegistroRentri =
+  | { esito: 'MODIFICATO'; impostazioni: ImpostazioniRegistroRentri }
+  | { esito: 'INCERTO'; messaggio: string }
+
+/** 200 chiuso; 202 `INCERTO`: invii fermi, si ripete la chiusura. */
+export type EsitoChiusuraRegistroRentri =
+  | { esito: 'CHIUSO'; impostazioni: ImpostazioniRegistroRentri }
   | { esito: 'INCERTO'; messaggio: string }
 
 /** Attività ammesse su RENTRI (stesso elenco del backend e dei CHECK del database). */
@@ -167,6 +185,33 @@ export class RentriRegistroService {
     return this.http.post<EsitoAperturaRegistroRentri>(
       `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/apri`,
       dati
+    )
+  }
+
+  /** Solo amministratori. */
+  modifica(
+    registroId: string,
+    dati: DatiModificaRegistroRentri
+  ): Observable<EsitoModificaRegistroRentri> {
+    return this.http.put<EsitoModificaRegistroRentri>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri`,
+      dati
+    )
+  }
+
+  /** Solo amministratori. IRREVERSIBILE su RENTRI: `conferma` è l'identificativo digitato per esteso. */
+  chiudi(registroId: string, conferma: string): Observable<EsitoChiusuraRegistroRentri> {
+    return this.http.post<EsitoChiusuraRegistroRentri>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/chiudi`,
+      { conferma }
+    )
+  }
+
+  /** Solo amministratori: azzera un'apertura rimasta incerta (dopo la soglia di stallo). */
+  abbandonaApertura(registroId: string): Observable<ImpostazioniRegistroRentri> {
+    return this.http.post<ImpostazioniRegistroRentri>(
+      `${this.base}/registri/${encodeURIComponent(registroId)}/rentri/abbandona-apertura`,
+      {}
     )
   }
 

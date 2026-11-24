@@ -39,7 +39,9 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
   let n = 0
   let progressivo = 0
 
-  async function azienda(opzioni: { identificativo?: string | null; dal?: Date | null } = {}) {
+  async function azienda(
+    opzioni: { identificativo?: string | null; dal?: Date | null; chiuso?: boolean } = {}
+  ) {
     const t = await owner.tenant.create({
       data: {
         partitaIva: partitaIvaUnica(),
@@ -64,6 +66,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
         identificativoRentri:
           opzioni.identificativo === undefined ? 'RABCDE12345' : opzioni.identificativo,
         invioRentriAutomaticoDal: opzioni.dal ?? null,
+        rentriChiusoIl: opzioni.chiuso ? new Date('2026-05-01T00:00:00Z') : null,
       },
     })
     return { tenantId: t.id, registroId: registro.id, unitaLocaleId: sede.id }
@@ -655,6 +658,40 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     })
     expect(r.origine).toBe('CORREZIONE')
     expect(await repo.adottaCorrezioni(a.tenantId, 1000)).toBe(0)
+  })
+
+  describe('registro chiuso su RENTRI (eREGI E3)', () => {
+    it('prenota: REGISTRO_CHIUSO, nessuna riga toccata e prepara mai chiamata', async () => {
+      const a = await azienda({ chiuso: true })
+      const m = await movimento(a)
+      await riga(a, m)
+      const prepara = jest.fn(async () => cand([m.id]))
+      expect(await repo.prenota(a.tenantId, a.registroId, prepara)).toEqual({
+        esito: 'REGISTRO_CHIUSO',
+      })
+      expect(prepara).not.toHaveBeenCalled()
+      expect((await stati(a.tenantId))[m.id]).toBe('DA_TRASMETTERE')
+    })
+
+    it('adottaAutomatiche e adottaCorrezioni non creano righe per un registro chiuso', async () => {
+      const dal = new Date('2026-01-01T00:00:00Z')
+      const a = await azienda({ dal, chiuso: true })
+      const orig = await movimento(a, { createdAt: new Date('2026-06-02T00:00:00Z') })
+      await riga(a, orig, { stato: 'TRASMESSA' })
+      await movimento(a, { createdAt: new Date('2026-06-03T00:00:00Z') })
+      await movimento(a, {
+        createdAt: new Date('2026-06-04T00:00:00Z'),
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: orig.id,
+        movimentoOriginaleId: orig.id,
+        motivoAnnotazione: 'x',
+      })
+      expect(await repo.adottaAutomatiche(a.tenantId, 1000)).toBe(0)
+      expect(await repo.adottaCorrezioni(a.tenantId, 1000)).toBe(0)
+      expect(
+        await owner.movimentoTrasmissioneRentri.count({ where: { tenantId: a.tenantId } })
+      ).toBe(1)
+    })
   })
 
   it("nessuna riga di un'altra azienda toccata", async () => {
