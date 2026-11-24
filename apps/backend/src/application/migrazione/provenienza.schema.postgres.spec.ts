@@ -1,6 +1,6 @@
 /**
  * Fase 3 (3.1), Task 3: colonne di provenienza immutabili su registro, FIR e anagrafiche contro un
- * Postgres reale. Una sola descrizione parametrica su sette tabelle. Il proprietario (`wasteflow`)
+ * Postgres reale. Una sola descrizione parametrica su otto tabelle. Il proprietario (`wasteflow`)
  * prepara e prova anche gli UPDATE (i trigger fermano pure lui). Un movimento importato nasce con la
  * sua riga di blocco (D3, Task 4) nella stessa transazione: il helper lo fa gia' ora, cosi' la spec
  * resta valida dopo la migration del blocco. La pulizia cancella SOLO le aziende create qui.
@@ -25,7 +25,7 @@ interface Tabella {
   aggiorna: string
 }
 
-describe('Fase 3 (3.1): provenienza di import su sette tabelle (Postgres reale)', () => {
+describe('Fase 3 (3.1): provenienza di import su otto tabelle (Postgres reale)', () => {
   const owner = new PrismaClient()
   const tenantCreati: string[] = []
   let n = 0
@@ -40,6 +40,7 @@ describe('Fase 3 (3.1): provenienza di import su sette tabelle (Postgres reale)'
     'produttori',
     'trasportatori',
     'destinatari',
+    'automezzi',
   ]
 
   async function contesto(): Promise<Contesto> {
@@ -248,6 +249,19 @@ describe('Fase 3 (3.1): provenienza di import su sette tabelle (Postgres reale)'
         return (
           await owner.destinatario.create({
             data: { tenantId: c.t, ...d, numeroAutorizzazione: `AUT-${n}`, ...prov },
+          })
+        ).id
+      },
+    },
+    {
+      // Pezzo I4: provenienza anche sugli automezzi (migration 20261122110000).
+      nome: 'automezzi',
+      aggiorna: `note = 'revisione 2027'`,
+      crea: async (c, prov = {}) => {
+        n++
+        return (
+          await owner.automezzo.create({
+            data: { tenantId: c.t, targa: `PV${seme}${n}`.slice(0, 15), creatoDa: c.user, ...prov },
           })
         ).id
       },

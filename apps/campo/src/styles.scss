@@ -1,1 +1,201 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  --sfondo: #f6f5f1;
+  --testo: #1c2420;
+  --tenue: #5b665f;
+  --accento: #14532d;
+  --bordo: #d9d6cc;
+  --errore: #9b1c1c;
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+}
+body {
+  background: var(--sfondo);
+  color: var(--testo);
+  font:
+    16px/1.45 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+.pagina {
+  padding: 1rem;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+.centro {
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+}
+.testata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid var(--bordo);
+}
+.sotto {
+  color: var(--tenue);
+  font-size: 0.9rem;
+  margin: 0;
+}
+.stato {
+  color: var(--tenue);
+}
+.errore {
+  color: var(--errore);
+}
+.bottone,
+.secondario {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 1.25rem;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.bottone {
+  background: var(--accento);
+  color: #fff;
+  border: 0;
+}
+.secondario {
+  background: transparent;
+  color: var(--accento);
+  border: 1px solid var(--accento);
+}
+.elenco {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.scheda {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.9rem 1rem;
+  min-height: 48px;
+  background: #fff;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.fascia {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accento);
+}
+.indietro {
+  color: var(--accento);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.75rem 0;
+}
+.dettaglio {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.1rem;
+}
+.dettaglio dt {
+  font-size: 0.8rem;
+  color: var(--tenue);
+  margin-top: 0.75rem;
+}
+.dettaglio dd {
+  margin: 0;
+}
+
+.avviso-offline {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #fff4d6;
+  border: 1px solid #c58b00;
+  color: #5c3d00;
+  font-size: 0.9rem;
+}
+
+.esito {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordo);
+}
+.esito h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+.esito label {
+  display: block;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+.esito textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.6rem;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--testo);
+}
+.azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.esito-badge {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e5f1e8;
+  color: var(--accento);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.link {
+  background: none;
+  border: 0;
+  padding: 0.5rem 0.25rem;
+  min-height: 44px;
+  color: var(--accento);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.esito .allegati {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--bordo);
+  border-radius: 10px;
+}
+.esito .allegati legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}

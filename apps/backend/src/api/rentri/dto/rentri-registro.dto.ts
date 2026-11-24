@@ -153,3 +153,38 @@ export class ApriRegistroRentriDto {
   @MaxLength(250, { message: 'La descrizione può avere al massimo 250 caratteri.' })
   descrizione?: string
 }
+
+/** `PUT /rentri/registro/registri/:registroId/rentri` (solo amministratori). */
+export class ModificaRegistroRentriDto {
+  @ApiPropertyOptional({ maxLength: 250 })
+  @IsOptional()
+  @IsString({ message: 'La descrizione deve essere un testo.' })
+  @MaxLength(250, { message: 'La descrizione può avere al massimo 250 caratteri.' })
+  descrizione?: string
+
+  @ApiPropertyOptional({ type: [String], example: ['R13'] })
+  @IsOptional()
+  @IsArray({ message: 'I codici di recupero e smaltimento devono essere un elenco.' })
+  @ArrayMaxSize(28, { message: 'Troppi codici di recupero e smaltimento.' })
+  @IsString({ each: true, message: 'Ogni codice deve essere un testo.' })
+  attivitaRecSmalt?: string[]
+
+  @ApiPropertyOptional({
+    description: 'Salva i codici R/D anche se non coincidono con le autorizzazioni della sede.',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Il campo «forza» deve essere vero o falso.' })
+  forza?: boolean
+}
+
+/** `POST /rentri/registro/registri/:registroId/rentri/chiudi` (solo amministratori). */
+export class ChiudiRegistroRentriDto {
+  @ApiProperty({
+    example: 'RABCDE12345',
+    description: 'Doppia conferma: l identificativo del registro, digitato per esteso.',
+  })
+  @IsString({ message: "La conferma deve essere l'identificativo del registro." })
+  @IsNotEmpty({ message: "Digita l'identificativo del registro per confermare." })
+  @MaxLength(20, { message: "La conferma non è l'identificativo del registro." })
+  conferma: string
+}

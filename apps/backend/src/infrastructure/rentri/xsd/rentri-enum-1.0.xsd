@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	RENTRI
+	rentri-enum-1.0.xsd
+
+	16/04/2024 - Versione 1.0   - Primo rilascio
+	17/06/2024 - Versione 1.0.1 - Eliminato il valore "V" nell'enumeration TipoAccettazione
+	09/01/2025 - Versione 1.0.2 - Eliminato il valore "TrattamentoAcqueReflue" nell'enumeration TipoAutorizzazione
+	                            - Aggiunti i valori "ComTrattamentoAcqueReflue" e "AutTrattamentoAcqueReflue" nell'enumeration TipoAutorizzazione
+-->
+<xs:schema xmlns:enum="urn:it:rentri:enum:1.0" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:it:rentri:enum:1.0" elementFormDefault="qualified">
+	<xs:simpleType name="CausaliOperazione">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="DT"/>
+			<xs:enumeration value="NP"/>
+			<xs:enumeration value="T*"/>
+			<xs:enumeration value="RE"/>
+			<xs:enumeration value="I"/>
+			<xs:enumeration value="aT"/>
+			<xs:enumeration value="M"/>
+			<xs:enumeration value="TR"/>
+			<xs:enumeration value="T*aT"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="ProvenienzaRifiuto">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="U"/>
+			<xs:enumeration value="S"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CaratteristichePericolo">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="HP01"/>
+			<xs:enumeration value="HP02"/>
+			<xs:enumeration value="HP03"/>
+			<xs:enumeration value="HP04"/>
+			<xs:enumeration value="HP05"/>
+			<xs:enumeration value="HP06"/>
+			<xs:enumeration value="HP07"/>
+			<xs:enumeration value="HP08"/>
+			<xs:enumeration value="HP09"/>
+			<xs:enumeration value="HP10"/>
+			<xs:enumeration value="HP11"/>
+			<xs:enumeration value="HP12"/>
+			<xs:enumeration value="HP13"/>
+			<xs:enumeration value="HP14"/>
+			<xs:enumeration value="HP15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="StatiFisici">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="SP"/>
+			<xs:enumeration value="S"/>
+			<xs:enumeration value="FP"/>
+			<xs:enumeration value="L"/>
+			<xs:enumeration value="VS"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="UnitaMisura">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="kg"/>
+			<xs:enumeration value="l"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="UnitaMisuraPeso">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="kg"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DestinazioniRifiuto">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="R1"/>
+			<xs:enumeration value="R2"/>
+			<xs:enumeration value="R3"/>
+			<xs:enumeration value="R4"/>
+			<xs:enumeration value="R5"/>
+			<xs:enumeration value="R6"/>
+			<xs:enumeration value="R7"/>
+			<xs:enumeration value="R8"/>
+			<xs:enumeration value="R9"/>
+			<xs:enumeration value="R10"/>
+			<xs:enumeration value="R11"/>
+			<xs:enumeration value="R12"/>
+			<xs:enumeration value="R13"/>
+			<xs:enumeration value="D1"/>
+			<xs:enumeration value="D2"/>
+			<xs:enumeration value="D3"/>
+			<xs:enumeration value="D4"/>
+			<xs:enumeration value="D5"/>
+			<xs:enumeration value="D6"/>
+			<xs:enumeration value="D7"/>
+			<xs:enumeration value="D8"/>
+			<xs:enumeration value="D9"/>
+			<xs:enumeration value="D10"/>
+			<xs:enumeration value="D11"/>
+			<xs:enumeration value="D12"/>
+			<xs:enumeration value="D13"/>
+			<xs:enumeration value="D14"/>
+			<xs:enumeration value="D15"/>
+			<xs:enumeration value="CR"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CategorieAee">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="Cat1"/>
+			<xs:enumeration value="Cat2"/>
+			<xs:enumeration value="Cat3"/>
+			<xs:enumeration value="Cat4"/>
+			<xs:enumeration value="Cat5"/>
+			<xs:enumeration value="Cat6"/>
+			<xs:enumeration value="PF"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Materiali">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="ACV"/>
+			<xs:enumeration value="ACM"/>
+			<xs:enumeration value="AA"/>
+			<xs:enumeration value="DIG"/>
+			<xs:enumeration value="AGG"/>
+			<xs:enumeration value="RA"/>
+			<xs:enumeration value="RV"/>
+			<xs:enumeration value="RFA"/>
+			<xs:enumeration value="RR"/>
+			<xs:enumeration value="CC"/>
+			<xs:enumeration value="PLA"/>
+			<xs:enumeration value="LS"/>
+			<xs:enumeration value="CSS"/>
+			<xs:enumeration value="TE"/>
+			<xs:enumeration value="GOM"/>
+			<xs:enumeration value="CU"/>
+			<xs:enumeration value="MC"/>
+			<xs:enumeration value="CF"/>
+			<xs:enumeration value="AF"/>
+			<xs:enumeration value="GCB"/>
+			<xs:enumeration value="ASS"/>
+			<xs:enumeration value="GMV"/>
+			<xs:enumeration value="A"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipiRespingimento">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="T"/>
+			<xs:enumeration value="P"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CausaliRespingimento">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="NC">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Non conforme</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IR">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Irricevibile</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="A">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Altro</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipiTrasportoTransfrontaliero">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="DM"/>
+			<xs:enumeration value="DA"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipoAnalisiClassificazione">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="Analisi"/>
+			<xs:enumeration value="Classificazione"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipoAutorizzazione">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="RecSmalArt208"/>
+			<xs:enumeration value="RecSmalImpMobiliArt208"/>
+			<xs:enumeration value="RicercaSperimentazione"/>
+			<xs:enumeration value="AIA"/>
+			<xs:enumeration value="RecProcSemplificata"/>
+			<xs:enumeration value="OpBonifica"/>
+			<xs:enumeration value="Straordinario"/>
+			<xs:enumeration value="ComTrattamentoAcqueReflue"/>
+			<xs:enumeration value="AutTrattamentoAcqueReflue"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipoAccettazione">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="A">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Accettato per intero</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="P">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Accettato parzialmente</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="R">
+				<xs:annotation>
+					<xs:documentation xml:lang="IT">Respinto</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TipoTrasporto">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="Terrestre"/>
+			<xs:enumeration value="Ferroviario"/>
+			<xs:enumeration value="Marittimo"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

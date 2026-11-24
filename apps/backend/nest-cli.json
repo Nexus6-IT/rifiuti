@@ -6,7 +6,8 @@
     "deleteOutDir": true,
     "assets": [
       { "include": "infrastructure/email/templates/**/*.hbs", "watchAssets": true },
-      { "include": "infrastructure/fatturapa/xsd/*.xsd" }
+      { "include": "infrastructure/fatturapa/xsd/*.xsd" },
+      { "include": "infrastructure/rentri/xsd/*.xsd" }
     ]
   }
 }
