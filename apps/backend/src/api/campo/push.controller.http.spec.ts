@@ -9,6 +9,7 @@ import request from 'supertest'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import {
+  PushEndpointDiAltroUtenteError,
   PushEndpointNonAmmessoError,
   PushNonDisponibileError,
 } from '../../application/campo/errori-campo'
@@ -123,6 +124,12 @@ describe('Push - catena HTTP', () => {
     push.sottoscrivi.mockRejectedValueOnce(new PushEndpointNonAmmessoError())
     const r2 = await http().put('/push/sottoscrizione').send({ endpoint: ENDPOINT }).expect(400)
     expect(JSON.stringify(r2.body)).toContain('PUSH_ENDPOINT_NON_AMMESSO')
+  })
+
+  it('sottoscrizione: endpoint di un altro utente = 409 ENDPOINT_PUSH_DI_ALTRO_UTENTE', async () => {
+    push.sottoscrivi.mockRejectedValue(new PushEndpointDiAltroUtenteError())
+    const r = await http().put('/push/sottoscrizione').send({ endpoint: ENDPOINT }).expect(409)
+    expect(JSON.stringify(r.body)).toContain('ENDPOINT_PUSH_DI_ALTRO_UTENTE')
   })
 
   it('annulla (logout): 204, solo per l utente del token', async () => {

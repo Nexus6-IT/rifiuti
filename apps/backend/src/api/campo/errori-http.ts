@@ -13,6 +13,7 @@ import {
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
   EventoCampoDiAltroUtenteError,
+  PushEndpointDiAltroUtenteError,
   PushEndpointNonAmmessoError,
   PushNonDisponibileError,
 } from '../../application/campo/errori-campo'
@@ -35,6 +36,9 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
     }
     if (err instanceof PushNonDisponibileError) {
       throw new ServiceUnavailableException({ message: err.message, error: err.code })
+    }
+    if (err instanceof PushEndpointDiAltroUtenteError) {
+      throw new ConflictException({ message: err.message, error: err.code })
     }
     if (err instanceof PushEndpointNonAmmessoError) {
       throw new BadRequestException({ message: err.message, error: err.code })

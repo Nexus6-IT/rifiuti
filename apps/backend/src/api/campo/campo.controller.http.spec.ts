@@ -10,6 +10,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
+import { PushCampoService } from '../../application/campo/push-campo.service'
 import { AutistiService } from '../../application/campo/autisti.service'
 import {
   AutistaDatiNonValidiError,
@@ -54,6 +55,7 @@ describe('Campo - catena HTTP', () => {
   let eventi: { registra: jest.Mock; elenca: jest.Mock }
   let autisti: Record<string, jest.Mock>
   let ritiri: Record<string, jest.Mock>
+  let push: Record<string, jest.Mock>
 
   beforeEach(async () => {
     utente = { id: UTENTE, tenantId: TENANT, role: 'AUTISTA' }
@@ -71,6 +73,7 @@ describe('Campo - catena HTTP', () => {
       crea: jest.fn().mockResolvedValue({ id: ID }),
       aggiorna: jest.fn().mockResolvedValue({ id: ID }),
     }
+    push = { liberaDiAutista: jest.fn().mockResolvedValue(2) }
     ritiri = { elenca: jest.fn().mockResolvedValue({ righe: [], totale: 0 }) }
     const logger: any = {
       setContext: jest.fn(),
@@ -85,6 +88,7 @@ describe('Campo - catena HTTP', () => {
         { provide: EventiCampoService, useValue: eventi },
         { provide: AutistiService, useValue: autisti },
         { provide: RitiriService, useValue: ritiri },
+        { provide: PushCampoService, useValue: push },
         { provide: GENERA_FIR_DA_RITIRI, useValue: { genera: jest.fn() } },
         {
           provide: RuoloEffettivoService,
@@ -276,6 +280,27 @@ describe('Campo - catena HTTP', () => {
       expect(r.body).toEqual({ righe: [{ id: ID }], puoOperare: true })
       expect(autisti.elenca).toHaveBeenCalledWith(TENANT, { soloAttivi: true })
       await http().get('/autisti?attivi=boh').expect(400)
+    })
+
+    it('libera le notifiche di un autista: solo ADMIN, 200 con il numero, utente e azienda dal token', async () => {
+      ruoloEffettivo = 'ADMIN'
+      const r = await http().delete(`/autisti/${ID}/notifiche`).expect(200)
+      expect(r.body).toEqual({ rimosse: 2 })
+      expect(push.liberaDiAutista).toHaveBeenCalledWith(TENANT, UTENTE, ID)
+      for (const ruolo of ['OPERATOR', 'VIEWER']) {
+        ruoloEffettivo = ruolo
+        await http().delete(`/autisti/${ID}/notifiche`).expect(403)
+      }
+      expect(push.liberaDiAutista).toHaveBeenCalledTimes(1)
+      ruoloEffettivo = 'ADMIN'
+      await http().delete('/autisti/non-un-uuid/notifiche').expect(400)
+    })
+
+    it('un AUTISTA non puo liberare le notifiche di nessuno: 403', async () => {
+      utente = { id: UTENTE, tenantId: TENANT, role: 'AUTISTA' }
+      ruoloEffettivo = 'ADMIN'
+      await http().delete(`/autisti/${ID}/notifiche`).expect(403)
+      expect(push.liberaDiAutista).not.toHaveBeenCalled()
     })
 
     it('puoOperare e falso per un VIEWER', async () => {

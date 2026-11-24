@@ -22,7 +22,12 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { cancellaAziendeDiProva } from '../../test-support/cancella-azienda-di-prova'
 import { creaAziendaCampo, type AziendaCampo } from '../../test-support/campo-di-test'
-import { PushEndpointNonAmmessoError, PushNonDisponibileError } from './errori-campo'
+import {
+  AutistaNonTrovatoError,
+  PushEndpointDiAltroUtenteError,
+  PushEndpointNonAmmessoError,
+  PushNonDisponibileError,
+} from './errori-campo'
 import {
   ENV_VAPID_PRIVATE_KEY,
   ENV_VAPID_PUBLIC_KEY,
@@ -128,17 +133,57 @@ describe('Web push P7 — Postgres reale, ruolo wasteflow_app', () => {
   })
 
   describe('sottoscrizioni', () => {
-    it('crea, e lo stesso endpoint non si duplica ma passa al nuovo utente (telefono a un collega)', async () => {
+    it('crea; lo stesso endpoint per lo stesso utente e idempotente, non si duplica', async () => {
       const a = await azienda()
       const s = servizio()
       const e = ep('tel')
       await s.sottoscrivi(a.t, a.utente1, e)
       await s.sottoscrivi(a.t, a.utente1, e)
-      expect(await righe(a)).toHaveLength(1)
-      await s.sottoscrivi(a.t, a.utente2, e)
       const dopo = await righe(a)
       expect(dopo).toHaveLength(1)
-      expect(dopo[0].utenteId).toBe(a.utente2)
+      expect(dopo[0].utenteId).toBe(a.utente1)
+    })
+
+    it('un endpoint gia di un altro utente della stessa azienda: 409 e la riga non si sposta', async () => {
+      const a = await azienda()
+      const s = servizio()
+      const e = ep('tel')
+      await s.sottoscrivi(a.t, a.utente1, e)
+      await expect(s.sottoscrivi(a.t, a.utente2, e)).rejects.toBeInstanceOf(
+        PushEndpointDiAltroUtenteError
+      )
+      const dopo = await righe(a)
+      expect(dopo).toHaveLength(1)
+      expect(dopo[0].utenteId).toBe(a.utente1)
+      // Il collega lo libera dal suo telefono: poi l'altro puo registrarlo.
+      await s.annulla(a.t, a.utente1, e)
+      await s.sottoscrivi(a.t, a.utente2, e)
+      expect((await righe(a))[0].utenteId).toBe(a.utente2)
+    })
+
+    it('stesso endpoint in un altra azienda: nessun 409, nessuna informazione trapela (unicita per azienda)', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const s = servizio()
+      const e = ep('tel')
+      await s.sottoscrivi(a.t, a.utente1, e)
+      await s.sottoscrivi(b.t, b.utente1, e)
+      expect(await righe(a)).toHaveLength(1)
+      expect(await righe(b)).toHaveLength(1)
+    })
+
+    it('due registrazioni concorrenti dello stesso endpoint da utenti diversi: ne vince una sola', async () => {
+      const a = await azienda()
+      const s = servizio()
+      const e = ep('gara')
+      const esiti = await Promise.allSettled([
+        s.sottoscrivi(a.t, a.utente1, e),
+        s.sottoscrivi(a.t, a.utente2, e),
+      ])
+      expect(esiti.filter(x => x.status === 'fulfilled')).toHaveLength(1)
+      const persi = esiti.filter(x => x.status === 'rejected') as PromiseRejectedResult[]
+      expect(persi[0].reason).toBeInstanceOf(PushEndpointDiAltroUtenteError)
+      expect(await righe(a)).toHaveLength(1)
     })
 
     it('rifiuta endpoint non ammessi (http, localhost, host sconosciuto) senza scrivere', async () => {
@@ -170,18 +215,19 @@ describe('Web push P7 — Postgres reale, ruolo wasteflow_app', () => {
       expect(rimaste).toEqual(tutti.slice(2).sort())
     })
 
-    it('un telefono passato a un utente con il tetto pieno non viene tolto subito', async () => {
+    it('ri-registrare un dispositivo gia suo lo rende il piu recente: il tetto non lo toglie', async () => {
       const a = await azienda()
       const s = servizio()
-      const passato = ep('passato')
-      await s.sottoscrivi(a.t, a.utente1, passato)
-      for (let i = 0; i < MAX_SOTTOSCRIZIONI_PER_UTENTE; i++) {
-        await s.sottoscrivi(a.t, a.utente2, ep(`due${i}`))
+      const primo = ep('primo')
+      await s.sottoscrivi(a.t, a.utente1, primo)
+      for (let i = 0; i < MAX_SOTTOSCRIZIONI_PER_UTENTE - 1; i++) {
+        await s.sottoscrivi(a.t, a.utente1, ep(`d${i}`))
       }
-      await s.sottoscrivi(a.t, a.utente2, passato)
-      const di2 = (await righe(a)).filter(r => r.utenteId === a.utente2).map(r => r.endpoint)
-      expect(di2).toHaveLength(MAX_SOTTOSCRIZIONI_PER_UTENTE)
-      expect(di2).toContain(passato)
+      await s.sottoscrivi(a.t, a.utente1, primo)
+      await s.sottoscrivi(a.t, a.utente1, ep('ultimo'))
+      const suoi = (await righe(a)).map(r => r.endpoint)
+      expect(suoi).toHaveLength(MAX_SOTTOSCRIZIONI_PER_UTENTE)
+      expect(suoi).toContain(primo)
     })
 
     it('annulla toglie solo il dispositivo dell utente: non quello di un collega, ne altre aziende', async () => {
@@ -240,6 +286,51 @@ describe('Web push P7 — Postgres reale, ruolo wasteflow_app', () => {
           data: { tenantId: a.t, utenteId: a.utente1, endpoint: 'https://x/' + 'a'.repeat(2100) },
         })
       ).rejects.toThrow()
+    })
+  })
+
+  describe('liberazione d ufficio', () => {
+    it('toglie tutti i dispositivi dell autista, non quelli dei colleghi ne di altre aziende, e scrive l activityLog', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const s = servizio()
+      await s.sottoscrivi(a.t, a.utente1, ep('u1a'))
+      await s.sottoscrivi(a.t, a.utente1, ep('u1b'))
+      await s.sottoscrivi(a.t, a.utente2, ep('u2'))
+      await s.sottoscrivi(b.t, b.utente1, ep('b1'))
+      const n = await s.liberaDiAutista(a.t, a.admin, a.autista1)
+      expect(n).toBe(2)
+      expect((await righe(a)).map(r => r.utenteId)).toEqual([a.utente2])
+      expect(await righe(b)).toHaveLength(1)
+      const log = await owner.activityLog.findMany({
+        where: { tenantId: a.t, action: 'CAMPO_PUSH_LIBERATE' },
+      })
+      expect(log).toHaveLength(1)
+      expect(log[0].userId).toBe(a.admin)
+      expect(JSON.stringify(log[0].metadata)).toContain(a.autista1)
+      // Idempotente: senza dispositivi ritorna 0.
+      expect(await s.liberaDiAutista(a.t, a.admin, a.autista1)).toBe(0)
+    })
+
+    it('autista di un altra azienda o inesistente: non trovato, nulla cambia', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const s = servizio()
+      await s.sottoscrivi(b.t, b.utente1, ep('b1'))
+      await expect(s.liberaDiAutista(a.t, a.admin, b.autista1)).rejects.toBeInstanceOf(
+        AutistaNonTrovatoError
+      )
+      expect(await righe(b)).toHaveLength(1)
+    })
+
+    it('dopo la liberazione il collega puo registrare lo stesso telefono', async () => {
+      const a = await azienda()
+      const s = servizio()
+      const e = ep('tel')
+      await s.sottoscrivi(a.t, a.utente1, e)
+      await s.liberaDiAutista(a.t, a.admin, a.autista1)
+      await s.sottoscrivi(a.t, a.utente2, e)
+      expect((await righe(a))[0].utenteId).toBe(a.utente2)
     })
   })
 

@@ -41,8 +41,11 @@ export class PushController {
 
   @Put('sottoscrizione')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Registra (o sposta su di me) il dispositivo per le notifiche' })
+  @ApiOperation({
+    summary: 'Registra il dispositivo per le notifiche (409 se è già di un altro utente)',
+  })
   @ApiResponse({ status: 503, description: 'PUSH_NON_DISPONIBILE' })
+  @ApiResponse({ status: 409, description: 'ENDPOINT_PUSH_DI_ALTRO_UTENTE' })
   async sottoscrivi(@Req() req: any, @Body() dto: PushEndpointDto): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await comeHttpCampo(() => this.push.sottoscrivi(tenantId, req.user.id, dto.endpoint))

@@ -61,3 +61,16 @@ export class PushEndpointNonAmmessoError extends DomainError {
     this.name = 'PushEndpointNonAmmessoError'
   }
 }
+
+/**
+ * 409 `ENDPOINT_PUSH_DI_ALTRO_UTENTE`: il dispositivo e' gia' registrato per un altro utente della
+ * stessa azienda. Non si sposta: lo libera il collega (dal suo telefono) o l'ufficio. Il messaggio
+ * non dice chi e'. L'unicita' e' per azienda: un endpoint di un'altra azienda non produce questo errore.
+ */
+export class PushEndpointDiAltroUtenteError extends DomainError {
+  readonly code = 'ENDPOINT_PUSH_DI_ALTRO_UTENTE'
+  constructor() {
+    super('Le notifiche di questo dispositivo sono gia attive per un altro utente.')
+    this.name = 'PushEndpointDiAltroUtenteError'
+  }
+}

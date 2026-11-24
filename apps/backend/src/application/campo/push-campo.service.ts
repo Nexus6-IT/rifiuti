@@ -8,7 +8,12 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { PushEndpointNonAmmessoError, PushNonDisponibileError } from './errori-campo'
+import {
+  AutistaNonTrovatoError,
+  PushEndpointDiAltroUtenteError,
+  PushEndpointNonAmmessoError,
+  PushNonDisponibileError,
+} from './errori-campo'
 import {
   caricaChiaviVapid,
   creaIntestazioneVapid,
@@ -107,8 +112,11 @@ export class PushCampoService {
   // --- sottoscrizioni -----------------------------------------------------------------------
 
   /**
-   * Registra (o sposta sull'utente) il dispositivo. Lo stesso endpoint e' un solo dispositivo: se
-   * il telefono passa a un collega la riga cambia utente, non si duplica.
+   * Registra il dispositivo per l'utente. Lo stesso endpoint e' un solo dispositivo: ri-registrarlo
+   * per lo stesso utente e' idempotente; se e' gia' di un ALTRO utente della stessa azienda NON si
+   * sposta (409 `ENDPOINT_PUSH_DI_ALTRO_UTENTE`): lo libera il collega al logout o l'ufficio.
+   * L'unicita' e' per azienda (e la RLS nasconde le altre): un endpoint di un'altra azienda e' un
+   * dispositivo nuovo e non rivela nulla. Insert condizionale (ON CONFLICT DO NOTHING), senza gare.
    */
   async sottoscrivi(tenantId: string, utenteId: string, endpoint: string): Promise<void> {
     if (!this.disponibile()) throw new PushNonDisponibileError()
@@ -117,13 +125,18 @@ export class PushCampoService {
     }
     await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
-        await tx.sottoscrizionePush.upsert({
-          where: { tenantId_endpoint: { tenantId, endpoint } },
-          create: { tenantId, utenteId, endpoint },
-          // creataIl aggiornata: il telefono appena passato a questo utente e' il piu' recente,
-          // il tetto non deve toglierlo subito.
-          update: { utenteId, creataIl: new Date() },
+        const nuova = await tx.sottoscrizionePush.createMany({
+          data: [{ tenantId, utenteId, endpoint }],
+          skipDuplicates: true,
         })
+        if (nuova.count === 0) {
+          // Gia' presente: ok solo se e' mia. creataIl aggiornata: il tetto non deve toglierla subito.
+          const mia = await tx.sottoscrizionePush.updateMany({
+            where: { tenantId, utenteId, endpoint },
+            data: { creataIl: new Date() },
+          })
+          if (mia.count === 0) throw new PushEndpointDiAltroUtenteError()
+        }
         // Tetto per utente: restano le piu' recenti.
         const sue = await tx.sottoscrizionePush.findMany({
           where: { tenantId, utenteId },
@@ -147,6 +160,37 @@ export class PushCampoService {
       this.prisma.$transaction(tx =>
         tx.sottoscrizionePush.deleteMany({ where: { tenantId, utenteId, endpoint } })
       )
+    )
+  }
+
+  /**
+   * Azione d'ufficio (ADMIN): toglie tutte le sottoscrizioni dell'utente collegato all'autista, per
+   * liberare un telefono rimasto legato a lui. Con activityLog; ritorna quante ne ha tolte.
+   */
+  async liberaDiAutista(tenantId: string, operatoreId: string, autistaId: string): Promise<number> {
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(async tx => {
+        const autista = await tx.autista.findFirst({
+          where: { id: autistaId, tenantId },
+          select: { id: true, userId: true },
+        })
+        if (!autista) throw new AutistaNonTrovatoError()
+        const { count } = autista.userId
+          ? await tx.sottoscrizionePush.deleteMany({
+              where: { tenantId, utenteId: autista.userId },
+            })
+          : { count: 0 }
+        await tx.activityLog.create({
+          data: {
+            tenantId,
+            userId: operatoreId,
+            action: 'CAMPO_PUSH_LIBERATE',
+            description: 'Notifiche del dispositivo liberate d’ufficio',
+            metadata: { autistaId, rimosse: count },
+          },
+        })
+        return count
+      })
     )
   }
 
