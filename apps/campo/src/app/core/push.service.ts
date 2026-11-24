@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 import { PORTA_PUSH, portaPushBrowser } from './porta-push';
@@ -16,6 +16,8 @@ export type StatoPush =
   | 'non-disponibile'
   | 'negato'
   | 'da-attivare'
+  /** Il telefono ha le notifiche attive per un altro autista (409): lo libera lui o l'ufficio. */
+  | 'di-altro-autista'
   | 'attivo';
 
 export interface PreferenzePush {
@@ -32,6 +34,11 @@ function entro<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]).catch(
     () => null,
   );
+}
+
+/** 409 della registrazione: l'endpoint del telefono e' gia' legato a un altro utente. */
+function eEndpointDiAltroUtente(err: unknown): boolean {
+  return err instanceof HttpErrorResponse && err.status === 409;
 }
 
 /**
@@ -112,8 +119,11 @@ export class PushService {
     this._stato.set('attivo');
     try {
       await this.registra(endpoint);
-    } catch {
-      /* rete assente: il dispositivo resta sottoscritto, si riprova alla prossima apertura */
+    } catch (err) {
+      // 409: il dispositivo e' di un altro autista. Niente ritentativi e il browser resta com'e':
+      // la sottoscrizione e' del collega, toglierla gli spegnerebbe gli avvisi.
+      if (eEndpointDiAltroUtente(err)) this._stato.set('di-altro-autista');
+      /* altrimenti rete assente: il dispositivo resta sottoscritto, si riprova alla prossima apertura */
     }
   }
 
@@ -141,7 +151,11 @@ export class PushService {
       try {
         await this.registra(endpoint);
         this._stato.set('attivo');
-      } catch {
+      } catch (err) {
+        if (eEndpointDiAltroUtente(err)) {
+          this._stato.set('di-altro-autista');
+          return;
+        }
         await entro(this.porta.annullaLocale(), TIMEOUT_LOGOUT_MS);
         this._errore.set('Le notifiche non sono state attivate: riprova fra poco.');
       }
@@ -196,7 +210,9 @@ export class PushService {
    */
   sessioneChiusa(stessoUtente = false): void {
     if (stessoUtente) return;
-    if (this._stato() === 'attivo') this._stato.set('da-attivare');
+    if (this._stato() === 'attivo' || this._stato() === 'di-altro-autista') {
+      this._stato.set('da-attivare');
+    }
     if (!this.porta.supportato()) return;
     this.pulizia = entro(this.porta.annullaLocale(), TIMEOUT_LOGOUT_MS);
   }

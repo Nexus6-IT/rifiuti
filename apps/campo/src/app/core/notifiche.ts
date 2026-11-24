@@ -28,6 +28,16 @@ import { PushService } from './push.service';
           </p>
         </section>
       }
+      @case ('di-altro-autista') {
+        <section class="notifiche" data-testid="notifiche-altro-autista">
+          <h2>Notifiche</h2>
+          <p class="sotto">
+            Queste notifiche sono già attive per un altro autista su questo telefono. Chiedi al
+            collega di disattivarle dal suo accesso, oppure all'ufficio di liberarle: poi riapri
+            l'app per attivarle a tuo nome.
+          </p>
+        </section>
+      }
       @case ('da-attivare') {
         <section class="notifiche" data-testid="notifiche-attiva">
           <h2>Notifiche</h2>

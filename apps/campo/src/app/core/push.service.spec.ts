@@ -171,6 +171,44 @@ describe('PushService', () => {
     expect(servizio.preferenze()).toEqual({ giroModificato: false });
   });
 
+  it('gia sottoscritto ma l endpoint e di un altro autista (409): stato di-altro-autista, niente ritentativi, il browser non viene toccato', async () => {
+    porta.perm = 'granted';
+    porta.endpoint = 'https://fcm.googleapis.com/fcm/send/abc';
+    crea();
+    const p = servizio.inizializza();
+    await flush();
+    http.expectOne(`${API}/configurazione`).flush({ disponibile: true, chiavePubblica: 'CHIAVE' });
+    await flush();
+    http.expectOne(`${API}/preferenze`).flush({ giroModificato: true });
+    await flush();
+    http
+      .expectOne(`${API}/sottoscrizione`)
+      .flush(
+        { message: 'x', error: 'ENDPOINT_PUSH_DI_ALTRO_UTENTE' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await p;
+    expect(servizio.stato()).toBe('di-altro-autista');
+    expect(porta.chiamate).not.toContain('annullaLocale');
+    await flush();
+    http.expectNone(`${API}/sottoscrizione`);
+  });
+
+  it('attiva(): 409 endpoint di un altro autista: stato di-altro-autista, sottoscrizione del browser intatta, nessun nuovo tentativo', async () => {
+    crea();
+    await inizializza();
+    const p = servizio.attiva();
+    await flush();
+    http
+      .expectOne(`${API}/sottoscrizione`)
+      .flush({ error: 'ENDPOINT_PUSH_DI_ALTRO_UTENTE' }, { status: 409, statusText: 'Conflict' });
+    await p;
+    expect(servizio.stato()).toBe('di-altro-autista');
+    expect(porta.chiamate).not.toContain('annullaLocale');
+    expect(servizio.occupato()).toBe(false);
+    http.expectNone(`${API}/sottoscrizione`);
+  });
+
   it('disattiva(): toglie l endpoint dal server e dal browser', async () => {
     porta.perm = 'granted';
     porta.endpoint = 'https://fcm.googleapis.com/fcm/send/abc';

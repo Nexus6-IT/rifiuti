@@ -64,6 +64,24 @@ describe('Notifiche (scheda nel giro)', () => {
     expect(el(f).textContent).toContain('non contiene dati');
   });
 
+  it('endpoint di un altro autista (409): messaggio chiaro, nessun pulsante, nessun ritentativo', async () => {
+    const f = monta(porta({ perm: 'granted', endpointAttuale: async () => 'https://fcm.googleapis.com/fcm/send/x' }));
+    await flush();
+    http.expectOne('/api/v1/push/configurazione').flush({ disponibile: true, chiavePubblica: 'K' });
+    await flush();
+    http.expectOne('/api/v1/push/preferenze').flush({ giroModificato: true });
+    await flush();
+    http
+      .expectOne('/api/v1/push/sottoscrizione')
+      .flush({ error: 'ENDPOINT_PUSH_DI_ALTRO_UTENTE' }, { status: 409, statusText: 'Conflict' });
+    await flush();
+    f.detectChanges();
+    const sez = el(f).querySelector('[data-testid="notifiche-altro-autista"]');
+    expect(sez?.textContent).toContain('già attive per un altro autista');
+    expect(el(f).querySelector('[data-testid="attiva-notifiche"]')).toBeNull();
+    http.expectNone('/api/v1/push/sottoscrizione');
+  });
+
   it('attivo: mostra la preferenza e il tocco la salva sul server', async () => {
     const f = monta(
       porta({
