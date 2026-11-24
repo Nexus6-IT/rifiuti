@@ -49,7 +49,8 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
       enforcement as any,
       membership,
       modifica as any,
-      {} as any
+      {} as any,
+      {} as any // FirmaPartenzaRentriUseCase
     )
 
   beforeEach(() => {

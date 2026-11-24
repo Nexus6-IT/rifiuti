@@ -647,4 +647,87 @@ describe('CreateFIRUseCase', () => {
       expect(await firRepository.count()).toBe(0)
     })
   })
+
+  describe('dati di viaggio noti alla creazione (FIR in viaggio P2)', () => {
+    const conViaggio = (datiViaggio: Record<string, unknown> | undefined) => {
+      const dati = {
+        salvaDatiPartenza: jest.fn().mockResolvedValue(undefined),
+        leggi: jest.fn(),
+        aggiornaQuantitaDopoEnte: jest.fn(),
+        aggiornaTrasportoDopoEnte: jest.fn(),
+      }
+      const uc = new CreateFIRUseCase(
+        firRepository,
+        cerRepository,
+        produttoreRepository,
+        trasportatoreRepository,
+        destinatarioRepository,
+        dati as any
+      )
+      const base = createValidCommand()
+      const comando = new CreateFIRCommand(
+        base.produttoreId,
+        base.rifiuto,
+        base.trasportatoreId,
+        base.destinatarioId,
+        base.userId,
+        base.tenantId,
+        base.provenienza,
+        base.tipoTrattaPrincipale,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        datiViaggio as any
+      )
+      cerRepository.addCode('13 02 05*')
+      return { uc, dati, comando }
+    }
+
+    it('salva rinfusa, conducente e percorso DOPO il save del FIR e la targa va nello snapshot del trasportatore', async () => {
+      const { uc, dati, comando } = conViaggio({
+        rinfusa: true,
+        targaAutomezzo: ' ab123cd ',
+        conducenteNome: ' Mario ',
+        conducenteCognome: 'Rossi',
+        targaRimorchio: 'xy987zw',
+        percorso: '',
+      })
+      const result = await uc.execute(comando)
+
+      expect(result.isSuccess).toBe(true)
+      expect(result.value.trasportatore?.targaVeicolo).toBe('AB123CD')
+      expect(dati.salvaDatiPartenza).toHaveBeenCalledWith('tenant-1', result.value.id, {
+        verificatoInPartenza: undefined,
+        rinfusa: true,
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaRimorchio: 'XY987ZW',
+        percorso: null,
+      })
+      expect(result.value.datiViaggio).toMatchObject({
+        rinfusa: true,
+        conducenteNome: 'Mario',
+        targaRimorchio: 'XY987ZW',
+        percorso: null,
+      })
+    })
+
+    it('senza dati di viaggio non scrive nulla e non tocca la targa', async () => {
+      const { uc, dati, comando } = conViaggio(undefined)
+      const result = await uc.execute(comando)
+      expect(result.isSuccess).toBe(true)
+      expect(dati.salvaDatiPartenza).not.toHaveBeenCalled()
+      expect(result.value.trasportatore?.targaVeicolo).toBeUndefined()
+    })
+
+    it('se il FIR non si salva i dati di viaggio non si scrivono', async () => {
+      const { uc, dati, comando } = conViaggio({ rinfusa: true })
+      jest.spyOn(firRepository, 'save').mockRejectedValueOnce(new Error('db giu'))
+      const result = await uc.execute(comando)
+      expect(result.isFailure).toBe(true)
+      expect(dati.salvaDatiPartenza).not.toHaveBeenCalled()
+    })
+  })
 })

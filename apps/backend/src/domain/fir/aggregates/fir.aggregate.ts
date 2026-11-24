@@ -141,6 +141,28 @@ export interface ParteFIR {
 }
 
 /**
+ * Dati di viaggio della tratta principale (FIR in viaggio, P2): `verificato_in_partenza` e `rinfusa` della
+ * quantita', conducente, rimorchio e percorso del trasporto. Stanno su colonne dedicate di `firs`: l'aggregate
+ * li porta SOLO in lettura (per il dettaglio e per precompilare il form), non li scrive mai nel suo `save`.
+ */
+export interface DatiViaggioFIR {
+  verificatoInPartenza: boolean | null
+  rinfusa: boolean | null
+  conducenteNome: string | null
+  conducenteCognome: string | null
+  targaRimorchio: string | null
+  percorso: string | null
+  /**
+   * Cio' che l'ente ha accettato con `/quantita` e `/trasporto`: copia SEPARATA, accanto ai dati firmati
+   * all'emissione (che dopo non si riscrivono). `null` se da WasteFlow non e' stato inviato nulla.
+   */
+  dichiarato: {
+    quantita?: { valore: number; unitaMisura: string; numeroColli: number | null }
+    trasporto?: { targaAutomezzo: string | null }
+  } | null
+}
+
+/**
  * Tipo di tratta di un trasporto intermodale (FIR multimodale):
  * trasporto su gomma (TERRESTRE), su rotaia (FERROVIARIA) o via mare (MARITTIMA).
  */
@@ -521,6 +543,9 @@ export class FIR extends AggregateRoot {
    */
   private _bloccatoInvio = false
   private _motivoBloccoInvio: string | null = null
+
+  /** Dati di viaggio in sola lettura (FIR in viaggio, P2): valorizzati da `toDomain` o dal caso d'uso di creazione. */
+  private _datiViaggio: DatiViaggioFIR | null = null
 
   static create(props: CreateFIRProps): FIR {
     const rifiuto: FIRRifiuto = {
@@ -1506,6 +1531,19 @@ export class FIR extends AggregateRoot {
    */
   get motivoAnnullamento(): string | null {
     return this._motivoAnnullamento
+  }
+
+  /** Dati di viaggio della tratta principale; `null` se non caricati (FIR creato in memoria e mai riletto). */
+  get datiViaggio(): DatiViaggioFIR | null {
+    return this._datiViaggio
+  }
+
+  /**
+   * Imposta i dati di viaggio mostrati dall'aggregate. NON li persiste: la scrittura e' di
+   * `IDatiViaggioFirRepository`, fuori dal `save` dell'aggregate.
+   */
+  impostaDatiViaggio(dati: DatiViaggioFIR | null): void {
+    this._datiViaggio = dati
   }
 
   /**

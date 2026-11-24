@@ -55,6 +55,42 @@ describe('formDaFir', () => {
       caratteristichePericolo: 'HP4',
       numeroColli: 3,
       codiceOperazione: 'R13',
+      rinfusa: undefined,
+      verificatoInPartenza: undefined,
+    })
+  })
+
+  it('porta i dati di viaggio (FIR in viaggio P2): rinfusa, verifica, conducente, targhe e percorso', () => {
+    const dto = formDaFir({
+      ...fir,
+      trasportatore: { ragioneSociale: 'T', partitaIva: '1', targaVeicolo: 'AB123CD' },
+      datiViaggio: {
+        rinfusa: true,
+        verificatoInPartenza: false,
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaRimorchio: 'XY987ZW',
+        percorso: 'A1',
+      },
+    })
+    expect(dto.rifiuto.rinfusa).toBeTrue()
+    expect(dto.rifiuto.verificatoInPartenza).toBeFalse()
+    expect(dto.datiTrasporto).toEqual({
+      targaAutomezzo: 'AB123CD',
+      conducenteNome: 'Mario',
+      conducenteCognome: 'Rossi',
+      targaRimorchio: 'XY987ZW',
+      percorso: 'A1',
+    })
+  })
+
+  it('senza dati di viaggio i campi di trasporto sono stringhe vuote (in modifica svuotano la colonna)', () => {
+    expect(formDaFir(fir).datiTrasporto).toEqual({
+      targaAutomezzo: '',
+      conducenteNome: '',
+      conducenteCognome: '',
+      targaRimorchio: '',
+      percorso: '',
     })
   })
 

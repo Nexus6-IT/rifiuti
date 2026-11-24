@@ -17,6 +17,8 @@ import {
   SedeNonValidaPerRuoloError,
 } from '../../../core/domain/errors'
 import { CreateFIRCommand } from '../commands/create-fir.command'
+import { IDatiViaggioFirRepository } from '../../rentri/dati-viaggio-fir.port'
+import { colonneDatiViaggio, haDatiViaggio, targaAutomezzoDa } from '../dati-viaggio-input'
 import { verificaCerPerFormulario } from '../verifica-cer-formulario'
 import {
   snapshotProduttore,
@@ -38,7 +40,12 @@ export class CreateFIRUseCase {
     private readonly cerRepository: ICERRepository,
     private readonly produttoreRepository: ProduttoreRepository,
     private readonly trasportatoreRepository: TrasportatoreRepository,
-    private readonly destinatarioRepository: DestinatarioRepository
+    private readonly destinatarioRepository: DestinatarioRepository,
+    /**
+     * FIR in viaggio P2: salva i dati di quantita' e trasporto noti alla creazione. Facoltativo: chi crea
+     * FIR senza passare dal form (generazione dai ritiri, test) non li ha.
+     */
+    private readonly datiViaggioRepository?: IDatiViaggioFirRepository
   ) {}
 
   async execute(command: CreateFIRCommand): Promise<Result<FIR>> {
@@ -141,7 +148,10 @@ export class CreateFIRUseCase {
         tenantId: command.tenantId,
         creatoDaUserId: command.userId,
         produttore: snapshotProduttore(produttore),
-        trasportatore: snapshotTrasportatore(trasportatore),
+        trasportatore: this.snapshotConTarga(
+          snapshotTrasportatore(trasportatore),
+          targaAutomezzoDa(command.datiViaggio)
+        ),
         destinatario: snapshotDestinatario(destinatario),
         trasportatoriAggiuntivi,
         annotazioni: command.annotazioni,
@@ -152,6 +162,21 @@ export class CreateFIRUseCase {
 
       // 5. Persist FIR
       await this.firRepository.save(fir)
+
+      // 5b. FIR in viaggio P2: dati di quantita' e trasporto noti (colonne fuori dall'aggregate).
+      if (this.datiViaggioRepository && haDatiViaggio(command.datiViaggio) && command.tenantId) {
+        const colonne = colonneDatiViaggio(command.datiViaggio)
+        await this.datiViaggioRepository.salvaDatiPartenza(command.tenantId, fir.id, colonne)
+        fir.impostaDatiViaggio({
+          verificatoInPartenza: colonne.verificatoInPartenza ?? null,
+          rinfusa: colonne.rinfusa ?? null,
+          conducenteNome: colonne.conducenteNome ?? null,
+          conducenteCognome: colonne.conducenteCognome ?? null,
+          targaRimorchio: colonne.targaRimorchio ?? null,
+          percorso: colonne.percorso ?? null,
+          dichiarato: null,
+        })
+      }
 
       // 6. Return success
       return Result.ok<FIR>(fir)
@@ -166,5 +191,13 @@ export class CreateFIRUseCase {
       }
       return Result.fail<FIR>(`Failed to create FIR: ${error.message}`)
     }
+  }
+
+  /** Targa dell'automezzo nello snapshot del trasportatore: `undefined` = nessuna indicazione. */
+  private snapshotConTarga(
+    parte: ReturnType<typeof snapshotTrasportatore>,
+    targa: string | null | undefined
+  ): ReturnType<typeof snapshotTrasportatore> {
+    return targa ? { ...parte, targaVeicolo: targa } : parte
   }
 }

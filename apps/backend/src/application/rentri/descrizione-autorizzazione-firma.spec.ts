@@ -76,4 +76,14 @@ describe('descrizioneAutorizzazioneFirma', () => {
       PATTERN_CONTRATTO
     )
   })
+
+  it.each([
+    ['PARTENZA_PRODUTTORE', 'come produttore'],
+    ['PARTENZA_TRASPORTATORE', 'come trasportatore'],
+    ['PARTENZA_PRODUTTORE_TRASPORTATORE', 'come produttore e trasportatore'],
+  ])('firma di partenza %s: il testo sul telefono nomina la veste (%s)', (tipo, veste) => {
+    expect(descrizioneAutorizzazioneFirma('BCDFGH00001JK', tipo)).toBe(
+      `Firma del formulario BCDFGH00001JK - firma di partenza ${veste}`
+    )
+  })
 })
