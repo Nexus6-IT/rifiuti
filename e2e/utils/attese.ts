@@ -77,6 +77,27 @@ export function cliccaEAttendi(
   return attendiRisposta(page, () => bottone.click(), opzioni)
 }
 
+/**
+ * Attende che `bottone` sia davvero abilitato. Con un `p-button` PrimeNG il `data-testid` sta
+ * sull'ELEMENTO OSPITE: `toBeEnabled()` di Playwright guarda solo `disabled` nativo e `aria-disabled`
+ * dell'ospite, quindi passa subito anche quando il pulsante e' spento (l'ospite prende la classe
+ * `p-disabled`, con `pointer-events: none`, e il `<button>` interno ha `disabled`). Il click
+ * successivo aspetta allora soltanto il timeout di azione (15 s in CI) e cade con "intercepts
+ * pointer events". Qui si controllano entrambi, con il timeout dei server lenti.
+ */
+export async function attendiAbilitato(bottone: Locator, timeout = ATTESA_SERVER): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        bottone.evaluate(el => {
+          const nativo = el instanceof HTMLButtonElement ? el : el.querySelector('button')
+          return !el.classList.contains('p-disabled') && !(nativo?.disabled ?? false)
+        }),
+      { timeout, message: 'il pulsante resta disabilitato' }
+    )
+    .toBe(true)
+}
+
 /** Clicca `bottone`, attende la mutazione e poi la chiusura di `dlg` (con timeout generoso). */
 export async function cliccaEChiudi(
   page: Page,
@@ -86,7 +107,7 @@ export async function cliccaEChiudi(
 ): Promise<void> {
   // `Salva` resta spento finche' il dialog non ha caricato le sue opzioni (modalita', tabelle
   // collegate): su un runner lento puo' volerci piu' del timeout di azione. Si attende abilitato.
-  await expect(bottone).toBeEnabled({ timeout: ATTESA_SERVER })
+  await attendiAbilitato(bottone)
   await cliccaEAttendi(page, bottone, opzioni)
   await expect(dlg).toBeHidden({ timeout: ATTESA_SERVER })
 }
