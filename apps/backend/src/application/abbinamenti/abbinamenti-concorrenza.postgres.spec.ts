@@ -5,6 +5,7 @@
  * righe incoerenti (nessun carico o scarico abbinato oltre la sua quantita) e non c'e deadlock.
  * Pulizia per id esatti.
  */
+import { BadRequestException } from '@nestjs/common'
 import { PrismaClient, Prisma } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -258,7 +259,11 @@ describe('Concorrenza abbinamenti - Postgres reale, ruolo wasteflow_app, due poo
       await carico(az, '2026-03-01', 100)
       const c2 = await carico(az, '2026-03-02', 100)
       const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 70 })
-      const [, s2] = await Promise.all([
+      // Due ordini sono validi: se l'override passa per primo sposta s1 (70) su c2 e lo scarico
+      // concorrente prende il resto; se lo scarico concorrente (100) prende prima c2, il residuo
+      // di c2 non basta piu' per 70 e l'override e' rifiutato dal dominio con un 400 sul residuo.
+      // Qualunque altra eccezione (deadlock, errore di database) resta un fallimento.
+      const [override, registrazione] = await Promise.allSettled([
         inTxB(az, tx =>
           salvaAbbinamentoManuale(tx, {
             tenantId: az.tenantId,
@@ -269,6 +274,12 @@ describe('Concorrenza abbinamenti - Postgres reale, ruolo wasteflow_app, due poo
         ),
         movimento(az, { type: 'SCARICO', giorno: '2026-03-11', quantita: 100 }),
       ])
+      if (override.status === 'rejected') {
+        expect(override.reason).toBeInstanceOf(BadRequestException)
+        expect((override.reason as Error).message).toMatch(/ha un residuo di .*: non basta per 70/)
+      }
+      if (registrazione.status === 'rejected') throw registrazione.reason
+      const s2 = registrazione.value
       const righe = await verificaCoerenza(az)
       expect(somma(righe.filter(r => r.scaricoId === s1))).toBe(70)
       expect(somma(righe.filter(r => r.scaricoId === s2))).toBe(100)

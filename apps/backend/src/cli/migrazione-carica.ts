@@ -1,10 +1,13 @@
 /**
  * `node dist/cli/migrazione-carica.js --tenant <uuid> --pacchetto <cartella> --ambito <AMBITO>
- *   [--verifica] [--dimensione-blocco N]`
+ *   [--operatore <uuid utente>] [--verifica] [--dimensione-blocco N]`
  *
  * Gira sul server, dentro l'immagine del backend (compilato in `dist/cli/`, senza ts-node), col
  * SOLO client applicativo (RLS). Un'azienda alla volta. Il pacchetto non e' fidato: viene verificato
  * (impronte, righe, mappa) e ogni record e' rivalidato lato server.
+ *
+ * `--operatore`: l'utente dell'azienda a cui si attribuisce il lotto. Obbligatorio per l'ambito FIR
+ * (`firs.producer_user_id` e' una FK a `users`); verificato contro l'azienda.
  *
  * `--verifica`: solo letture (transazione read-only). Elenca i bloccanti e non scrive nulla.
  *
@@ -21,6 +24,7 @@ import {
   AmbitoNonCaricabileError,
   BloccantiVerificaError,
   CaricaPacchettoService,
+  NullaDaCaricareError,
   RuoloNonApplicativoError,
 } from '../application/migrazione/caricamento/carica-pacchetto.service'
 import { apriPacchetto } from '../application/migrazione/pacchetto/lettore-pacchetto'
@@ -43,14 +47,15 @@ export type ServizioCarica = Pick<
 
 const USO =
   'uso: migrazione:carica --tenant <uuid> --pacchetto <cartella> --ambito <' +
-  `${AMBITI_PACCHETTO.join('|')}> [--verifica] [--dimensione-blocco <N>]`
+  `${AMBITI_PACCHETTO.join('|')}> [--operatore <uuid>] [--verifica] [--dimensione-blocco <N>]`
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const VALORE = ['--tenant', '--pacchetto', '--ambito', '--dimensione-blocco']
+const VALORE = ['--tenant', '--pacchetto', '--ambito', '--operatore', '--dimensione-blocco']
 
 interface Argomenti {
   tenant: string
   pacchetto: string
   ambito: AmbitoPacchetto
+  operatore?: string
   verifica: boolean
   dimensioneBlocco?: number
 }
@@ -72,6 +77,8 @@ export function leggiArgomenti(argv: readonly string[]): Argomenti | null {
   const { '--tenant': tenant, '--pacchetto': pacchetto, '--ambito': ambito } = valori
   if (!tenant || !UUID.test(tenant) || !pacchetto) return null
   if (!ambito || !(AMBITI_PACCHETTO as readonly string[]).includes(ambito)) return null
+  const operatore = valori['--operatore']
+  if (operatore !== undefined && !UUID.test(operatore)) return null
   let dimensioneBlocco: number | undefined
   if ('--dimensione-blocco' in valori) {
     dimensioneBlocco = Number(valori['--dimensione-blocco'])
@@ -82,8 +89,23 @@ export function leggiArgomenti(argv: readonly string[]): Argomenti | null {
     tenant: tenant.toLowerCase(),
     pacchetto,
     ambito: ambito as AmbitoPacchetto,
+    operatore: operatore?.toLowerCase(),
     verifica,
     dimensioneBlocco,
+  }
+}
+
+/** Elenchi di identificativi dei bloccanti (numero FIR e chiave CLIFOR), con l'indicazione da seguire. */
+function scriviElenchi(
+  uscita: UscitaCli,
+  elenchi: Readonly<Record<string, readonly string[]>> | undefined
+): void {
+  for (const [codice, voci] of Object.entries(elenchi ?? {})) {
+    for (const v of voci) uscita.errore(`${codice} ${v}`)
+    if (codice === 'FIR_IN_VIAGGIO_SENZA_PESO')
+      uscita.errore(
+        'completare i FIR in WinWaste prima dell estrazione, poi rifare staging e pacchetto'
+      )
   }
 }
 
@@ -105,11 +127,13 @@ export async function eseguiCli(
       pacchetto,
       ambito: args.ambito,
       dimensioneBlocco: args.dimensioneBlocco,
+      avviatoDa: args.operatore ?? null,
     }
     if (args.verifica) {
       const rapporto = await servizio.verifica(richiesta)
       for (const [k, v] of Object.entries(rapporto.informazioni)) uscita.scrivi(`${k}: ${v}`)
       for (const b of rapporto.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
+      scriviElenchi(uscita, rapporto.elenchi)
       if (rapporto.bloccanti.length > 0) return 2
       uscita.scrivi('verifica: nessun bloccante')
       return 0
@@ -133,7 +157,12 @@ export async function eseguiCli(
     }
     if (e instanceof BloccantiVerificaError) {
       for (const b of e.bloccanti) uscita.errore(`BLOCCANTE ${b.codice}: ${b.conteggio}`)
+      scriviElenchi(uscita, e.elenchi)
       return 2
+    }
+    if (e instanceof NullaDaCaricareError) {
+      uscita.scrivi(e.message)
+      return 0
     }
     if (e instanceof AmbitoNonCaricabileError) {
       uscita.errore(e.message)

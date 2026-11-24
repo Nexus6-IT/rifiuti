@@ -52,6 +52,7 @@ const MAPPA_MODULI: Record<string, string | string[]> = {
   ritiri: 'ritiri',
   'ritiri/giorno': 'ritiri',
   autisti: ['ritiri', 'campo'],
+  'esiti-campo': 'campo',
   'impostazioni/modelli-stampa': ['fir', 'ritiri'],
   'reference-data': 'reference_data',
   'rentri/certificato': 'rentri',

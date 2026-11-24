@@ -8,6 +8,7 @@
  * Log e rapporti: solo codici, id tecnici e conteggi. Mai valori dei record.
  */
 import { Injectable } from '@nestjs/common'
+import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 import { TenantContext } from '../../../core/context/tenant-context'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -19,7 +20,14 @@ import {
   IMPORT_SOURCE_WINWASTE,
 } from '../pacchetto/manifest-pacchetto'
 import { caricaAmbito, EsitoCaricamento, FaseCaricamento } from './carica-ambito'
-import { Collisione, DefinizioneFase, FASI_AMBITO } from './fasi-ambito'
+import {
+  Collisione,
+  DefinizioneFase,
+  FASE_FIR_SENZA_PESO,
+  FASI_AMBITO,
+  FASI_SOLO_ELENCO,
+} from './fasi-ambito'
+import { validaRecordFirSenzaPeso } from '../pacchetto/record-fir'
 import { LottiImportService } from './lotti-import.service'
 import { DIMENSIONE_BLOCCO_DEFAULT, Tx } from './tipi'
 
@@ -28,6 +36,11 @@ export interface RapportoVerifica {
   readonly bloccanti: readonly Collisione[]
   /** Conteggi informativi (righe per fase, gia' caricate...). */
   readonly informazioni: Readonly<Record<string, number>>
+  /**
+   * Elenchi di identificativi per i bloccanti che li prevedono (es. `FIR_IN_VIAGGIO_SENZA_PESO`: numero
+   * del FIR e chiave CLIFOR del produttore). Mai dati personali.
+   */
+  readonly elenchi?: Readonly<Record<string, readonly string[]>>
 }
 
 export interface RichiestaCaricamento {
@@ -46,9 +59,28 @@ export class AmbitoNonCaricabileError extends Error {
   }
 }
 
+/**
+ * L'ambito ha nel pacchetto solo fasi di elenco (es. FIR con soli digitali): non c'e' nulla da
+ * caricare, non e' un errore. Il conteggio e' quello delle righe dell'elenco.
+ */
+export class NullaDaCaricareError extends Error {
+  constructor(
+    readonly ambito: string,
+    readonly daRiacquisire: number
+  ) {
+    super(
+      `Ambito ${ambito}: nulla da caricare; ${daRiacquisire} FIR digitali da riacquisire con migrazione:riacquisisci-fir`
+    )
+    this.name = 'NullaDaCaricareError'
+  }
+}
+
 /** La verifica che precede il caricamento ha trovato bloccanti: nessun lotto aperto. */
 export class BloccantiVerificaError extends Error {
-  constructor(readonly bloccanti: readonly Collisione[]) {
+  constructor(
+    readonly bloccanti: readonly Collisione[],
+    readonly elenchi: Readonly<Record<string, readonly string[]>> = {}
+  ) {
     super(`Caricamento rifiutato: ${bloccanti.length} bloccanti`)
     this.name = 'BloccantiVerificaError'
   }
@@ -93,11 +125,53 @@ export class CaricaPacchettoService {
     const fasi = FASI_AMBITO[r.ambito].filter(f => presenti.has(f.nome))
     // Una fase del pacchetto che il server non conosce non si salta in silenzio.
     for (const f of presenti) {
+      if (FASI_SOLO_ELENCO[r.ambito].includes(f)) continue
       if (!FASI_AMBITO[r.ambito].some(d => d.nome === f))
         throw new AmbitoNonCaricabileError(r.ambito)
     }
-    if (fasi.length === 0) throw new AmbitoNonCaricabileError(r.ambito)
+    if (fasi.length === 0) {
+      const soloElenco = r.pacchetto
+        .fasi(r.ambito)
+        .filter(f => FASI_SOLO_ELENCO[r.ambito].includes(f.fase))
+      if (soloElenco.length > 0 && soloElenco.length === presenti.size) {
+        throw new NullaDaCaricareError(
+          r.ambito,
+          soloElenco.filter(f => f.fase === 'fir-digitali').reduce((n, f) => n + f.righe, 0)
+        )
+      }
+      throw new AmbitoNonCaricabileError(r.ambito)
+    }
     return fasi
+  }
+
+  /**
+   * FIR in viaggio senza peso a destino (fase `fir-senza-peso`): BLOCCANTI. Restituisce le righe
+   * `numero chiaveCLIFOR` (identificativi, nessun dato personale). Un record non valido e' un errore
+   * del pacchetto come per le altre fasi.
+   */
+  private async elencoSenzaPeso(r: {
+    pacchetto: PacchettoAperto
+    ambito: AmbitoPacchetto
+  }): Promise<string[]> {
+    if (r.ambito !== 'FIR' || !r.pacchetto.fasi('FIR').some(f => f.fase === FASE_FIR_SENZA_PESO)) {
+      return []
+    }
+    const out: string[] = []
+    for await (const { numeroRiga, record } of r.pacchetto.leggi('FIR', FASE_FIR_SENZA_PESO)) {
+      try {
+        const d = validaRecordFirSenzaPeso(record, r.pacchetto.mappa)
+        out.push(`${d.firNumber} ${d.produttoreKey ?? '-'}`)
+      } catch (e) {
+        if (e instanceof PacchettoError) {
+          throw new PacchettoError(
+            'RIGA_NON_VALIDA',
+            `fase ${FASE_FIR_SENZA_PESO}, riga ${numeroRiga}: ${e.dettaglio}`
+          )
+        }
+        throw e
+      }
+    }
+    return out
   }
 
   /** Legge e rivalida TUTTI i record di una fase. @throws PacchettoError `RIGA_NON_VALIDA` (senza valori) */
@@ -148,13 +222,29 @@ export class CaricaPacchettoService {
     if (r.pacchetto.mappa.tenantId !== r.tenantId.toLowerCase()) {
       return { bloccanti: [{ codice: 'TENANT_DIVERSO', conteggio: 1 }], informazioni }
     }
+    const senzaPeso = await this.elencoSenzaPeso(r)
+    const elenchi: Record<string, string[]> = {}
+    if (senzaPeso.length > 0) {
+      bloccanti.push({ codice: 'FIR_IN_VIAGGIO_SENZA_PESO', conteggio: senzaPeso.length })
+      elenchi.FIR_IN_VIAGGIO_SENZA_PESO = senzaPeso
+    }
     const invalide = { n: 0 }
-    const lette = await this.leggiTutto(r, invalide)
+    let lette: Awaited<ReturnType<CaricaPacchettoService['leggiTutto']>>
+    try {
+      lette = await this.leggiTutto(r, invalide)
+    } catch (e) {
+      // Solo elenchi: se ci sono FIR senza peso non e' mai «nulla da caricare», e' un bloccante.
+      if (e instanceof NullaDaCaricareError && senzaPeso.length > 0) {
+        return { bloccanti, informazioni, elenchi }
+      }
+      throw e
+    }
     if (invalide.n > 0) bloccanti.push({ codice: 'RECORD_NON_VALIDO', conteggio: invalide.n })
     await TenantContext.run({ tenantId: r.tenantId }, async () =>
       this.prisma.$transaction(async (tx: Tx) => {
         await tx.$executeRaw`SET LOCAL transaction_read_only = on`
         bloccanti.push(...(await this.verificaMappa(tx, r)))
+        bloccanti.push(...(await this.verificaOperatore(tx, r)))
         const [inCorso] = await tx.$queryRaw<Array<{ n: bigint }>>`
           SELECT count(*)::bigint AS n FROM "lotti_import"
           WHERE "tenant_id" = ${r.tenantId}::uuid AND "archivio" = ${r.pacchetto.manifest.archivio}
@@ -169,7 +259,20 @@ export class CaricaPacchettoService {
         }
       })
     )
-    return { bloccanti, informazioni }
+    return { bloccanti, informazioni, elenchi }
+  }
+
+  /**
+   * I FIR importati hanno un utente (`producer_user_id`, FK a `users`): l'operatore che avvia il
+   * caricamento. Serve solo all'ambito FIR e deve essere un utente di QUESTA azienda.
+   */
+  private async verificaOperatore(tx: Tx, r: RichiestaCaricamento): Promise<Collisione[]> {
+    if (r.ambito !== 'FIR') return []
+    if (!r.avviatoDa) return [{ codice: 'OPERATORE_ASSENTE', conteggio: 1 }]
+    const [{ n }] = await tx.$queryRaw<Array<{ n: bigint }>>`
+      SELECT count(*)::bigint AS n FROM "users"
+      WHERE "tenant_id" = ${r.tenantId}::uuid AND "id" = ${r.avviatoDa}::uuid`
+    return Number(n) === 0 ? [{ codice: 'OPERATORE_INESISTENTE', conteggio: 1 }] : []
   }
 
   /** Registri, sedi, unita' locali, causali e agganci della mappa devono esistere nell'azienda. */
@@ -180,6 +283,10 @@ export class CaricaPacchettoService {
     const aggiungi = (codice: string, conteggio: number) => {
       if (conteggio > 0) out.push({ codice, conteggio })
     }
+    // Mai creazione automatica di tenant: l'azienda della mappa deve esistere gia' e non essere
+    // l'azienda tecnica della piattaforma (non e' un cliente).
+    const azienda = await tx.tenant.count({ where: escludiPiattaforma({ id: t }) })
+    aggiungi('TENANT_INESISTENTE', azienda === 0 ? 1 : 0)
     const mancanti = async (
       tabella: 'registri_rifiuti' | 'sedi_ditte' | 'rentri_unita_locali',
       ids: string[]
@@ -254,11 +361,17 @@ export class CaricaPacchettoService {
    *   LottoGiaInCorsoError
    */
   async carica(r: RichiestaCaricamento): Promise<EsitoCaricamento> {
+    // FIR senza peso: bloccanti prima di tutto, anche se il pacchetto non ha altro da caricare (non e'
+    // mai «nulla da caricare»). Il rapporto e' quello di `--verifica`.
+    if ((await this.elencoSenzaPeso(r)).length > 0) {
+      const bloccato = await this.verifica(r)
+      throw new BloccantiVerificaError(bloccato.bloccanti, bloccato.elenchi)
+    }
     const lette = await this.leggiTutto(r)
     // Stessi controlli di `--verifica`, in sola lettura, PRIMA di aprire il lotto: azienda sbagliata,
     // riferimenti della mappa inesistenti e collisioni non lasciano un lotto FALLITO a meta'.
     const esito = await this.verifica(r)
-    if (esito.bloccanti.length > 0) throw new BloccantiVerificaError(esito.bloccanti)
+    if (esito.bloccanti.length > 0) throw new BloccantiVerificaError(esito.bloccanti, esito.elenchi)
     const fasi: Array<FaseCaricamento<any>> = lette.map(({ def, righe }) => ({
       nome: def.nome,
       righe: async () => righe,

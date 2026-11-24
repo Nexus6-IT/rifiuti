@@ -1,11 +1,14 @@
 import {
   CHIAVE_LEGACY_PATTERN,
   LUNGHEZZA_MASSIMA_CHIAVE_LEGACY,
+  chiaveAutomezzo,
   chiaveDitta,
   chiaveMovimento,
   chiaveRecordAnnuale,
   chiaveSede,
+  chiaveSedeDaSoggettoUnita,
   chiaveSoggetto,
+  precDellaRiga,
 } from './chiavi-legacy'
 import { ChiaveLegacyError } from './errori'
 
@@ -114,5 +117,58 @@ describe('CHIAVE_LEGACY_PATTERN', () => {
     ['abcd|2026|MOVIMENTI|1'],
   ])('rifiuta %j', k => {
     expect(regex.test(k)).toBe(false)
+  })
+})
+
+describe('chiaveAutomezzo', () => {
+  it('ditta|MEZ|soggetto.unita|COD, accettata dal pattern', () => {
+    const k = chiaveAutomezzo('0001', '000123.0002', '0007')
+    expect(k).toBe('0001|MEZ|000123.0002|0007')
+    expect(new RegExp(CHIAVE_LEGACY_PATTERN).test(k)).toBe(true)
+  })
+  it('rifiuta componenti vuoti, con barra verticale o troppo lunghi', () => {
+    expect(() => chiaveAutomezzo('0001', '', '0007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('0001', '1|2', '0007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('0001', '000123.0002', '00007')).toThrow(ChiaveLegacyError)
+    expect(() => chiaveAutomezzo('1', 'a', 'b')).toThrow(ChiaveLegacyError)
+  })
+})
+
+describe('precDellaRiga / chiaveSedeDaSoggettoUnita (regola della chiave sede delle UL)', () => {
+  it('il PRECOD a 7 caratteri vince su tutto', () => {
+    expect(precDellaRiga('F', new Set(['C', 'F']), 'C')).toBe('F')
+  })
+
+  it("senza C/F nel PRECOD: l'unico PRECOD con quel COD", () => {
+    expect(precDellaRiga(undefined, new Set(['F']), 'C')).toBe('F')
+  })
+
+  it('C e F con lo stesso COD (stessa ditta): la riga tenuta', () => {
+    expect(precDellaRiga(undefined, new Set(['C', 'F']), 'C')).toBe('C')
+    expect(precDellaRiga(undefined, undefined, 'F')).toBe('F')
+  })
+
+  it('compone la chiave come chiaveSede con il soggetto della RIGA, non quello tenuto', () => {
+    expect(
+      chiaveSedeDaSoggettoUnita('0001', { soggetto: '000005', precod: undefined }, '0001', {
+        precPerCod: new Set(['F']),
+        precTenuto: 'C',
+      })
+    ).toBe('0001|F|000005|0001')
+    expect(
+      chiaveSedeDaSoggettoUnita('0001', { soggetto: '000005', precod: 'C' }, '0002', {
+        precPerCod: new Set(['C', 'F']),
+        precTenuto: 'F',
+      })
+    ).toBe('0001|C|000005|0002')
+  })
+
+  it('componenti non validi: ChiaveLegacyError', () => {
+    expect(() =>
+      chiaveSedeDaSoggettoUnita('0001', { soggetto: '000005' }, '', {
+        precPerCod: new Set(['C']),
+        precTenuto: 'C',
+      })
+    ).toThrow(ChiaveLegacyError)
   })
 })
