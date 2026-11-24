@@ -8,7 +8,7 @@
 
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { TipoTratta, ProvenienzaRifiuto } from '../../../domain/fir/aggregates/fir.aggregate'
-import { TrasportatoreAggiuntivoInput } from './create-fir.command'
+import { DatiViaggioInput, TrasportatoreAggiuntivoInput } from './create-fir.command'
 
 export interface ModificaFIRCommand {
   firId: string
@@ -35,4 +35,9 @@ export interface ModificaFIRCommand {
   tipoTrattaPrincipale: TipoTratta
   trasportatoriAggiuntivi?: TrasportatoreAggiuntivoInput[]
   annotazioni?: string | null
+  /**
+   * Dati di viaggio (FIR in viaggio, P2). Assente = si conservano; presente = sostituisce (un campo
+   * vuoto lo svuota).
+   */
+  datiViaggio?: DatiViaggioInput
 }

@@ -14,6 +14,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ForbiddenException,
   ParseUUIDPipe,
@@ -28,13 +29,23 @@ import {
   ApiParam,
   ApiPropertyOptional,
 } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsUUID, Max, Min, ValidateIf } from 'class-validator'
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ModificaFIRDto } from './dtos/modifica-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
 import { PaginatedFIRResponseDto } from './dtos/paginated-fir-response.dto'
 import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use-case'
+import { datiViaggioDaDto } from './dtos/dati-viaggio-da-dto'
 import { ModificaFIRUseCase } from '../../application/fir/use-cases/modifica-fir.use-case'
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { PresaInCaricoFIRUseCase } from '../../application/fir/use-cases/presa-in-carico-fir.use-case'
@@ -59,9 +70,21 @@ import { comeHttpPese } from '../pese/errori-http'
 import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { rispostaModuloNonAttivo } from '../../core/context/modulo-non-attivo-errore'
+import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { MaxDecimali } from '../../core/validators/max-decimali'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 import { FirNonTrovatoError } from '../../core/domain/errors'
+import {
+  AMMESSE_EMISSIONE,
+  AMMESSE_PRESA_IN_CARICO,
+  AVVISO_FIRMA_RENTRI_DA_COMPLETARE,
+  EsitoFirmaPartenzaDopoAzione,
+  esitoProposta,
+  FirmaPartenzaRentriUseCase,
+} from '../../application/rentri/firma-partenza-rentri.use-case'
+import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
+import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
@@ -77,7 +100,17 @@ const MESSAGGIO_RUOLO_NON_AMMESSO =
 // client (Task 4, pipeline P3): il frontend non costruisce firme, chiede al
 // backend di firmare e riceve l'esito. Emetti/PresaInCarico non richiedono
 // più alcun body; ConfermaConsegna richiede solo il peso effettivo rilevato.
-export class EmettiFIRDto {}
+export class EmettiFIRDto {
+  // FIR in viaggio P3: dopo l'emissione, se il FIR e' legato a RENTRI, propone la firma di partenza. Opt-in:
+  // l'emissione in serie e la lista non lo mandano (la firma attende fino a 20 s la conferma sul telefono).
+  @ApiPropertyOptional({
+    description:
+      'Se true e il FIR e legato a RENTRI, dopo l emissione chiede la firma di partenza. Un suo fallimento non annulla l emissione.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  firmaRentri?: boolean
+}
 
 export class PresaInCaricoFIRDto {}
 
@@ -131,7 +164,8 @@ export class FIRControllerV2 {
     private readonly enforcement: SubscriptionEnforcementService,
     private readonly membership: RuoloEffettivoService,
     private readonly modificaFIRUseCase: ModificaFIRUseCase,
-    private readonly collegamentiAccesso: CollegamentiAccessoService
+    private readonly collegamentiAccesso: CollegamentiAccessoService,
+    private readonly firmaPartenza: FirmaPartenzaRentriUseCase
   ) {}
 
   @Post()
@@ -171,7 +205,9 @@ export class FIRControllerV2 {
       dto.trasportatoriAggiuntivi ?? [],
       dto.annotazioni,
       dto.produttoreSedeId,
-      dto.destinatarioSedeId
+      dto.destinatarioSedeId,
+      undefined,
+      datiViaggioDaDto(dto)
     )
 
     const result = await this.createFIRUseCase.execute(command)
@@ -236,6 +272,7 @@ export class FIRControllerV2 {
       tipoTrattaPrincipale: dto.tipoTrattaPrincipale,
       trasportatoriAggiuntivi: dto.trasportatoriAggiuntivi ?? [],
       annotazioni: dto.annotazioni,
+      datiViaggio: datiViaggioDaDto(dto),
     })
 
     if (result.isFailure) {
@@ -343,7 +380,7 @@ export class FIRControllerV2 {
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async emetti(
     @Param('id') id: string,
-    @Body() _dto: EmettiFIRDto,
+    @Body() dto: EmettiFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
     // La firma del produttore è prodotta dal sottosistema crittografico
@@ -363,7 +400,41 @@ export class FIRControllerV2 {
       )
     }
 
-    return FIRResponseDto.fromDomain(result.value)
+    // FIR in viaggio P3: l'emissione e' compiuta. La firma di partenza su RENTRI e' una proposta in piu':
+    // qualunque suo esito (anche un'eccezione) NON annulla l'emissione, diventa un avviso nella risposta.
+    if (dto?.firmaRentri !== true) {
+      return FIRResponseDto.fromDomain(result.value)
+    }
+    // La richiesta di firma e' una scrittura sull'ente: serve il ruolo EFFETTIVO nell'azienda del FIR (un
+    // consulente solo VIEWER nel cliente non la fa). L'emissione resta, e l'avviso lo dice.
+    let firmaRentri: EsitoFirmaPartenzaDopoAzione
+    try {
+      await richiediRuoloEffettivo(this.membership, user, result.value.tenantId ?? '')
+      firmaRentri = await this.firmaPartenza.dopoAzioneLocale({
+        firId: id,
+        tenantId: result.value.tenantId ?? '',
+        utenteId: user.id,
+        ammesse: AMMESSE_EMISSIONE,
+      })
+    } catch (error) {
+      firmaRentri =
+        error instanceof ForbiddenException
+          ? {
+              stato: 'DA_COMPLETARE',
+              codice: 'RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE',
+              avviso: `${AVVISO_FIRMA_RENTRI_DA_COMPLETARE}: il tuo ruolo nell'azienda selezionata non consente di richiederla.`,
+            }
+          : { stato: 'DA_COMPLETARE', avviso: AVVISO_FIRMA_RENTRI_DA_COMPLETARE }
+    }
+    if (firmaRentri.stato === 'NON_APPLICABILE') {
+      return FIRResponseDto.fromDomain(result.value)
+    }
+    // La firma completata ha cambiato lo stato su un'altra istanza: si rilegge (ripiego sull'istanza locale).
+    const fir =
+      firmaRentri.stato === 'COMPLETATA'
+        ? ((await this.firmaPartenza.rileggiFir(id)) ?? result.value)
+        : result.value
+    return { ...FIRResponseDto.fromDomain(fir), firmaRentri }
   }
 
   @Post(':id/presa-in-carico')
@@ -388,6 +459,30 @@ export class FIRControllerV2 {
   ): Promise<FIRResponseDto> {
     // La firma del trasportatore è prodotta dal sottosistema crittografico
     // dentro lo use-case (Task 4).
+    // FIR in viaggio P3: su un FIR legato a RENTRI la presa in carico locale e' vietata (la firma del
+    // trasportatore la riceve l'ente): l'azione e' la firma di partenza. Per un FIR non legato (flusso
+    // cartaceo) nulla cambia.
+    const tenantRentri = await this.firmaPartenza.tenantSeLegatoRentri(id)
+    if (tenantRentri) {
+      await richiediRuoloEffettivo(this.membership, user, tenantRentri)
+      let esito
+      try {
+        esito = await this.firmaPartenza.execute({
+          firId: id,
+          tenantId: tenantRentri,
+          utenteId: user.id,
+          ammesse: AMMESSE_PRESA_IN_CARICO,
+        })
+      } catch (error) {
+        throw this.mappaErroreFirmaPartenza(error)
+      }
+      const fir = await this.firmaPartenza.rileggiFir(id)
+      if (!fir) {
+        throw new NotFoundException(`FIR non trovato: ${id}`)
+      }
+      return { ...FIRResponseDto.fromDomain(fir), firmaRentri: esitoProposta(esito.firma) }
+    }
+
     const command = new PresaInCaricoFIRCommand(id, user.id, user.email)
 
     const result = await this.presaInCaricoFIRUseCase.execute(command)
@@ -501,5 +596,36 @@ export class FIRControllerV2 {
     }
 
     return FIRResponseDto.fromDomain(result.value)
+  }
+
+  /**
+   * Errori della firma di partenza su un FIR legato (presa in carico): conflitti con `codice` stabile, rifiuto
+   * dell'ente tradotto. Gli altri errori seguono il filtro globale.
+   */
+  private mappaErroreFirmaPartenza(error: unknown): unknown {
+    if (!(error instanceof DomainException) || error.code !== 'BUSINESS_RULE_VIOLATION') {
+      return error
+    }
+    const rule = error.metadata?.rule as string | undefined
+    if (rule === 'MODULO_NON_ATTIVO') {
+      return new ForbiddenException(rispostaModuloNonAttivo(['rentri']))
+    }
+    if (
+      rule === 'FIRMA_PARTENZA_NON_DISPONIBILE' ||
+      rule === 'SESSIONE_FIRMA_IN_CORSO' ||
+      rule === 'SESSIONE_FIRMA_NON_ATTIVA'
+    ) {
+      return new ConflictException({
+        statusCode: 409,
+        codice: rule,
+        message: error.metadata?.details ?? error.message,
+      })
+    }
+    if (rule === 'FIRMA_RENTRI_RIFIUTATA') {
+      return new BadRequestException(
+        traduciErroreRentri({ errorCode: rule, errorMessage: error.message }).messaggio
+      )
+    }
+    return error
   }
 }

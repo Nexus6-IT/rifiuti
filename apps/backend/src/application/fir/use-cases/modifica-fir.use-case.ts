@@ -23,6 +23,8 @@ import {
   MetodoLocaleNonConsentitoSuFirLegatoError,
 } from '../../../core/domain/errors'
 import { ModificaFIRCommand } from '../commands/modifica-fir.command'
+import { IDatiViaggioFirRepository } from '../../rentri/dati-viaggio-fir.port'
+import { colonneDatiViaggio, haDatiViaggio, targaAutomezzoDa } from '../dati-viaggio-input'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { verificaCerPerFormulario } from '../verifica-cer-formulario'
 import {
@@ -39,7 +41,9 @@ export class ModificaFIRUseCase {
     private readonly produttoreRepository: ProduttoreRepository,
     private readonly trasportatoreRepository: TrasportatoreRepository,
     private readonly destinatarioRepository: DestinatarioRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    /** FIR in viaggio P2: dati di quantita' e trasporto (facoltativo: le spec e i chiamanti vecchi non lo passano). */
+    private readonly datiViaggioRepository?: IDatiViaggioFirRepository
   ) {}
 
   async execute(command: ModificaFIRCommand): Promise<Result<FIR>> {
@@ -89,6 +93,13 @@ export class ModificaFIRUseCase {
       if (!t) return Result.fail<FIR>(`Trasportatore not found: ${command.trasportatoreId}`)
       trasportatore = snapshotTrasportatore(t)
       partiRisnapshottate.push('trasportatore')
+    }
+
+    // FIR in viaggio P2: la targa dell'automezzo vive nello snapshot del trasportatore. `undefined` = non
+    // toccare; stringa vuota = svuota (il FIR non ha ancora una targa fino alla presa in carico).
+    const targa = targaAutomezzoDa(command.datiViaggio)
+    if (targa !== undefined) {
+      trasportatore = { ...trasportatore, targaVeicolo: targa ?? undefined }
     }
 
     let destinatario: ParteFIR
@@ -167,8 +178,12 @@ export class ModificaFIRUseCase {
       throw error
     }
 
-    // Nessun cambiamento: niente scrittura, niente versione, niente audit (D9).
-    if (campiModificati.length === 0) return Result.ok<FIR>(fir)
+    // Nessun cambiamento dell'aggregate: niente scrittura, niente versione, niente audit (D9). I dati di
+    // viaggio (colonne dedicate) si salvano comunque: non fanno parte dell'aggregate.
+    if (campiModificati.length === 0) {
+      await this.salvaDatiViaggio(fir, command)
+      return Result.ok<FIR>(fir)
+    }
 
     await this.firRepository.salvaModificaBozza(fir, command.versione, {
       userId: command.userId,
@@ -176,6 +191,7 @@ export class ModificaFIRUseCase {
       // Solo le parti il cui snapshot e' stato riletto E che risultano cambiate.
       partiRisnapshottate: partiRisnapshottate.filter(p => campiModificati.includes(p)),
     })
+    await this.salvaDatiViaggio(fir, command)
     return Result.ok<FIR>(fir)
   }
 
@@ -207,5 +223,34 @@ export class ModificaFIRUseCase {
     }
     const ruolo = await leggi(sedeDto)
     return ruolo ? { ruolo } : null
+  }
+
+  /** Dati di viaggio della tratta principale (FIR in viaggio P2): `undefined` nel comando = si conservano. */
+  private async salvaDatiViaggio(fir: FIR, command: ModificaFIRCommand): Promise<void> {
+    if (!this.datiViaggioRepository || !haDatiViaggio(command.datiViaggio)) return
+    const colonne = colonneDatiViaggio(command.datiViaggio)
+    await this.datiViaggioRepository.salvaDatiPartenza(command.tenantId, fir.id, colonne)
+    const prima = fir.datiViaggio
+    fir.impostaDatiViaggio({
+      verificatoInPartenza:
+        colonne.verificatoInPartenza !== undefined
+          ? colonne.verificatoInPartenza
+          : (prima?.verificatoInPartenza ?? null),
+      rinfusa: colonne.rinfusa !== undefined ? colonne.rinfusa : (prima?.rinfusa ?? null),
+      conducenteNome:
+        colonne.conducenteNome !== undefined
+          ? colonne.conducenteNome
+          : (prima?.conducenteNome ?? null),
+      conducenteCognome:
+        colonne.conducenteCognome !== undefined
+          ? colonne.conducenteCognome
+          : (prima?.conducenteCognome ?? null),
+      targaRimorchio:
+        colonne.targaRimorchio !== undefined
+          ? colonne.targaRimorchio
+          : (prima?.targaRimorchio ?? null),
+      percorso: colonne.percorso !== undefined ? colonne.percorso : (prima?.percorso ?? null),
+      dichiarato: prima?.dichiarato ?? null,
+    })
   }
 }

@@ -4,6 +4,9 @@ import {
   ForbiddenException,
   HttpException,
   NotFoundException,
+  PayloadTooLargeException,
+  UnprocessableEntityException,
+  UnsupportedMediaTypeException,
 } from '@nestjs/common'
 import { DomainError } from '../../core/domain/errors'
 import {
@@ -11,8 +14,20 @@ import {
   AutistaDuplicatoError,
   AutistaNonCollegatoError,
   AutistaNonTrovatoError,
+  EventoCampoDiAltroUtenteError,
+  EventoCampoNonTrovatoError,
+  FotoCampoGiaUsataError,
+  FotoCampoHashNonCorrispondenteError,
+  FotoCampoLimiteEventoError,
+  FotoCampoNonTrovataError,
+  FotoCampoNonValidaError,
+  FotoCampoTipoNonAmmessoError,
+  FotoCampoTroppoGrandeError,
 } from '../../application/campo/errori-campo'
-import { RitiroDatiNonValidiError } from '../../application/ritiri/errori-ritiri'
+import {
+  RitiroDatiNonValidiError,
+  RitiroNonTrovatoError,
+} from '../../application/ritiri/errori-ritiri'
 
 /** Errori di dominio dell'app campo tradotti in HTTP, con messaggi senza id. */
 export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
@@ -20,7 +35,39 @@ export async function comeHttpCampo<R>(fn: () => Promise<R>): Promise<R> {
     return await fn()
   } catch (err) {
     if (err instanceof HttpException) throw err
-    if (err instanceof AutistaNonTrovatoError) throw new NotFoundException(err.message)
+    if (
+      err instanceof AutistaNonTrovatoError ||
+      err instanceof RitiroNonTrovatoError ||
+      err instanceof EventoCampoNonTrovatoError ||
+      err instanceof FotoCampoNonTrovataError
+    ) {
+      throw new NotFoundException(err.message)
+    }
+    if (err instanceof FotoCampoTroppoGrandeError) {
+      throw new PayloadTooLargeException({ message: err.message, error: err.code })
+    }
+    if (err instanceof FotoCampoTipoNonAmmessoError) {
+      throw new UnsupportedMediaTypeException({ message: err.message, error: err.code })
+    }
+    if (
+      err instanceof FotoCampoHashNonCorrispondenteError ||
+      err instanceof FotoCampoLimiteEventoError
+    ) {
+      throw new UnprocessableEntityException({ message: err.message, error: err.code })
+    }
+    if (err instanceof FotoCampoGiaUsataError) {
+      throw new ConflictException({ message: err.message, error: err.code })
+    }
+    if (err instanceof FotoCampoNonValidaError) {
+      throw new BadRequestException({
+        message: err.message,
+        error: 'CAMPO_DATI_NON_VALIDI',
+        details: { messaggi: err.messaggi },
+      })
+    }
+    if (err instanceof EventoCampoDiAltroUtenteError) {
+      throw new ConflictException({ message: err.message, error: err.code })
+    }
     if (err instanceof AutistaNonCollegatoError) {
       throw new ForbiddenException({ message: err.message, error: err.code })
     }

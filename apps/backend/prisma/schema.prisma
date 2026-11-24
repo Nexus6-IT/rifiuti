@@ -134,7 +134,10 @@ model Tenant {
   strumentiPesa         StrumentoPesa[]
   automezzi             Automezzo[]
   autisti               Autista[]
+  eventiCampo           EventoCampo[]
+  allegatiCampo         AllegatoCampo[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
+  eventiFirRentri       FirEventoRentri[]
   accessiPesa           AccessoPesa[]
   pesate                Pesata[]
   rettifichePeso        RettificaPeso[]
@@ -287,7 +290,10 @@ model User {
   recordedMovements       WasteMovement[]     @relation("RecordedMovements")
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
+  eventiCampo             EventoCampo[]
+  allegatiCampo           AllegatoCampo[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
+  eventiFirRentri         FirEventoRentri[]
 
   @@unique([tenantId, fiscalCode])
   @@unique([id, tenantId], map: "users_id_tenant_id_key")
@@ -467,6 +473,18 @@ model FIR {
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
 
+  /// FIR in viaggio P2: campi di `QuantitaRifiutoModel` e dati di trasporto della tratta PRINCIPALE
+  /// (il trasportatore principale e' inline su questo modello; inizio trasporto = `transportDate`,
+  /// targa = `carrierVehiclePlate`). Tutti nullable e fuori dall'hash di integrita'.
+  verificatoInPartenza Boolean? @map("verificato_in_partenza")
+  rinfusa              Boolean?
+  conducenteNome       String?  @map("conducente_nome") @db.VarChar(50)
+  conducenteCognome    String?  @map("conducente_cognome") @db.VarChar(50)
+  targaRimorchio       String?  @map("targa_rimorchio") @db.VarChar(10)
+  percorso             String?  @db.VarChar(250)
+  /// Copia SEPARATA di quantita' e targa accettate dall'ente (JSON); le colonne firmate non si riscrivono dopo l'emissione.
+  rentriDichiarato     Json?    @map("rentri_dichiarato")
+
   rentriSyncStatus        RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
   // DEPRECATO: nonostante il nome, in pratica avrebbe dovuto contenere il
   // transazione_id della trasmissione (identificativo tecnico della singola
@@ -566,6 +584,7 @@ model FIR {
   rentriSyncLogs RENTRISyncLog[]
   allegatiRentri FIRAllegatoRentri[]
   sessioniFirmaRentri FirSessioneFirmaRentri[]
+  eventiRentri        FirEventoRentri[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
@@ -792,6 +811,13 @@ model FIRTransporter {
   // Mezzo/identificativo: targa (terrestre), numero treno o nome nave.
   mezzo             String?   @map("mezzo") @db.VarChar(100)
   dataPresaInCarico DateTime? @map("data_presa_in_carico")
+
+  // FIR in viaggio P2: dati di trasporto della tratta (conducente obbligatorio per il terrestre).
+  conducenteNome         String?   @map("conducente_nome") @db.VarChar(50)
+  conducenteCognome      String?   @map("conducente_cognome") @db.VarChar(50)
+  targaRimorchio         String?   @map("targa_rimorchio") @db.VarChar(10)
+  percorso               String?   @db.VarChar(250)
+  dataOraInizioTrasporto DateTime? @map("data_ora_inizio_trasporto") @db.Timestamptz(3)
 
   fir FIR @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
@@ -2870,6 +2896,7 @@ model Autista {
   trasportatore Trasportatore? @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_trasportatore_fkey")
   utente        User?          @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_user_fkey")
   ritiri        Ritiro[]
+  eventiCampo   EventoCampo[]
 
   @@unique([id, tenantId], map: "autisti_id_tenant_id_key")
   @@unique([tenantId, codiceFiscale], map: "autisti_tenant_codice_fiscale_key")
@@ -2903,6 +2930,13 @@ model Automezzo {
   accessi       AccessoPesa[]
   pesate        Pesata[]       @relation("PesateAutomezzo")
   ritiri        Ritiro[]
+
+  /// Fase 3 (I4): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
+  /// nella migration `20261122110000_automezzi_provenienza_import`; unico parziale solo SQL).
+  importSource  String?      @map("import_source") @db.VarChar(30)
+  legacyKey     String?      @map("legacy_key") @db.VarChar(200)
+  lottoImportId String?      @map("lotto_import_id") @db.Uuid
+  lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "automezzi_lotto_import_fkey")
 
   @@unique([id, tenantId], map: "automezzi_id_tenant_id_key")
   @@index([tenantId], map: "automezzi_tenant_id_idx")
@@ -4813,6 +4847,71 @@ enum AmbitoModelloStampa {
 /// genera la bozza di FIR (`firs.ritiro_id`). Mai cancellato (`ruoli-db.sql`): si annulla con motivo.
 /// Coerenza sede-ditta controllata nel servizio, come per il FIR. CHECK, trigger e indici parziali
 /// sono solo in SQL (migration `20261110100000_ritiri_e_modelli`).
+/// Evento dal campo (app campo, P4): un esito registrato dall'autista sul telefono. APPEND-ONLY
+/// (trigger anche per il proprietario; ai ruoli applicativi solo SELECT e INSERT). `eventoUuid` e'
+/// generato dal telefono ed e' la chiave di idempotenza. L'esito si decide prima dell'INSERT.
+/// CHECK, trigger e privilegi solo in migration (`20261123110000_eventi_campo`).
+model EventoCampo {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  eventoUuid      String           @map("evento_uuid") @db.Uuid
+  ritiroId        String           @map("ritiro_id") @db.Uuid
+  autistaId       String           @map("autista_id") @db.Uuid
+  utenteId        String           @map("utente_id") @db.Uuid
+  tipo            String           @db.VarChar(30)
+  dati            Json             @default("{}")
+  versioneVista   Int              @map("versione_vista")
+  /// Orologio del telefono: mai usato come data legale.
+  rilevatoIl      DateTime         @map("rilevato_il") @db.Timestamptz(3)
+  /// Ora del server.
+  ricevutoIl      DateTime         @default(now()) @map("ricevuto_il") @db.Timestamptz(3)
+  esito           EsitoEventoCampo
+  motivoConflitto String?          @map("motivo_conflitto") @db.VarChar(40)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_ritiro_fkey")
+  autista Autista @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_autista_fkey")
+  utente  User    @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "eventi_campo_utente_fkey")
+  allegati AllegatoCampo[]
+
+  @@unique([id, tenantId], map: "eventi_campo_id_tenant_id_key")
+  @@unique([tenantId, eventoUuid], map: "eventi_campo_evento_uuid_key")
+  @@index([tenantId, esito, ricevutoIl(sort: Desc)], map: "eventi_campo_esito_idx")
+  @@index([tenantId, ritiroId, ricevutoIl], map: "eventi_campo_ritiro_idx")
+  @@map("eventi_campo")
+}
+
+/// Foto scattate dall'autista per un evento dal campo (app campo, P5). Append-only: i byte stanno nel
+/// database (come `AllegatoPesa`), con impronta SHA-256 verificata dal server. `fotoUuid` e' generato dal
+/// telefono (idempotenza). Mai nei log.
+model AllegatoCampo {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  fotoUuid       String   @map("foto_uuid") @db.Uuid
+  eventoId       String   @map("evento_id") @db.Uuid
+  utenteId       String   @map("utente_id") @db.Uuid
+  mimeType       String   @map("mime_type") @db.VarChar(20)
+  dimensioneByte Int      @map("dimensione_byte")
+  sha256         String   @db.VarChar(64)
+  contenuto      Bytes
+  ricevutoIl     DateTime @default(now()) @map("ricevuto_il") @db.Timestamptz(3)
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evento EventoCampo @relation(fields: [eventoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "allegati_campo_evento_fkey")
+  utente User        @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "allegati_campo_utente_fkey")
+
+  @@unique([tenantId, fotoUuid], map: "allegati_campo_foto_uuid_key")
+  @@index([tenantId, eventoId], map: "allegati_campo_evento_idx")
+  @@map("allegati_campo")
+}
+
+enum EsitoEventoCampo {
+  APPLICATO
+  DA_RICONCILIARE
+
+  @@map("esito_evento_campo")
+}
+
 model Ritiro {
   id                  String               @id(map: "ritiri_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String               @map("tenant_id") @db.Uuid
@@ -4863,6 +4962,7 @@ model Ritiro {
   automezzo    Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
   autista      Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
   firs         FIR[]
+  eventiCampo  EventoCampo[]
 
   @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
   @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")
@@ -5126,6 +5226,7 @@ model LottoImport {
   produttoriImportati      Produttore[]
   trasportatoriImportati   Trasportatore[]
   destinatariImportati     Destinatario[]
+  automezziImportati       Automezzo[]
 
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
@@ -5174,4 +5275,38 @@ model FirSessioneFirmaRentri {
   @@unique([id, tenantId], map: "fir_sessioni_firma_rentri_id_tenant_id_key")
   @@index([tenantId, firId, createdAt], map: "fir_sessioni_firma_rentri_fir_idx")
   @@map("fir_sessioni_firma_rentri")
+}
+
+enum EsitoEventoRentri {
+  INVIATA
+  ACCETTATA
+  RIFIUTATA
+  INCERTA
+
+  @@map("esito_evento_rentri")
+}
+
+/// Storico delle operazioni del viaggio inviate all'ente (FIR in viaggio P2): una riga per operazione, scritta a
+/// esito noto. SOLO INSERIMENTO (`v_solo_inserimento` in `ruoli-db.sql`). `payload` = corpo di dominio inviato,
+/// senza dati di firma, token ne' certificati.
+model FirEventoRentri {
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                 @map("tenant_id") @db.Uuid
+  firId               String                 @map("fir_id") @db.Uuid
+  operazione          String                 @db.VarChar(60)
+  payload             Json?
+  transazioneId       String?                @map("transazione_id") @db.VarChar(100)
+  esito               EsitoEventoRentri
+  dettaglioEnte       String?                @map("dettaglio_ente")
+  statoFormularioDopo RentriStatoFormulario? @map("stato_formulario_dopo")
+  utenteId            String?                @map("utente_id") @db.Uuid
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fir    FIR    @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "fir_eventi_rentri_fir_fkey")
+  utente User?  @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "fir_eventi_rentri_utente_fkey")
+
+  @@unique([id, tenantId], map: "fir_eventi_rentri_id_tenant_id_key")
+  @@index([tenantId, firId, createdAt], map: "fir_eventi_rentri_fir_idx")
+  @@map("fir_eventi_rentri")
 }

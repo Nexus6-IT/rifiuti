@@ -16,6 +16,21 @@ export interface TrasportatoreAggiuntivoInput {
   ordine: number
 }
 
+/**
+ * Dati di viaggio noti alla creazione (FIR in viaggio, P2): `rinfusa` e verifica in partenza della
+ * quantita', targa dell'automezzo, conducente, rimorchio e percorso. Tutti facoltativi: se completi il
+ * formulario nasce su RENTRI con quantita' e trasporto, altrimenti li ricevera' dai dialog.
+ */
+export interface DatiViaggioInput {
+  rinfusa?: boolean
+  verificatoInPartenza?: boolean
+  targaAutomezzo?: string
+  conducenteNome?: string
+  conducenteCognome?: string
+  targaRimorchio?: string
+  percorso?: string
+}
+
 export class CreateFIRCommand {
   constructor(
     public readonly produttoreId: string,
@@ -50,6 +65,8 @@ export class CreateFIRCommand {
     public readonly produttoreSedeId?: string,
     public readonly destinatarioSedeId?: string,
     /** 4.7: ritiro programmato di origine (campo C9). */
-    public readonly ritiroId?: string
+    public readonly ritiroId?: string,
+    /** FIR in viaggio P2: dati di quantita' e trasporto noti alla creazione. */
+    public readonly datiViaggio?: DatiViaggioInput
   ) {}
 }

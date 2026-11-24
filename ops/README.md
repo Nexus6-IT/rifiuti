@@ -382,6 +382,14 @@ proprietario superuser imposta nella transazione `SET LOCAL app.consenti_cancell
 da `wasteflow_app` e `wasteflow_sistema` il flag non ha effetto. Nei test: `cancellaAziendeDiProva`.
 Rollback: `DROP TRIGGER tenants_registro_protetto ON tenants; DROP FUNCTION tenants_registro_protetto_fn();`.
 
+**Provenienza di import sugli automezzi (I4, migration `20261122110000_automezzi_provenienza_import`).**
+Additiva: tre colonne NULL (`import_source`, `legacy_key`, `lotto_import_id`), CHECK, unico parziale, FK
+composta verso `lotti_import` e trigger di immutabilita' su `automezzi` (come le altre sette tabelle).
+Nessun dato toccato. Rollback (solo se nessun automezzo e' stato importato): `DROP TRIGGER
+automezzi_provenienza_immutabile ON automezzi; DROP INDEX automezzi_tenant_import_legacy_key; ALTER TABLE
+automezzi DROP CONSTRAINT automezzi_provenienza_check, DROP CONSTRAINT automezzi_lotto_import_fkey, DROP
+COLUMN import_source, DROP COLUMN legacy_key, DROP COLUMN lotto_import_id;`.
+
 ### 4.4c mappature dell'export contabile e indice degli scostamenti: rilascio e rollback
 
 Migration `20261107100000_fatturazione_mappature`, additiva: una tabella nuova e vuota

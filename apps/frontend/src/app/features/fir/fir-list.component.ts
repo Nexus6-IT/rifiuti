@@ -19,6 +19,7 @@ import { Observable } from 'rxjs'
 import { shareReplay } from 'rxjs/operators'
 import { FirService, CreateFIRDto, ModificaFIRDto, TipoTratta } from './fir.service'
 import { InputTextareaModule } from 'primeng/inputtextarea'
+import { CheckboxModule } from 'primeng/checkbox'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { TONO_STATO_FIR, TonoStato } from '../../shared/models/stati-fir'
 import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
@@ -44,6 +45,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
+import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { AuthService } from '../../core/services/auth.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ConsegnaDaAccessoComponent, SceltaConsegna } from './consegna-da-accesso.component'
@@ -80,6 +82,7 @@ interface OpzioneSede {
     CardModule,
     TooltipModule,
     InputTextareaModule,
+    CheckboxModule,
     AnagraficaFormDialogComponent,
     CerSelectComponent,
     RENTRISyncBadgeComponent,
@@ -838,7 +841,7 @@ interface OpzioneSede {
                   />
                 </div>
               </div>
-              <div class="col-12 sm:col-6">
+              <div class="col-12 sm:col-6" *ngIf="!newFIR.rifiuto.rinfusa">
                 <div class="field">
                   <label for="new-colli">N° colli</label>
                   <p-inputNumber
@@ -853,6 +856,29 @@ interface OpzioneSede {
                     styleClass="w-full"
                     ariaLabel="Numero colli"
                   />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field field--checks">
+                  <label class="check-row" for="new-rinfusa">
+                    <p-checkbox
+                      inputId="new-rinfusa"
+                      [binary]="true"
+                      [(ngModel)]="newFIR.rifiuto.rinfusa"
+                      (onChange)="onRinfusaCambiata()"
+                      data-testid="fir-rinfusa-checkbox"
+                    />
+                    <span>Alla rinfusa (senza colli)</span>
+                  </label>
+                  <label class="check-row" for="new-verificato">
+                    <p-checkbox
+                      inputId="new-verificato"
+                      [binary]="true"
+                      [(ngModel)]="newFIR.rifiuto.verificatoInPartenza"
+                      data-testid="fir-verificato-checkbox"
+                    />
+                    <span>Quantità verificata in partenza</span>
+                  </label>
                 </div>
               </div>
 
@@ -904,6 +930,106 @@ interface OpzioneSede {
           </section>
 
           <hr class="fir-divider" aria-hidden="true" />
+
+          <!-- ===== Trasporto terrestre (FIR in viaggio, P2): facoltativo alla creazione ===== -->
+          <section
+            *ngIf="newFIR.tipoTrattaPrincipale === 'TERRESTRE' && newFIR.datiTrasporto"
+            class="fir-section"
+            aria-labelledby="fir-sec-trasporto"
+            data-testid="fir-sezione-trasporto"
+          >
+            <h3 id="fir-sec-trasporto" class="fir-section__title">Trasporto</h3>
+            <p class="fir-section__hint">
+              Se indichi conducente e almeno una targa, il formulario nasce su RENTRI con i dati del
+              trasporto. Altrimenti li inserisci dopo, dal dettaglio del FIR.
+            </p>
+            <div class="grid">
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-targa">Targa automezzo</label>
+                  <input
+                    id="new-targa"
+                    pInputText
+                    class="w-full"
+                    maxlength="10"
+                    [(ngModel)]="newFIR.datiTrasporto.targaAutomezzo"
+                    (blur)="precompilaDaTarga()"
+                    aria-label="Targa dell'automezzo"
+                    data-testid="fir-targa-automezzo"
+                  />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-targa-rimorchio">Targa rimorchio</label>
+                  <input
+                    id="new-targa-rimorchio"
+                    pInputText
+                    class="w-full"
+                    maxlength="10"
+                    [(ngModel)]="newFIR.datiTrasporto.targaRimorchio"
+                    aria-label="Targa del rimorchio"
+                    data-testid="fir-targa-rimorchio"
+                  />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-conducente-nome">Nome del conducente</label>
+                  <input
+                    id="new-conducente-nome"
+                    pInputText
+                    class="w-full"
+                    maxlength="50"
+                    [(ngModel)]="newFIR.datiTrasporto.conducenteNome"
+                    aria-label="Nome del conducente"
+                    data-testid="fir-conducente-nome"
+                  />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-conducente-cognome">Cognome del conducente</label>
+                  <input
+                    id="new-conducente-cognome"
+                    pInputText
+                    class="w-full"
+                    maxlength="50"
+                    [(ngModel)]="newFIR.datiTrasporto.conducenteCognome"
+                    aria-label="Cognome del conducente"
+                    data-testid="fir-conducente-cognome"
+                  />
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="field">
+                  <label for="new-percorso">Percorso (se diverso dal più breve)</label>
+                  <input
+                    id="new-percorso"
+                    pInputText
+                    class="w-full"
+                    maxlength="250"
+                    [(ngModel)]="newFIR.datiTrasporto.percorso"
+                    aria-label="Percorso, se diverso dal più breve"
+                    data-testid="fir-percorso"
+                  />
+                </div>
+              </div>
+            </div>
+            <small
+              *ngIf="firErrors['datiTrasporto']"
+              class="field-error"
+              role="alert"
+              data-testid="fir-trasporto-errore"
+              >{{ firErrors['datiTrasporto'] }}</small
+            >
+          </section>
+
+          <hr
+            *ngIf="newFIR.tipoTrattaPrincipale === 'TERRESTRE' && newFIR.datiTrasporto"
+            class="fir-divider"
+            aria-hidden="true"
+          />
 
           <!-- ===== Sezione 3: Dati aggiuntivi ===== -->
           <section class="fir-section" aria-labelledby="fir-sec-extra">
@@ -1137,6 +1263,25 @@ interface OpzioneSede {
       .req {
         color: var(--color-danger);
         font-weight: var(--font-weight-bold);
+      }
+
+      /* FIR in viaggio P2: caselle di controllo e testo di aiuto della sezione trasporto. */
+      .field--checks {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2, 8px);
+        padding-top: var(--space-5, 24px);
+      }
+      .check-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2, 8px);
+        cursor: pointer;
+      }
+      .fir-section__hint {
+        margin: 0 0 var(--space-3, 12px);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
       }
 
       /* Errore inline per-campo — rosso WCAG AA. */
@@ -1492,7 +1637,10 @@ export class FirListComponent implements OnInit {
       caratteristichePericolo: undefined,
       numeroColli: undefined,
       codiceOperazione: undefined,
+      rinfusa: undefined,
+      verificatoInPartenza: undefined,
     },
+    datiTrasporto: {},
     annotazioni: undefined,
   }
 
@@ -1514,6 +1662,7 @@ export class FirListComponent implements OnInit {
   private lastLoadEvent: any = { first: 0, rows: this.pageSize }
 
   private readonly rentriSyncService = inject(RENTRISyncService)
+  private readonly rentriFirLifecycleService = inject(RentriFirLifecycleService)
   private readonly authService = inject(AuthService)
   /** Pubblico: il template decide se offrire la consegna dal netto di un accesso di pesa. */
   readonly ff = inject(FeatureFlagsService)
@@ -1837,7 +1986,10 @@ export class FirListComponent implements OnInit {
         caratteristichePericolo: undefined,
         numeroColli: undefined,
         codiceOperazione: undefined,
+        rinfusa: undefined,
+        verificatoInPartenza: undefined,
       },
+      datiTrasporto: {},
       annotazioni: undefined,
     }
     this.trasportatoriAggiuntivi = []
@@ -1888,8 +2040,93 @@ export class FirListComponent implements OnInit {
     if (!this.newFIR.tipoTrattaPrincipale) {
       errors['tipoTrattaPrincipale'] = 'Seleziona la modalità di trasporto.'
     }
+    const erroreTrasporto = this.validaDatiTrasporto()
+    if (erroreTrasporto) errors['datiTrasporto'] = erroreTrasporto
     this.firErrors = errors
     return Object.keys(errors).length === 0
+  }
+
+  /**
+   * Dati di trasporto (FIR in viaggio, P2): facoltativi, ma se si indica qualcosa devono essere completi
+   * come chiede l'ente: nome E cognome del conducente e almeno una targa. Messaggio unico, in parole
+   * dell'utente, prima di mandare al backend dati che RENTRI rifiuterebbe.
+   */
+  private validaDatiTrasporto(): string | null {
+    const t = this.newFIR.datiTrasporto
+    if (this.newFIR.tipoTrattaPrincipale !== 'TERRESTRE' || !t) return null
+    const nome = !!t.conducenteNome?.trim()
+    const cognome = !!t.conducenteCognome?.trim()
+    const targa = !!t.targaAutomezzo?.trim() || !!t.targaRimorchio?.trim()
+    const qualcosa = nome || cognome || targa || !!t.percorso?.trim()
+    if (!qualcosa) return null
+    if (!nome || !cognome) return 'Indica nome e cognome del conducente.'
+    if (!targa) return "Indica la targa dell'automezzo o quella del rimorchio."
+    return null
+  }
+
+  /**
+   * Prepara i dati di viaggio per il backend. Con `rinfusa` niente colli. I dati di trasporto: solo per il
+   * trasporto terrestre (gli altri non li modella); alla creazione, se non c'e' nulla, si omettono; in
+   * modifica restano anche vuoti (stringa vuota = svuota la colonna).
+   */
+  private normalizzaDatiViaggioPerInvio(dto: CreateFIRDto, inModifica = false): void {
+    if (dto.rifiuto.rinfusa) dto.rifiuto.numeroColli = undefined
+    const t = this.newFIR.datiTrasporto
+    if (this.newFIR.tipoTrattaPrincipale !== 'TERRESTRE' || !t) {
+      if (inModifica)
+        dto.datiTrasporto = {
+          targaAutomezzo: '',
+          conducenteNome: '',
+          conducenteCognome: '',
+          targaRimorchio: '',
+          percorso: '',
+        }
+      else delete dto.datiTrasporto
+      return
+    }
+    const vuoto = ![
+      t.targaAutomezzo,
+      t.targaRimorchio,
+      t.conducenteNome,
+      t.conducenteCognome,
+      t.percorso,
+    ].some(v => !!v?.trim())
+    if (vuoto && !inModifica) {
+      delete dto.datiTrasporto
+      return
+    }
+    dto.datiTrasporto = {
+      targaAutomezzo: t.targaAutomezzo?.trim() ?? '',
+      conducenteNome: t.conducenteNome?.trim() ?? '',
+      conducenteCognome: t.conducenteCognome?.trim() ?? '',
+      targaRimorchio: t.targaRimorchio?.trim() ?? '',
+      percorso: t.percorso?.trim() ?? '',
+    }
+  }
+
+  /** Con la rinfusa i colli non esistono: il campo sparisce e il valore si azzera. */
+  onRinfusaCambiata(): void {
+    if (this.newFIR.rifiuto.rinfusa) this.newFIR.rifiuto.numeroColli = undefined
+  }
+
+  /**
+   * Precompila conducente e rimorchio dall'ultimo trasporto fatto con quella targa (decisione D3), solo se
+   * i campi sono ancora vuoti: non sovrascrive mai cio' che l'utente ha scritto. Silenzioso se fallisce.
+   */
+  precompilaDaTarga(): void {
+    const t = this.newFIR.datiTrasporto
+    const targa = t?.targaAutomezzo?.trim()
+    if (!t || !targa || t.conducenteNome?.trim() || t.conducenteCognome?.trim()) return
+    this.rentriFirLifecycleService.ultimoTrasporto(targa).subscribe({
+      next: r => {
+        const u = r.trasporto
+        if (!u || t.conducenteNome?.trim() || t.conducenteCognome?.trim()) return
+        t.conducenteNome = u.conducenteNome
+        t.conducenteCognome = u.conducenteCognome
+        if (!t.targaRimorchio?.trim() && u.targaRimorchio) t.targaRimorchio = u.targaRimorchio
+      },
+      error: () => undefined,
+    })
   }
 
   /** Mappa un errore backend (400/409) al campo pertinente del form FIR. */
@@ -1905,6 +2142,8 @@ export class FirListComponent implements OnInit {
       this.firErrors = { ...this.firErrors, trasportatoreId: message }
     } else if (m.includes('destinatario')) {
       this.firErrors = { ...this.firErrors, destinatarioId: message }
+    } else if (m.includes('targa') || m.includes('conducente') || m.includes('percorso')) {
+      this.firErrors = { ...this.firErrors, datiTrasporto: message }
     }
   }
 
@@ -2043,6 +2282,7 @@ export class FirListComponent implements OnInit {
     this.applicaSedeSoloSeCambiata(dto)
     if (aggiuntivi.length > 0) dto.trasportatoriAggiuntivi = aggiuntivi
     else delete dto.trasportatoriAggiuntivi
+    this.normalizzaDatiViaggioPerInvio(dto, true)
 
     this.saving = true
     this.firService.modificaFIR(target.id, dto).subscribe({
@@ -2141,11 +2381,12 @@ export class FirListComponent implements OnInit {
         ordine: i + 1,
       }))
 
-    const dto: CreateFIRDto = { ...this.newFIR }
+    const dto: CreateFIRDto = { ...this.newFIR, rifiuto: { ...this.newFIR.rifiuto } }
     this.applicaSedeSoloSeCambiata(dto)
     if (aggiuntivi.length > 0) {
       dto.trasportatoriAggiuntivi = aggiuntivi
     }
+    this.normalizzaDatiViaggioPerInvio(dto)
 
     this.saving = true
     this.firService.createFIR(dto).subscribe({

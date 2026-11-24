@@ -6,6 +6,8 @@ import { DomainException } from '../../domain/shared/domain-exception'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
+import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
+import { registraEventoFirRentri } from './registra-evento-fir-rentri'
 import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
 
 export type OperazioneRollbackOReset = 'RollbackFirma' | 'Reset'
@@ -44,8 +46,8 @@ export interface EsitoRollbackOReset {
  * 4. Solo dopo l'esito positivo: stato riletto da `/stato` e applicato al FIR, poi la sessione aperta
  *    (se c'e') chiusa ANNULLATA.
  *
- * L'evento di audit e' per ora una riga di log strutturata (utente, operazione, esito, stato dopo):
- * la tabella `fir_eventi_rentri` arriva col pezzo P2 e questo punto la riempira'.
+ * L'evento di audit e' una riga di `fir_eventi_rentri` (utente, operazione, esito, stato dopo), oltre al log
+ * strutturato: scritta a esito noto, e un suo errore non maschera mai l'esito dell'operazione.
  */
 @Injectable()
 export class RollbackEResetFirRentriUseCase {
@@ -54,7 +56,8 @@ export class RollbackEResetFirRentriUseCase {
     private readonly getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly sessioni: ISessioniFirmaRentriRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly eventi: IEventiFirRentriRepository
   ) {
     this.logger.setContext('RollbackEResetFirRentriUseCase')
   }
@@ -105,6 +108,17 @@ export class RollbackEResetFirRentriUseCase {
         : await this.rentriApiClient.rollbackFirma(tenantId, numeroFir)
 
     if (esito.errore) {
+      await registraEventoFirRentri(this.eventi, this.logger, {
+        tenantId,
+        firId,
+        operazione,
+        payload: null,
+        transazioneId: null,
+        esito: 'RIFIUTATA',
+        dettaglioEnte: JSON.stringify(esito.validazione),
+        statoFormularioDopo: null,
+        utenteId: utenteId ?? null,
+      })
       throw DomainException.businessRuleViolation(
         operazione === 'Reset' ? 'RESET_RENTRI_RIFIUTATO' : 'ROLLBACK_FIRMA_RIFIUTATO',
         `L'ente ha rifiutato l'operazione ${operazione} sul formulario ${numeroFir}. ` +
@@ -126,6 +140,18 @@ export class RollbackEResetFirRentriUseCase {
     const statoEnte = await this.rentriApiClient.leggiStato(tenantId, numeroFir)
     fir.applyRentriStato(statoEnte.stato_formulario, correlationId)
     await this.firRepository.save(fir)
+
+    await registraEventoFirRentri(this.eventi, this.logger, {
+      tenantId,
+      firId,
+      operazione,
+      payload: null,
+      transazioneId: null,
+      esito: 'ACCETTATA',
+      dettaglioEnte: null,
+      statoFormularioDopo: statoEnte.stato_formulario,
+      utenteId: utenteId ?? null,
+    })
 
     this.logger.info('Operazione RENTRI di annullamento eseguita', {
       firId,

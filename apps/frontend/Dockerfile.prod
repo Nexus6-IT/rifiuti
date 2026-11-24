@@ -1,5 +1,5 @@
 # ============================================================================
-# Frontend Angular 17 — immagine di produzione (multi-stage, lean)
+# Frontend Angular 17 (+ app campo Angular 21 sotto /campo/) — immagine di produzione (multi-stage, lean)
 # ----------------------------------------------------------------------------
 # Il frontend e' un workspace npm SENZA lockfile proprio: le dipendenze sono
 # gestite alla ROOT del monorepo. Per questo il contesto di build e' la root
@@ -24,12 +24,21 @@ RUN npm ci
 COPY apps/frontend apps/frontend
 RUN npm run build --workspace @wasteflow/frontend
 
+# App campo (PWA autisti, Angular 21): NON e' un workspace npm della radice, ha il suo lock.
+# Stesso Node 20 (Angular 21 richiede >= 20.19; node:20-alpine e' 20.x recente).
+COPY apps/campo/package.json apps/campo/package-lock.json apps/campo/
+RUN cd apps/campo && npm ci
+COPY apps/campo apps/campo
+RUN cd apps/campo && npm run build
+
 # --- Stage 2: runtime -------------------------------------------------------
 FROM nginx:alpine
 
 # Rimuove la pagina di default e copia la SPA compilata
 RUN rm -rf /usr/share/nginx/html/*
 COPY --from=builder /repo/apps/frontend/dist/frontend /usr/share/nginx/html
+# App campo sotto /campo/ (baseHref /campo/, vedi nginx.conf)
+COPY --from=builder /repo/apps/campo/dist/campo/browser /usr/share/nginx/html/campo
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Installa curl per l'healthcheck (lightweight, ~2MB aggiunto)
