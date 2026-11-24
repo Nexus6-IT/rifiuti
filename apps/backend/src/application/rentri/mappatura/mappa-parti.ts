@@ -100,6 +100,11 @@ export interface DatiTrasportatoreParte {
   partitaIVA: string
   /** Numero di iscrizione all'Albo Gestori Ambientali, se presente in anagrafica. */
   numeroIscrizione?: string | null
+  /**
+   * Modalita' di questa tratta. Se manca vale quella del formulario: serve solo ai FIR intermodali,
+   * dove ogni trasportatore ha la sua (terrestre, ferroviaria, marittima).
+   */
+  tipoTrasporto?: TipoTrasporto | null
 }
 
 /** components.schemas.ComuneModel (variante italiana di IndirizzoModel.citta). */

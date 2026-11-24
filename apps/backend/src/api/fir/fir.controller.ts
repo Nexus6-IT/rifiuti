@@ -3,6 +3,7 @@
  * Gestione Formulari Identificazione Rifiuti
  */
 
+import { datiViaggioDaDto } from './dtos/dati-viaggio-da-dto'
 import {
   Controller,
   Post,
@@ -71,7 +72,9 @@ export class FIRController {
       dto.trasportatoriAggiuntivi ?? [],
       undefined,
       dto.produttoreSedeId,
-      dto.destinatarioSedeId
+      dto.destinatarioSedeId,
+      undefined,
+      datiViaggioDaDto(dto)
     )
 
     const result = await this.createFIRUseCase.execute(command)

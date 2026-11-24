@@ -1,5 +1,6 @@
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
+import { EventiFirRentriInMemoria } from './eventi-fir-rentri.in-memoria'
 import { SessioniFirmaRentriInMemoria } from './sessioni-firma-rentri.in-memoria'
 
 /**
@@ -26,6 +27,7 @@ describe('RollbackEResetFirRentriUseCase', () => {
   async function ambiente(azioni: string[] = ['Reset', 'RollbackFirma']) {
     const fir = creaFir()
     const sessioni = new SessioniFirmaRentriInMemoria()
+    const eventi = new EventiFirRentriInMemoria()
     const apply = jest.spyOn(fir, 'applyRentriStato')
     const firRepository = {
       findById: jest.fn().mockResolvedValue(fir),
@@ -53,7 +55,8 @@ describe('RollbackEResetFirRentriUseCase', () => {
       getAzioni as any,
       client as any,
       sessioni,
-      logger
+      logger,
+      eventi
     )
     const sessione = await sessioni.apriInAttesa({
       tenantId: TENANT,
@@ -64,7 +67,7 @@ describe('RollbackEResetFirRentriUseCase', () => {
       digestToSign: 'd',
       scadenza: new Date(Date.now() + 60_000),
     })
-    return { useCase, client, firRepository, getAzioni, sessioni, sessione, apply }
+    return { useCase, client, firRepository, getAzioni, sessioni, sessione, apply, eventi }
   }
 
   const comando = (operazione: 'Reset' | 'RollbackFirma') => ({
@@ -89,6 +92,36 @@ describe('RollbackEResetFirRentriUseCase', () => {
     expect(apply).toHaveBeenCalledWith('FirmaProduttoreTrasportatoreIniziale', undefined)
     expect(firRepository.save).toHaveBeenCalledTimes(1)
     expect(sessioni.righe[0].stato).toBe('ANNULLATA')
+  })
+
+  it('Reset riuscito: evento ACCETTATA nello storico, con utente e stato dopo', async () => {
+    const { useCase, eventi } = await ambiente()
+    await useCase.execute(comando('Reset'))
+    expect(eventi.righe).toHaveLength(1)
+    expect(eventi.righe[0]).toMatchObject({
+      tenantId: TENANT,
+      firId: 'fir-1',
+      operazione: 'Reset',
+      esito: 'ACCETTATA',
+      statoFormularioDopo: 'FirmaProduttoreTrasportatoreIniziale',
+      utenteId: 'u1',
+    })
+  })
+
+  it('rifiuto dell ente: evento RIFIUTATA, errore leggibile', async () => {
+    const { useCase, client, eventi } = await ambiente()
+    client.rollbackFirma.mockResolvedValueOnce({ errore: true, validazione: [{ campo: 'x' }] })
+    await expect(useCase.execute(comando('RollbackFirma'))).rejects.toMatchObject({
+      metadata: { rule: 'ROLLBACK_FIRMA_RIFIUTATO' },
+    })
+    expect(eventi.righe).toHaveLength(1)
+    expect(eventi.righe[0]).toMatchObject({ operazione: 'RollbackFirma', esito: 'RIFIUTATA' })
+  })
+
+  it("operazione non disponibile: nessun evento (non e' partito nulla verso l'ente)", async () => {
+    const { useCase, eventi } = await ambiente(['Accettazione'])
+    await expect(useCase.execute(comando('Reset'))).rejects.toBeDefined()
+    expect(eventi.righe).toHaveLength(0)
   })
 
   it('RollbackFirma: usa rollback-firma e non reset', async () => {

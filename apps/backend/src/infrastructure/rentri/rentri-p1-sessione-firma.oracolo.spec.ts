@@ -7,6 +7,7 @@ import { RentriConfig } from './rentri-config'
 import { GetAzioniDisponibiliUseCase } from '../../application/rentri/get-azioni-disponibili.use-case'
 import { CompletaOperazioneConFirmaUseCase } from '../../application/rentri/completa-operazione-con-firma.use-case'
 import { RollbackEResetFirRentriUseCase } from '../../application/rentri/rollback-e-reset-fir-rentri.use-case'
+import { EventiFirRentriInMemoria } from '../../application/rentri/eventi-fir-rentri.in-memoria'
 import { SessioniFirmaRentriInMemoria } from '../../application/rentri/sessioni-firma-rentri.in-memoria'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -228,7 +229,8 @@ describe('P1 — firma riprendibile, reset e rollback contro la fake RENTRI (in-
       getAzioni,
       client,
       sessioni,
-      creaLogger()
+      creaLogger(),
+      new EventiFirRentriInMemoria()
     )
     return { completa, rollbackReset }
   }

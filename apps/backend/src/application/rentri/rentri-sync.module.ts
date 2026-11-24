@@ -39,7 +39,16 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
 import { ISessioniFirmaRentriRepository } from './sessioni-firma-rentri.port'
+import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
+import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
+import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
+import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
+import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-automezzo.use-case'
+import { DatiViaggioFirRepository } from '../../infrastructure/persistence/dati-viaggio-fir.repository'
+import { EventiFirRentriRepository } from '../../infrastructure/persistence/eventi-fir-rentri.repository'
 import { RollbackEResetFirRentriUseCase } from './rollback-e-reset-fir-rentri.use-case'
+import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
+import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
 import { GestisciSessioneFirmaRentriUseCase } from './gestisci-sessione-firma-rentri.use-case'
 import { SessioniFirmaRentriRepository } from '../../infrastructure/persistence/sessioni-firma-rentri.repository'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -193,6 +202,9 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
   ],
   providers: [
     FIRPrismaRepository,
+    // FIR in viaggio P2: dati di viaggio (colonne dedicate) e storico delle operazioni inviate all'ente.
+    { provide: IDatiViaggioFirRepository, useClass: DatiViaggioFirRepository },
+    { provide: IEventiFirRentriRepository, useClass: EventiFirRentriRepository },
     // Costruisce il corpo di POST /formulari dal FIR: legge le anagrafiche
     // dai registri, l'unita' locale del tenant e risolve il codice comune.
     CostruisciPayloadRentri,
@@ -441,15 +453,124 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         getAzioni: GetAzioniDisponibiliUseCase,
         rentriApiClient: RENTRIApiClient,
         sessioni: ISessioniFirmaRentriRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        eventi: IEventiFirRentriRepository
       ) =>
-        new RollbackEResetFirRentriUseCase(firRepo, getAzioni, rentriApiClient, sessioni, logger),
+        new RollbackEResetFirRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          sessioni,
+          logger,
+          eventi
+        ),
       inject: [
         FIRPrismaRepository,
         GetAzioniDisponibiliUseCase,
         RENTRIApiClient,
         ISessioniFirmaRentriRepository,
         LoggerService,
+        IEventiFirRentriRepository,
+      ],
+    },
+    // FIR in viaggio P3: firme di partenza (rotta dedicata e legame con «Emetti» / «Presa in carico»).
+    {
+      provide: FirmaPartenzaRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        completa: CompletaOperazioneConFirmaUseCase,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService,
+        moduli: ModuliAttiviService
+      ) => new FirmaPartenzaRentriUseCase(firRepo, getAzioni, completa, eventi, logger, moduli),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        CompletaOperazioneConFirmaUseCase,
+        IEventiFirRentriRepository,
+        LoggerService,
+        ModuliAttiviService,
+      ],
+    },
+    // FIR in viaggio P2: quantita' e dati di trasporto (`/quantita`, `/trasporto`) e storico delle operazioni.
+    {
+      provide: InviaDatiViaggioFirRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        datiViaggio: IDatiViaggioFirRepository,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService,
+        sessioni: ISessioniFirmaRentriRepository
+      ) =>
+        new InviaDatiViaggioFirRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          datiViaggio,
+          eventi,
+          logger,
+          sessioni
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        IDatiViaggioFirRepository,
+        IEventiFirRentriRepository,
+        LoggerService,
+        ISessioniFirmaRentriRepository,
+      ],
+    },
+    {
+      provide: TrovaUltimoTrasportoAutomezzoUseCase,
+      useFactory: (datiViaggio: IDatiViaggioFirRepository) =>
+        new TrovaUltimoTrasportoAutomezzoUseCase(datiViaggio),
+      inject: [IDatiViaggioFirRepository],
+    },
+    {
+      provide: ElencaEventiFirRentriUseCase,
+      useFactory: (firRepo: FIRPrismaRepository, eventi: IEventiFirRentriRepository) =>
+        new ElencaEventiFirRentriUseCase(firRepo, eventi),
+      inject: [FIRPrismaRepository, IEventiFirRentriRepository],
+    },
+    // FIR in viaggio P4: annotazione (invio + firma) e ripresa della sua firma.
+    {
+      provide: AnnotazioneRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioni: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completa: CompletaOperazioneConFirmaUseCase,
+        eventi: IEventiFirRentriRepository,
+        logger: LoggerService,
+        sessioni: ISessioniFirmaRentriRepository,
+        moduli: ModuliAttiviService,
+        prisma: PrismaService
+      ) =>
+        new AnnotazioneRentriUseCase(
+          firRepo,
+          getAzioni,
+          rentriApiClient,
+          completa,
+          eventi,
+          logger,
+          sessioni,
+          moduli,
+          prisma
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        IEventiFirRentriRepository,
+        LoggerService,
+        ISessioniFirmaRentriRepository,
+        ModuliAttiviService,
+        PrismaService,
       ],
     },
     {
@@ -458,13 +579,25 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         firRepo: FIRPrismaRepository,
         sessioni: ISessioniFirmaRentriRepository,
         completa: CompletaOperazioneConFirmaUseCase,
-        logger: LoggerService
-      ) => new GestisciSessioneFirmaRentriUseCase(firRepo, sessioni, completa, logger),
+        logger: LoggerService,
+        firmaPartenza: FirmaPartenzaRentriUseCase,
+        annotazione: AnnotazioneRentriUseCase
+      ) =>
+        new GestisciSessioneFirmaRentriUseCase(
+          firRepo,
+          sessioni,
+          completa,
+          logger,
+          firmaPartenza,
+          annotazione
+        ),
       inject: [
         FIRPrismaRepository,
         ISessioniFirmaRentriRepository,
         CompletaOperazioneConFirmaUseCase,
         LoggerService,
+        FirmaPartenzaRentriUseCase,
+        AnnotazioneRentriUseCase,
       ],
     },
     // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione
@@ -609,6 +742,10 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     AnnullaFIRRentriUseCase,
     GestisciAllegatiFIRUseCase,
     ScaricaPdfFirUseCase,
+    // FIR in viaggio P3: «Emetti» e «Presa in carico» (modulo `fir`) propongono la firma di partenza.
+    FirmaPartenzaRentriUseCase,
+    // FIR in viaggio P2: la creazione del FIR salva i dati noti del viaggio (modulo `fir`).
+    IDatiViaggioFirRepository,
     RentriRifornimentoScortaJob,
     RentriScortaRepository,
     ConsumaNumeroVidimatoUseCase,

@@ -118,6 +118,79 @@ describe('FirListComponent — campi RENTRI obbligatori (provenienza, tratta pri
     expect(dto.tipoTrattaPrincipale).toBe('FERROVIARIA')
   })
 
+  describe('dati di viaggio (FIR in viaggio P2)', () => {
+    function pronto(): void {
+      compilaCampiBaseObbligatori()
+      component.newFIR.provenienza = 'SPECIALE'
+      component.newFIR.tipoTrattaPrincipale = 'TERRESTRE'
+    }
+
+    it('terrestre con conducente e targa: datiTrasporto ripulito nel DTO', () => {
+      pronto()
+      component.newFIR.datiTrasporto = {
+        targaAutomezzo: ' AB123CD ',
+        conducenteNome: ' Mario ',
+        conducenteCognome: 'De Rossi',
+        targaRimorchio: '',
+        percorso: '',
+      }
+
+      component.createFIR()
+
+      const dto = firService.createFIR.calls.mostRecent().args[0]
+      expect(dto.datiTrasporto).toEqual({
+        targaAutomezzo: 'AB123CD',
+        conducenteNome: 'Mario',
+        conducenteCognome: 'De Rossi',
+        targaRimorchio: '',
+        percorso: '',
+      })
+    })
+
+    it('terrestre senza nessun dato di trasporto: il DTO non lo porta (creazione senza trasporto)', () => {
+      pronto()
+      component.createFIR()
+      expect(firService.createFIR).toHaveBeenCalled()
+      expect('datiTrasporto' in firService.createFIR.calls.mostRecent().args[0]).toBeFalse()
+    })
+
+    it('conducente senza cognome: non crea, errore leggibile sulla sezione trasporto', () => {
+      pronto()
+      component.newFIR.datiTrasporto = { targaAutomezzo: 'AB123CD', conducenteNome: 'Mario' }
+      component.createFIR()
+      expect(firService.createFIR).not.toHaveBeenCalled()
+      expect(component.firErrors['datiTrasporto']).toContain('nome e cognome')
+    })
+
+    it('conducente completo ma senza nessuna targa: non crea', () => {
+      pronto()
+      component.newFIR.datiTrasporto = { conducenteNome: 'Mario', conducenteCognome: 'Rossi' }
+      component.createFIR()
+      expect(firService.createFIR).not.toHaveBeenCalled()
+      expect(component.firErrors['datiTrasporto']).toContain('targa')
+    })
+
+    it('modalità non terrestre: i dati di trasporto non partono e non sono validati', () => {
+      pronto()
+      component.newFIR.tipoTrattaPrincipale = 'FERROVIARIA'
+      component.newFIR.datiTrasporto = { conducenteNome: 'Mario' }
+      component.createFIR()
+      expect(firService.createFIR).toHaveBeenCalled()
+      expect('datiTrasporto' in firService.createFIR.calls.mostRecent().args[0]).toBeFalse()
+    })
+
+    it('rinfusa: i colli non partono, nemmeno se compilati prima', () => {
+      pronto()
+      component.newFIR.rifiuto.numeroColli = 5
+      component.newFIR.rifiuto.rinfusa = true
+      component.onRinfusaCambiata()
+      component.createFIR()
+      const dto = firService.createFIR.calls.mostRecent().args[0]
+      expect(dto.rifiuto.rinfusa).toBeTrue()
+      expect(dto.rifiuto.numeroColli).toBeUndefined()
+    })
+  })
+
   it('non propone più "Gassoso" e "Misto" fra le opzioni di stato fisico', () => {
     const valori = component.statoFisicoOptions.map(o => o.value)
     expect(valori).not.toContain('Gassoso')

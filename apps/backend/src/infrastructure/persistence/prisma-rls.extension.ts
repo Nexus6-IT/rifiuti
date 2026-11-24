@@ -151,6 +151,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'AllegatoCampo',
   // Sessione di firma remota RENTRI riprendibile (FIR in viaggio, P1).
   'FirSessioneFirmaRentri',
+  // Storico delle operazioni del viaggio RENTRI (FIR in viaggio, P2).
+  'FirEventoRentri',
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
   'ComunicazioneConsorzio',
   'ComunicazioneConsorzioMovimento',

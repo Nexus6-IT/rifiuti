@@ -6,6 +6,46 @@ import { LookupItem } from './fixture-codifiche'
 import * as anagrafiche from './fixture-anagrafiche'
 import { RegistriOperatore } from './registri-operatore'
 
+/**
+ * Stato iniziale di un formulario creato con `POST /` (FIR in viaggio, P2). Il contratto non documenta la
+ * macchina: dai NOMI degli stati si deduce che con quantita' E trasporto di partenza il formulario nasce in
+ * attesa di firma, con la sola quantita' manca il trasporto, con il solo trasporto manca la quantita'.
+ * Senza nessuno dei due vale lo stato storico della fake (`InserimentoQuantita`), mantenuto per non
+ * cambiare le suite esistenti: il nome piu' fedele sarebbe `InserimentoQuantitaTrasportoIniziale`
+ * (divergenza dichiarata in FEDELTA.md).
+ */
+export function statoInizialeDa(richiesta: Record<string, unknown>): string {
+  const partenza = richiesta.dati_partenza as { rifiuto?: { quantita?: unknown } } | undefined
+  const haQuantita = partenza?.rifiuto?.quantita !== undefined
+  const haTrasporto = richiesta.dati_trasporto_partenza !== undefined
+  if (haQuantita && haTrasporto) return 'FirmaProduttoreTrasportatoreIniziale'
+  if (haQuantita) return 'InserimentoTrasportoIniziale'
+  if (haTrasporto) return 'InserimentoQuantita'
+  return 'InserimentoQuantita'
+}
+
+const TRANSIZIONE_QUANTITA: Readonly<Record<string, string>> = {
+  InserimentoQuantitaTrasportoIniziale: 'InserimentoTrasportoIniziale',
+  InserimentoQuantita: 'FirmaProduttoreTrasportatoreIniziale',
+}
+
+const TRANSIZIONE_TRASPORTO: Readonly<Record<string, string>> = {
+  InserimentoQuantitaTrasportoIniziale: 'InserimentoQuantita',
+  InserimentoTrasportoIniziale: 'FirmaProduttoreTrasportatoreIniziale',
+}
+
+/**
+ * Firme di partenza (FIR in viaggio, P3): `acquisizione-firma` senza operazione pendente nella fase
+ * iniziale. Ipotesi dedotta dai NOMI degli stati (FEDELTA.md §8.2, da verificare sulla demo): la firma
+ * unica di produttore e trasportatore (o del solo trasportatore) apre il viaggio; quella del solo
+ * produttore lascia la firma del trasportatore.
+ */
+const TRANSIZIONE_FIRMA_PARTENZA: Readonly<Record<string, string>> = {
+  FirmaProduttoreTrasportatoreIniziale: 'InserimentoAccettazione',
+  FirmaTrasportatoreIniziale: 'InserimentoAccettazione',
+  FirmaProduttore: 'FirmaTrasportatoreIniziale',
+}
+
 export interface Formulario {
   numero_fir: string
   stato: string
@@ -52,15 +92,27 @@ export interface Formulario {
   pendingOperazione?:
     | { tipo: 'Accettazione'; corpo: Record<string, unknown>; statoPrecedente: string }
     | { tipo: 'Annulla'; corpo: Record<string, unknown>; statoPrecedente: string }
+    | { tipo: 'Annotazione'; corpo: Record<string, unknown>; statoPrecedente: string }
   /**
    * Ultima firma apposta con successo e non ancora annullata: serve a
    * `rollback-firma` (formulari.yaml riga 2079) per tornare allo stato di
    * attesa firma precedente. Mai registrata per la firma di annullamento, che
    * il contratto esclude dal rollback.
    */
+  /**
+   * Annotazioni del formulario (`DettaglioFormulario.dati_annotazioni`, `DatiAnnotazioneResultModel`): esposte
+   * cosi' come sono da `GET /{numero_fir}`. Una nuova annotazione accettata entra con `dati_firma: null`; la
+   * firma la valorizza, il `reset` toglie quella non firmata, il `rollback-firma` la riporta a non firmata.
+   */
+  dati_annotazioni?: {
+    annotazione: string
+    identificativo_soggetto: string
+    dati_firma: { data_firma: string } | null
+  }[]
   ultimaFirma?: {
     statoPrecedente: string
-    pending: NonNullable<Formulario['pendingOperazione']>
+    /** Assente per le firme di partenza (P3): non c'era un'operazione in attesa da ripristinare. */
+    pending?: NonNullable<Formulario['pendingOperazione']>
   }
   /**
    * Testo delle note di annullamento (R3 Task 5), impostato
@@ -583,7 +635,7 @@ export class Archivio {
       const richiesta = transazione.richiestaCreazione ?? {}
       this.salvaFormulario({
         numero_fir: numeroFir,
-        stato: typeof richiesta.stato === 'string' ? richiesta.stato : 'InserimentoQuantita',
+        stato: typeof richiesta.stato === 'string' ? richiesta.stato : statoInizialeDa(richiesta),
         produttore: denominazioneProduttore(richiesta),
         identificativo_soggetto: identificativoSoggettoDa(richiesta),
         num_iscr_sito:
@@ -666,6 +718,26 @@ export class Archivio {
       return
     }
 
+    // Annotazione (FIR in viaggio, P4): il formulario passa a `FirmaAnnotazione` e, firmata, torna allo stato
+    // di prima (viaggio o esito). Ipotesi dedotta dai nomi degli stati (FEDELTA.md §8.3, da verificare sulla demo).
+    if (contesto.operazione === 'Annotazione') {
+      formulario.pendingOperazione = {
+        tipo: 'Annotazione',
+        corpo: contesto.corpo ?? {},
+        statoPrecedente: formulario.stato,
+      }
+      formulario.stato = 'FirmaAnnotazione'
+      formulario.dati_annotazioni = [
+        ...(formulario.dati_annotazioni ?? []),
+        {
+          annotazione: String(contesto.corpo?.annotazione ?? ''),
+          identificativo_soggetto: String(contesto.corpo?.identificativo_soggetto ?? ''),
+          dati_firma: null,
+        },
+      ]
+      return
+    }
+
     if (contesto.operazione === 'NoteAnnullamento') {
       const note = contesto.corpo?.note
       if (typeof note === 'string') {
@@ -676,7 +748,14 @@ export class Archivio {
 
     if (contesto.operazione === 'AcquisizioneFirma') {
       const pendente = formulario.pendingOperazione
-      if (!pendente) return
+      if (!pendente) {
+        const successivo = TRANSIZIONE_FIRMA_PARTENZA[formulario.stato]
+        if (successivo) {
+          formulario.ultimaFirma = { statoPrecedente: formulario.stato }
+          formulario.stato = successivo
+        }
+        return
+      }
 
       if (pendente.tipo === 'Accettazione') {
         formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
@@ -691,6 +770,15 @@ export class Archivio {
         formulario.pendingOperazione = undefined
         return
       }
+
+      if (pendente.tipo === 'Annotazione') {
+        formulario.ultimaFirma = { statoPrecedente: formulario.stato, pending: pendente }
+        formulario.stato = pendente.statoPrecedente
+        formulario.pendingOperazione = undefined
+        const daFirmare = ultimaAnnotazioneNonFirmata(formulario)
+        if (daFirmare) daFirmare.dati_firma = { data_firma: new Date().toISOString() }
+        return
+      }
     }
 
     // `reset`: cancella i dati inseriti e non ancora firmati, tornando allo
@@ -701,6 +789,10 @@ export class Archivio {
       if (!pendente) return
       formulario.stato = pendente.statoPrecedente
       formulario.pendingOperazione = undefined
+      if (pendente.tipo === 'Annotazione') {
+        const daTogliere = ultimaAnnotazioneNonFirmata(formulario)
+        formulario.dati_annotazioni = formulario.dati_annotazioni?.filter(a => a !== daTogliere)
+      }
       return
     }
 
@@ -712,13 +804,28 @@ export class Archivio {
       formulario.stato = ultima.statoPrecedente
       formulario.pendingOperazione = ultima.pending
       formulario.ultimaFirma = undefined
+      if (ultima.pending?.tipo === 'Annotazione') {
+        const firmate = (formulario.dati_annotazioni ?? []).filter(a => a.dati_firma !== null)
+        const ultimaFirmata = firmate[firmate.length - 1]
+        if (ultimaFirmata) ultimaFirmata.dati_firma = null
+      }
       return
     }
 
-    // Quantita, trasporto, annotazione, sosta tecnica, trasbordi, nuovo
-    // destinatario: la fake registra il ciclo (202, esito) ma non applica
-    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno
-    // (piano FIR in viaggio, P2-P8).
+    // `quantita` e `trasporto` (FIR in viaggio, P2): chiudono la fase iniziale. Il contratto da' i nomi
+    // degli stati `Inserimento*`/`Firma*` ma non la macchina (v. FEDELTA.md): questa e' la deduzione piu'
+    // semplice. Negli stati di correzione (`...Update`) lo stato non cambia.
+    if (contesto.operazione === 'Quantita') {
+      formulario.stato = TRANSIZIONE_QUANTITA[formulario.stato] ?? formulario.stato
+      return
+    }
+    if (contesto.operazione === 'Trasporto') {
+      formulario.stato = TRANSIZIONE_TRASPORTO[formulario.stato] ?? formulario.stato
+      return
+    }
+
+    // Sosta tecnica, trasbordi, nuovo destinatario: la fake registra il ciclo (202, esito) ma non applica
+    // ancora alcuna transizione; la aggiungono i pezzi che ne hanno bisogno (piano FIR in viaggio, P5-P8).
 
     if (contesto.operazione === 'Allegato') {
       const payload = esito.esito
@@ -1102,4 +1209,11 @@ function identificativoSoggettoDa(richiesta: Record<string, unknown>): string | 
     if (typeof soggetto?.num_iscr_sito === 'string') return soggetto.num_iscr_sito
   }
   return undefined
+}
+
+/** L'ultima annotazione ancora senza firma (al massimo una: `FirmaAnnotazione` blocca le successive). */
+function ultimaAnnotazioneNonFirmata(
+  formulario: Formulario
+): NonNullable<Formulario['dati_annotazioni']>[number] | undefined {
+  return [...(formulario.dati_annotazioni ?? [])].reverse().find(a => a.dati_firma === null)
 }
