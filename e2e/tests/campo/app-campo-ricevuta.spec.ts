@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from '@playwright/test'
+import { pushNonDisponibile } from '../../utils/campo-push'
 
 /**
  * E2E - App campo P6 (ricevuta di ritiro con firma su canvas) su viewport telefono.
@@ -176,6 +177,10 @@ const ricevuteSalvate = (page: Page) =>
         }
       })
   )
+
+test.beforeEach(async ({ page }) => {
+  await pushNonDisponibile(page)
+})
 
 test.describe('App campo P6: ricevuta di ritiro con firma su schermo', () => {
   test.setTimeout(90_000)

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { deflateSync } from 'node:zlib'
 import { test, expect, devices, type Page, type Route } from '@playwright/test'
+import { pushNonDisponibile } from '../../utils/campo-push'
 
 /**
  * E2E - App campo P5 (foto e posizione al momento dell'esito) su viewport telefono.
@@ -270,6 +271,10 @@ const apriEsito = async (page: Page) => {
   await page.getByTestId('ritiro').filter({ hasText: 'Rossi Srl' }).click()
   await page.getByTestId('eseguito').click()
 }
+
+test.beforeEach(async ({ page }) => {
+  await pushNonDisponibile(page)
+})
 
 test.describe('App campo P5: foto e posizione', () => {
   test.setTimeout(120_000)
