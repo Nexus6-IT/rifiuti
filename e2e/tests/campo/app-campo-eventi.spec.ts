@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from '@playwright/test'
+import { pushNonDisponibile } from '../../utils/campo-push'
 
 /**
  * E2E - App campo P4 (esiti dal campo) su viewport telefono, con la rete che va e viene.
@@ -128,6 +129,10 @@ async function esitoNonEseguito(page: Page, ritiroNome: string, motivo: string) 
   await page.getByTestId('testo-esito').fill(motivo)
   await page.getByTestId('conferma-esito').click()
 }
+
+test.beforeEach(async ({ page }) => {
+  await pushNonDisponibile(page)
+})
 
 test.describe('App campo P4: esiti con la rete che va e viene', () => {
   test.setTimeout(90_000)
