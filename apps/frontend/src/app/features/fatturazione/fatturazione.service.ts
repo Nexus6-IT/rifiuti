@@ -2,7 +2,7 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
-import { EsitoAccodamentoSdi, FiltroStatoSdi } from '../sdi/sdi.model'
+import { EsitoAccodamentoSdi, FiltroStatoSdi, StatoSdiDocumento } from '../sdi/sdi.model'
 import {
   AdattatoreVista,
   DocumentoDettaglio,
@@ -199,14 +199,36 @@ export class FatturazioneService {
     return this.http.post(`${this.urlDocumento(id)}/invio-sdi/riprova`, {})
   }
 
+  /** Trasmissioni SDI del documento con la cronologia delle notifiche (4.5c). */
+  statoSdi(id: string): Observable<StatoSdiDocumento> {
+    return this.http.get<StatoSdiDocumento>(`${this.urlDocumento(id)}/sdi`)
+  }
+
+  /** XML di una ricevuta SDI come file (nome da `Content-Disposition`). */
+  scaricaRicevutaSdi(id: string, notificaId: string): Observable<FileScaricato> {
+    return this.http
+      .get(`${this.urlDocumento(id)}/sdi/notifiche/${encodeURIComponent(notificaId)}/file`, {
+        responseType: 'blob',
+        observe: 'response',
+      })
+      .pipe(map(daRisposta))
+  }
+
   documento(id: string): Observable<DocumentoDettaglio> {
     return this.http.get<DocumentoDettaglio>(this.urlDocumento(id))
   }
 
-  annulla(id: string, motivo: string, versione: number): Observable<DocumentoDettaglio> {
+  /** `confermaGiaInviata`: annullo di uno scarto SDI «duplicato» (4.5d). */
+  annulla(
+    id: string,
+    motivo: string,
+    versione: number,
+    confermaGiaInviata = false
+  ): Observable<DocumentoDettaglio> {
     return this.http.post<DocumentoDettaglio>(`${this.urlDocumento(id)}/annulla`, {
       motivo,
       versione,
+      ...(confermaGiaInviata ? { confermaGiaInviata: true } : {}),
     })
   }
 

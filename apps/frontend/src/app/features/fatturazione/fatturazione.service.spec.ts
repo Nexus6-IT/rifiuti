@@ -197,6 +197,24 @@ describe('FatturazioneService', () => {
     req.flush({})
   })
 
+  it('statoSdi: GET /documenti-fattura/:id/sdi', () => {
+    servizio.statoSdi('d 1').subscribe()
+    const req = http.expectOne(`${doc}/d%201/sdi`)
+    expect(req.request.method).toBe('GET')
+    req.flush({ trasmissioni: [] })
+  })
+
+  it('scaricaRicevutaSdi: GET del file della notifica, nome da Content-Disposition', () => {
+    let nome = ''
+    servizio.scaricaRicevutaSdi('d1', 'n 1').subscribe(f => (nome = f.nomeFile ?? ''))
+    const req = http.expectOne(`${doc}/d1/sdi/notifiche/n%201/file`)
+    expect(req.request.responseType).toBe('blob')
+    req.flush(new Blob(['<x/>']), {
+      headers: { 'Content-Disposition': 'attachment; filename="IT1_00001_RC.xml"' },
+    })
+    expect(nome).toBe('IT1_00001_RC.xml')
+  })
+
   it('documento: GET /documenti-fattura/:id', () => {
     servizio.documento('d1').subscribe()
     const req = http.expectOne(`${doc}/d1`)
@@ -209,6 +227,17 @@ describe('FatturazioneService', () => {
     const req = http.expectOne(`${doc}/d1/annulla`)
     expect(req.request.method).toBe('POST')
     expect(req.request.body).toEqual({ motivo: 'Errore di battitura', versione: 2 })
+    req.flush({})
+  })
+
+  it('annulla con conferma dello scarto duplicato: il corpo porta confermaGiaInviata', () => {
+    servizio.annulla('d1', 'Scarto SDI', 2, true).subscribe()
+    const req = http.expectOne(`${doc}/d1/annulla`)
+    expect(req.request.body).toEqual({
+      motivo: 'Scarto SDI',
+      versione: 2,
+      confermaGiaInviata: true,
+    })
     req.flush({})
   })
 

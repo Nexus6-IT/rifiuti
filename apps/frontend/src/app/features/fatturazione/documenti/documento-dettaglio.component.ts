@@ -13,13 +13,14 @@ import { formattaGiorno } from '../../giacenze/giorno'
 import { codiceErrore } from '../../listino/errori-azione'
 import { decimaleItaliano, importoItaliano } from '../../listino/listino-calcoli'
 import { erroreDaBlob, salvaFile } from '../download-fatturazione'
-import { DocumentoDettaglio } from '../fatturazione.model'
+import { DocumentoDettaglio, MotivoNonStornabile } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
 import { messaggioDaCodice } from '../messaggio-da-codice'
 import { permessiFatturazione } from '../permessi-fatturazione'
 import {
   ERRORI_HTTP_VOCI,
   MOTIVI_NON_ANNULLABILE_VOCI,
+  MOTIVI_NON_STORNABILE_VOCI,
   SeveritaFatturazione,
   STATI_DOCUMENTO_VOCI,
   TIPI_DOCUMENTO_VOCI,
@@ -33,6 +34,7 @@ import {
   MSG_EMISSIONE,
 } from './conferma-emissione-dialog.component'
 import { DatiStorno, StornoDialogComponent } from './storno-dialog.component'
+import { SdiCronologiaComponent } from '../../sdi/sdi-cronologia.component'
 
 export const MSG_DOCUMENTO_NON_CARICATO = 'Impossibile caricare il documento.'
 export const MSG_PDF_NON_SCARICATO = 'Impossibile scaricare la copia di cortesia.'
@@ -80,6 +82,7 @@ type Conferma = 'xml' | 'emesso'
     AnnullaDialogComponent,
     StornoDialogComponent,
     ConfermaEmissioneDialogComponent,
+    SdiCronologiaComponent,
   ],
   template: `
     <div class="page pagina-lavoro">
@@ -140,7 +143,7 @@ type Conferma = 'xml' | 'emesso'
             <button
               pButton
               type="button"
-              label="Annulla"
+              [label]="d.annullabile && d.emessoIl !== null ? 'Annulla e rifattura' : 'Annulla'"
               icon="pi pi-times"
               class="p-button-danger p-button-outlined"
               [disabled]="motivoNonAnnullabile(d) !== null || inAzione()"
@@ -161,6 +164,19 @@ type Conferma = 'xml' | 'emesso'
           />
         </div>
       </header>
+
+      <p
+        *ngIf="
+          dettaglio() &&
+          permessi().rendeDefinitiva &&
+          !dettaglio()!.stornabile &&
+          dettaglio()!.motivoNonStornabile as ms
+        "
+        class="text-secondary"
+        data-testid="dd-motivo-storno"
+      >
+        {{ motivoStorno(ms) }}
+      </p>
 
       <p
         *ngIf="dettaglio() && permessi().rendeDefinitiva && motivoNonAnnullabile(dettaglio()!) as m"
@@ -315,6 +331,8 @@ type Conferma = 'xml' | 'emesso'
           <dt>Netto a pagare</dt>
           <dd>{{ importo(d.nettoAPagare) }}</dd>
         </dl>
+
+        <app-sdi-cronologia *ngIf="d.stato !== 'BOZZA'" [documentoId]="d.id" />
       </ng-container>
 
       <app-annulla-dialog
@@ -322,6 +340,11 @@ type Conferma = 'xml' | 'emesso'
         [visible]="annullaAperta()"
         [inCorso]="inAzione()"
         [errore]="erroreDialog()"
+        [scarto]="dettaglio()?.emessoIl != null"
+        [motivoIniziale]="motivoAnnulloIniziale()"
+        [chiediDuplicato]="chiediDuplicato()"
+        [duplicatoControllato]="duplicatoControllato()"
+        (duplicatoCambiato)="duplicatoControllato.set($event)"
         (confermato)="annulla($event)"
         (chiuso)="chiudiDialog()"
       />
@@ -408,6 +431,9 @@ export class DocumentoDettaglioComponent {
   readonly inAzione = signal(false)
 
   readonly annullaAperta = signal(false)
+  /** Scarto SDI «duplicato»: il backend ha chiesto la conferma (409 PROBABILMENTE_GIA_INVIATA). */
+  readonly chiediDuplicato = signal(false)
+  readonly duplicatoControllato = signal(false)
   readonly stornoAperto = signal(false)
   readonly rifatturabileIniziale = signal(false)
   readonly conferma = signal<Conferma | null>(null)
@@ -424,6 +450,17 @@ export class DocumentoDettaglioComponent {
   readonly severita = (v: VoceVocabolario): SeveritaTag => SEVERITA_TAG[v.severita]
   /** Salvataggio del file: sostituibile nei test. */
   salva = salvaFile
+
+  /** Motivo precompilato dell'annullo di un emesso scartato dallo SDI (4.5d). */
+  motivoAnnulloIniziale(): string {
+    const d = this.dettaglio()
+    return d !== null && d.emessoIl !== null ? `Scarto SDI n. ${d.numeroTesto ?? ''}`.trim() : ''
+  }
+
+  /** Perché «Storna» non c'è: motivo di stato o dell'invio SDI. */
+  motivoStorno(m: MotivoNonStornabile): string {
+    return MOTIVI_NON_STORNABILE_VOCI[m]?.etichetta ?? ''
+  }
 
   /** Perché «Annulla» è disattivato; `null` se si può annullare. */
   motivoNonAnnullabile(d: DocumentoDettaglio): string | null {
@@ -509,6 +546,8 @@ export class DocumentoDettaglioComponent {
   apriAnnulla(): void {
     if (!this.puoScrivere()) return
     this.erroreDialog.set(null)
+    this.chiediDuplicato.set(false)
+    this.duplicatoControllato.set(false)
     this.annullaAperta.set(true)
   }
 
@@ -568,6 +607,7 @@ export class DocumentoDettaglioComponent {
           this.inAzione.set(false)
           this.erroreDialog.set(messaggioDaCodice(err, ripiego))
           const codice = codiceErrore(err)
+          if (codice === 'PROBABILMENTE_GIA_INVIATA') this.chiediDuplicato.set(true)
           if (codice !== null && RILEGGI_DOPO.includes(codice)) this.carica()
         },
       })
@@ -575,7 +615,10 @@ export class DocumentoDettaglioComponent {
 
   annulla(motivo: string): void {
     if (!this.puoScrivere()) return
-    this.scrivi(v => this.servizio.annulla(this.id, motivo, v), MSG_ANNULLO_FALLITO)
+    this.scrivi(
+      v => this.servizio.annulla(this.id, motivo, v, this.duplicatoControllato()),
+      MSG_ANNULLO_FALLITO
+    )
   }
 
   storna(dati: DatiStorno): void {

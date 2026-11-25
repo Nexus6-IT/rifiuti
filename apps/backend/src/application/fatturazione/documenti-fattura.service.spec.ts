@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import { MESSAGGI_AVVISO, MESSAGGI_ERRORE } from '../../domain/fatturazione/codici'
-import { annullabilita, DocumentiFatturaService } from './documenti-fattura.service'
+import { annullabilita, DocumentiFatturaService, stornabilita } from './documenti-fattura.service'
 
 const base = {
   stato: 'DEFINITIVO' as const,
@@ -46,10 +46,87 @@ describe('annullabilita (funzione pura, ordine di Q9)', () => {
       'NOTA_DI_CREDITO'
     )
   })
+  describe('emesso scartato dallo SDI (4.5d, D3)', () => {
+    const emesso = { ...base, emessoIl: '2026-03-01T10:00:00.000Z' }
+    it('emesso e scartato senza trasmissioni vive: annullabile', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: true, trasmissioneViva: false })).toEqual({
+        annullabile: true,
+        motivo: null,
+      })
+    })
+    it('emesso scartato con un numero non ultimo: annullabile (il numero resta consumato, niente NON_ULTIMO)', () => {
+      expect(
+        annullabilita({ ...emesso, ultimoNumero: 9, scartatoSdi: true, trasmissioneViva: false })
+          .annullabile
+      ).toBe(true)
+    })
+    it('emesso scartato ma con una trasmissione viva: TRASMISSIONE_SDI_VIVA', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: true, trasmissioneViva: true }).motivo).toBe(
+        'TRASMISSIONE_SDI_VIVA'
+      )
+    })
+    it('emesso non scartato (anche con trasmissione viva): EMESSO', () => {
+      expect(annullabilita({ ...emesso, scartatoSdi: false, trasmissioneViva: true }).motivo).toBe(
+        'EMESSO'
+      )
+      expect(annullabilita(emesso).motivo).toBe('EMESSO')
+    })
+    it('lo scarto non scavalca gli altri motivi: NON_DEFINITIVO, NOTA_DI_CREDITO, STORNATO vengono prima', () => {
+      const scarto = { scartatoSdi: true, trasmissioneViva: false }
+      expect(annullabilita({ ...emesso, ...scarto, stato: 'ANNULLATO', numero: null }).motivo).toBe(
+        'NON_DEFINITIVO'
+      )
+      expect(annullabilita({ ...emesso, ...scarto, tipoDocumento: 'TD04' }).motivo).toBe(
+        'NOTA_DI_CREDITO'
+      )
+      expect(annullabilita({ ...emesso, ...scarto, haStorno: true }).motivo).toBe('STORNATO')
+    })
+    it('non emesso: scarto e trasmissioni non cambiano nulla (NON_ULTIMO resta)', () => {
+      expect(
+        annullabilita({ ...base, ultimoNumero: 6, scartatoSdi: true, trasmissioneViva: false })
+          .motivo
+      ).toBe('NON_ULTIMO')
+    })
+  })
   it('BOZZA con TD04 e storno: NON_DEFINITIVO per primo', () => {
     expect(
       annullabilita({ ...base, stato: 'BOZZA', tipoDocumento: 'TD04', haStorno: true }).motivo
     ).toBe('NON_DEFINITIVO')
+  })
+})
+
+describe('stornabilita (funzione pura, 4.5d)', () => {
+  const b = { stato: 'DEFINITIVO' as const, tipoDocumento: 'TD01', haStorno: false }
+  it('definitivo senza trasmissioni: stornabile', () => {
+    expect(stornabilita(b)).toEqual({ stornabile: true, motivo: null })
+  })
+  it.each(['BOZZA', 'ANNULLATO'] as const)('%s: NON_DEFINITIVO', stato => {
+    expect(stornabilita({ ...b, stato }).motivo).toBe('NON_DEFINITIVO')
+  })
+  it('TD04: NOTA_DI_CREDITO', () => {
+    expect(stornabilita({ ...b, tipoDocumento: 'TD04' }).motivo).toBe('NOTA_DI_CREDITO')
+  })
+  it('storno gia presente: non stornabile, senza motivo di stato (lo dice STORNO_GIA_PRESENTE)', () => {
+    expect(stornabilita({ ...b, haStorno: true })).toEqual({ stornabile: false, motivo: null })
+  })
+  it('scartato senza invio vivo: SCARTATO_SDI', () => {
+    expect(stornabilita({ ...b, scartatoSdi: true, trasmissioneViva: false }).motivo).toBe(
+      'SCARTATO_SDI'
+    )
+  })
+  it('invio in volo (non ancora esitato): INVIO_SDI_IN_CORSO', () => {
+    expect(stornabilita({ ...b, trasmissioneViva: true, invioInVolo: true })).toEqual({
+      stornabile: false,
+      motivo: 'INVIO_SDI_IN_CORSO',
+    })
+  })
+  it('scartato con un nuovo invio in volo: INVIO_SDI_IN_CORSO (si attende l esito)', () => {
+    expect(
+      stornabilita({ ...b, scartatoSdi: true, trasmissioneViva: true, invioInVolo: true }).motivo
+    ).toBe('INVIO_SDI_IN_CORSO')
+  })
+  it('trasmissione chiusa (consegnata, accettata, mancata consegna...): stornabile', () => {
+    expect(stornabilita({ ...b, trasmissioneViva: true, invioInVolo: false }).stornabile).toBe(true)
   })
 })
 

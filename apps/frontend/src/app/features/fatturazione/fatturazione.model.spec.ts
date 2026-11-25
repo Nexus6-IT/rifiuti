@@ -26,8 +26,8 @@ describe('chiavi esaustive del modello', () => {
       ].sort()
     )
     expect(Object.keys(CHIAVI_ELABORAZIONE_DETTAGLIO).length).toBe(10 + 13)
-    expect(Object.keys(CHIAVI_DOCUMENTO_RIGA).length).toBe(20)
-    expect(Object.keys(CHIAVI_DOCUMENTO_DETTAGLIO).length).toBe(20 + 10)
+    expect(Object.keys(CHIAVI_DOCUMENTO_RIGA).length).toBe(21)
+    expect(Object.keys(CHIAVI_DOCUMENTO_DETTAGLIO).length).toBe(21 + 10)
     expect(Object.keys(CHIAVI_RIGA_DOCUMENTO).length).toBe(19)
     expect(Object.keys(CHIAVI_SCOSTAMENTO_RIGA).length).toBe(11)
     expect(CHIAVI_DOCUMENTO_DETTAGLIO['xmlGenerato']).toBeTrue()
@@ -53,6 +53,6 @@ describe('chiavi esaustive del modello', () => {
       nonEsiste: true,
     }
     expect(Object.keys(inMeno).length).toBe(9)
-    expect(Object.keys(inPiu).length).toBe(21)
+    expect(Object.keys(inPiu).length).toBe(22)
   })
 })
