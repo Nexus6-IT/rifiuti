@@ -192,6 +192,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['sdi'],
     motivo: 'Invio dei documenti allo SDI e nuovo tentativo (4.5b)',
   },
+  'api/sdi/lettura-sdi.controller.ts': {
+    chiavi: ['sdi'],
+    motivo: 'Stato SDI di un documento e download delle ricevute (4.5c)',
+  },
   'api/legami-movimento/legami-movimento.controller.ts': CONTRATTI(
     'Legami movimento-cliente-prezzo'
   ),
@@ -288,6 +292,8 @@ export const BASE: Record<string, string> = {
     'Richiesta di accesso (lead): pubblica, senza utente',
   'api/agenti-pesa/ingresso-agente.controller.ts':
     "Rotte dell'agente di pesa: senza utente, autenticate dal token dell'agente; il modulo pese lo verifica AgentePesaGuard",
+  'api/sdi/webhook-sdi.controller.ts':
+    "Webhook del provider SDI: pubblico, senza utente; l'azienda si ricava dal token nell'URL, il modulo sdi lo verifica WebhookSdiService",
   'api/me/me-features.controller.ts': 'Dice al frontend quali moduli sono attivi',
   'api/me/membership.controller.ts': "Appartenenza dell'utente alle aziende e selezione azienda",
   'api/admin/access-request-admin.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',

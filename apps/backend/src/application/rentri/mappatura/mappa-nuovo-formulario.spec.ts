@@ -82,4 +82,90 @@ describe('mappaNuovoFormulario', () => {
 
     await expect(mappaNuovoFormulario(fir, risolutoreComune)).rejects.toThrow(/trasportatore/i)
   })
+
+  describe("quantita' e trasporto alla creazione (FIR in viaggio P2, D2)", () => {
+    it("senza quantita' e senza trasporto il corpo resta quello di prima (nessuna chiave nuova)", async () => {
+      const corpo = (await mappaNuovoFormulario(firCompleto(), risolutoreComune)) as {
+        dati_partenza: { rifiuto: Record<string, unknown> }
+      }
+
+      expect(corpo.dati_partenza.rifiuto).not.toHaveProperty('quantita')
+      expect(corpo.dati_partenza.rifiuto).not.toHaveProperty('numero_colli')
+      expect(corpo.dati_partenza.rifiuto).not.toHaveProperty('caratteristiche_pericolo')
+      expect(corpo).not.toHaveProperty('dati_trasporto_partenza')
+    })
+
+    it("con quantita', colli, HP e trasporto: tutto nel corpo e il contratto lo accetta", async () => {
+      const fir = firCompleto()
+      fir.quantita = {
+        valore: 1.2,
+        unitaMisura: 't',
+        numeroColli: 4,
+        verificatoInPartenza: false,
+      }
+      fir.caratteristichePericolo = 'HP4,HP14'
+      fir.datiTrasportoPartenza = {
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaAutomezzo: 'ab123cd',
+        dataOraInizioTrasporto: new Date('2026-11-21T07:00:00Z'),
+      }
+
+      const corpo = (await mappaNuovoFormulario(fir, risolutoreComune)) as {
+        dati_partenza: { rifiuto: Record<string, unknown> }
+        dati_trasporto_partenza: Record<string, unknown>
+      }
+
+      expect(corpo.dati_partenza.rifiuto).toMatchObject({
+        quantita: { valore: 1200, unita_misura: 'kg' },
+        numero_colli: '4',
+        verificato_in_partenza: false,
+        caratteristiche_pericolo: ['HP04', 'HP14'],
+      })
+      expect(corpo.dati_trasporto_partenza).toMatchObject({
+        conducente: { nome: 'Mario', cognome: 'Rossi' },
+        targa_automezzo: 'AB123CD',
+        data_ora_inizio_trasporto: '2026-11-21T07:00:00.000Z',
+      })
+      expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it("invia tutti i trasportatori, ognuno con la sua modalita'", async () => {
+      const fir = firCompleto()
+      fir.trasportatori.push({
+        ragioneSociale: 'Ferrovie Merci SPA',
+        partitaIVA: '99887766554',
+        tipoTrasporto: 'Ferroviario',
+      })
+
+      const corpo = (await mappaNuovoFormulario(fir, risolutoreComune)) as {
+        dati_partenza: { trasportatori: Array<Record<string, unknown>> }
+      }
+
+      expect(corpo.dati_partenza.trasportatori).toHaveLength(2)
+      expect(corpo.dati_partenza.trasportatori[0]).toMatchObject({ tipo_trasporto: 'Terrestre' })
+      expect(corpo.dati_partenza.trasportatori[1]).toMatchObject({
+        denominazione: 'Ferrovie Merci SPA',
+        tipo_trasporto: 'Ferroviario',
+      })
+      expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it("una quantita' senza colli ne' rinfusa non esce: dato mancante, mai un valore inventato", async () => {
+      const fir = firCompleto()
+      fir.quantita = { valore: 10, unitaMisura: 'kg' }
+      await expect(mappaNuovoFormulario(fir, risolutoreComune)).rejects.toThrow(/numero_colli/)
+    })
+
+    it("un trasporto con la targa troppo lunga e' rifiutato prima di arrivare all'ente", async () => {
+      const fir = firCompleto()
+      fir.datiTrasportoPartenza = {
+        conducenteNome: 'Mario',
+        conducenteCognome: 'Rossi',
+        targaAutomezzo: 'ABCDEFGHIJK',
+        dataOraInizioTrasporto: new Date('2026-11-21T07:00:00Z'),
+      }
+      await expect(mappaNuovoFormulario(fir, risolutoreComune)).rejects.toThrow(/targa_automezzo/)
+    })
+  })
 })

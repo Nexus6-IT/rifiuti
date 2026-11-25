@@ -13,9 +13,14 @@ import (
 	_ "wasteflow/agente-pesa/internal/driver/simulata"
 )
 
+// scadenzaAttesa e' un tetto di sicurezza, non un'aspettativa: sui runner carichi (due job in
+// parallelo, fsync lenti, -race) un'attesa su condizione puo' richiedere decine di volte il tempo
+// misurato a vuoto (0,3 s a vuoto, 4-5 s con 0,3 CPU e GOMAXPROCS=1). Chi passa non aspetta mai tanto.
+const scadenzaAttesa = 90 * time.Second
+
 func attendi(t *testing.T, cosa string, cond func() bool) {
 	t.Helper()
-	fine := time.Now().Add(15 * time.Second)
+	fine := time.Now().Add(scadenzaAttesa)
 	for time.Now().Before(fine) {
 		if cond() {
 			return

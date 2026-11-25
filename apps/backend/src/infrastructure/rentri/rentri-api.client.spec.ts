@@ -860,6 +860,22 @@ describe('RENTRIApiClient', () => {
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
     })
 
+    it('inviaAnnotazione (non idempotente): 5xx = una sola POST e esito incerto, mai ritentata', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ response: { status: 503 } })))
+
+      const errore = await client
+        .inviaAnnotazione('tenant-1', 'BCDFGH00001ZH', {
+          annotazione: 'x',
+          identificativo_soggetto: '01234567897',
+        })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).status).toBe(503)
+      expect((errore as Error).message).toContain('annotazione')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
     it('timeout senza risposta: TrasmissioneRentriIncertaError NESSUNA_RISPOSTA', async () => {
       mockHttpService.post.mockReturnValue(throwError(() => ({ code: 'ECONNABORTED' })))
 
@@ -970,6 +986,52 @@ describe('RENTRIApiClient', () => {
    * redirect all'HTTP client (altrimenti 200 e 303 sarebbero indistinguibili):
    * per questo ogni chiamata a /status verifica esplicitamente `maxRedirects: 0`.
    */
+  describe('annotazione: transazione nota anche quando l esito non arriva (R5)', () => {
+    const risposta = (status: number, data?: unknown, headers: Record<string, string> = {}) =>
+      ({ data, status, statusText: '', headers, config: {} as any }) as AxiosResponse
+
+    it('polling esaurito dopo il 202: esito incerto ESITO_NON_DISPONIBILE con il transazioneId', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(202, { transazione_id: 'tx-an' })))
+      mockHttpService.get.mockReturnValue(of(risposta(200)))
+
+      const errore = await client
+        .inviaAnnotazione(
+          'tenant-1',
+          'BCDFGH00001ZH',
+          { annotazione: 'x', identificativo_soggetto: '01234567897' },
+          { intervalloMs: 0, maxTentativi: 2 }
+        )
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('ESITO_NON_DISPONIBILE')
+      expect((errore as TrasmissioneRentriIncertaError).transazioneId).toBe('tx-an')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('leggiStatoTransazione: in elaborazione, non trovata, o esito pronto', async () => {
+      mockHttpService.get.mockReturnValueOnce(of(risposta(200)))
+      expect(await client.leggiStatoTransazione('tenant-1', 'tx-1')).toEqual({
+        stato: 'IN_ELABORAZIONE',
+      })
+
+      mockHttpService.get.mockReturnValueOnce(of(risposta(404)))
+      expect(await client.leggiStatoTransazione('tenant-1', 'tx-2')).toEqual({
+        stato: 'NON_TROVATA',
+      })
+
+      mockHttpService.get
+        .mockReturnValueOnce(
+          of(risposta(303, undefined, { location: '/formulari/v1.0/tx-3/result' }))
+        )
+        .mockReturnValueOnce(of(risposta(200, { errore: true, validazione: [] })))
+      expect(await client.leggiStatoTransazione('tenant-1', 'tx-3')).toEqual({
+        stato: 'COMPLETATA',
+        esito: { errore: true, validazione: [] },
+      })
+    })
+  })
+
   describe('attendiEsito', () => {
     function statusResponse(status: number, location?: string): AxiosResponse {
       return {

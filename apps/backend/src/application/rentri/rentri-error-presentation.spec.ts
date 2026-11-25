@@ -219,6 +219,19 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('RIPROVA')
   })
 
+  it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA, PARTENZA): nomina la firma di partenza, propone «Riprova»', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage:
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione PARTENZA_TRASPORTATORE NON è stata completata. Dettaglio della validazione RENTRI: []",
+    })
+
+    expect(risultato.messaggio).toBe(
+      "La firma di partenza non si è completata sull'ente: puoi riprovare."
+    )
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
   it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA) senza operazione riconoscibile: fallback generico, mai un crash', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'FIRMA_RENTRI_RIFIUTATA',

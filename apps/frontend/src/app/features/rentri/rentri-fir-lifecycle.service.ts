@@ -53,11 +53,95 @@ export interface SessioneFirmaInAttesa {
   scaduta: boolean
 }
 
+/** Esito di `POST /rentri/fir/:id/firma-partenza` (FIR in viaggio, P3). */
+export interface EsitoFirmaPartenza {
+  /** L'operazione che l'ente ha proposto e che si e' firmata (produttore, trasportatore o entrambi). */
+  operazione:
+    | 'AcquisizioneFirmaProduttoreTrasportatore'
+    | 'AcquisizioneFirmaProduttore'
+    | 'AcquisizioneFirmaTrasportatore'
+  firma: EsitoFirmaRemota
+}
+
+/** Le operazioni di `/azioni` che sono una firma di partenza. */
+export const OPERAZIONI_FIRMA_PARTENZA: readonly string[] = [
+  'AcquisizioneFirmaProduttoreTrasportatore',
+  'AcquisizioneFirmaProduttore',
+  'AcquisizioneFirmaTrasportatore',
+]
+
+/** Esito della firma proposta subito dopo l'annotazione: quelli del ciclo comune, piu' «da completare». */
+export type EsitoFirmaAnnotazione =
+  | EsitoFirmaRemota
+  | { esito: 'DA_COMPLETARE'; codice?: string; avviso: string }
+
+/** Esito di `POST /rentri/fir/:id/annotazione` (FIR in viaggio, P4). */
+export interface EsitoAnnotazione {
+  operazione: 'Annotazione'
+  /** Stato riletto dall'ente dopo l'invio (`FirmaAnnotazione`); null se la rilettura non e' riuscita. */
+  statoFormulario: string | null
+  firma: EsitoFirmaAnnotazione
+}
+
+/** Limite del contratto RENTRI per il testo di un'annotazione (caratteri). */
+export const ANNOTAZIONE_RENTRI_MAX = 10000
+
 /** Esito di `POST /rentri/fir/:id/reset` e `/rollback-firma`. */
 export interface EsitoRollbackOReset {
   operazione: 'RollbackFirma' | 'Reset'
   statoFormulario: string
   sessioneAnnullataId?: string
+}
+
+/** Payload di `POST /rentri/fir/:id/quantita` (v. backend `InviaQuantitaFirRentriDto`). */
+export interface InviaQuantitaFirRentriPayload {
+  quantita: number
+  unitaMisura: string
+  numeroColli?: number
+  rinfusa?: boolean
+  verificatoInPartenza?: boolean
+  correlationId?: string
+}
+
+/** Payload di `POST /rentri/fir/:id/trasporto` (v. backend `InviaTrasportoFirRentriDto`). */
+export interface InviaTrasportoFirRentriPayload {
+  conducenteNome: string
+  conducenteCognome: string
+  targaAutomezzo?: string
+  targaRimorchio?: string
+  percorso?: string
+  /** ISO 8601; se assente vale la data indicata sul FIR. */
+  dataOraInizioTrasporto?: string
+  annotazioni?: string
+  correlationId?: string
+}
+
+/** Esito di `quantita` e `trasporto`: operazione usata e stato riletto dall'ente (null se la rilettura e' fallita). */
+export interface EsitoInviaDatiViaggio {
+  operazione: string
+  statoFormulario: string | null
+  /** false: l'ente ha accettato ma il dichiarato a RENTRI non e' stato salvato qui. */
+  copiaLocaleAggiornata?: boolean
+}
+
+/** Una riga dello storico delle operazioni inviate all'ente (v. backend `EventoFirRentri`). */
+export interface EventoFirRentri {
+  id: string
+  operazione: string
+  esito: 'INVIATA' | 'ACCETTATA' | 'RIFIUTATA' | 'INCERTA'
+  /** Corpo di dominio inviato all'ente (per l'annotazione: testo e CF del soggetto). */
+  payload?: unknown
+  dettaglioEnte: string | null
+  statoFormularioDopo: string | null
+  utenteId: string | null
+  createdAt: string
+}
+
+/** Conducente e rimorchio dell'ultimo trasporto con una targa (precompila il form). */
+export interface UltimoTrasportoAutomezzo {
+  conducenteNome: string
+  conducenteCognome: string
+  targaRimorchio: string | null
 }
 
 export interface EsitoAccettaFirRentri {
@@ -124,6 +208,62 @@ export class RentriFirLifecycleService {
 
   annullaFIR(firId: string, payload: AnnullaFirRentriPayload): Observable<EsitoAnnullaFirRentri> {
     return this.http.post<EsitoAnnullaFirRentri>(`${this.API_URL}/${firId}/annullamento`, payload)
+  }
+
+  /** Indica o correggi la quantita' (FIR in viaggio, P2): la copia locale segue l'ente solo a esito positivo. */
+  inviaQuantita(
+    firId: string,
+    payload: InviaQuantitaFirRentriPayload
+  ): Observable<EsitoInviaDatiViaggio> {
+    return this.http.post<EsitoInviaDatiViaggio>(`${this.API_URL}/${firId}/quantita`, payload)
+  }
+
+  /** Indica o correggi i dati del trasporto terrestre (FIR in viaggio, P2). */
+  inviaTrasporto(
+    firId: string,
+    payload: InviaTrasportoFirRentriPayload
+  ): Observable<EsitoInviaDatiViaggio> {
+    return this.http.post<EsitoInviaDatiViaggio>(`${this.API_URL}/${firId}/trasporto`, payload)
+  }
+
+  /** Storico delle operazioni inviate all'ente, dal piu' recente (sola lettura). */
+  eventi(firId: string): Observable<{ eventi: EventoFirRentri[] }> {
+    return this.http.get<{ eventi: EventoFirRentri[] }>(`${this.API_URL}/${firId}/eventi`)
+  }
+
+  /** Conducente e rimorchio dell'ultimo trasporto fatto con quella targa (null se non c'e'). */
+  ultimoTrasporto(targa: string): Observable<{ trasporto: UltimoTrasportoAutomezzo | null }> {
+    return this.http.get<{ trasporto: UltimoTrasportoAutomezzo | null }>(
+      `${this.API_URL}/ultimo-trasporto`,
+      { params: { targa } }
+    )
+  }
+
+  /**
+   * «Firma la partenza su RENTRI»: l'operazione la sceglie l'ente (`/azioni`), la richiesta di firma e' una sola
+   * (una sessione aperta viene ripresa). Con `nuovaSessione` (solo dopo scadenza o rifiuto) se ne chiede una nuova.
+   */
+  firmaPartenza(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaPartenza> {
+    return this.http.post<EsitoFirmaPartenza>(`${this.API_URL}/${firId}/firma-partenza`, payload)
+  }
+
+  /**
+   * «Aggiungi un'annotazione» (FIR in viaggio, P4): il testo si firma subito con la firma remota. Il codice
+   * fiscale del soggetto e' sempre quello dell'azienda selezionata (lo mette il backend).
+   */
+  aggiungiAnnotazione(firId: string, testo: string): Observable<EsitoAnnotazione> {
+    return this.http.post<EsitoAnnotazione>(`${this.API_URL}/${firId}/annotazione`, { testo })
+  }
+
+  /** «Firma l'annotazione»: ripresa della firma di un'annotazione gia' registrata presso l'ente. */
+  firmaAnnotazione(
+    firId: string,
+    payload: { nuovaSessione?: boolean } = {}
+  ): Observable<EsitoFirmaRemota> {
+    return this.http.post<EsitoFirmaRemota>(`${this.API_URL}/${firId}/firma-annotazione`, payload)
   }
 
   /** Sessione di firma in attesa (banner): sola lettura, nessuna chiamata all'ente. */

@@ -30,6 +30,17 @@ export function formDaFir(fir: FIR): CreateFIRDto {
       caratteristichePericolo: r.caratteristichePericolo ?? undefined,
       numeroColli: r.numeroColli ?? undefined,
       codiceOperazione: r.codiceOperazione ?? undefined,
+      // `false`/assente non si distinguono: il backend conserva cio' che non riceve.
+      rinfusa: fir.datiViaggio?.rinfusa ?? undefined,
+      verificatoInPartenza: fir.datiViaggio?.verificatoInPartenza ?? undefined,
+    },
+    // Sempre presente in modifica: un campo svuotato nel form svuota la colonna (stringa vuota = svuota).
+    datiTrasporto: {
+      targaAutomezzo: fir.trasportatore?.targaVeicolo ?? '',
+      conducenteNome: fir.datiViaggio?.conducenteNome ?? '',
+      conducenteCognome: fir.datiViaggio?.conducenteCognome ?? '',
+      targaRimorchio: fir.datiViaggio?.targaRimorchio ?? '',
+      percorso: fir.datiViaggio?.percorso ?? '',
     },
     annotazioni: fir.annotazioni ?? undefined,
   }

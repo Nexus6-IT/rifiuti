@@ -45,6 +45,29 @@ describe('AnnullaDialogComponent', () => {
     expect(motivi).toEqual(['Errore di importo'])
   })
 
+  it('scarto: motivo precompilato alla riapertura e testo dedicato', () => {
+    comp.scarto = true
+    comp.motivoIniziale = 'Scarto SDI n. 7'
+    comp.ngOnChanges({ visible: new SimpleChange(false, true, false) })
+    fixture.detectChanges()
+    expect(comp.motivo).toBe('Scarto SDI n. 7')
+    expect(q('annulla-scarto')).not.toBeNull()
+  })
+
+  it('duplicato: senza la spunta non conferma, con la spunta si', () => {
+    comp.motivo = 'Scarto'
+    comp.chiediDuplicato = true
+    fixture.detectChanges()
+    expect(pulsante().disabled).toBeTrue()
+    comp.conferma()
+    expect(motivi).toEqual([])
+    comp.duplicatoControllato = true
+    fixture.detectChanges()
+    expect(pulsante().disabled).toBeFalse()
+    comp.conferma()
+    expect(motivi).toEqual(['Scarto'])
+  })
+
   it('oltre 200 caratteri non conferma', () => {
     comp.motivo = 'x'.repeat(MAX_MOTIVO + 1)
     expect(comp.valido()).toBeFalse()

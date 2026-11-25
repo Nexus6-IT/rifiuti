@@ -17,6 +17,13 @@ import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
 import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
+import { InviaDatiViaggioFirRentriUseCase } from './invia-dati-viaggio-fir-rentri.use-case'
+import { FirmaPartenzaRentriUseCase } from './firma-partenza-rentri.use-case'
+import { AnnotazioneRentriUseCase } from './annotazione-rentri.use-case'
+import { ElencaEventiFirRentriUseCase } from './elenca-eventi-fir-rentri.use-case'
+import { TrovaUltimoTrasportoAutomezzoUseCase } from './trova-ultimo-trasporto-automezzo.use-case'
+import { IDatiViaggioFirRepository } from './dati-viaggio-fir.port'
+import { IEventiFirRentriRepository } from './eventi-fir-rentri.port'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
@@ -124,6 +131,18 @@ describe('RentriSyncModule (DI wiring)', () => {
     // ripetere: deve risolversi anche qui (stesso controller di sopra, con
     // ScaricaPdfFirUseCase iniettato in più).
     expect(moduleRef.get(ScaricaPdfFirUseCase)).toBeDefined()
+
+    // FIR in viaggio P2: quantita' e trasporto, storico, ultimo trasporto di una targa e le due porte di
+    // persistenza (stessi controller di sopra, con tre use case iniettati in piu'). Le porte sono anche
+    // esportate: la creazione del FIR (modulo `fir`) salva i dati di viaggio noti.
+    expect(moduleRef.get(InviaDatiViaggioFirRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(ElencaEventiFirRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(TrovaUltimoTrasportoAutomezzoUseCase)).toBeDefined()
+    // FIR in viaggio P3: firma di partenza (stesso controller, un use case in piu').
+    expect(moduleRef.get(FirmaPartenzaRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(AnnotazioneRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(IDatiViaggioFirRepository)).toBeDefined()
+    expect(moduleRef.get(IEventiFirRentriRepository)).toBeDefined()
 
     // R5 Task 4/5: riconciliazione periodica + i due job schedulati che ne
     // dipendono/l'accompagnano (allarmi Prometheus).

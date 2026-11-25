@@ -57,7 +57,12 @@ describe('RentriFirLifecycleController — scaricaPdf', () => {
       creaLogger(),
       {} as any,
       {} as any, // RollbackEResetFirRentriUseCase
-      {} as any // GestisciSessioneFirmaRentriUseCase
+      {} as any, // GestisciSessioneFirmaRentriUseCase
+      {} as any, // InviaDatiViaggioFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any, // TrovaUltimoTrasportoAutomezzoUseCase
+      {} as any, // FirmaPartenzaRentriUseCase
+      {} as any // AnnotazioneRentriUseCase
     )
   })
 
@@ -208,7 +213,12 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
       creaLogger(),
       ruolo as any,
       {} as any, // RollbackEResetFirRentriUseCase
-      {} as any // GestisciSessioneFirmaRentriUseCase
+      {} as any, // GestisciSessioneFirmaRentriUseCase
+      {} as any, // InviaDatiViaggioFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any, // TrovaUltimoTrasportoAutomezzoUseCase
+      {} as any, // FirmaPartenzaRentriUseCase
+      {} as any // AnnotazioneRentriUseCase
     )
   })
 
@@ -385,7 +395,12 @@ describe('RentriFirLifecycleController: @TenantId è l’azienda selezionata', (
       { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
       {} as any,
       {} as any, // RollbackEResetFirRentriUseCase
-      {} as any // GestisciSessioneFirmaRentriUseCase
+      {} as any, // GestisciSessioneFirmaRentriUseCase
+      {} as any, // InviaDatiViaggioFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any, // TrovaUltimoTrasportoAutomezzoUseCase
+      {} as any, // FirmaPartenzaRentriUseCase
+      {} as any // AnnotazioneRentriUseCase
     )
     const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
     const arg = argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
@@ -428,7 +443,12 @@ describe('RentriFirLifecycleController: ruolo effettivo nell azienda selezionata
       { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
       ruolo as any,
       {} as any, // RollbackEResetFirRentriUseCase
-      {} as any // GestisciSessioneFirmaRentriUseCase
+      {} as any, // GestisciSessioneFirmaRentriUseCase
+      {} as any, // InviaDatiViaggioFirRentriUseCase
+      {} as any, // ElencaEventiFirRentriUseCase
+      {} as any, // TrovaUltimoTrasportoAutomezzoUseCase
+      {} as any, // FirmaPartenzaRentriUseCase
+      {} as any // AnnotazioneRentriUseCase
     )
   })
 

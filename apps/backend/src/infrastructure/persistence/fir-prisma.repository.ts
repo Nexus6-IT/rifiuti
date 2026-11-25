@@ -1020,6 +1020,16 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       _bloccatoInvio: record.bloccatoInvio ?? false,
       _motivoBloccoInvio: record.motivoBloccoInvio ?? null,
     })
+    // FIR in viaggio P2: dati di quantita' e trasporto della tratta principale (sola lettura).
+    fir.impostaDatiViaggio({
+      verificatoInPartenza: record.verificatoInPartenza ?? null,
+      rinfusa: record.rinfusa ?? null,
+      conducenteNome: record.conducenteNome ?? null,
+      conducenteCognome: record.conducenteCognome ?? null,
+      targaRimorchio: record.targaRimorchio ?? null,
+      percorso: record.percorso ?? null,
+      dichiarato: record.rentriDichiarato ?? null,
+    })
 
     return fir
   }

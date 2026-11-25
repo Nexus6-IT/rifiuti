@@ -12,6 +12,7 @@ import {
   MotivoNonModificabile,
 } from '../../../domain/fir/aggregates/fir.aggregate'
 import { ScostamentoPeso } from '../../../domain/fir/scostamento-peso'
+import type { EsitoFirmaPartenzaDopoAzione } from '../../../application/rentri/firma-partenza-rentri.use-case'
 import {
   traduciErroreRentri,
   RentriAzioneUtente,
@@ -97,6 +98,24 @@ export class FIRResponseDto {
     description: 'Modalità di trasporto della tratta principale',
   })
   tipoTrattaPrincipale: TipoTratta | null
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Dati di viaggio della tratta principale: rinfusa e verifica in partenza, conducente, rimorchio e percorso',
+  })
+  datiViaggio: {
+    verificatoInPartenza: boolean | null
+    rinfusa: boolean | null
+    conducenteNome: string | null
+    conducenteCognome: string | null
+    targaRimorchio: string | null
+    percorso: string | null
+    dichiarato: {
+      quantita?: { valore: number; unitaMisura: string; numeroColli: number | null }
+      trasporto?: { targaAutomezzo: string | null }
+    } | null
+  } | null
 
   @ApiProperty({ example: 'tenant-uuid-producer', description: 'ID produttore' })
   produttoreId: string
@@ -286,6 +305,14 @@ export class FIRResponseDto {
   })
   motivoBloccoInvio: string | null
 
+  @ApiPropertyOptional({
+    description:
+      'FIR in viaggio P3: esito della firma di partenza su RENTRI proposta da «Emetti» o «Presa in carico». ' +
+      "Presente solo se il FIR e' legato a RENTRI. L'azione locale e' riuscita comunque: `DA_COMPLETARE`, " +
+      '`SCADUTA`, `RIFIUTATA` portano un avviso e la firma si completa da «Firma la partenza su RENTRI».',
+  })
+  firmaRentri?: EsitoFirmaPartenzaDopoAzione
+
   static fromDomain(fir: FIR): FIRResponseDto {
     const lastError = fir.rentriSyncStatus.getLastError()
     // Nessun fallimento da tradurre: niente messaggio, niente azione.
@@ -307,6 +334,7 @@ export class FIRResponseDto {
       motivoNonModificabile,
       provenienza: fir.provenienza,
       tipoTrattaPrincipale: fir.tipoTrattaPrincipale,
+      datiViaggio: fir.datiViaggio,
       produttoreId: fir.produttoreId,
       rifiuto: {
         cerCode: fir.rifiuto.cerCode,

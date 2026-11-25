@@ -29,7 +29,7 @@ export const MAX_MOTIVO = 200
       [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
-      header="Annulla il documento"
+      [header]="scarto ? 'Annulla e rifattura' : 'Annulla il documento'"
       [modal]="true"
       [draggable]="false"
       [closable]="!inCorso"
@@ -37,7 +37,11 @@ export const MAX_MOTIVO = 200
       [style]="{ width: '34rem', maxWidth: '96vw' }"
       data-testid="annulla-dialog"
     >
-      <p>Il numero torna disponibile. Indica il motivo dell'annullo.</p>
+      <p *ngIf="!scarto">Il numero torna disponibile. Indica il motivo dell'annullo.</p>
+      <p *ngIf="scarto" data-testid="annulla-scarto">
+        Lo SDI ha scartato la fattura. Il numero resta consumato dal documento annullato e le righe
+        tornano da fatturare: potrai emettere una nuova fattura col numero successivo.
+      </p>
       <label for="annulla-motivo">Motivo (obbligatorio)</label>
       <textarea
         id="annulla-motivo"
@@ -49,6 +53,16 @@ export const MAX_MOTIVO = 200
         [disabled]="inCorso"
         data-testid="annulla-motivo"
       ></textarea>
+      <label *ngIf="chiediDuplicato" class="block" data-testid="annulla-duplicato">
+        <input
+          type="checkbox"
+          [ngModel]="duplicatoControllato"
+          (ngModelChange)="duplicatoCambiato.emit($event)"
+          [disabled]="inCorso"
+          data-testid="annulla-duplicato-check"
+        />
+        Ho controllato nel cassetto fiscale: la fattura non risulta ricevuta dallo SDI.
+      </label>
       <p *ngIf="errore" role="alert" class="field-error" data-testid="annulla-errore">
         {{ errore }}
       </p>
@@ -61,10 +75,10 @@ export const MAX_MOTIVO = 200
           data-testid="annulla-chiudi"
         />
         <p-button
-          label="Annulla il documento"
+          [label]="scarto ? 'Annulla e rifattura' : 'Annulla il documento'"
           icon="pi pi-times"
           severity="danger"
-          [disabled]="!valido() || inCorso"
+          [disabled]="!valido() || inCorso || (chiediDuplicato && !duplicatoControllato)"
           [loading]="inCorso"
           (onClick)="conferma()"
           data-testid="annulla-conferma"
@@ -77,6 +91,13 @@ export class AnnullaDialogComponent implements OnChanges {
   @Input() visible = false
   @Input() inCorso = false
   @Input() errore: string | null = null
+  /** Emesso scartato dallo SDI (4.5d): testo dedicato e motivo precompilato. */
+  @Input() scarto = false
+  @Input() motivoIniziale = ''
+  /** Scarto «duplicato» (00404): serve la conferma di aver controllato. */
+  @Input() chiediDuplicato = false
+  @Input() duplicatoControllato = false
+  @Output() readonly duplicatoCambiato = new EventEmitter<boolean>()
   @Output() readonly confermato = new EventEmitter<string>()
   @Output() readonly chiuso = new EventEmitter<void>()
 
@@ -84,7 +105,7 @@ export class AnnullaDialogComponent implements OnChanges {
   readonly maxMotivo = MAX_MOTIVO
 
   ngOnChanges(c: SimpleChanges): void {
-    if (c['visible']) this.motivo = ''
+    if (c['visible']) this.motivo = this.motivoIniziale
   }
 
   valido(): boolean {
@@ -94,6 +115,7 @@ export class AnnullaDialogComponent implements OnChanges {
 
   conferma(): void {
     if (this.inCorso || !this.valido()) return
+    if (this.chiediDuplicato && !this.duplicatoControllato) return
     this.confermato.emit(this.motivo.trim())
   }
 
