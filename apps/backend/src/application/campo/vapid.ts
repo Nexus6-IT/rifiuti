@@ -4,7 +4,7 @@
 // `push` vuoto e mostra un testo generico, poi l'app rilegge online. Per questo servono solo la
 // firma VAPID (JWT ES256) e le chiavi del server. Se un giorno servira' un payload (tipo di avviso
 // opaco) andra' aggiunta la cifratura aes128gcm, ad esempio con il pacchetto `web-push`.
-import { createPrivateKey, createPublicKey, createECDH, sign, type KeyObject } from 'node:crypto'
+import { createPrivateKey, createECDH, sign, type KeyObject } from 'node:crypto'
 
 export interface ChiaviVapid {
   /** Chiave pubblica del server, base64url, 65 byte non compressi (`applicationServerKey`). */
@@ -54,6 +54,12 @@ export function caricaChiaviVapid(env: {
   const priv = Buffer.from(privata, 'base64url')
   if (pub.length !== 65 || pub[0] !== 4 || priv.length !== 32) return null
   try {
+    // La privata deve generare proprio quella pubblica. Il confronto parte dal solo `d`:
+    // con il JWK alcune versioni di Node (20) tengono la x/y dichiarata senza ricalcolarla,
+    // quindi l'export della pubblica non rileverebbe una coppia scambiata.
+    const ecdh = createECDH('prime256v1')
+    ecdh.setPrivateKey(priv)
+    if (!ecdh.getPublicKey().equals(pub)) return null
     const chiavePrivata = createPrivateKey({
       key: {
         kty: 'EC',
@@ -64,10 +70,6 @@ export function caricaChiaviVapid(env: {
       },
       format: 'jwk',
     })
-    // La privata deve generare proprio quella pubblica.
-    const derivata = createPublicKey(chiavePrivata).export({ format: 'jwk' })
-    if (derivata.x !== pub.subarray(1, 33).toString('base64url')) return null
-    if (derivata.y !== pub.subarray(33, 65).toString('base64url')) return null
     return { pubblica, soggetto, chiavePrivata }
   } catch {
     return null
