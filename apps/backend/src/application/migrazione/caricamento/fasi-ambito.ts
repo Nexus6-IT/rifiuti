@@ -1,8 +1,8 @@
 /**
  * Registro delle fasi di ogni ambito del pacchetto: per ciascuna, come si rivalida un record (il
  * pacchetto non e' fidato), come si scrive un blocco e quali collisioni controlla `--verifica`.
- * Oggi: ANAGRAFICHE (ditte, sedi, produttori, trasportatori, destinatari, automezzi) e FIR (I5: `fir`).
- * I pezzi I6-I7 aggiungono qui registro e giacenze. L'ORDINE delle fasi e' quello dell'elenco: le parti
+ * Oggi: ANAGRAFICHE (ditte, sedi, produttori, trasportatori, destinatari, automezzi), FIR (I5: `fir`) e
+ * GIACENZE (I6: `giacenze`). Il pezzo I7 aggiunge qui il registro. L'ORDINE delle fasi e' quello dell'elenco: le parti
  * si legano per chiave legacy, quindi ditte -> sedi -> ruoli -> automezzi.
  */
 import type { AmbitoPacchetto } from '../pacchetto/manifest-pacchetto'
@@ -21,6 +21,7 @@ import {
 } from '../pacchetto/record-anagrafiche'
 import { RecordDitta, validaRecordDitta } from '../pacchetto/record-ditta'
 import { RecordFir, validaRecordFir } from '../pacchetto/record-fir'
+import { RecordGiacenza, validaRecordGiacenza } from '../pacchetto/record-giacenze'
 import {
   inserisciAutomezzi,
   inserisciDestinatari,
@@ -30,6 +31,7 @@ import {
 } from './inserisci-anagrafiche'
 import { inserisciDitte } from './inserisci-ditte'
 import { inserisciFir } from './inserisci-fir'
+import { cerDelCatalogo, famiglieOccupate, inserisciGiacenze } from './inserisci-giacenze'
 import type { InserisciBlocco, Tx } from './tipi'
 
 export interface Collisione {
@@ -222,6 +224,35 @@ async function collisioniFir(tx: Tx, tenantId: string, righe: readonly RecordFir
 }
 
 /**
+ * Collisioni delle giacenze iniziali. Una famiglia (registro, CER, stato fisico, unita' kg/t) gia' in
+ * azienda con un'altra provenienza (tipicamente MANUALE) e' BLOCCANTE: non si sovrascrive ne' si somma.
+ * Un CER fuori catalogo e' bloccante. Nessun valore nei codici: solo conteggi.
+ */
+async function collisioniGiacenze(tx: Tx, tenantId: string, righe: readonly RecordGiacenza[]) {
+  const chiavi = righe.map(r => r.legacyKey)
+  const out: Collisione[] = []
+  const doppie = chiaviRipetute(chiavi)
+  if (doppie > 0) out.push({ codice: 'DUPLICATO_NEL_PACCHETTO', conteggio: doppie })
+  const famiglie = righe.map(
+    r => `${r.registroId}|${r.cerCode.replace(/\D/g, '')}|${r.statoFisico ?? ''}`
+  )
+  const ripetute = chiaviRipetute(famiglie)
+  if (ripetute > 0) out.push({ codice: 'FAMIGLIA_RIPETUTA_NEL_PACCHETTO', conteggio: ripetute })
+  const [carico] = await tx.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*)::bigint AS n FROM "giacenze_iniziali"
+    WHERE "tenant_id" = ${tenantId}::uuid AND "import_source" = 'WINWASTE'
+      AND "legacy_key" = ANY(${chiavi}::text[])`
+  let fuoriCatalogo = 0
+  for (const cer of new Set(righe.map(r => r.cerCode))) {
+    if ((await cerDelCatalogo(tx, cer)) === null) fuoriCatalogo++
+  }
+  if (fuoriCatalogo > 0) out.push({ codice: 'CER_NON_IN_CATALOGO', conteggio: fuoriCatalogo })
+  const occupate = await famiglieOccupate(tx, tenantId, righe)
+  if (occupate > 0) out.push({ codice: 'GIACENZA_GIA_PRESENTE_NON_IMPORTATA', conteggio: occupate })
+  return { collisioni: out, giaCaricate: Number(carico.n) }
+}
+
+/**
  * Fasi che il pacchetto puo' contenere ma che NON si caricano nel database. `fir-digitali` e' solo
  * l'elenco dei FIR da riacquisire da RENTRI (`migrazione:riacquisisci-fir`): i FIR digitali non si
  * copiano (Q5 del 14/11).
@@ -276,7 +307,14 @@ export const FASI_AMBITO: Readonly<Record<AmbitoPacchetto, ReadonlyArray<Definiz
     } satisfies DefinizioneFase<RecordAutomezzo>,
   ],
   REGISTRO: [],
-  GIACENZE: [],
+  GIACENZE: [
+    {
+      nome: 'giacenze',
+      valida: (g, mappa) => validaRecordGiacenza(g, mappa),
+      inserisciBlocco: inserisciGiacenze,
+      collisioni: collisioniGiacenze,
+    } satisfies DefinizioneFase<RecordGiacenza>,
+  ],
   FIR: [
     {
       nome: 'fir',

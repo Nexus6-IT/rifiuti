@@ -263,11 +263,12 @@ export class CaricaPacchettoService {
   }
 
   /**
-   * I FIR importati hanno un utente (`producer_user_id`, FK a `users`): l'operatore che avvia il
-   * caricamento. Serve solo all'ambito FIR e deve essere un utente di QUESTA azienda.
+   * I FIR importati hanno un utente (`producer_user_id`, FK a `users`) e le giacenze iniziali un
+   * `impostato_da`: l'operatore che avvia il caricamento. Serve agli ambiti FIR e GIACENZE e deve
+   * essere un utente di QUESTA azienda.
    */
   private async verificaOperatore(tx: Tx, r: RichiestaCaricamento): Promise<Collisione[]> {
-    if (r.ambito !== 'FIR') return []
+    if (r.ambito !== 'FIR' && r.ambito !== 'GIACENZE') return []
     if (!r.avviatoDa) return [{ codice: 'OPERATORE_ASSENTE', conteggio: 1 }]
     const [{ n }] = await tx.$queryRaw<Array<{ n: bigint }>>`
       SELECT count(*)::bigint AS n FROM "users"

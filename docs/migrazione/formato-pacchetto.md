@@ -39,9 +39,9 @@ forma dei modelli di WasteFlow, con `legacyKey` (stesse chiavi di `chiavi-legacy
 Fasi definite oggi, tutte di ambito `ANAGRAFICHE`, caricate in quest'ordine (le parti si legano
 per chiave legacy, non per id): `ditte`, `sedi`, `produttori`, `trasportatori`, `destinatari`,
 `automezzi`. Le fasi vuote non si scrivono (tranne `ditte`): un pacchetto di sole ditte (pezzo I2)
-si carica ancora. Registro e giacenze arrivano con i pezzi I6-I7 senza cambiare il formato (si
-aggiungono righe in `file[]` e una definizione in `caricamento/fasi-ambito.ts`). Dal pezzo I5 c'e' anche
-l'ambito `FIR` (vedi sotto), da caricare DOPO ANAGRAFICHE.
+si carica ancora. Il registro arriva con il pezzo I7 senza cambiare il formato (si aggiungono righe in
+`file[]` e una definizione in `caricamento/fasi-ambito.ts`). Dal pezzo I5 c'e' anche l'ambito `FIR`
+(vedi sotto), da caricare DOPO ANAGRAFICHE; dal pezzo I6 l'ambito `GIACENZE` (vedi sotto).
 
 | Fase | Record | Chiave legacy |
 |---|---|---|
@@ -107,6 +107,62 @@ pausa fra le chiamate (default 3 s, minimo 1 s), massimo per esecuzione (default
 al primo errore transitorio dell'ente. Un FIR riacquisito nasce senza provenienza e non bloccato (Q5);
 un numero gia' presente nel database non si richiede. Uscite: 0 ok, 1 interrotto/falliti, 2 pacchetto o
 utente rifiutati, 64 uso errato.
+
+### Ambito `GIACENZE` (I6): giacenze iniziali al taglio
+
+Fase `giacenze`, da `MOVIMENTI` + `[GIACENZE RIFIUTI]`: una riga per FAMIGLIA (registro WasteFlow, CER, stato
+fisico) con la quantita' in kg al giorno di taglio della mappa (`dataTaglio`). Chiave legacy
+`ditta|anno|GIACENZE|<registroId>|<CER 6 cifre>|<stato fisico o ->`. Record:
+`{ legacyKey, registroId, cerCode, statoFisico|null, quantita (kg, 2 decimali, > 0), unita: "KG", dataRiferimento, origini: [{ anno, protocollo, quantita }] }`.
+Il server rivalida tutto (schema chiuso, chiave coerente con registro/CER/stato fisico, registro della
+mappa, origini senza duplicati, somma delle origini <= quantita', al piu' 200).
+
+**Calcolo** (`domain/migrazione/winwaste/giacenze-taglio.ts`, indipendente da `GIASCAR`):
+
+```
+giacenza al taglio = righe NORMALI di [GIACENZE RIFIUTI] (RR, RL, DR, DL, DT)
+                   - kg dei segmenti G e P degli scarichi fino al taglio (classe per classe, con la
+                     compensazione di calcresgiac: R13 con R13, D15 con D15)
+                   + carichi dell'anno fino al taglio aperti: netto - kg dei segmenti C degli scarichi
+```
+
+E' la «riga normale» del riporto d'anno (`AggGIACRIFIUTI`, `giacenze.md` §4.2) e dà lo stesso totale in
+modalita' G e P del passaggio d'anno. Le righe di compensazione (`UL` che comincia per 8) NON si sommano
+(contate: avviso `RIGHE_COMPENSAZIONE_NON_SOMMATE`): servono solo a distinguere in modalita' P i carichi
+`P` ancora aperti, gia' dentro la riga normale.
+
+- **Registro**: il MAGAZZINO WinWaste (`MAG` della giacenza; `MAG1` del carico T e X, `MAG2` del carico R/D;
+  `MAG1` dello scarico per i segmenti G e P) tradotto da `mappa.registri[].legacy`. Magazzino non in mappa:
+  scarto `GIACENZE MAGAZZINO_NON_IN_MAPPA` (contato, mai silenzioso).
+- **Differenze `GIASCAR`**: per ogni carico, `GIASCAR` e' ricalcolato dalla somma dei segmenti `C` di
+  `RELAZ`; una differenza >= 0,001 kg va nel rapporto di `prepara` (`differenza-giascar <COD> <GIASCAR> <ricalcolato>`)
+  e nell'oggetto `differenzeGiascar`. Mai corretta in silenzio: il residuo caricato e' quello ricalcolato, le
+  differenze vanno al cliente col rapporto sorgente. `GIASCAR` conta anche i segmenti `P` dell'anno successivo,
+  che qui non si vedono: con un anno successivo gia' aperto una differenza puo' essere legittima.
+- **Origini** (relazioni iniziali RENTRI, F2-9): anno e protocollo di ogni carico aperto (protocollo del
+  registro della famiglia, altrimenti il primo con numero) con la sua quantita' residua. L'apertura che viene
+  dalla riga normale non ha origini note (avviso `ORIGINI_APERTURA_NON_NOTE`); un carico senza protocollo
+  `CARICO_SENZA_PROTOCOLLO`; oltre 200 origini la quantita' si carica e le origini si omettono
+  (`ORIGINI_OLTRE_IL_LIMITE`).
+- **Segnalati e non contati**: carichi dopo il taglio (`CARICO_DOPO_IL_TAGLIO`, sono di I7), carichi senza
+  carichi di OPER 15, 24, 16, 26 su un'ALTRA unita' locale (`POS2`, decisione Q2: restano FUORI dalla giacenza; avviso `CARICO_ALTRA_UL_FUORI_GIACENZA` e righe `carico-altra-ul <COD> OPER <n> protocollo <n|->` nel rapporto, da inserire a mano se servono; OPER 13 invece e' sempre un carico R/D), deposito
+  del produttore `G0`/classe X (vive in `[Schede produttori]`, non nello staging), carico scaricato oltre il
+  netto, residuo iniziale negativo non compensabile (`GIACENZA_INIZIALE_NEGATIVA`: non si carica a zero in
+  silenzio), moda R/D non riconosciuta (scarto), quantita' sotto il centesimo (trascurate).
+- I m³ non si portano (le aperture di WasteFlow non li tracciano).
+- Colonne di provenienza su `giacenze_iniziali` (migration `20261123120000`): `import_source`, `legacy_key`,
+  `lotto_import_id` immutabili; `provenienza = IMPORTAZIONE`; unico parziale sulla chiave legacy.
+
+**Caricamento** (`inserisci-giacenze.ts`): stesso `--operatore` dei FIR (`impostato_da`), advisory lock di
+scarico e servizio, CER del catalogo (con `*` se il catalogo lo ha; fuori catalogo = bloccante
+`CER_NON_IN_CATALOGO`). Una giacenza MANUALE (o di altra provenienza) gia' presente sulla stessa famiglia
+(kg e t sono la stessa famiglia) e' BLOCCANTE (`GIACENZA_GIA_PRESENTE_NON_IMPORTATA`) e, se la verifica fosse
+saltata, fa FALLIRE il blocco senza scrivere nulla: non si sovrascrive e non si somma. La riesecuzione salta
+le famiglie gia' importate con la stessa chiave. Dopo il caricamento lo scarico vede la giacenza
+(`giacenza-disponibile.ts`) e il MUD la conta solo come giacenza al 31/12, non come prodotta o ricevuta.
+
+FORME PRESUNTE (nessun `.bak`, da riverificare sul primo): il magazzino di un carico (`MAG1`/`MAG2` per
+classe), il magazzino dei segmenti G/P, `SF` di `[GIACENZE RIFIUTI]` uguale a `FISI` dei movimenti.
 
 ### Regole di trasformazione (I4)
 

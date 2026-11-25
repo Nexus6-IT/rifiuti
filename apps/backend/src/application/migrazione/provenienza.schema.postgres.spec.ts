@@ -1,6 +1,6 @@
 /**
- * Fase 3 (3.1), Task 3: colonne di provenienza immutabili su registro, FIR e anagrafiche contro un
- * Postgres reale. Una sola descrizione parametrica su otto tabelle. Il proprietario (`wasteflow`)
+ * Fase 3 (3.1), Task 3: colonne di provenienza immutabili su registro, FIR, anagrafiche e giacenze iniziali contro un
+ * Postgres reale. Una sola descrizione parametrica su nove tabelle. Il proprietario (`wasteflow`)
  * prepara e prova anche gli UPDATE (i trigger fermano pure lui). Un movimento importato nasce con la
  * sua riga di blocco (D3, Task 4) nella stessa transazione: il helper lo fa gia' ora, cosi' la spec
  * resta valida dopo la migration del blocco. La pulizia cancella SOLO le aziende create qui.
@@ -25,7 +25,7 @@ interface Tabella {
   aggiorna: string
 }
 
-describe('Fase 3 (3.1): provenienza di import su otto tabelle (Postgres reale)', () => {
+describe('Fase 3 (3.1): provenienza di import su nove tabelle (Postgres reale)', () => {
   const owner = new PrismaClient()
   const tenantCreati: string[] = []
   let n = 0
@@ -41,6 +41,7 @@ describe('Fase 3 (3.1): provenienza di import su otto tabelle (Postgres reale)',
     'trasportatori',
     'destinatari',
     'automezzi',
+    'giacenze_iniziali',
   ]
 
   async function contesto(): Promise<Contesto> {
@@ -262,6 +263,31 @@ describe('Fase 3 (3.1): provenienza di import su otto tabelle (Postgres reale)',
         return (
           await owner.automezzo.create({
             data: { tenantId: c.t, targa: `PV${seme}${n}`.slice(0, 15), creatoDa: c.user, ...prov },
+          })
+        ).id
+      },
+    },
+    {
+      // Pezzo I6: provenienza anche sulle giacenze iniziali (migration 20261123120000). Ogni riga ha un
+      // CER diverso: l'unico (registro, CER, stato fisico, unita') non deve scattare fra le prove.
+      nome: 'giacenze_iniziali',
+      aggiorna: `note = 'controllata'`,
+      crea: async (c, prov = {}) => {
+        n++
+        const cer = `${10 + (n % 80)} ${10 + (Math.floor(n / 80) % 80)} ${10 + (Math.floor(n / 6400) % 80)}`
+        return (
+          await owner.giacenzaIniziale.create({
+            data: {
+              tenantId: c.t,
+              registroId: c.registro,
+              cerCode: cer,
+              quantita: 10,
+              unita: 'KG',
+              dataRiferimento: new Date('2026-12-31T00:00:00.000Z'),
+              impostatoDa: c.user,
+              provenienza: prov.importSource ? 'IMPORTAZIONE' : 'MANUALE',
+              ...prov,
+            },
           })
         ).id
       },

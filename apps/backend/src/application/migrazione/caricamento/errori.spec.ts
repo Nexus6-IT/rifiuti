@@ -1,5 +1,6 @@
 import {
   CaricamentoBloccoFallitoError,
+  ErroreSenzaDati,
   LottoGiaInCorsoError,
   LottoNonInCorsoError,
   causaSenzaDati,
@@ -31,6 +32,12 @@ describe('causaSenzaDati (Fase 3, Task 9)', () => {
   it('lotto non in corso: messaggio dedicato, non "errore del database"', () => {
     expect(causaSenzaDati(new LottoNonInCorsoError('l1'))).toBe(
       'il lotto di import non è in corso (già concluso o annullato)'
+    )
+  })
+
+  it('ErroreSenzaDati: la descrizione dice quale regola ha fermato il blocco', () => {
+    expect(causaSenzaDati(new ErroreSenzaDati('una giacenza manuale esiste gia'))).toBe(
+      'una giacenza manuale esiste gia'
     )
   })
 

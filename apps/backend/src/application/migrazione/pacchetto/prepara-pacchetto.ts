@@ -5,8 +5,8 @@
  * Fasi prodotte: ANAGRAFICHE/ditte (da CLIFOR, con dedup per P.IVA o CF e agganci della mappa) e, dal
  * pezzo I4, sedi, produttori, trasportatori, destinatari e automezzi (vedi `prepara-anagrafiche.ts`).
  * Dal pezzo I5, ambito FIR: `fir` e `fir-digitali` (vedi `prepara-fir.ts`). Le fasi vuote non vengono
- * scritte (tranne `ditte`). Le altre fasi (registro, giacenze) si aggiungono qui con i pezzi I6-I7: il
- * formato non cambia.
+ * scritte (tranne `ditte`). Dal pezzo I6, ambito GIACENZE: `giacenze` (vedi `prepara-giacenze.ts`).
+ * Il registro (I7) si aggiunge qui: il formato non cambia.
  *
  * Scarti: tipati e contati per tabella e codice, mai con valori. Un duplicato e' SEGNALATO, mai fuso
  * in silenzio.
@@ -16,6 +16,11 @@ import { PacchettoError } from './errori-pacchetto'
 import { ManifestPacchetto } from './manifest-pacchetto'
 import { MappaImport } from './mappa-import'
 import { CodiceAvvisoFir, preparaFir } from './prepara-fir'
+import { CodiceAvvisoGiacenze, preparaGiacenze } from './prepara-giacenze'
+import type {
+  CaricoAltraUl,
+  DifferenzaGiascar,
+} from '../../../domain/migrazione/winwaste/giacenze-taglio'
 import {
   CodiceAvvisoPrepara,
   CodiceScartoPrepara,
@@ -24,13 +29,22 @@ import {
 } from './prepara-anagrafiche'
 import { FaseDaScrivere, scriviPacchetto } from './scrittore-pacchetto'
 
-export type { CodiceAvvisoFir, CodiceAvvisoPrepara, CodiceScartoPrepara }
+export type { CodiceAvvisoFir, CodiceAvvisoGiacenze, CodiceAvvisoPrepara, CodiceScartoPrepara }
 
 export interface RapportoPrepara {
   readonly manifest: ManifestPacchetto
   readonly scarti: ReadonlyArray<VoceConteggio<CodiceScartoPrepara | string>>
   /** Scelte dedotte e note che non sono scarti: da controllare con l'operatore. */
-  readonly avvisi: ReadonlyArray<VoceConteggio<CodiceAvvisoPrepara | CodiceAvvisoFir>>
+  readonly avvisi: ReadonlyArray<
+    VoceConteggio<CodiceAvvisoPrepara | CodiceAvvisoFir | CodiceAvvisoGiacenze>
+  >
+  /**
+   * Carichi per cui `GIASCAR` non coincide col ricalcolo da `RELAZ` (>= 0,001 kg): `COD` del carico e
+   * i due valori in kg. Vanno al cliente insieme al rapporto; mai corretti in silenzio.
+   */
+  readonly differenzeGiascar: readonly DifferenzaGiascar[]
+  /** Carichi su un'altra unita' locale (OPER 15, 24, 16, 26) esclusi dalla giacenza: COD, OPER, protocollo. */
+  readonly caricoAltraUl: readonly CaricoAltraUl[]
   /**
    * FIR digitali: non copiati, da riacquisire da RENTRI (`migrazione:riacquisisci-fir`). Numero e
    * IDRENTRI sono identificativi dell'ente, non dati personali.
@@ -63,6 +77,7 @@ export async function preparaPacchetto(
     throw new PacchettoError('FILE_ASSENTE', 'lo staging non contiene CLIFOR')
   const r = await preparaAnagrafiche(staging, mappa)
   const f = await preparaFir(staging, mappa, r)
+  const g = await preparaGiacenze(staging, mappa)
   const fasi: FaseDaScrivere[] = [
     { ambito: 'ANAGRAFICHE', fase: 'ditte', record: r.ditte },
     ...(
@@ -85,6 +100,9 @@ export async function preparaPacchetto(
     )
       .filter(([, record]) => record.length > 0)
       .map(([fase, record]) => ({ ambito: 'FIR' as const, fase, record })),
+    ...(g.giacenze.length > 0
+      ? [{ ambito: 'GIACENZE' as const, fase: 'giacenze', record: g.giacenze }]
+      : []),
   ]
   const manifest = await scriviPacchetto({
     cartella: cartellaPacchetto,
@@ -97,8 +115,10 @@ export async function preparaPacchetto(
     manifest,
     agganciate: r.agganciate,
     duplicati: r.duplicati,
-    scarti: [...r.scarti, ...f.scarti],
-    avvisi: [...r.avvisi, ...f.avvisi],
+    scarti: [...r.scarti, ...f.scarti, ...g.scarti],
+    avvisi: [...r.avvisi, ...f.avvisi, ...g.avvisi],
+    differenzeGiascar: g.differenzeGiascar,
+    caricoAltraUl: g.caricoAltraUl,
     firDigitali: f.firDigitali.map(d => ({ numero: d.numeroFir, idRentri: d.idRentri })),
     firSenzaPeso: f.firSenzaPeso.map(d => ({
       numero: d.firNumber,

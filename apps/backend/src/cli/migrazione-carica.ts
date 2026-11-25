@@ -6,8 +6,8 @@
  * SOLO client applicativo (RLS). Un'azienda alla volta. Il pacchetto non e' fidato: viene verificato
  * (impronte, righe, mappa) e ogni record e' rivalidato lato server.
  *
- * `--operatore`: l'utente dell'azienda a cui si attribuisce il lotto. Obbligatorio per l'ambito FIR
- * (`firs.producer_user_id` e' una FK a `users`); verificato contro l'azienda.
+ * `--operatore`: l'utente dell'azienda a cui si attribuisce il lotto. Obbligatorio per gli ambiti FIR
+ * (`firs.producer_user_id` e' una FK a `users`) e GIACENZE (`impostato_da`); verificato contro l'azienda.
  *
  * `--verifica`: solo letture (transazione read-only). Elenca i bloccanti e non scrive nulla.
  *
