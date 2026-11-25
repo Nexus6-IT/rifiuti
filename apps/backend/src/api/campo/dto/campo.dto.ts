@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -8,6 +9,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator'
@@ -69,6 +71,72 @@ export class EsitiCampoQueryDto {
   @IsOptional()
   @IsIn(['APPLICATO', 'DA_RICONCILIARE'], { message: 'Filtro non valido.' })
   esito?: 'APPLICATO' | 'DA_RICONCILIARE'
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'Pagina non valida.' })
+  @Min(1, { message: 'Pagina non valida.' })
+  pagina?: number
+}
+
+/** Corpo di `PUT /push/sottoscrizione` e `POST /push/sottoscrizione/annulla`: solo l'endpoint del browser. */
+export class PushEndpointDto {
+  @ApiProperty({
+    example: 'https://fcm.googleapis.com/fcm/send/…',
+    description: 'Indirizzo del servizio push del browser (`PushSubscription.endpoint`)',
+  })
+  @IsString({ message: 'L’indirizzo di notifica non è valido.' })
+  @MaxLength(2000, { message: 'L’indirizzo di notifica non è valido.' })
+  @Matches(/^https:\/\//, { message: 'L’indirizzo di notifica non è valido.' })
+  endpoint!: string
+}
+
+/** Corpo di `PUT /push/preferenze`. */
+export class PushPreferenzeDto {
+  @ApiProperty({ description: 'Avvisami quando il mio giro cambia' })
+  @IsBoolean({ message: 'La preferenza non è valida.' })
+  giroModificato!: boolean
+}
+
+/**
+ * Corpo di `POST /campo/ricevute`: la forma la controlla il DTO, i limiti (nome, ora, struttura del
+ * PNG, email) `normalizzaRicevutaCampo`. Il limite di dimensione del JSON e' alzato su questa rotta.
+ */
+export class RicevutaCampoDto {
+  @ApiProperty({ description: 'UUID generato dal telefono: chiave di idempotenza' })
+  @IsUUID('all', { message: "L'identificativo della ricevuta non è valido." })
+  id!: string
+
+  @ApiProperty()
+  @IsUUID('all', { message: 'Il ritiro non è valido.' })
+  ritiroId!: string
+
+  @ApiProperty({ example: 'Mario Rossi', description: 'Nome di chi firma' })
+  @IsString({ message: 'Il nome di chi firma non è valido.' })
+  firmatarioNome!: string
+
+  @ApiProperty({ example: '2026-12-01T08:30:00.000Z', description: 'Orologio del telefono' })
+  @IsString({ message: "L'ora della firma non è valida." })
+  firmatoIl!: string
+
+  @ApiProperty({ description: 'Immagine del tratto: PNG in base64, al massimo 128 KiB' })
+  @IsString({ message: 'La firma non è valida.' })
+  firmaPng!: string
+
+  @ApiPropertyOptional({
+    description: 'Invio al cliente (facoltativo, ignorato se l’invio è spento)',
+  })
+  @IsOptional()
+  @IsString({ message: "L'indirizzo email del cliente non è valido." })
+  emailCliente?: string
+}
+
+export class RicevuteCampoQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID('all', { message: 'Ritiro non valido.' })
+  ritiroId?: string
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()

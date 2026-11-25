@@ -474,7 +474,7 @@ const perData = (a: EventoInCoda, b: EventoInCoda) =>
           ? -1
           : 1;
 
-function messaggioServer(e: HttpErrorResponse): string | null {
+export function messaggioServer(e: HttpErrorResponse): string | null {
   const m = (e.error as { message?: unknown } | null)?.message;
   if (typeof m === 'string' && m && e.status < 500) return m;
   if (Array.isArray(m) && m.length > 0 && e.status < 500) return String(m[0]);

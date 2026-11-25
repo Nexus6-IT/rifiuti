@@ -189,6 +189,25 @@ h1 {
   text-decoration: underline;
   cursor: pointer;
 }
+
+.notifiche {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordo, #d9d6cc);
+}
+
+.notifiche h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.preferenza {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+}
+
 .esito .allegati {
   margin: 0.75rem 0 0;
   padding: 0.6rem 0.75rem;
@@ -198,4 +217,33 @@ h1 {
 .esito .allegati legend {
   padding: 0 0.35rem;
   font-weight: 600;
+}
+
+.tela-firma {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 2;
+  background: #fff;
+  border: 2px dashed var(--bordo);
+  border-radius: 10px;
+  touch-action: none; /* il dito disegna, non scorre la pagina */
+  cursor: crosshair;
+}
+.campo {
+  width: 100%;
+  min-height: 48px;
+  font: inherit;
+  padding: 0.6rem;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--testo);
+}
+.avviso-valore {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 2px solid var(--testo);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.9rem;
 }

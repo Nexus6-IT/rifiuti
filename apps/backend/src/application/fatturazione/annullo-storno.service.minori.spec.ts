@@ -104,6 +104,7 @@ describe('AnnulloStornoService: minori del Task 20', () => {
           },
         ],
         [{ esiste: false }],
+        [{ scartato: false, viva: false, inVolo: false }],
       ]
       const tx = {
         $executeRawUnsafe: jest.fn().mockResolvedValue(0),

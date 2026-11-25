@@ -28,6 +28,7 @@ function documento(extra: Partial<DocumentoDettaglio> = {}): DocumentoDettaglio 
     annullabile: false,
     motivoNonAnnullabile: null,
     stornabile: false,
+    motivoNonStornabile: null,
     statoSdi: null,
     esitoFiscale: null,
     righe: [

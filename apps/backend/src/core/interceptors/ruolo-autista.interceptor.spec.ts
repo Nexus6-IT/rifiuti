@@ -130,6 +130,13 @@ const AMMESSE_ALL_AUTISTA = [
   'AuthController.logout',
   'CampoController.giro',
   'CampoController.registraEvento',
+  'PushController.annulla',
+  'PushController.configurazione',
+  'PushController.impostaPreferenze',
+  'PushController.preferenze',
+  'PushController.sottoscrivi',
+  'CampoController.configurazioneRicevute',
+  'CampoController.registraRicevuta',
   'CampoController.registraFoto',
 ]
 

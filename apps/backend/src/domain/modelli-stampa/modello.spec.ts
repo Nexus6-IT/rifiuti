@@ -1,6 +1,7 @@
+import { pngDiProva } from '../../test-support/png-di-prova'
 import { normalizzaModello, validaModello, type DatiModelloStampa } from './modello'
 
-const PNG = Buffer.from('89504e470d0a1a0a0000000d', 'hex').toString('base64')
+const PNG = pngDiProva(60, 30).toString('base64')
 
 const base = (o: Partial<DatiModelloStampa> = {}): DatiModelloStampa => ({
   nome: 'Modello FIR',
