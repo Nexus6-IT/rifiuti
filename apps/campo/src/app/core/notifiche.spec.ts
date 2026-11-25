@@ -65,7 +65,12 @@ describe('Notifiche (scheda nel giro)', () => {
   });
 
   it('endpoint di un altro autista (409): messaggio chiaro, nessun pulsante, nessun ritentativo', async () => {
-    const f = monta(porta({ perm: 'granted', endpointAttuale: async () => 'https://fcm.googleapis.com/fcm/send/x' }));
+    const f = monta(
+      porta({
+        perm: 'granted',
+        endpointAttuale: async () => 'https://fcm.googleapis.com/fcm/send/x',
+      }),
+    );
     await flush();
     http.expectOne('/api/v1/push/configurazione').flush({ disponibile: true, chiavePubblica: 'K' });
     await flush();

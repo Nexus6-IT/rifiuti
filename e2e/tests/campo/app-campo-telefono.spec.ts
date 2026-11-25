@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from '@playwright/test'
+import { pushNonDisponibile } from '../../utils/campo-push'
 
 /**
  * E2E - App campo P2 (PWA autisti) su viewport telefono.
@@ -59,6 +60,10 @@ async function conSessione(page: Page) {
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+test.beforeEach(async ({ page }) => {
+  await pushNonDisponibile(page)
+})
 
 test.describe('App campo P2: PWA su telefono', () => {
   test('senza sessione la radice porta al login; il link SPID/CIE porta il canale campo', async ({

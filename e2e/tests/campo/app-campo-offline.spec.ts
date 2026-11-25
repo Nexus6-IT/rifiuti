@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from '@playwright/test'
+import { pushNonDisponibile } from '../../utils/campo-push'
 
 /**
  * E2E - App campo P3 (giro offline) su viewport telefono, rete spenta con `context.setOffline`.
@@ -114,6 +115,10 @@ const snapshotInIdb = (page: Page) =>
         }
       })
   )
+
+test.beforeEach(async ({ page }) => {
+  await pushNonDisponibile(page)
+})
 
 test.describe('App campo P3: giro offline', () => {
   test.setTimeout(120_000)
