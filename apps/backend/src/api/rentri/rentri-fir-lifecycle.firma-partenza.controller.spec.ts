@@ -35,6 +35,8 @@ describe('RentriFirLifecycleController — firma di partenza', () => {
       {} as any,
       {} as any,
       firmaPartenza as any,
+      {} as any,
+      {} as any,
       {} as any
     )
   })

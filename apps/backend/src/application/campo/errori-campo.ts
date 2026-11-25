@@ -44,6 +44,90 @@ export class EventoCampoDiAltroUtenteError extends DomainError {
   }
 }
 
+/** 503 `PUSH_NON_DISPONIBILE`: le chiavi VAPID non sono configurate, le notifiche sono spente. */
+export class PushNonDisponibileError extends DomainError {
+  readonly code = 'PUSH_NON_DISPONIBILE'
+  constructor() {
+    super('Le notifiche non sono disponibili.')
+    this.name = 'PushNonDisponibileError'
+  }
+}
+
+/** 400 `PUSH_ENDPOINT_NON_AMMESSO`: l'indirizzo del servizio push non e' fra quelli dei browser noti. */
+export class PushEndpointNonAmmessoError extends DomainError {
+  readonly code = 'PUSH_ENDPOINT_NON_AMMESSO'
+  constructor() {
+    super('Il servizio di notifica del dispositivo non è supportato.')
+    this.name = 'PushEndpointNonAmmessoError'
+  }
+}
+
+/**
+ * 409 `ENDPOINT_PUSH_DI_ALTRO_UTENTE`: il dispositivo e' gia' registrato per un altro utente della
+ * stessa azienda. Non si sposta: lo libera il collega (dal suo telefono) o l'ufficio. Il messaggio
+ * non dice chi e'. L'unicita' e' per azienda: un endpoint di un'altra azienda non produce questo errore.
+ */
+export class PushEndpointDiAltroUtenteError extends DomainError {
+  readonly code = 'ENDPOINT_PUSH_DI_ALTRO_UTENTE'
+  constructor() {
+    super('Le notifiche di questo dispositivo sono gia attive per un altro utente.')
+    this.name = 'PushEndpointDiAltroUtenteError'
+  }
+}
+
+/** 409 `RICEVUTA_DI_ALTRO_UTENTE`: l'identificativo della ricevuta e' gia' stato usato da un altro autista. */
+export class RicevutaDiAltroUtenteError extends DomainError {
+  readonly code = 'RICEVUTA_DI_ALTRO_UTENTE'
+  constructor() {
+    super("La ricevuta risulta gia' registrata da un altro utente.")
+    this.name = 'RicevutaDiAltroUtenteError'
+  }
+}
+
+/** 409 `RICEVUTA_NON_CONSENTITA`: il ritiro non e' (piu') dell'autista o non e' piu' da fare. */
+export class RicevutaNonConsentitaError extends DomainError {
+  readonly code = 'RICEVUTA_NON_CONSENTITA'
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RicevutaNonConsentitaError'
+  }
+}
+
+/** 409 `RICEVUTA_LIMITE_RITIRO`: troppe ricevute per lo stesso ritiro. */
+export class RicevutaLimiteRitiroError extends DomainError {
+  readonly code = 'RICEVUTA_LIMITE_RITIRO'
+  constructor(massimo: number) {
+    super(`Per questo ritiro ci sono già ${massimo} ricevute: contatta l'ufficio.`)
+    this.name = 'RicevutaLimiteRitiroError'
+  }
+}
+
+/** 404: la ricevuta non esiste in questa azienda. */
+export class RicevutaNonTrovataError extends DomainError {
+  constructor() {
+    super('Ricevuta non trovata.')
+    this.name = 'RicevutaNonTrovataError'
+  }
+}
+
+/** 422 `RICEVUTA_TROPPO_GRANDE`: il PDF generato supera il limite dell'archivio (mai ritentabile). */
+export class RicevutaTroppoGrandeError extends DomainError {
+  readonly code = 'RICEVUTA_TROPPO_GRANDE'
+  constructor() {
+    super('La ricevuta generata è troppo grande: rifai la firma più semplice.')
+    this.name = 'RicevutaTroppoGrandeError'
+  }
+}
+
+/** 409 `RICEVUTA_ALTERATA`: i byte archiviati non corrispondono all'impronta salvata (integrita'). */
+export class RicevutaAlterataError extends DomainError {
+  readonly code = 'RICEVUTA_ALTERATA'
+  constructor() {
+    super('La ricevuta archiviata non è integra e non si consegna: contatta il supporto.')
+    this.name = 'RicevutaAlterataError'
+  }
+}
+
 /** 404: l'evento a cui si allega la foto non esiste (per questa azienda). */
 export class EventoCampoNonTrovatoError extends DomainError {
   readonly code = 'EVENTO_CAMPO_NON_TROVATO'

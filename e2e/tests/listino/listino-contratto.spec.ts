@@ -12,6 +12,7 @@ import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import {
   ATTESA_SERVER,
+  attendiAbilitato,
   attendiElenco,
   cliccaEAttendi,
   cliccaEChiudi,
@@ -358,6 +359,7 @@ test.describe('Listino del contratto — admin', () => {
       timeout: ATTESA_SERVER,
     })
     await dlg.getByLabel('Descrizione', { exact: true }).fill('Listino di prova')
+    await expect(dlg.getByLabel('Descrizione', { exact: true })).toHaveValue('Listino di prova')
     await dlg.getByLabel('Elenco predefinito').check()
     await cliccaEChiudi(page, dlg.getByTestId('listino-elenco-salva'), dlg)
 
@@ -476,7 +478,7 @@ test.describe('Listino del contratto — admin', () => {
     await cercaESeleziona(dlg, d.addebitoMw2, new RegExp(`${d.codiceMw2} - .*\\(MW\\)$`))
     await expect(dlg.getByTestId('riga-tipo')).toHaveValue('MW')
     await attendiProposta(dlg)
-    await expect(dlg.getByTestId('riga-salva')).toBeEnabled({ timeout: ATTESA_SERVER })
+    await attendiAbilitato(dlg.getByTestId('riga-salva'))
     await cliccaEAttendi(page, dlg.getByTestId('riga-salva'), { stato: [400, 409, 422] })
     await expect(dlg).toContainText('Nel contratto c’è già un addebito di minimo fatturabile.', {
       timeout: ATTESA_SERVER,
@@ -498,6 +500,7 @@ test.describe('Listino del contratto — admin', () => {
       timeout: ATTESA_SERVER,
     })
     await nuovo.getByLabel('Descrizione', { exact: true }).fill('Copia di prova')
+    await expect(nuovo.getByLabel('Descrizione', { exact: true })).toHaveValue('Copia di prova')
     await cliccaEChiudi(page, nuovo.getByTestId('listino-elenco-salva'), nuovo)
     await expect(
       pagina(page).getByRole('heading', { level: 2, name: /^Elenco 001 - / })
@@ -511,7 +514,7 @@ test.describe('Listino del contratto — admin', () => {
     // La scelta del contratto fa leggere i suoi elenchi: si prosegue a lettura finita.
     await expect(dlg.getByTestId('copia-origine-elenco')).toBeVisible({ timeout: ATTESA_SERVER })
     await scegliVoce(dlg.getByTestId('copia-origine-elenco'), '001')
-    await expect(dlg.getByTestId('copia-avanti')).toBeEnabled({ timeout: ATTESA_SERVER })
+    await attendiAbilitato(dlg.getByTestId('copia-avanti'))
     await dlg.getByTestId('copia-avanti').click()
     await expect(dlg.getByTestId('copia-conferma')).toContainText('sostituite')
     await cliccaEAttendi(page, dlg.getByTestId('copia-conferma-finale'), {
@@ -660,7 +663,7 @@ test.describe('Listino del contratto — admin', () => {
 
     // Il contratto C e' dello stesso cliente: compare fra i possibili principali.
     await scegliVoce(dlg.getByTestId('contratto-dlg-principale'), d.numeroC)
-    await expect(dlg.getByTestId('contratto-dlg-salva')).toBeEnabled({ timeout: ATTESA_SERVER })
+    await attendiAbilitato(dlg.getByTestId('contratto-dlg-salva'))
     await cliccaEAttendi(page, dlg.getByTestId('contratto-dlg-salva'), { stato: [400, 409, 422] })
     await expect(dlg.getByTestId('contratto-dlg-errore')).toContainText(
       'Questo contratto ha addebiti di tipo diverso da T: non può essere allegato a un altro.',

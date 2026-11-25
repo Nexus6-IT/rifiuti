@@ -187,6 +187,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       azioni: operazioniPerStato(formulario.stato, {
         noteAnnullamentoGiaPresenti: !!formulario.note,
         ultimaFirmaPresente: !!formulario.ultimaFirma,
+        trasbordoTotaleGiaPresente: !!formulario.dati_trasbordo_totale,
       }),
     }
   })
@@ -236,6 +237,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
           const disponibili = operazioniPerStato(formulario.stato, {
             noteAnnullamentoGiaPresenti: !!formulario.note,
             ultimaFirmaPresente: !!formulario.ultimaFirma,
+            trasbordoTotaleGiaPresente: !!formulario.dati_trasbordo_totale,
           })
           if (!operazioniAmmesse.some(o => disponibili.includes(o))) {
             return inviaProblemDetails(risposta, 403, {

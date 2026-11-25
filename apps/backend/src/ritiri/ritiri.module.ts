@@ -11,6 +11,9 @@ import { GENERA_FIR_DA_RITIRI } from '../api/ritiri/genera-fir.porta'
 import { FIRModule } from '../fir/fir.module'
 import { GeneraFirDaRitiriService } from '../application/ritiri/genera-fir-da-ritiri.service'
 import { RitiriService } from '../application/ritiri/ritiri.service'
+import { CampoModule } from '../campo/campo.module'
+import { NOTIFICA_GIRO } from '../application/ritiri/notifica-giro.porta'
+import { PushCampoService } from '../application/campo/push-campo.service'
 import { RitiriRepository } from '../infrastructure/persistence/ritiri.repository'
 import { CERPrismaRepository } from '../infrastructure/persistence/cer-prisma.repository'
 
@@ -23,6 +26,7 @@ import { CERPrismaRepository } from '../infrastructure/persistence/cer-prisma.re
     FIRModule,
     PDFModule,
     ModelliStampaModule,
+    CampoModule,
   ],
   // StampaRitiriController PRIMA: `GET /ritiri/distinta.pdf` non deve finire in `GET /ritiri/:id`.
   controllers: [StampaRitiriController, RitiriController],
@@ -32,6 +36,8 @@ import { CERPrismaRepository } from '../infrastructure/persistence/cer-prisma.re
     GeneraFirDaRitiriService,
     StampaRitiriService,
     { provide: 'ICERRepository', useClass: CERPrismaRepository },
+    // Avviso push «giro modificato» (app campo, P7): spento se mancano le chiavi VAPID.
+    { provide: NOTIFICA_GIRO, useExisting: PushCampoService },
     { provide: GENERA_FIR_DA_RITIRI, useExisting: GeneraFirDaRitiriService },
   ],
   exports: [RitiriService, RitiriRepository],

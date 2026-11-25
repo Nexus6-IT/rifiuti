@@ -723,15 +723,64 @@ export class RENTRIApiClient {
     return this.postAsincronaConCorpo(tenantId, numeroFir, 'annotazione', corpo, opzioni)
   }
 
-  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`, `annotazione`). */
+  /**
+   * Dichiara una sosta tecnica del trasportatore che ha in carico il rifiuto
+   * (`POST /{numero_fir}/sosta-tecnica`, `Operazione` `SostaTecnica`). Corpo: `DatiSostaTecnicaModel`
+   * (`luogo_stazionamento` 1..1000, `data_ora_sospensione` e `data_ora_ripresa` ISO 8601 UTC,
+   * `additionalProperties: false`). Si firma poi con `AcquisizioneFirmaSostaTecnica` (stato `FirmaSostaTecnica`).
+   *
+   * **ASYNC (NONBLOCK_PULL)** e come l'annotazione NON idempotente (aggiunge una sosta): niente ritentativo
+   * cieco su 5xx o nessuna risposta, esito incerto. Esito restituito COSI' COM'E'.
+   */
+  async inviaSostaTecnica(
+    tenantId: string,
+    numeroFir: string,
+    corpo: { luogo_stazionamento: string; data_ora_sospensione: string; data_ora_ripresa: string },
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'sosta-tecnica', corpo, opzioni)
+  }
+
+  /**
+   * Trasbordo totale del rifiuto a un nuovo trasportatore (`POST /{numero_fir}/trasbordo-totale`,
+   * `Operazione` `TrasbordoTotale`). Corpo: `DatiTrasbordoTotaleModel` (nuovo trasportatore + `presa_in_carico`
+   * terrestre, `additionalProperties: false`). Lo firma poi il NUOVO trasportatore
+   * (`AcquisizioneFirmaTrasbordoTotale`, stato `FirmaTrasbordoTotale`).
+   *
+   * **ASYNC (NONBLOCK_PULL)** e NON idempotente (aggiunge un trasportatore al formulario): niente ritentativo
+   * cieco su 5xx o nessuna risposta, esito incerto. Esito restituito COSI' COM'E'.
+   */
+  async inviaTrasbordoTotale(
+    tenantId: string,
+    numeroFir: string,
+    corpo: {
+      trasportatore: Record<string, unknown>
+      presa_in_carico: Record<string, unknown>
+    },
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    return this.postAsincronaConCorpo(tenantId, numeroFir, 'trasbordo-totale', corpo, opzioni)
+  }
+
+  /** POST asincrona con corpo di dominio + attesa dell'esito (`quantita`, `trasporto`, `annotazione`, `sosta-tecnica`, `trasbordo-totale`). */
   private async postAsincronaConCorpo(
     tenantId: string,
     numeroFir: string,
-    operazione: 'quantita' | 'trasporto' | 'annotazione',
+    operazione: 'quantita' | 'trasporto' | 'annotazione' | 'sosta-tecnica' | 'trasbordo-totale',
     corpo: Record<string, unknown>,
     opzioni?: OpzioniPollingEsito
   ): Promise<EsitoFormulario> {
     const contesto = `/formulari/${numeroFir}/${operazione}`
+    // Annotazione, sosta tecnica e trasbordo totale si AGGIUNGONO (non sovrascrivono come quantita'/trasporto): 5xx o nessuna
+    // risposta non provano che l'ente non le abbia registrate, quindi niente ritentativo cieco (come la creazione).
+    const oggettoNonIdempotente =
+      operazione === 'annotazione'
+        ? 'annotazione'
+        : operazione === 'sosta-tecnica'
+          ? 'sosta tecnica'
+          : operazione === 'trasbordo-totale'
+            ? 'trasbordo totale'
+            : undefined
     const risposta = await this.eseguiRichiestaConResilienza(
       () =>
         this.post(
@@ -742,18 +791,16 @@ export class RENTRIApiClient {
         ),
       contesto,
       undefined,
-      // L'annotazione si AGGIUNGE (non sovrascrive come quantita'/trasporto): 5xx o nessuna risposta non
-      // provano che l'ente non l'abbia registrata, quindi niente ritentativo cieco (come la creazione).
-      operazione === 'annotazione' ? { creazione: true, oggetto: 'annotazione' } : undefined
+      oggettoNonIdempotente ? { creazione: true, oggetto: oggettoNonIdempotente } : undefined
     )
 
     const transazioneId = risposta.data?.transazione_id
     if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
-      if (operazione === 'annotazione') {
+      if (oggettoNonIdempotente) {
         throw new TrasmissioneRentriIncertaError(
           'RISPOSTA_SENZA_TRANSAZIONE',
           undefined,
-          'annotazione'
+          oggettoNonIdempotente
         )
       }
       throw new Error(
@@ -770,11 +817,11 @@ export class RENTRIApiClient {
       // l'identificativo nell'errore incerto, cosi' la riconciliazione ne interroga lo stato. Un rifiuto
       // definitivo (4xx non ritentabile) resta tale.
       const definitivo = errore instanceof RentriApiError && !errore.retryable
-      if (operazione === 'annotazione' && !definitivo) {
+      if (oggettoNonIdempotente && !definitivo) {
         throw new TrasmissioneRentriIncertaError(
           'ESITO_NON_DISPONIBILE',
           undefined,
-          'annotazione',
+          oggettoNonIdempotente,
           transazioneId
         )
       }

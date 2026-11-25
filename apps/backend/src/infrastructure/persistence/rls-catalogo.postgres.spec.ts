@@ -89,9 +89,12 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // 96 dall'app campo (P5): `allegati_campo`, provata in `application/campo/allegati-campo.postgres.spec.ts`.
     // 97 dal FIR in viaggio (P2): `fir_eventi_rentri`, provata in
     // `application/rentri/eventi-fir-rentri.postgres.spec.ts`.
-    // 98 dalle esportazioni XML del registro (eREGI E6): `esportazioni_registro_rentri`, provata in
+    // 99 dall'app campo (P6): `ricevute_ritiro` e `invii_ricevuta_ritiro`, provate in
+    // `application/campo/ricevute-ritiro.postgres.spec.ts`.
+    // 101 dal web push (P7): `sottoscrizioni_push` e `preferenze_push`, provate in `application/campo/push-campo.postgres.spec.ts`.
+    // 102 dalle esportazioni XML del registro (eREGI E6): `esportazioni_registro_rentri`, provata in
     // `application/rentri/registro/esportazioni-registro-rentri.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(98)
+    expect(righe.length).toBe(102)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,

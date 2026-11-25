@@ -20,6 +20,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { avvisiScarto } from '../../domain/fatturazione/sdi/avvisi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { bloccaRigheLegame } from '../legami-movimento/lock-legame'
@@ -32,6 +33,8 @@ import {
   DocumentiFatturaService,
   type DocumentoDettaglio,
   type MotivoNonAnnullabile,
+  type MotivoNonStornabile,
+  stornabilita,
 } from './documenti-fattura.service'
 import {
   bloccaNumerazioni,
@@ -44,11 +47,16 @@ import {
 } from './numerazione'
 
 /** = Task 14 (Q33). */
-export type MotivoNonStornabile = 'NON_DEFINITIVO' | 'NOTA_DI_CREDITO'
+export type { MotivoNonStornabile }
 
 export interface RichiestaAnnullo {
   motivo: string
   versione: number
+  /**
+   * Annullo di un emesso scartato con codice «duplicato» (00404): lo SDI potrebbe aver gia' ricevuto
+   * la fattura. L'utente conferma di aver controllato (4.5d). Ignorato negli altri casi.
+   */
+  confermaGiaInviata?: boolean
 }
 
 export interface RichiestaStorno {
@@ -70,12 +78,16 @@ const MESSAGGI_ANNULLO: Readonly<Record<MotivoNonAnnullabile, string>> = {
   NOTA_DI_CREDITO: 'Una nota di credito non si annulla: si corregge con un nuovo documento.',
   STORNATO: 'Il documento ha già una nota di credito di storno: non si può annullare.',
   EMESSO: 'Il documento è già stato emesso: usa la nota di credito di storno.',
+  TRASMISSIONE_SDI_VIVA:
+    'Il documento ha un nuovo invio allo SDI in corso o riuscito: non si può annullare.',
   NON_ULTIMO: "Si può annullare solo l'ultimo numero emesso: usa la nota di credito di storno.",
 }
 
 const MESSAGGI_STORNO: Readonly<Record<MotivoNonStornabile, string>> = {
   NON_DEFINITIVO: 'Si può stornare solo un documento definitivo.',
   NOTA_DI_CREDITO: 'Una nota di credito non si storna.',
+  SCARTATO_SDI: 'Lo SDI ha scartato la fattura: non si storna, si annulla e si rifattura.',
+  INVIO_SDI_IN_CORSO: "L'invio allo SDI non ha ancora un esito: attendi l'esito dello SDI.",
 }
 
 /** Indice unico parziale dello storno (migration 4.4a): un solo TD04 non annullato per origine. */
@@ -231,7 +243,10 @@ export class AnnulloStornoService {
           // 2. Documento FOR UPDATE e controlli SOTTO lock.
           const d = await this.bloccaDocumento(tx, tenantId, documentoId)
           const haStorno = await this.haStorno(tx, tenantId, documentoId)
+          const sdi = await this.leggiScartoSdi(tx, tenantId, documentoId)
           const ammesso = annullabilita({
+            scartatoSdi: sdi.scartato,
+            trasmissioneViva: sdi.viva,
             stato: d.stato,
             tipoDocumento: d.tipoDocumento,
             emessoIl: d.emessoIl,
@@ -252,23 +267,37 @@ export class AnnulloStornoService {
           // cambiata (ricalcolo) e ha gia` risposto NON_DEFINITIVO qui sopra.
           this.controllaCoppia(d, prima)
           if (d.versione !== versione) throw versioneSuperata()
+          // Emesso e scartato (D3): lo scarto con «duplicato» (00404) chiede la conferma esplicita.
+          const scartoEmesso = d.emessoIl !== null
+          if (scartoEmesso && sdi.probabilmenteGiaInviata && b.confermaGiaInviata !== true) {
+            throw new ConflictException({
+              error: 'PROBABILMENTE_GIA_INVIATA',
+              message:
+                'Lo SDI ha scartato il file come duplicato: la fattura potrebbe essere già stata ricevuta. Controlla nel cassetto fiscale prima di annullarla.',
+            })
+          }
 
           // 3. Testate e righe dei legami FOR UPDATE per id.
           await this.bloccaLegamiDelDocumento(tx, tenantId, documentoId)
 
           // 4. Difesa: il numero torna alla serie col documento ancora DEFINITIVO e non emesso.
-          await rilasciaUltimo(tx, tenantId, {
-            registroIvaId: d.registroIvaId,
-            anno: d.anno,
-            numero: d.numero as number,
-            documentoId,
-          })
+          // Un emesso scartato NON rilascia il numero (D3): resta «annullato per scarto SDI» e la
+          // prossima fattura prende il successivo.
+          if (!scartoEmesso) {
+            await rilasciaUltimo(tx, tenantId, {
+              registroIvaId: d.registroIvaId,
+              anno: d.anno,
+              numero: d.numero as number,
+              documentoId,
+            })
+          }
           const annullati = await tx.$executeRaw`
             UPDATE documenti_fattura
             SET stato = 'ANNULLATO', annullato_il = now(), annullato_da = ${utenteId}::uuid,
                 motivo_annullo = ${motivo}, versione = versione + 1, updated_at = now()
             WHERE tenant_id = ${tenantId}::uuid AND id = ${documentoId}::uuid
-              AND stato = 'DEFINITIVO' AND emesso_il IS NULL`
+              AND stato = 'DEFINITIVO'
+              AND (emesso_il IS NULL) = ${!scartoEmesso}::boolean`
           if (annullati !== 1) throw new Error('Annullo: documento non annullato.')
 
           // 5. Marcatori e legami.
@@ -291,6 +320,12 @@ export class AnnulloStornoService {
                 numero: d.numeroTesto,
                 totale: d.totaleDocumento,
                 legami,
+                ...(scartoEmesso
+                  ? {
+                      scartoSdi: true,
+                      ...(sdi.probabilmenteGiaInviata ? { confermaGiaInviata: true } : {}),
+                    }
+                  : {}),
               } as Prisma.InputJsonValue,
             },
           })
@@ -345,6 +380,18 @@ export class AnnulloStornoService {
             throw this.stornoNonAmmesso('NON_DEFINITIVO')
           }
           if (o.tipoDocumento === 'TD04') throw this.stornoNonAmmesso('NOTA_DI_CREDITO')
+          // Scartato dallo SDI e senza un nuovo invio vivo: la fattura non esiste fiscalmente, si annulla
+          // (D3). Uno storno la «rettificherebbe» e poi bloccherebbe l'annullo (STORNATO).
+          const sdi = await this.leggiScartoSdi(tx, tenantId, documentoId)
+          const ammessoSdi = stornabilita({
+            stato: o.stato,
+            tipoDocumento: o.tipoDocumento,
+            haStorno: false,
+            scartatoSdi: sdi.scartato,
+            trasmissioneViva: sdi.viva,
+            invioInVolo: sdi.inVolo,
+          })
+          if (ammessoSdi.motivo !== null) throw this.stornoNonAmmesso(ammessoSdi.motivo)
           // m2: il registro si controlla solo sul DEFINITIVO (immutabile): una BOZZA spostata da
           // un ricalcolo ha gia` risposto NON_DEFINITIVO.
           if (o.registroIvaId !== prima.registroIvaId) {
@@ -487,6 +534,40 @@ export class AnnulloStornoService {
     if (d.registroIvaId !== prima.registroIvaId || d.anno !== prima.anno) {
       throw new Error('Il registro o l anno del documento sono cambiati durante la lettura.')
     }
+  }
+
+  /**
+   * Stato SDI del documento, sotto il lock del documento: c'e' una trasmissione `SCARTATA`, ce n'e' una
+   * viva, e il NS dello scarto dice «duplicato» (`PROBABILMENTE_GIA_INVIATA`).
+   */
+  private async leggiScartoSdi(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    documentoId: string
+  ): Promise<{
+    scartato: boolean
+    viva: boolean
+    inVolo: boolean
+    probabilmenteGiaInviata: boolean
+  }> {
+    const [r] = await tx.$queryRaw<{ scartato: boolean; viva: boolean; inVolo: boolean }[]>`
+      SELECT COALESCE(bool_or(stato = 'SCARTATA' AND direzione = 'EMESSA' AND ambiente = 'PRODUZIONE'), false) AS scartato,
+             COALESCE(bool_or(stato NOT IN ('ERRORE_INVIO', 'SCARTATA')), false) AS viva,
+             COALESCE(bool_or(stato IN ('DA_INVIARE', 'IN_INVIO', 'INCERTA', 'INVIATA')), false) AS "inVolo"
+      FROM trasmissioni_sdi
+      WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${documentoId}::uuid`
+    let duplicato = false
+    if (r.scartato) {
+      const ns = await tx.$queryRaw<{ codici: string[] }[]>`
+        SELECT n.codici_errore AS codici
+        FROM notifiche_sdi n
+        JOIN trasmissioni_sdi t ON t.id = n.trasmissione_id AND t.tenant_id = n.tenant_id
+        WHERE n.tenant_id = ${tenantId}::uuid AND t.documento_id = ${documentoId}::uuid
+          AND t.stato = 'SCARTATA' AND t.direzione = 'EMESSA' AND t.ambiente = 'PRODUZIONE'
+          AND n.tipo = 'NS'`
+      duplicato = ns.some(x => avvisiScarto(x.codici ?? []).includes('PROBABILMENTE_GIA_INVIATA'))
+    }
+    return { ...r, probabilmenteGiaInviata: duplicato }
   }
 
   private async haStorno(
