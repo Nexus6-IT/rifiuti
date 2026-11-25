@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAndSaveState, skipReason, currentTargetIsProduction } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl } from '../../utils/env'
+import { attendiAbilitato } from '../../utils/attese'
 import { FirDetailPage } from '../../pages/fir-detail.page'
 
 /**
@@ -80,7 +81,7 @@ test.describe('RENTRI — annotazione del FIR in viaggio', () => {
     await expect(detail.annotazioneConferma).toBeDisabled()
     await detail.annotazioneTesto.fill("Il carico e' stato pesato due volte alla partenza.")
     await expect(detail.annotazioneContatore).toContainText('/ 10000')
-    await expect(detail.annotazioneConferma).toBeEnabled()
+    await attendiAbilitato(detail.annotazioneConferma)
 
     await detail.annotazioneConferma.click()
 
