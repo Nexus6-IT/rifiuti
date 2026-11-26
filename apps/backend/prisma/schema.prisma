@@ -134,6 +134,10 @@ model Tenant {
   automezzi             Automezzo[]
   autisti               Autista[]
   eventiCampo           EventoCampo[]
+  sottoscrizioniPush    SottoscrizionePush[]
+  preferenzePush        PreferenzaPush[]
+  ricevuteRitiro        RicevutaRitiro[]
+  inviiRicevutaRitiro   InvioRicevutaRitiro[]
   allegatiCampo         AllegatoCampo[]
   sessioniFirmaRentri   FirSessioneFirmaRentri[]
   eventiFirRentri       FirEventoRentri[]
@@ -290,6 +294,9 @@ model User {
   allegatiRentriCaricati  FIRAllegatoRentri[]
   autisti                 Autista[]
   eventiCampo             EventoCampo[]
+  sottoscrizioniPush      SottoscrizionePush[]
+  preferenzePush          PreferenzaPush[]
+  ricevuteRitiro          RicevutaRitiro[]
   allegatiCampo           AllegatoCampo[]
   sessioniFirmaRentri     FirSessioneFirmaRentri[]
   eventiFirRentri         FirEventoRentri[]
@@ -2895,6 +2902,7 @@ model Autista {
   utente        User?          @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "autisti_user_fkey")
   ritiri        Ritiro[]
   eventiCampo   EventoCampo[]
+  ricevuteRitiro RicevutaRitiro[]
 
   @@unique([id, tenantId], map: "autisti_id_tenant_id_key")
   @@unique([tenantId, codiceFiscale], map: "autisti_tenant_codice_fiscale_key")
@@ -4811,6 +4819,40 @@ model EventoCampo {
   @@map("eventi_campo")
 }
 
+/// Sottoscrizione web push di un dispositivo (app campo, P7). Solo l'endpoint del servizio push: l'invio
+/// non porta dati, quindi non servono le chiavi di cifratura. Mutabile: si sposta di utente se il telefono
+/// passa a un collega, si cancella al logout o quando il servizio push risponde 404/410.
+/// CHECK solo in migration (`20261124110000_push_campo`).
+model SottoscrizionePush {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  utenteId      String    @map("utente_id") @db.Uuid
+  endpoint      String
+  creataIl      DateTime  @default(now()) @map("creata_il") @db.Timestamptz(3)
+  ultimoInvioIl DateTime? @map("ultimo_invio_il") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  utente User   @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "sottoscrizioni_push_utente_fkey")
+
+  @@unique([tenantId, endpoint], map: "sottoscrizioni_push_endpoint_key")
+  @@index([tenantId, utenteId], map: "sottoscrizioni_push_utente_idx")
+  @@map("sottoscrizioni_push")
+}
+
+/// Preferenze degli avvisi push per utente (app campo, P7): una riga per utente, assente = predefiniti.
+model PreferenzaPush {
+  tenantId       String   @map("tenant_id") @db.Uuid
+  utenteId       String   @map("utente_id") @db.Uuid
+  giroModificato Boolean  @default(true) @map("giro_modificato")
+  aggiornataIl   DateTime @default(now()) @map("aggiornata_il") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  utente User   @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "preferenze_push_utente_fkey")
+
+  @@id([tenantId, utenteId])
+  @@map("preferenze_push")
+}
+
 /// Foto scattate dall'autista per un evento dal campo (app campo, P5). Append-only: i byte stanno nel
 /// database (come `AllegatoPesa`), con impronta SHA-256 verificata dal server. `fotoUuid` e' generato dal
 /// telefono (idempotenza). Mai nei log.
@@ -4840,6 +4882,61 @@ enum EsitoEventoCampo {
   DA_RICONCILIARE
 
   @@map("esito_evento_campo")
+}
+
+/// Ricevuta di ritiro con firma su schermo (app campo, P6): APPEND-ONLY. Firma elettronica SEMPLICE
+/// (immagine del tratto), prova commerciale: non e' firma qualificata e non sostituisce il FIR.
+model RicevutaRitiro {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  /// UUID generato dal telefono: chiave di idempotenza.
+  ricevutaUuid    String   @map("ricevuta_uuid") @db.Uuid
+  ritiroId        String   @map("ritiro_id") @db.Uuid
+  autistaId       String   @map("autista_id") @db.Uuid
+  utenteId        String   @map("utente_id") @db.Uuid
+  firmatarioNome  String   @map("firmatario_nome") @db.VarChar(120)
+  /// Orologio del telefono: mai usato come data legale.
+  firmatoIl       DateTime @map("firmato_il") @db.Timestamptz(3)
+  ricevutoIl      DateTime @default(now()) @map("ricevuto_il") @db.Timestamptz(3)
+  /// Fotografia dei dati del ritiro stampati sulla ricevuta (letti dal server, mai dal telefono).
+  dati            Json
+  firmaPng        Bytes    @map("firma_png")
+  firmaSha256     String   @map("firma_sha256") @db.VarChar(64)
+  contenutoSha256 String   @map("contenuto_sha256") @db.VarChar(64)
+  pdf             Bytes
+  pdfSha256       String   @map("pdf_sha256") @db.VarChar(64)
+  /// `REGISTRATA` oppure `DA_RICONCILIARE` (ritiro riassegnato/annullato/chiuso con il telefono offline).
+  esito           String   @default("REGISTRATA") @db.VarChar(16)
+  motivoConflitto String?  @map("motivo_conflitto") @db.VarChar(40)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ritiro  Ritiro  @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ricevute_ritiro_ritiro_fkey")
+  autista Autista @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ricevute_ritiro_autista_fkey")
+  utente  User    @relation(fields: [utenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ricevute_ritiro_utente_fkey")
+  invio   InvioRicevutaRitiro?
+
+  @@unique([id, tenantId], map: "ricevute_ritiro_id_tenant_id_key")
+  @@unique([tenantId, ricevutaUuid], map: "ricevute_ritiro_uuid_key")
+  @@index([tenantId, ritiroId, ricevutoIl], map: "ricevute_ritiro_ritiro_idx")
+  @@index([tenantId, ricevutoIl(sort: Desc)], map: "ricevute_ritiro_recenti_idx")
+  @@map("ricevute_ritiro")
+}
+
+/// Esito dell'invio FACOLTATIVO della ricevuta al cliente (app campo, P6): APPEND-ONLY, senza
+/// l'indirizzo email (solo forma mascherata).
+model InvioRicevutaRitiro {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String   @map("tenant_id") @db.Uuid
+  ricevutaId             String   @map("ricevuta_id") @db.Uuid
+  esito                  String   @db.VarChar(10)
+  destinatarioMascherato String   @map("destinatario_mascherato") @db.VarChar(120)
+  registratoIl           DateTime @default(now()) @map("registrato_il") @db.Timestamptz(3)
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ricevuta RicevutaRitiro @relation(fields: [ricevutaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "invii_ricevuta_ritiro_ricevuta_fkey")
+
+  @@unique([ricevutaId, tenantId], map: "invii_ricevuta_ritiro_ricevuta_key")
+  @@map("invii_ricevuta_ritiro")
 }
 
 model Ritiro {
@@ -4893,6 +4990,7 @@ model Ritiro {
   autista      Autista?      @relation(fields: [autistaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_autista_fkey")
   firs         FIR[]
   eventiCampo  EventoCampo[]
+  ricevuteRitiro RicevutaRitiro[]
 
   @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
   @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")

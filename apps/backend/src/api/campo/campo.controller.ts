@@ -21,8 +21,9 @@ import { ConsentitoAutista } from '../../core/decorators/consentito-autista.deco
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 import { AllegatiCampoService } from '../../application/campo/allegati-campo.service'
 import { EventiCampoService } from '../../application/campo/eventi-campo.service'
+import { RicevuteRitiroService } from '../../application/campo/ricevute-ritiro.service'
 import { GiroService } from '../../application/campo/giro.service'
-import { EventoCampoDto, FotoCampoDto, GiroQueryDto } from './dto/campo.dto'
+import { EventoCampoDto, FotoCampoDto, GiroQueryDto, RicevutaCampoDto } from './dto/campo.dto'
 import { FotoCampoInterceptor, type FotoMulter } from './foto-campo-upload'
 import { comeHttpCampo } from './errori-http'
 
@@ -41,6 +42,7 @@ export class CampoController {
   constructor(
     private readonly giroService: GiroService,
     private readonly eventi: EventiCampoService,
+    private readonly ricevute: RicevuteRitiroService,
     private readonly foto: AllegatiCampoService
   ) {}
 
@@ -75,6 +77,43 @@ export class CampoController {
     }
     const tenantId = requireRequestTenantId(req)
     return comeHttpCampo(() => this.eventi.registra(tenantId, req.user.id, dto))
+  }
+
+  /** L'app chiede se mostrare l'invio al cliente (spento per default). */
+  @Get('ricevute/configurazione')
+  @ApiOperation({ summary: 'Impostazioni delle ricevute di ritiro (invio al cliente acceso o no)' })
+  configurazioneRicevute(@Req() req: any) {
+    if (req.user?.role !== 'AUTISTA') {
+      throw new ForbiddenException({
+        message: 'Le ricevute dal campo sono riservate agli autisti.',
+        error: 'GIRO_RISERVATO_AGLI_AUTISTI',
+      })
+    }
+    return this.ricevute.configurazione()
+  }
+
+  /**
+   * Ricevuta di ritiro con la firma del cliente sullo schermo. Idempotente sull'`id` (uuid del
+   * telefono). Il PDF lo genera il server: la ricevuta e' una firma elettronica SEMPLICE e non
+   * sostituisce il FIR.
+   */
+  @Post('ricevute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Registra una ricevuta di ritiro firmata (idempotente sull’id)' })
+  @ApiResponse({ status: 403, description: 'AUTISTA_NON_COLLEGATO / GIRO_RISERVATO_AGLI_AUTISTI' })
+  @ApiResponse({
+    status: 409,
+    description: 'RICEVUTA_DI_ALTRO_UTENTE / RICEVUTA_NON_CONSENTITA / RICEVUTA_LIMITE_RITIRO',
+  })
+  registraRicevuta(@Req() req: any, @Body() dto: RicevutaCampoDto) {
+    if (req.user?.role !== 'AUTISTA') {
+      throw new ForbiddenException({
+        message: 'Le ricevute dal campo sono riservate agli autisti.',
+        error: 'GIRO_RISERVATO_AGLI_AUTISTI',
+      })
+    }
+    const tenantId = requireRequestTenantId(req)
+    return comeHttpCampo(() => this.ricevute.registra(tenantId, req.user.id, dto))
   }
 
   /**

@@ -292,6 +292,16 @@ export const routes: Routes = [
           import('./features/esiti-campo/esiti-campo.component').then(m => m.EsitiCampoComponent),
       },
       {
+        // «Ricevute di ritiro» (app campo, P6): archivio dei PDF firmati; backend @RichiedeModulo('campo').
+        path: 'ricevute-campo',
+        canActivate: [moduloGuard],
+        data: { modulo: 'campo' },
+        loadComponent: () =>
+          import('./features/ricevute-campo/ricevute-campo.component').then(
+            m => m.RicevuteCampoComponent
+          ),
+      },
+      {
         // Lista del giorno da telefono (ordine di giro, PDF del FIR, non eseguito).
         path: 'ritiri/giorno',
         canActivate: [moduloGuard],

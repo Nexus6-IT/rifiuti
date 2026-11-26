@@ -1,3 +1,5 @@
+import { pngDiProva } from '../../../test-support/png-di-prova'
+import { pngIdatNonZlib } from '../../../test-support/png-malevoli'
 import {
   definizioneDistinta,
   FIR_NON_GENERATO,
@@ -126,12 +128,13 @@ describe('distinta dei ritiri, definizione pura', () => {
   })
 
   it('il logo con magic bytes sbagliati non finisce nel PDF', () => {
-    const png =
-      'data:image/png;base64,' +
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString('base64')
+    const png = 'data:image/png;base64,' + pngDiProva(60, 30).toString('base64')
     const falso = 'data:image/png;base64,' + Buffer.from('not an image!').toString('base64')
     expect(logoValido(png)).toBe(png)
     expect(logoValido(falso)).toBeNull()
+    // PNG con magic giusti ma corpo corrotto (anche gia' salvato nel database): nessun logo.
+    const corrotto = 'data:image/png;base64,' + pngIdatNonZlib().toString('base64')
+    expect(logoValido(corrotto)).toBeNull()
     expect(testo(definizioneDistinta(dati([riga()]), modello({ logoBase64: png })))).toContain(
       '"image"'
     )
@@ -141,9 +144,7 @@ describe('distinta dei ritiri, definizione pura', () => {
   })
 
   it("il logo come base64 puro (senza data:) e' accettato e diventa data URL", () => {
-    const puro = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString(
-      'base64'
-    )
+    const puro = pngDiProva(60, 30).toString('base64')
     expect(logoValido(puro)).toBe(`data:image/png;base64,${puro}`)
   })
 

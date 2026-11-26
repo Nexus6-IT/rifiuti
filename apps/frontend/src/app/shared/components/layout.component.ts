@@ -1384,6 +1384,13 @@ export class LayoutComponent implements OnInit {
       feature: 'campo',
     },
     {
+      // «Ricevute di ritiro» (app campo, P6): PDF firmati dai clienti sul telefono dell'autista.
+      label: 'Ricevute di ritiro',
+      route: '/ricevute-campo',
+      icon: 'pi pi-file-pdf',
+      feature: 'campo',
+    },
+    {
       // Modelli di stampa di FIR e distinta ritiri: scrittura solo ADMIN, serve fir o ritiri.
       label: 'Modelli di stampa',
       route: '/impostazioni/modelli-stampa',

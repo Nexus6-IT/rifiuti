@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { GiroService, dataLocaleIso } from '../core/giro.service';
 import type { RitiroVista } from '../core/modelli';
 import { CodaEventi, fotoDi, type DatiEvento, type TipoEventoCampo } from '../core/coda-eventi';
+import { CodaRicevute } from '../core/coda-ricevute';
 import { ElaboratoreFoto, MAX_FOTO_PER_ESITO, type FotoPronta } from '../core/foto';
 import { RilevatorePosizione, type PosizioneRilevata } from '../core/posizione';
 import { StatoCoda, spiegaConflitto } from '../core/stato-coda';
@@ -207,6 +208,45 @@ import { StatoGiro } from '../core/stato-giro';
             }
           }
         </section>
+        @if (r.stato === 'PROGRAMMATO' && data()?.tipo !== 'RITIRO_NON_ESEGUITO') {
+          <section class="esito" aria-labelledby="titolo-ricevuta" data-testid="ricevuta">
+            <h2 id="titolo-ricevuta">Ricevuta di ritiro</h2>
+            <p class="sotto">
+              Il cliente firma sullo schermo. Non sostituisce il FIR e non è una firma qualificata.
+            </p>
+            @for (v of ricevute(); track v.id) {
+              <p data-testid="ricevuta-stato" [class.errore]="v.stato === 'RIFIUTATO'">
+                Ricevuta firmata da {{ v.firmatarioNome }}:
+                @switch (v.stato) {
+                  @case ('DA_INVIARE') {
+                    salvata sul telefono, in attesa di invio.
+                  }
+                  @case ('CONFERMATO') {
+                    inviata all'ufficio.
+                    @if (v.esitoServer === 'DA_RICONCILIARE') {
+                      Il ritiro era cambiato: l'ufficio la verificherà.
+                    }
+                  }
+                  @case ('RIFIUTATO') {
+                    non accettata dal server: {{ v.errore }}
+                    <button type="button" class="link" (click)="scartaRicevuta(v.id)">
+                      Scarta
+                    </button>
+                  }
+                }
+              </p>
+            }
+            <div class="azioni">
+              <a
+                [routerLink]="['/ritiro', r.id, 'ricevuta']"
+                class="secondario"
+                data-testid="apri-ricevuta"
+              >
+                {{ ricevute().length === 0 ? 'Fai firmare la ricevuta' : 'Un’altra ricevuta' }}
+              </a>
+            </div>
+          </section>
+        }
       } @else if (caricamento()) {
         <p class="stato" role="status">Caricamento…</p>
       } @else {
@@ -222,6 +262,7 @@ export class RitiroPagina implements OnInit {
   private readonly giro = inject(GiroService);
   protected readonly caricamento = signal(false);
   private readonly coda = inject(CodaEventi);
+  private readonly codaRicevute = inject(CodaRicevute);
   protected readonly modo = signal<TipoEventoCampo | null>(null);
   protected readonly testo = signal('');
   protected readonly errore = signal<string | null>(null);
@@ -238,6 +279,8 @@ export class RitiroPagina implements OnInit {
   /** L'esito dato a questo ritiro (anche in attesa di invio). */
   protected readonly data = computed(() => this.coda.perRitiro(this.id()));
   protected readonly rifiutato = computed(() => this.coda.rifiutatoPerRitiro(this.id()));
+  /** Le ricevute firmate per questo ritiro (anche in attesa di invio). */
+  protected readonly ricevute = computed(() => this.codaRicevute.perRitiro(this.id()));
   protected readonly fotoEsito = computed(() => {
     const e = this.data();
     return e ? fotoDi(e) : [];
@@ -310,6 +353,10 @@ export class RitiroPagina implements OnInit {
     } finally {
       this.rilevo.set(false);
     }
+  }
+
+  protected scartaRicevuta(id: string): void {
+    void this.codaRicevute.scarta(id);
   }
 
   protected scartaRifiutato(id: string): void {

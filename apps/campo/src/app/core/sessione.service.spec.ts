@@ -96,6 +96,31 @@ describe('SessioneService', () => {
     expect(servizio.autenticato()).toBe(false);
     expect(localStorage.getItem(CHIAVE_SESSIONE)).toBeNull();
   });
+
+  it('esci: i passi preliminari (notifiche) girano PRIMA del logout, con il token ancora valido', async () => {
+    const ordine: string[] = [];
+    servizio.primaDelLogout(async () => {
+      ordine.push(`prima:${servizio.accessToken()}`);
+    });
+    servizio.salvaDaFragment('#accessToken=a&refreshToken=r&expiresIn=900');
+    servizio.esci().subscribe();
+    http.expectNone('/api/v1/auth/logout');
+    await new Promise<void>((r) => setTimeout(r));
+    const req = http.expectOne('/api/v1/auth/logout');
+    ordine.push('logout');
+    req.flush({});
+    expect(ordine).toEqual(['prima:a', 'logout']);
+    expect(servizio.autenticato()).toBe(false);
+  });
+
+  it('esci: un passo preliminare che fallisce non impedisce il logout', async () => {
+    servizio.primaDelLogout(() => Promise.reject(new Error('push giu')));
+    servizio.salvaDaFragment('#accessToken=a&refreshToken=r&expiresIn=900');
+    servizio.esci().subscribe();
+    await new Promise<void>((r) => setTimeout(r));
+    http.expectOne('/api/v1/auth/logout').flush({});
+    expect(servizio.autenticato()).toBe(false);
+  });
 });
 
 describe('SessioneService.accettaRitornoSpid (nonce)', () => {
@@ -115,5 +140,18 @@ describe('SessioneService.accettaRitornoSpid (nonce)', () => {
     generaNonceAccesso();
     expect(s.accettaRitornoSpid('#accessToken=a&refreshToken=r')).toBe(false);
     expect(s.autenticato()).toBe(false);
+  });
+
+  describe('allaChiusura: stesso utente', () => {
+    const jwt = (sub: string) => `h.${btoa(JSON.stringify({ sub }))}.s`;
+    it('segnala stessoUtente solo se il sub non cambia', () => {
+      const eventi: boolean[] = [];
+      const servizio = TestBed.inject(SessioneService);
+      servizio.allaChiusura((ev) => eventi.push(ev.stessoUtente));
+      servizio.salvaDaFragment(`#accessToken=${jwt('u1')}&refreshToken=r`);
+      servizio.salvaDaFragment(`#accessToken=${jwt('u1')}&refreshToken=r2`);
+      servizio.salvaDaFragment(`#accessToken=${jwt('u2')}&refreshToken=r3`);
+      expect(eventi).toEqual([false, true, false]);
+    });
   });
 });

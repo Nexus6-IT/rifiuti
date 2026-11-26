@@ -3,6 +3,7 @@ import { autenticatoGuard } from './core/autenticato.guard';
 import { AccessoPagina } from './pagine/accesso';
 import { GiroPagina } from './pagine/giro';
 import { LoginPagina } from './pagine/login';
+import { RicevutaPagina } from './pagine/ricevuta';
 import { RitiroPagina } from './pagine/ritiro';
 
 export const routes: Routes = [
@@ -19,6 +20,12 @@ export const routes: Routes = [
     component: RitiroPagina,
     canActivate: [autenticatoGuard],
     title: 'Ritiro · WasteFlow campo',
+  },
+  {
+    path: 'ritiro/:id/ricevuta',
+    component: RicevutaPagina,
+    canActivate: [autenticatoGuard],
+    title: 'Ricevuta · WasteFlow campo',
   },
   { path: '**', redirectTo: '' },
 ];
