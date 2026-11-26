@@ -87,6 +87,29 @@ describe('chiavi VAPID', () => {
     ).toBeNull()
   })
 
+  it('caricaChiaviVapid: una privata fuori dal range della curva e` rifiutata', () => {
+    const a = generaChiaviVapid()
+    for (const byte of [0x00, 0xff]) {
+      const privata = Buffer.alloc(32, byte).toString('base64url')
+      expect(
+        caricaChiaviVapid({ pubblica: a.pubblica, privata, soggetto: 'mailto:a@b.it' })
+      ).toBeNull()
+    }
+  })
+
+  it('caricaChiaviVapid: una pubblica fuori dalla curva e` rifiutata', () => {
+    const a = generaChiaviVapid()
+    const pub = Buffer.from(a.pubblica, 'base64url')
+    pub[64] ^= 0x01
+    expect(
+      caricaChiaviVapid({
+        pubblica: pub.toString('base64url'),
+        privata: a.privata,
+        soggetto: 'mailto:a@b.it',
+      })
+    ).toBeNull()
+  })
+
   it('caricaChiaviVapid: coppia valida', () => {
     const k = generaChiaviVapid()
     const c = caricaChiaviVapid({
