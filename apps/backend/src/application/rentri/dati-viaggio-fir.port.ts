@@ -85,6 +85,26 @@ export interface UltimoTrasportoAutomezzo {
   targaRimorchio: string | null
 }
 
+/** La tratta che il trasbordo totale aggiunge: il NUOVO trasportatore, con i suoi dati di trasporto. */
+export interface NuovaTrattaTrasbordoTotale extends DatiTrasportoTrattaLocale {
+  /** Riferimento al registro Trasportatore di provenienza dello snapshot. */
+  trasportatoreId: string | null
+  denominazione: string
+  partitaIva: string | null
+  codiceFiscale: string | null
+  numeroIscrizioneAlbo: string | null
+  /** Targa dell'automezzo. */
+  mezzo: string | null
+  /** Inizio del trasporto del nuovo trasportatore (= data di presa in carico). */
+  dataOraInizioTrasporto: Date
+}
+
+export interface EsitoAggiuntaTratta {
+  /** `false` se la tratta c'era gia' (stesso trasportatore e stesso inizio): la scrittura e' idempotente. */
+  creata: boolean
+  ordine: number
+}
+
 export abstract class IDatiViaggioFirRepository {
   /** L'ultimo FIR dell'azienda con quella targa e un conducente completo, se c'e'. */
   abstract ultimoTrasportoPerTarga(
@@ -117,4 +137,15 @@ export abstract class IDatiViaggioFirRepository {
     firId: string,
     trasporto: TrasportoInviato
   ): Promise<void>
+  /**
+   * Dopo l'esito positivo dell'ente su `/trasbordo-totale`: aggiunge la tratta del NUOVO trasportatore
+   * (`ordine` = ultimo + 1, almeno 2). Scrive solo `fir_transporters`: i campi firmati del FIR e la sua
+   * `versione` non si toccano (le tratte aggiuntive non entrano nel documento firmato). **Idempotente**: se la
+   * tratta (stesso trasportatore, stesso inizio) c'e' gia' non ne aggiunge una seconda. Mai prima dell'esito.
+   */
+  abstract aggiungiTrattaTrasbordoTotale(
+    tenantId: string,
+    firId: string,
+    tratta: NuovaTrattaTrasbordoTotale
+  ): Promise<EsitoAggiuntaTratta>
 }

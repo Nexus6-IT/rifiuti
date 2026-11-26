@@ -1,5 +1,7 @@
 import {
   DatiPartenzaDaSalvare,
+  EsitoAggiuntaTratta,
+  NuovaTrattaTrasbordoTotale,
   DatiViaggioFir,
   IDatiViaggioFirRepository,
   QuantitaInviata,
@@ -77,5 +79,38 @@ export class DatiViaggioFirInMemoria extends IDatiViaggioFirRepository {
       targaRimorchio: t.targaRimorchio,
       percorso: t.percorso,
     }
+  }
+
+  async aggiungiTrattaTrasbordoTotale(
+    _tenantId: string,
+    firId: string,
+    t: NuovaTrattaTrasbordoTotale
+  ): Promise<EsitoAggiuntaTratta> {
+    this.scritture.push('aggiungiTrattaTrasbordoTotale')
+    const r = this.righe.get(firId)
+    if (!r) throw new Error(`FIR ${firId} non trovato`)
+    const stessa = r.tratteAggiuntive.find(
+      x =>
+        x.codiceFiscale === t.codiceFiscale &&
+        x.partitaIva === t.partitaIva &&
+        x.dataOraInizioTrasporto?.getTime() === t.dataOraInizioTrasporto.getTime()
+    )
+    if (stessa) return { creata: false, ordine: stessa.ordine }
+    const ordine = Math.max(1, ...r.tratteAggiuntive.map(x => x.ordine)) + 1
+    r.tratteAggiuntive.push({
+      ordine,
+      tipoTratta: 'TERRESTRE',
+      denominazione: t.denominazione,
+      partitaIva: t.partitaIva,
+      codiceFiscale: t.codiceFiscale,
+      numeroIscrizioneAlbo: t.numeroIscrizioneAlbo,
+      mezzo: t.mezzo,
+      conducenteNome: t.conducenteNome,
+      conducenteCognome: t.conducenteCognome,
+      targaRimorchio: t.targaRimorchio,
+      percorso: t.percorso,
+      dataOraInizioTrasporto: t.dataOraInizioTrasporto,
+    })
+    return { creata: true, ordine }
   }
 }
