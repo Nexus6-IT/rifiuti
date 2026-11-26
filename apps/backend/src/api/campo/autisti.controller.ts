@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -16,9 +17,10 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
+import { PushCampoService } from '../../application/campo/push-campo.service'
 import { AutistiService } from '../../application/campo/autisti.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
-import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
+import { RUOLI_AMMINISTRATIVI, richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { RUOLI_SCRITTURA_RITIRI } from '../ritiri/ruoli-ritiri'
 import { AutistaDto } from './dto/autista.dto'
 import { ElencoAutistiQueryDto } from './dto/campo.dto'
@@ -38,7 +40,8 @@ import { comeHttpCampo } from './errori-http'
 export class AutistiController {
   constructor(
     private readonly autisti: AutistiService,
-    private readonly membership: RuoloEffettivoService
+    private readonly membership: RuoloEffettivoService,
+    private readonly push: PushCampoService
   ) {}
 
   @Get()
@@ -69,5 +72,17 @@ export class AutistiController {
     const tenantId = requireRequestTenantId(req)
     await richiediRuoloEffettivo(this.membership, req.user, tenantId, RUOLI_SCRITTURA_RITIRI)
     return comeHttpCampo(() => this.autisti.aggiorna(tenantId, id, dto))
+  }
+
+  @Delete(':id/notifiche')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Libera le notifiche push dei telefoni legati all’autista (solo ADMIN)',
+  })
+  async liberaNotifiche(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    const tenantId = requireRequestTenantId(req)
+    await richiediRuoloEffettivo(this.membership, req.user, tenantId, RUOLI_AMMINISTRATIVI)
+    const rimosse = await comeHttpCampo(() => this.push.liberaDiAutista(tenantId, req.user.id, id))
+    return { rimosse }
   }
 }

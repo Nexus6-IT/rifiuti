@@ -9,6 +9,7 @@ export function dettaglioDocumento(extra: Partial<DocumentoDettaglio> = {}): Doc
       numeroTesto: '15/A',
       annullabile: true,
       stornabile: true,
+      motivoNonStornabile: null,
     }),
     righe: [
       {

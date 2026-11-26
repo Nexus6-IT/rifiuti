@@ -324,6 +324,13 @@ export class InvioSdiService {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         return { motivo: 'TRASMISSIONE_IN_CORSO' }
       }
+      // Ha vinto l'annullo: il trigger rifiuta l'invio di un documento annullato (4.5d, gara persa).
+      if (
+        e instanceof Error &&
+        e.message.includes('un documento annullato non si invia allo SDI')
+      ) {
+        return { motivo: 'NON_DEFINITIVO' }
+      }
       throw e
     }
     return { trasmissioneId, avvisi }

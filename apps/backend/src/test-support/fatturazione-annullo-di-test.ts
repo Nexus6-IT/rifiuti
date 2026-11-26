@@ -202,12 +202,13 @@ export function creaBancoT20(o: OpzioniBancoT19) {
     annulla(
       az: AziendaT18,
       id: string,
-      b: { motivo?: string; versione: number } = { versione: 0 }
+      b: { motivo?: string; versione: number; confermaGiaInviata?: boolean } = { versione: 0 }
     ) {
       return t19.nel(az.tenantId, () =>
         banco.servizio.annulla(az.tenantId, az.utenteId, id, {
           motivo: b.motivo ?? 'errore di fatturazione',
           versione: b.versione,
+          confermaGiaInviata: b.confermaGiaInviata,
         })
       )
     },

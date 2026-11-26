@@ -7,6 +7,8 @@
  * ingresso. Il formato si riconosce dai byte reali, mai dall'intestazione dichiarata dal client.
  */
 
+import { leggiPngSicuro } from '../../core/png-sicuro'
+
 /** Dimensione massima del logo, in byte decodificati. */
 export const LOGO_DIMENSIONE_MASSIMA = 256 * 1024
 
@@ -51,6 +53,12 @@ export function esaminaLogo(valore: string): EsitoLogo {
   if (byte.length > LOGO_DIMENSIONE_MASSIMA) return { ok: false, motivo: MSG_LOGO_TROPPO_GRANDE }
   const tipo = tipoDaByte(byte)
   if (!tipo) return { ok: false, motivo: MSG_LOGO_NON_CORRISPONDE }
+  // Un PNG si verifica a fondo QUI (CRC, zlib con tetto, filtri, niente interlaccio): il motore PDF
+  // lancia in una callback asincrona sui PNG corrotti e cadrebbe il processo, anche per loghi gia'
+  // salvati nel database. Un logo che non passa vale come nessun logo.
+  if (tipo === 'image/png' && !leggiPngSicuro(byte).ok) {
+    return { ok: false, motivo: MSG_LOGO_NON_CORRISPONDE }
+  }
   if (dichiarato !== null && (dichiarato === 'png') !== (tipo === 'image/png')) {
     return { ok: false, motivo: MSG_LOGO_NON_CORRISPONDE }
   }

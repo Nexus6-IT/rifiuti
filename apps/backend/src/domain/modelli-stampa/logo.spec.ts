@@ -1,6 +1,12 @@
-import { LOGO_DIMENSIONE_MASSIMA, esaminaLogo } from './logo'
+import { pngDiProva } from '../../test-support/png-di-prova'
+import {
+  pngFiltroNonValido,
+  pngIdatNonZlib,
+  pngInterlacciato,
+} from '../../test-support/png-malevoli'
+import { LOGO_DIMENSIONE_MASSIMA, MSG_LOGO_TROPPO_GRANDE, esaminaLogo } from './logo'
 
-const PNG = Buffer.from('89504e470d0a1a0a0000000d', 'hex')
+const PNG = pngDiProva(60, 30)
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10])
 const b64 = (b: Buffer) => b.toString('base64')
 
@@ -34,6 +40,12 @@ describe('esaminaLogo (unico controllo dei magic bytes)', () => {
     expect(esaminaLogo('data:image/svg+xml;base64,PHN2Zz4=')).toMatchObject({ ok: false })
   })
 
+  it('rifiuta un PNG con i magic giusti ma corpo corrotto o interlacciato (nessun logo, mai crash)', () => {
+    for (const png of [pngIdatNonZlib(), pngFiltroNonValido(), pngInterlacciato(3, 3)]) {
+      expect(esaminaLogo(b64(png))).toMatchObject({ ok: false })
+    }
+  })
+
   it('rifiuta base64 non valido e vuoto', () => {
     expect(esaminaLogo('***')).toMatchObject({ ok: false })
     expect(esaminaLogo('')).toMatchObject({ ok: false })
@@ -42,7 +54,7 @@ describe('esaminaLogo (unico controllo dei magic bytes)', () => {
   it('rifiuta oltre 256 KiB di byte', () => {
     const grande = Buffer.concat([PNG, Buffer.alloc(LOGO_DIMENSIONE_MASSIMA)])
     expect(esaminaLogo(b64(grande))).toMatchObject({ ok: false })
-    const limite = Buffer.concat([PNG, Buffer.alloc(LOGO_DIMENSIONE_MASSIMA - PNG.length)])
-    expect(esaminaLogo(b64(limite))).toMatchObject({ ok: true })
+    expect(esaminaLogo(b64(grande))).toMatchObject({ motivo: MSG_LOGO_TROPPO_GRANDE })
+    expect(esaminaLogo(b64(PNG))).toMatchObject({ ok: true })
   })
 })

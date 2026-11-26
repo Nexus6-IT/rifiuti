@@ -87,6 +87,7 @@ function documento(righe = [riga(1)], over: Partial<DocumentoDettaglio> = {}): D
     annullabile: false,
     motivoNonAnnullabile: null,
     stornabile: false,
+    motivoNonStornabile: null,
     statoSdi: null,
     esitoFiscale: null,
     righe,

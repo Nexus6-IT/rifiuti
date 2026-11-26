@@ -180,6 +180,10 @@ export const ERRORI_HTTP_VOCI = {
     "L'annullo non è ammesso: si annulla solo l'ultimo numero del registro, se non è già emesso.",
     'errore'
   ),
+  PROBABILMENTE_GIA_INVIATA: v(
+    'Lo SDI ha scartato il file come duplicato: la fattura potrebbe essere già stata ricevuta. Controlla nel cassetto fiscale e spunta la conferma per annullarla.',
+    'avviso'
+  ),
   STORNO_GIA_PRESENTE: v(
     'Per questo documento esiste già una nota di credito di storno.',
     'errore'
@@ -300,6 +304,10 @@ export const MOTIVI_NON_ANNULLABILE_VOCI: Readonly<Record<MotivoNonAnnullabile, 
     NOTA_DI_CREDITO: v('Una nota di credito non si annulla.', 'info'),
     STORNATO: v('Il documento è già stato stornato.', 'info'),
     EMESSO: v('Il documento è già emesso: non si può più annullare, si storna.', 'info'),
+    TRASMISSIONE_SDI_VIVA: v(
+      'Il documento scartato ha un nuovo invio allo SDI: non si può annullare.',
+      'info'
+    ),
     NON_ULTIMO: v("Si annulla solo l'ultimo numero del registro.", 'info'),
   }
 
@@ -307,6 +315,14 @@ export const MOTIVI_NON_ANNULLABILE_VOCI: Readonly<Record<MotivoNonAnnullabile, 
 export const MOTIVI_NON_STORNABILE_VOCI: Readonly<Record<MotivoNonStornabile, VoceVocabolario>> = {
   NON_DEFINITIVO: v('Solo un documento definitivo si storna.', 'info'),
   NOTA_DI_CREDITO: v('Una nota di credito non si storna.', 'info'),
+  INVIO_SDI_IN_CORSO: v(
+    "L'invio allo SDI non ha ancora un esito: attendi l'esito dello SDI.",
+    'info'
+  ),
+  SCARTATO_SDI: v(
+    'Lo SDI ha scartato la fattura: non si storna, si annulla e si rifattura.',
+    'info'
+  ),
 }
 
 export const TIPI_RIGA_VOCI: Readonly<Record<string, VoceVocabolario>> = {

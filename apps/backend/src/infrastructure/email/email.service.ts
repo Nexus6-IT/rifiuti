@@ -87,7 +87,17 @@ export class EmailService {
     subject: string
     html: string
     text?: string
+    /** Allegati (es. un PDF). Mai scritti nel log. */
+    attachments?: { filename: string; content: Buffer; contentType?: string }[]
+    /**
+     * Messaggio che contiene o riguarda dati personali: nel log NON finiscono indirizzo, testo ne'
+     * errori del server SMTP (che spesso ripetono l'indirizzo), solo l'esito.
+     */
+    senzaDatiNeiLog?: boolean
   }): Promise<void> {
+    if (params.senzaDatiNeiLog) {
+      return this.inviaSenzaDatiNeiLog(params)
+    }
     this.logger.info(`Sending email to ${params.to}: ${params.subject}`)
 
     try {
@@ -117,6 +127,34 @@ ${params.text || params.html}
       this.logger.info(`Email sent successfully to ${params.to} - MessageID: ${info.messageId}`)
     } catch (error) {
       this.logger.error(`Failed to send email to ${params.to}`, error)
+      throw error
+    }
+  }
+
+  /** Come `sendEmail`, ma il log non riporta destinatario, testo ne' dettagli dell'errore. */
+  private async inviaSenzaDatiNeiLog(params: {
+    to: string
+    subject: string
+    html: string
+    text?: string
+    attachments?: { filename: string; content: Buffer; contentType?: string }[]
+  }): Promise<void> {
+    if (this.isDevelopment) {
+      this.logger.debug('Email riservata NON spedita (modalita sviluppo)')
+      return
+    }
+    try {
+      await this.transporter.sendMail({
+        from: process.env.EMAIL_FROM || 'noreply@wasteflow.it',
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+        attachments: params.attachments,
+      })
+      this.logger.info('Email riservata spedita')
+    } catch (error) {
+      this.logger.warn('Email riservata non spedita')
       throw error
     }
   }

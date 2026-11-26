@@ -38,6 +38,9 @@ async function bootstrap() {
   // Un lotto di 50 letture dell'agente di pesa puo' arrivare a ~145 KB in base64 (4.8b).
   app.use(`/${process.env.API_PREFIX || 'api/v1'}/agenti-pesa/letture`, jsonConLimite('200kb'))
 
+  // Ricevuta di ritiro (app campo, P6): la firma PNG arriva in base64 (<= 128 KiB, ~175 KB).
+  app.use(`/${process.env.API_PREFIX || 'api/v1'}/campo/ricevute`, jsonConLimite('250kb'))
+
   // Security: Helmet.js - Set various HTTP headers for security (T256)
   app.use(
     helmet({

@@ -44,6 +44,7 @@ const CHIAVI_RIGA = [
   'esitoFiscale',
   'id',
   'motivoNonAnnullabile',
+  'motivoNonStornabile',
   'numeroTesto',
   'registro',
   'stato',

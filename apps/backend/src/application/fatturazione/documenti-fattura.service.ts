@@ -34,7 +34,16 @@ export type MotivoNonAnnullabile =
   | 'NOTA_DI_CREDITO'
   | 'STORNATO'
   | 'EMESSO'
+  /** Emesso e scartato dallo SDI, ma con un nuovo invio vivo (4.5d). */
+  | 'TRASMISSIONE_SDI_VIVA'
   | 'NON_ULTIMO'
+
+/** Q33, piu' i due motivi SDI (4.5d): scartato dallo SDI (si annulla) e invio ancora senza esito. */
+export type MotivoNonStornabile =
+  | 'NON_DEFINITIVO'
+  | 'NOTA_DI_CREDITO'
+  | 'SCARTATO_SDI'
+  | 'INVIO_SDI_IN_CORSO'
 
 export interface SegnalazioneVista {
   codice: string
@@ -61,6 +70,8 @@ export interface DocumentoRiga {
   annullabile: boolean
   motivoNonAnnullabile: MotivoNonAnnullabile | null
   stornabile: boolean
+  /** Perche' non e' stornabile per le sole ragioni di stato/SDI; `null` se stornabile o per altre ragioni (storno gia' presente). */
+  motivoNonStornabile: MotivoNonStornabile | null
   /** Stato dell'ultima trasmissione SDI (la «viva» se c'e', altrimenti la piu' recente); null = mai accodato (4.5b). */
   statoSdi: StatoTrasmissioneSdi | null
   /** Esito fiscale dedotto dallo stato SDI; null se non c'e' una trasmissione. */
@@ -168,13 +179,23 @@ export interface DatiAnnullabilita {
   ultimoNumero: number
   /** Esiste un TD04 con `documento_origine_id` = id e stato diverso da ANNULLATO. */
   haStorno: boolean
+  /** Esiste una trasmissione SDI `SCARTATA` del documento (4.5d, D3). Assente = no. */
+  scartatoSdi?: boolean
+  /** Esiste una trasmissione SDI viva (non `ERRORE_INVIO` ne' `SCARTATA`). Assente = no. */
+  trasmissioneViva?: boolean
 }
 
-/** Funzione pura: il primo motivo che vale, nell'ordine di Q9. */
+/**
+ * Funzione pura: il primo motivo che vale, nell'ordine di Q9. Un emesso si annulla solo se lo SDI l'ha
+ * scartato e non c'e' un nuovo invio vivo (D3); in quel caso il numero resta consumato dal documento
+ * annullato, quindi `NON_ULTIMO` non si applica.
+ */
 export function annullabilita(d: DatiAnnullabilita): {
   annullabile: boolean
   motivo: MotivoNonAnnullabile | null
 } {
+  const emesso = d.emessoIl !== null
+  const scartato = emesso && d.scartatoSdi === true
   const motivo: MotivoNonAnnullabile | null =
     d.stato !== 'DEFINITIVO'
       ? 'NON_DEFINITIVO'
@@ -182,12 +203,48 @@ export function annullabilita(d: DatiAnnullabilita): {
         ? 'NOTA_DI_CREDITO'
         : d.haStorno
           ? 'STORNATO'
-          : d.emessoIl !== null
+          : emesso && !scartato
             ? 'EMESSO'
-            : d.numero !== d.ultimoNumero
-              ? 'NON_ULTIMO'
-              : null
+            : scartato && d.trasmissioneViva === true
+              ? 'TRASMISSIONE_SDI_VIVA'
+              : !emesso && d.numero !== d.ultimoNumero
+                ? 'NON_ULTIMO'
+                : null
   return { annullabile: motivo === null, motivo }
+}
+
+export interface DatiStornabilita {
+  stato: StatoDocumento
+  tipoDocumento: string
+  haStorno: boolean
+  /** Esiste una trasmissione SCARTATA (EMESSA, PRODUZIONE). */
+  scartatoSdi?: boolean
+  /** Esiste una trasmissione viva (non ERRORE_INVIO ne' SCARTATA). */
+  trasmissioneViva?: boolean
+  /** Esiste una trasmissione senza esito: DA_INVIARE, IN_INVIO, INCERTA o INVIATA. */
+  invioInVolo?: boolean
+}
+
+/**
+ * Funzione pura: lo storno e' ammesso solo se il documento e' un definitivo non TD04, senza storno, non
+ * scartato dallo SDI (senza nuovo invio vivo) e con la trasmissione chiusa (4.5d, decisione di Graziano:
+ * con un invio in volo si attende l'esito, perche' un NS tardivo renderebbe lo scartato non annullabile).
+ */
+export function stornabilita(d: DatiStornabilita): {
+  stornabile: boolean
+  motivo: MotivoNonStornabile | null
+} {
+  const motivo: MotivoNonStornabile | null =
+    d.stato !== 'DEFINITIVO'
+      ? 'NON_DEFINITIVO'
+      : d.tipoDocumento === 'TD04'
+        ? 'NOTA_DI_CREDITO'
+        : d.scartatoSdi === true && d.trasmissioneViva !== true
+          ? 'SCARTATO_SDI'
+          : d.invioInVolo === true
+            ? 'INVIO_SDI_IN_CORSO'
+            : null
+  return { stornabile: motivo === null && !d.haStorno, motivo }
 }
 
 type Db = Prisma.TransactionClient
@@ -512,6 +569,7 @@ export class DocumentiFatturaService {
         storni: new Map<string, string>(),
         ultimi: new Map<string, number>(),
         sdi: new Map<string, StatoTrasmissioneSdi>(),
+        scarti: new Map<string, { scartato: boolean; viva: boolean; inVolo: boolean }>(),
       }
     }
     const clientiIds = [...new Set(testate.map(t => t.clienteId))]
@@ -538,15 +596,30 @@ export class DocumentiFatturaService {
       SELECT registro_iva_id::text AS registro, anno::int AS anno, ultimo_numero::int AS ultimo
       FROM "numerazioni_fattura"
       WHERE tenant_id = ${tenantId}::uuid AND ${inLista('registro_iva_id', registriIds)}`
-    // Stato SDI: una riga per documento (la trasmissione corrente), una query per tutto l'insieme.
-    const sdi = await tx.$queryRaw<{ documento: string; stato: StatoTrasmissioneSdi }[]>`
-      SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato
+    // Stato SDI: una riga per documento (la trasmissione corrente) + scarto e trasmissioni vive
+    // (annullabilita dell'emesso scartato, 4.5d), una query per tutto l'insieme.
+    const sdi = await tx.$queryRaw<
+      {
+        documento: string
+        stato: StatoTrasmissioneSdi
+        scartato: boolean
+        viva: boolean
+        inVolo: boolean
+      }[]
+    >`
+      SELECT DISTINCT ON (t2.documento_id) t2.documento_id::text AS documento, t2.stato::text AS stato,
+             bool_or(t2.stato = 'SCARTATA' AND t2.direzione = 'EMESSA' AND t2.ambiente = 'PRODUZIONE') OVER (PARTITION BY t2.documento_id) AS scartato,
+             bool_or(t2.stato NOT IN ('ERRORE_INVIO', 'SCARTATA')) OVER (PARTITION BY t2.documento_id) AS viva,
+             bool_or(t2.stato IN ('DA_INVIARE', 'IN_INVIO', 'INCERTA', 'INVIATA')) OVER (PARTITION BY t2.documento_id) AS "inVolo"
       FROM "trasmissioni_sdi" t2
       WHERE t2.tenant_id = ${tenantId}::uuid AND ${inLista('t2.documento_id', lista)}
       ORDER BY t2.documento_id, ${ORDINE_TRASMISSIONE_CORRENTE}`
     return {
       testate,
       sdi: new Map(sdi.map(r => [r.documento, r.stato])),
+      scarti: new Map(
+        sdi.map(r => [r.documento, { scartato: r.scartato, viva: r.viva, inVolo: r.inVolo }])
+      ),
       clienti: new Map(clienti.map(c => [c.id, c.denominazione])),
       contratti: new Map(contratti.map(c => [c.id, c.numero])),
       registri: new Map(registri.map(r => [r.id, r.codice])),
@@ -568,6 +641,16 @@ export class DocumentiFatturaService {
       numero: t.numero,
       ultimoNumero: c.ultimi.get(`${t.registroIvaId}:${t.anno}`) ?? 0,
       haStorno,
+      scartatoSdi: c.scarti.get(t.id)?.scartato ?? false,
+      trasmissioneViva: c.scarti.get(t.id)?.viva ?? false,
+    })
+    const storno = stornabilita({
+      stato: t.stato,
+      tipoDocumento: t.tipoDocumento,
+      haStorno,
+      scartatoSdi: c.scarti.get(t.id)?.scartato ?? false,
+      trasmissioneViva: c.scarti.get(t.id)?.viva ?? false,
+      invioInVolo: c.scarti.get(t.id)?.inVolo ?? false,
     })
     return {
       id: t.id,
@@ -595,7 +678,8 @@ export class DocumentiFatturaService {
       emessoIl: t.emessoIl,
       annullabile,
       motivoNonAnnullabile: motivo,
-      stornabile: t.stato === 'DEFINITIVO' && t.tipoDocumento !== 'TD04' && !haStorno,
+      stornabile: storno.stornabile,
+      motivoNonStornabile: storno.motivo,
       statoSdi,
       esitoFiscale: statoSdi === null ? null : esitoFiscale(statoSdi),
     }
