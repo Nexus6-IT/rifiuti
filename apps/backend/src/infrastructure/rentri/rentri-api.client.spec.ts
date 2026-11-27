@@ -876,6 +876,48 @@ describe('RENTRIApiClient', () => {
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
     })
 
+    it('inviaSostaTecnica (non idempotente): 5xx = una sola POST e esito incerto, mai ritentata', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ response: { status: 503 } })))
+
+      const errore = await client
+        .inviaSostaTecnica('tenant-1', 'BCDFGH00001ZH', {
+          luogo_stazionamento: 'Area di servizio',
+          data_ora_sospensione: '2026-11-18T10:00:00.000Z',
+          data_ora_ripresa: '2026-11-18T12:00:00.000Z',
+        })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).status).toBe(503)
+      expect((errore as Error).message).toContain('sosta tecnica')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('inviaTrasbordoTotale (non idempotente): 5xx = una sola POST e esito incerto, mai ritentata', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ response: { status: 503 } })))
+
+      const errore = await client
+        .inviaTrasbordoTotale('tenant-1', 'BCDFGH00001ZH', {
+          trasportatore: {
+            denominazione: 'Trasporti Verdi Srl',
+            codice_fiscale: '01234567890',
+            tipo_trasporto: 'Terrestre' as const,
+          },
+          presa_in_carico: {
+            data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+            conducente: { nome: 'Luca', cognome: 'Bianchi' },
+            targa_automezzo: 'FG456HI',
+          },
+        })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).status).toBe(503)
+      expect((errore as Error).message).toContain('trasbordo totale')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+      expect(mockHttpService.post.mock.calls[0][0]).toContain('/BCDFGH00001ZH/trasbordo-totale')
+    })
+
     it('timeout senza risposta: TrasmissioneRentriIncertaError NESSUNA_RISPOSTA', async () => {
       mockHttpService.post.mockReturnValue(throwError(() => ({ code: 'ECONNABORTED' })))
 
@@ -1007,6 +1049,81 @@ describe('RENTRIApiClient', () => {
       expect((errore as TrasmissioneRentriIncertaError).causa).toBe('ESITO_NON_DISPONIBILE')
       expect((errore as TrasmissioneRentriIncertaError).transazioneId).toBe('tx-an')
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('inviaSostaTecnica: polling esaurito dopo il 202 = ESITO_NON_DISPONIBILE con il transazioneId', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(202, { transazione_id: 'tx-st' })))
+      mockHttpService.get.mockReturnValue(of(risposta(200)))
+
+      const errore = await client
+        .inviaSostaTecnica(
+          'tenant-1',
+          'BCDFGH00001ZH',
+          {
+            luogo_stazionamento: 'Area di servizio',
+            data_ora_sospensione: '2026-11-18T10:00:00.000Z',
+            data_ora_ripresa: '2026-11-18T12:00:00.000Z',
+          },
+          { intervalloMs: 0, maxTentativi: 2 }
+        )
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('ESITO_NON_DISPONIBILE')
+      expect((errore as TrasmissioneRentriIncertaError).transazioneId).toBe('tx-st')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('inviaTrasbordoTotale: polling esaurito dopo il 202 = ESITO_NON_DISPONIBILE con il transazioneId', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(202, { transazione_id: 'tx-tt' })))
+      mockHttpService.get.mockReturnValue(of(risposta(200)))
+
+      const errore = await client
+        .inviaTrasbordoTotale(
+          'tenant-1',
+          'BCDFGH00001ZH',
+          {
+            trasportatore: {
+              denominazione: 'Trasporti Verdi Srl',
+              codice_fiscale: '01234567890',
+              tipo_trasporto: 'Terrestre' as const,
+            },
+            presa_in_carico: {
+              data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+              conducente: { nome: 'Luca', cognome: 'Bianchi' },
+              targa_automezzo: 'FG456HI',
+            },
+          },
+          { intervalloMs: 0, maxTentativi: 2 }
+        )
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('ESITO_NON_DISPONIBILE')
+      expect((errore as TrasmissioneRentriIncertaError).transazioneId).toBe('tx-tt')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('inviaTrasbordoTotale: 202 senza transazione_id = esito incerto (RISPOSTA_SENZA_TRANSAZIONE)', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(202, {})))
+
+      const errore = await client
+        .inviaTrasbordoTotale('tenant-1', 'BCDFGH00001ZH', {
+          trasportatore: {
+            denominazione: 'Trasporti Verdi Srl',
+            codice_fiscale: '01234567890',
+            tipo_trasporto: 'Terrestre' as const,
+          },
+          presa_in_carico: {
+            data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+            conducente: { nome: 'Luca', cognome: 'Bianchi' },
+            targa_automezzo: 'FG456HI',
+          },
+        })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('RISPOSTA_SENZA_TRANSAZIONE')
     })
 
     it('leggiStatoTransazione: in elaborazione, non trovata, o esito pronto', async () => {

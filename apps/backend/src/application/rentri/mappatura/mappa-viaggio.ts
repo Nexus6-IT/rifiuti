@@ -9,7 +9,11 @@
  *
  * Il corpo di `/quantita` e il blocco `rifiuto.quantita` della creazione hanno gli stessi campi.
  */
-import { DatoMancantePerRentriError } from './mappa-parti'
+import {
+  DatiTrasportatoreRentri,
+  DatoMancantePerRentriError,
+  mappaTrasportatore,
+} from './mappa-parti'
 import { QuantitaRentri, traduciQuantita } from './mappa-quantita'
 
 /** Limiti del contratto (`formulari.yaml`). */
@@ -98,6 +102,8 @@ export interface DatiTrasportoTerrestreInput {
   percorso?: string | null
   dataOraInizioTrasporto: Date
   annotazioni?: string | null
+  /** Significativo solo per i trasporti successivi al primo (trasbordo totale): si invia solo se indicato. */
+  presaInCaricoRimorchioPrecedente?: boolean | null
 }
 
 function pulisci(valore: string | null | undefined): string {
@@ -177,6 +183,49 @@ export function mappaDatiTrasportoTerrestre(
     ...(targaAutomezzo ? { targa_automezzo: targaAutomezzo } : {}),
     ...(targaRimorchio ? { targa_rimorchio: targaRimorchio } : {}),
     ...(percorso ? { percorso } : {}),
+    ...(typeof input.presaInCaricoRimorchioPrecedente === 'boolean'
+      ? { presa_in_carico_rimorchio_precedente: input.presaInCaricoRimorchioPrecedente }
+      : {}),
     ...(annotazioni ? { annotazioni } : {}),
+  }
+}
+
+/** `DatiTrasbordoTotaleModel`: il nuovo trasportatore (terrestre) e la sua presa in carico. */
+export interface TrasbordoTotaleRentri {
+  trasportatore: DatiTrasportatoreRentri
+  presa_in_carico: DatiTrasportoTerrestreRentri
+}
+
+export interface TrasbordoTotaleInput {
+  /** Snapshot del trasportatore dall'anagrafica. */
+  trasportatore: {
+    ragioneSociale: string
+    /** P.IVA, oppure `''` per un privato che ha solo il codice fiscale. */
+    partitaIva: string
+    codiceFiscale?: string | null
+    numeroIscrizioneAlbo?: string | null
+  }
+  presaInCarico: DatiTrasportoTerrestreInput
+}
+
+/**
+ * Corpo di `POST /{numero_fir}/trasbordo-totale`. Il contratto ammette solo il trasporto TERRESTRE
+ * («Il tipo del trasporto deve essere Terrestre»), quindi `tipo_trasporto` e' fisso. Il codice fiscale del
+ * contratto e' la P.IVA della ditta o, per un privato, il suo codice fiscale. Dati del trasporto e Albo
+ * seguono le stesse regole fail-closed di `/trasporto` e della creazione.
+ */
+export function mappaTrasbordoTotale(input: TrasbordoTotaleInput): TrasbordoTotaleRentri {
+  const t = input.trasportatore
+  const trasportatore = mappaTrasportatore(
+    {
+      ragioneSociale: pulisci(t.ragioneSociale),
+      partitaIVA: pulisci(t.partitaIva) || pulisci(t.codiceFiscale),
+      numeroIscrizione: t.numeroIscrizioneAlbo,
+    },
+    'Terrestre'
+  )
+  return {
+    trasportatore,
+    presa_in_carico: mappaDatiTrasportoTerrestre(input.presaInCarico),
   }
 }

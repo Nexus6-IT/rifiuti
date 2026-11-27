@@ -8,6 +8,7 @@ import { AuthModule } from '../../../auth/auth.module'
 import { RuoloEffettivoModule } from '../../../api/me/ruolo-effettivo.module'
 import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
 import { RentriRegistroCollegamentoController } from '../../../api/rentri/rentri-registro-collegamento.controller'
+import { RentriRegistroEsportazioniController } from '../../../api/rentri/rentri-registro-esportazioni.controller'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
@@ -22,6 +23,10 @@ import { ApriRegistroRentriUseCase } from './apri-registro-rentri.use-case'
 import { ModificaRegistroRentriUseCase } from './modifica-registro-rentri.use-case'
 import { ChiudiRegistroRentriUseCase } from './chiudi-registro-rentri.use-case'
 import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-registro-rentri.use-case'
+import { GeneraEsportazioneRegistroRentriUseCase } from './genera-esportazione-registro-rentri.use-case'
+import { ValidaEsportazioneRegistroRentriUseCase } from './valida-esportazione-registro-rentri.use-case'
+import { SostituisciEsportazioneRegistroRentriUseCase } from './sostituisci-esportazione-registro-rentri.use-case'
+import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentri.service'
 
 /**
  * Trasmissione a RENTRI del registro di carico/scarico (F2-9).
@@ -41,7 +46,11 @@ import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-reg
     // Il job filtra le aziende col modulo `rentri`
     ModuliAttiviModule,
   ],
-  controllers: [RentriRegistroController, RentriRegistroCollegamentoController],
+  controllers: [
+    RentriRegistroController,
+    RentriRegistroCollegamentoController,
+    RentriRegistroEsportazioniController,
+  ],
   providers: [
     DettaglioTrasmissioneRentriService,
     LettoreAnnotazioniRentri,
@@ -56,6 +65,10 @@ import { AbbandonaAperturaRegistroRentriUseCase } from './abbandona-apertura-reg
     ModificaRegistroRentriUseCase,
     ChiudiRegistroRentriUseCase,
     AbbandonaAperturaRegistroRentriUseCase,
+    GeneraEsportazioneRegistroRentriUseCase,
+    ValidaEsportazioneRegistroRentriUseCase,
+    SostituisciEsportazioneRegistroRentriUseCase,
+    EsportazioniRegistroRentriService,
     RentriRegistroTrasmissioneJob,
   ],
   exports: [

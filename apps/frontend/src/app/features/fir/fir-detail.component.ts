@@ -41,6 +41,8 @@ import { RENTRISyncService } from './services/rentri-sync.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
+import { RegistryService } from '../registry/registry.service'
+import { Trasportatore } from '../../shared/models/registry.model'
 import {
   RentriFirLifecycleService,
   AllegatoFirRentri,
@@ -49,6 +51,7 @@ import {
   EventoFirRentri,
   OPERAZIONI_FIRMA_PARTENZA,
   ANNOTAZIONE_RENTRI_MAX,
+  LUOGO_SOSTA_RENTRI_MAX,
   SessioneFirmaInAttesa,
 } from '../rentri/rentri-fir-lifecycle.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -73,6 +76,14 @@ const ORIGINI_RILASCIABILI = ['ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE']
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
+
+/** Istante ISO (UTC) mostrato nel fuso del browser, in italiano: «18/11/2026, 11:00». */
+function formattaIstante(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })
+}
 
 /** Etichette italiane per l'origine del legame RENTRI (v. RentriOrigineLegame nel dominio). */
 const ORIGINE_LEGAME_LABELS: Record<string, string> = {
@@ -426,6 +437,103 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 </div>
               </div>
             }
+            @if (canFirmareSostaTecnica(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-sosta-tecnica-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Firma RENTRI da completare: la sosta tecnica è stata registrata presso l'ente ma
+                  non è ancora firmata. Stai per firmare come trasportatore questa sosta:
+                </p>
+                <blockquote
+                  class="firma-in-attesa__testo"
+                  data-testid="fir-detail-firma-sosta-tecnica-testo"
+                >
+                  {{ sostaDaFirmare() }}
+                </blockquote>
+                @if (sostaDaVerificare()) {
+                  <p
+                    class="firma-in-attesa__testo"
+                    data-testid="fir-detail-firma-sosta-tecnica-verifica"
+                  >
+                    <i class="pi pi-info-circle" aria-hidden="true"></i>
+                    L'esito dell'invio non era arrivato: prima di chiedere la firma WasteFlow
+                    verifica presso l'ente che la sosta in attesa sia proprio questa.
+                  </p>
+                }
+                <div class="row-actions">
+                  <p-button
+                    label="Firma la sosta tecnica"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaSostaTecnica(f)"
+                    data-testid="fir-detail-firma-sosta-tecnica"
+                  />
+                </div>
+              </div>
+            }
+            @if (canFirmareTrasbordoTotale(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-firma-trasbordo-totale-banner"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-pencil" aria-hidden="true"></i>
+                  Un trasportatore ha dichiarato il trasbordo totale del rifiuto a favore della tua
+                  azienda. Firmando come nuovo trasportatore prendi in carico il rifiuto: la firma è
+                  tua e solo tua. Prima di firmare controlla i dati sul portale RENTRI.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Firma il trasbordo totale"
+                    icon="pi pi-pencil"
+                    [loading]="firmaInCorso()"
+                    (onClick)="firmaTrasbordoTotale(f)"
+                    data-testid="fir-detail-firma-trasbordo-totale"
+                  />
+                </div>
+              </div>
+            }
+            @if (trasbordoInAttesaDelNuovo(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-trasbordo-totale-in-attesa"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-clock" aria-hidden="true"></i>
+                  Trasbordo totale dichiarato: {{ trasbordoDichiarato() }}. Resta da firmare al
+                  nuovo trasportatore, che deve confermare dal suo accesso o dall'app RENTRI FIR
+                  Digitale.
+                </p>
+              </div>
+            }
+            @if (canVerificareTrasbordoTotale(f)) {
+              <div
+                class="firma-in-attesa"
+                role="status"
+                data-testid="fir-detail-trasbordo-totale-verifica"
+              >
+                <p class="firma-in-attesa__testo">
+                  <i class="pi pi-info-circle" aria-hidden="true"></i>
+                  L'esito dell'invio del trasbordo totale non è arrivato. WasteFlow non lo reinvia
+                  da solo: controlla con l'ente se il trasbordo è stato registrato.
+                </p>
+                <div class="row-actions">
+                  <p-button
+                    label="Verifica con l'ente"
+                    icon="pi pi-refresh"
+                    [loading]="verificaTrasbordoInCorso()"
+                    (onClick)="verificaTrasbordoTotale(f)"
+                    data-testid="fir-detail-trasbordo-totale-verifica-btn"
+                  />
+                </div>
+              </div>
+            }
             @if (sessioneFirma(); as sessione) {
               <div
                 class="firma-in-attesa"
@@ -716,6 +824,30 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canDichiararSostaTecnica(f)) {
+                <p-button
+                  label="Dichiara una sosta tecnica"
+                  icon="pi pi-clock"
+                  [outlined]="true"
+                  (onClick)="apriDialogSostaTecnica()"
+                  data-testid="fir-detail-rentri-dichiara-sosta-tecnica"
+                  [attr.aria-label]="
+                    'Dichiara una sosta tecnica del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
+              @if (canDichiararTrasbordoTotale(f)) {
+                <p-button
+                  label="Trasbordo totale"
+                  icon="pi pi-arrow-right-arrow-left"
+                  [outlined]="true"
+                  (onClick)="apriDialogTrasbordoTotale(f)"
+                  data-testid="fir-detail-rentri-dichiara-trasbordo-totale"
+                  [attr.aria-label]="
+                    'Dichiara il trasbordo totale del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
               @if (canAnnullareRentri(f)) {
                 <p-button
                   label="Annulla il formulario"
@@ -996,6 +1128,214 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           [loading]="annotazioneInCorso()"
           (onClick)="confermaAnnotazione()"
           data-testid="fir-detail-rentri-annotazione-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Sosta tecnica (FIR in viaggio, P5) -->
+    <p-dialog
+      header="Dichiara una sosta tecnica"
+      [(visible)]="sostaDialogVisible"
+      [modal]="true"
+      [style]="{ width: '34rem' }"
+      data-testid="fir-detail-rentri-sosta-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="form-field">
+          <label for="sosta-luogo">Luogo di stazionamento *</label>
+          <textarea
+            id="sosta-luogo"
+            pInputTextarea
+            rows="3"
+            [attr.maxlength]="sostaLuogoMax"
+            [(ngModel)]="sostaLuogo"
+            data-testid="fir-detail-rentri-sosta-luogo"
+          ></textarea>
+          <small class="text-tertiary" data-testid="fir-detail-rentri-sosta-contatore"
+            >{{ sostaLuogo.length }} / {{ sostaLuogoMax }} caratteri.</small
+          >
+        </div>
+        <div class="form-field">
+          <label for="sosta-sospensione">Inizio della sosta (sospensione) *</label>
+          <input
+            id="sosta-sospensione"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="sostaSospensione"
+            data-testid="fir-detail-rentri-sosta-sospensione"
+          />
+        </div>
+        <div class="form-field">
+          <label for="sosta-ripresa">Fine della sosta (ripresa) *</label>
+          <input
+            id="sosta-ripresa"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="sostaRipresa"
+            data-testid="fir-detail-rentri-sosta-ripresa"
+          />
+          <small class="text-tertiary"
+            >Le date sono nel tuo fuso orario e arrivano all'ente in UTC. La sosta è a nome della
+            tua azienda come trasportatore e va firmata sull'app RENTRI FIR Digitale.</small
+          >
+        </div>
+        @if (sostaMessaggioDate(); as messaggioDate) {
+          <small
+            class="form-error"
+            role="alert"
+            data-testid="fir-detail-rentri-sosta-date-errore"
+            >{{ messaggioDate }}</small
+          >
+        }
+        @if (sostaErrore()) {
+          <small class="form-error" role="alert" data-testid="fir-detail-rentri-sosta-errore">{{
+            sostaErrore()
+          }}</small>
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="sostaDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-sosta-cancel"
+        />
+        <p-button
+          label="Invia e firma"
+          [disabled]="!sostaValida()"
+          [loading]="sostaInCorso()"
+          (onClick)="confermaSostaTecnica()"
+          data-testid="fir-detail-rentri-sosta-confirm"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Trasbordo totale (FIR in viaggio, P6) -->
+    <p-dialog
+      header="Trasbordo totale a un nuovo trasportatore"
+      [(visible)]="trasbordoDialogVisible"
+      [modal]="true"
+      [style]="{ width: '34rem' }"
+      data-testid="fir-detail-rentri-trasbordo-dialog"
+    >
+      <div class="accettazione-form">
+        <p class="text-tertiary">
+          Passi tutto il rifiuto a un altro trasportatore. Il nuovo trasportatore si aggiunge al
+          formulario solo dopo l'esito positivo dell'ente e deve firmare lui stesso.
+        </p>
+        <div class="form-field">
+          <label for="tb-trasportatore">Nuovo trasportatore *</label>
+          <p-dropdown
+            inputId="tb-trasportatore"
+            [options]="trasbordoTrasportatori()"
+            optionLabel="ragioneSociale"
+            optionValue="id"
+            placeholder="Seleziona un trasportatore"
+            [filter]="true"
+            filterBy="ragioneSociale"
+            [(ngModel)]="tbTrasportatoreId"
+            data-testid="fir-detail-rentri-trasbordo-trasportatore"
+          ></p-dropdown>
+          @if (trasbordoTrasportatoriTotale() > trasbordoTrasportatori().length) {
+            <small class="text-tertiary" data-testid="fir-detail-rentri-trasbordo-troncato">
+              Mostrati i primi {{ trasbordoTrasportatori().length }} trasportatori su
+              {{ trasbordoTrasportatoriTotale() }}: se non trovi quello che cerchi, completane
+              l'anagrafica dalla scheda Trasportatori.
+            </small>
+          }
+        </div>
+        <div class="form-field">
+          <label for="tb-nome">Nome del conducente *</label>
+          <input
+            id="tb-nome"
+            pInputText
+            maxlength="50"
+            [(ngModel)]="tbNome"
+            data-testid="fir-detail-rentri-trasbordo-nome"
+          />
+        </div>
+        <div class="form-field">
+          <label for="tb-cognome">Cognome del conducente *</label>
+          <input
+            id="tb-cognome"
+            pInputText
+            maxlength="50"
+            [(ngModel)]="tbCognome"
+            data-testid="fir-detail-rentri-trasbordo-cognome"
+          />
+        </div>
+        <div class="form-field">
+          <label for="tb-targa">Targa automezzo</label>
+          <input
+            id="tb-targa"
+            pInputText
+            maxlength="10"
+            [(ngModel)]="tbTargaAutomezzo"
+            data-testid="fir-detail-rentri-trasbordo-targa"
+          />
+        </div>
+        <div class="form-field">
+          <label for="tb-rimorchio">Targa rimorchio</label>
+          <input
+            id="tb-rimorchio"
+            pInputText
+            maxlength="10"
+            [(ngModel)]="tbTargaRimorchio"
+            data-testid="fir-detail-rentri-trasbordo-rimorchio"
+          />
+          <small class="text-tertiary">Serve la targa dell'automezzo o quella del rimorchio.</small>
+        </div>
+        <label class="check-row" for="tb-rimorchio-prec">
+          <p-checkbox
+            inputId="tb-rimorchio-prec"
+            [binary]="true"
+            [(ngModel)]="tbRimorchioPrecedente"
+            data-testid="fir-detail-rentri-trasbordo-rimorchio-precedente"
+          ></p-checkbox>
+          <span>Il nuovo trasportatore prende in carico anche il rimorchio precedente</span>
+        </label>
+        <div class="form-field">
+          <label for="tb-percorso">Percorso (se diverso dal più breve)</label>
+          <input
+            id="tb-percorso"
+            pInputText
+            maxlength="250"
+            [(ngModel)]="tbPercorso"
+            data-testid="fir-detail-rentri-trasbordo-percorso"
+          />
+        </div>
+        <div class="form-field">
+          <label for="tb-inizio">Inizio del trasporto del nuovo trasportatore *</label>
+          <input
+            id="tb-inizio"
+            pInputText
+            type="datetime-local"
+            [(ngModel)]="tbInizio"
+            data-testid="fir-detail-rentri-trasbordo-inizio"
+          />
+          <small class="text-tertiary">Ora nel tuo fuso orario: all'ente arriva in UTC.</small>
+        </div>
+        @if (trasbordoErrore()) {
+          <small class="form-error" role="alert" data-testid="fir-detail-rentri-trasbordo-errore">{{
+            trasbordoErrore()
+          }}</small>
+        }
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          severity="secondary"
+          [text]="true"
+          (onClick)="trasbordoDialogVisible.set(false)"
+          data-testid="fir-detail-rentri-trasbordo-cancel"
+        />
+        <p-button
+          label="Invia a RENTRI"
+          [disabled]="!trasbordoValido()"
+          [loading]="trasbordoInCorso()"
+          (onClick)="confermaTrasbordoTotale()"
+          data-testid="fir-detail-rentri-trasbordo-confirm"
         />
       </ng-template>
     </p-dialog>
@@ -1526,6 +1866,7 @@ export class FirDetailComponent implements OnInit {
   private readonly rentriFormulariService = inject(RentriFormulariService)
   private readonly rentriFirLifecycleService = inject(RentriFirLifecycleService)
   private readonly authService = inject(AuthService)
+  private readonly registryService = inject(RegistryService)
   /** Moduli attivi: le chiamate RENTRI partono solo con il modulo `rentri` (altrimenti 403). */
   protected readonly ff = inject(FeatureFlagsService)
   private readonly confirmationService = inject(ConfirmationService)
@@ -1555,6 +1896,34 @@ export class FirDetailComponent implements OnInit {
   protected readonly annotazioneInCorso = signal(false)
   protected readonly annotazioneErrore = signal<string | null>(null)
   protected annotazioneTesto = ''
+
+  // --- Sosta tecnica (FIR in viaggio, P5) ---
+  protected readonly sostaLuogoMax = LUOGO_SOSTA_RENTRI_MAX
+  protected readonly sostaDialogVisible = signal(false)
+  protected readonly sostaInCorso = signal(false)
+  protected readonly sostaErrore = signal<string | null>(null)
+  protected sostaLuogo = ''
+  /** `datetime-local` (ora locale, senza fuso): all'ente parte l'istante in UTC. */
+  protected sostaSospensione = ''
+  protected sostaRipresa = ''
+
+  // --- Trasbordo totale (FIR in viaggio, P6) ---
+  protected readonly trasbordoDialogVisible = signal(false)
+  protected readonly trasbordoInCorso = signal(false)
+  protected readonly verificaTrasbordoInCorso = signal(false)
+  protected readonly trasbordoErrore = signal<string | null>(null)
+  protected readonly trasbordoTrasportatori = signal<Trasportatore[]>([])
+  /** Totale in anagrafica: se supera quelli caricati (100) il dialog lo dice. */
+  protected readonly trasbordoTrasportatoriTotale = signal(0)
+  protected tbTrasportatoreId: string | null = null
+  protected tbNome = ''
+  protected tbCognome = ''
+  protected tbTargaAutomezzo = ''
+  protected tbTargaRimorchio = ''
+  protected tbPercorso = ''
+  protected tbRimorchioPrecedente = false
+  /** `datetime-local` (ora locale, senza fuso): all'ente parte l'istante in UTC. */
+  protected tbInizio = ''
 
   // --- Quantita' e dati di trasporto (FIR in viaggio, P2) ---
   protected readonly unitaQuantita = [
@@ -1982,6 +2351,12 @@ export class FirDetailComponent implements OnInit {
       this.canFirmarePartenza(fir) ||
       this.canAggiungereAnnotazione(fir) ||
       this.canFirmareAnnotazione(fir) ||
+      this.canDichiararSostaTecnica(fir) ||
+      this.canFirmareSostaTecnica(fir) ||
+      this.canDichiararTrasbordoTotale(fir) ||
+      this.canFirmareTrasbordoTotale(fir) ||
+      this.trasbordoInAttesaDelNuovo(fir) ||
+      this.canVerificareTrasbordoTotale(fir) ||
       this.canAnnullareRentri(fir) ||
       this.canScaricarePdfRentri(fir)
     )
@@ -2193,6 +2568,19 @@ export class FirDetailComponent implements OnInit {
       },
       error: err => {
         this.annotazioneInCorso.set(false)
+        if (this.codiceErrore(err) === 'ANNOTAZIONE_ESITO_INCERTO') {
+          // Esito ignoto: niente secondo invio a caldo. Si chiude il dialog e si ricarica; un nuovo tentativo
+          // controlla prima con l'ente se l'annotazione e' gia' registrata.
+          this.annotazioneDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Esito dell’annotazione da verificare',
+            detail: this.extractError(err, 'L’esito dell’annotazione non è noto.'),
+            life: 12000,
+          })
+          this.reload()
+          return
+        }
         // Il messaggio resta nel dialog: il testo scritto non si perde.
         this.annotazioneErrore.set(
           this.extractError(err, "Errore nell'invio dell'annotazione a RENTRI")
@@ -2216,6 +2604,462 @@ export class FirDetailComponent implements OnInit {
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, "Impossibile firmare l'annotazione su RENTRI"),
+        })
+        this.reload()
+      },
+    })
+  }
+
+  // --- Sosta tecnica (FIR in viaggio, P5) ---
+
+  /** Il pulsante nasce SOLO da `/azioni` (`SostaTecnica`), per un FIR legato, un ruolo abilitato e senza una firma gia' in attesa. */
+  canDichiararSostaTecnica(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('SostaTecnica') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  /** Una sosta gia' registrata presso l'ente e non ancora firmata: lo dice `/azioni`, mai lo stato locale. */
+  canFirmareSostaTecnica(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaSostaTecnica') &&
+      !this.sessioneFirma() &&
+      this.sostaDaFirmare() !== null
+    )
+  }
+
+  /**
+   * Luogo e date (UTC) dell'ultima sosta della nostra azienda accettata dall'ente e non ancora firmata, dallo
+   * storico. `null` se non c'e': una sosta in attesa dichiarata da un altro soggetto non si firma da qui,
+   * perche' non ne conosciamo il contenuto.
+   */
+  protected sostaDaFirmare(): string | null {
+    const evento = this.sostaInSospeso()
+    const p = evento?.payload as
+      | {
+          luogo_stazionamento?: unknown
+          data_ora_sospensione?: unknown
+          data_ora_ripresa?: unknown
+        }
+      | null
+      | undefined
+    if (
+      typeof p?.luogo_stazionamento !== 'string' ||
+      typeof p.data_ora_sospensione !== 'string' ||
+      typeof p.data_ora_ripresa !== 'string'
+    ) {
+      return null
+    }
+    return `${p.luogo_stazionamento} (dal ${formattaIstante(p.data_ora_sospensione)} al ${formattaIstante(p.data_ora_ripresa)})`
+  }
+
+  /** L'invio della sosta ha un esito ignoto (INVIATA/INCERTA): il backend lo riconcilia con l'ente prima della firma. */
+  protected sostaDaVerificare(): boolean {
+    const esito = this.sostaInSospeso()?.esito
+    return esito === 'INVIATA' || esito === 'INCERTA'
+  }
+
+  /**
+   * Come il backend: l'ultimo invio dopo l'ultima firma accettata. ACCETTATA = nostra e accettata;
+   * INVIATA/INCERTA = esito ignoto, da riconciliare; RIFIUTATA = chiuso (si guarda l'invio precedente).
+   */
+  private sostaInSospeso(): EventoFirRentri | null {
+    for (const e of this.eventi()) {
+      if (e.operazione === 'AcquisizioneFirmaSostaTecnica' && e.esito === 'ACCETTATA') return null
+      if (
+        (e.operazione === 'Reset' || e.operazione === 'RollbackFirma') &&
+        e.esito === 'ACCETTATA'
+      ) {
+        return null
+      }
+      if (e.operazione === 'SostaTecnica' && e.esito !== 'RIFIUTATA') return e
+    }
+    return null
+  }
+
+  apriDialogSostaTecnica(): void {
+    this.sostaLuogo = ''
+    this.sostaSospensione = ''
+    this.sostaRipresa = ''
+    this.sostaErrore.set(null)
+    this.sostaDialogVisible.set(true)
+  }
+
+  /** Istanti (ms) delle due date del dialog, oppure `null` se mancano o non sono date valide. */
+  private sostaIstanti(): { sospensione: number; ripresa: number } | null {
+    if (!this.sostaSospensione || !this.sostaRipresa) return null
+    const sospensione = new Date(this.sostaSospensione).getTime()
+    const ripresa = new Date(this.sostaRipresa).getTime()
+    return Number.isNaN(sospensione) || Number.isNaN(ripresa) ? null : { sospensione, ripresa }
+  }
+
+  /** Il motivo per cui le date non vanno (solo se entrambe sono valide: gli altri casi li copre il pulsante disabilitato). */
+  sostaMessaggioDate(): string | null {
+    const istanti = this.sostaIstanti()
+    return istanti && istanti.sospensione >= istanti.ripresa
+      ? 'La ripresa deve essere successiva alla sospensione.'
+      : null
+  }
+
+  /** Luogo da 1 a 1000 caratteri (non solo spazi), due date valide e sospensione < ripresa. */
+  sostaValida(): boolean {
+    const luogo = this.sostaLuogo.trim()
+    const istanti = this.sostaIstanti()
+    return (
+      luogo.length > 0 &&
+      luogo.length <= this.sostaLuogoMax &&
+      istanti !== null &&
+      istanti.sospensione < istanti.ripresa
+    )
+  }
+
+  confermaSostaTecnica(): void {
+    const fir = this.fir()
+    if (!fir || !this.sostaValida() || this.sostaInCorso()) return
+    this.sostaInCorso.set(true)
+    this.sostaErrore.set(null)
+    this.rentriFirLifecycleService
+      .dichiaraSostaTecnica(fir.id, {
+        luogoStazionamento: this.sostaLuogo.trim(),
+        // `datetime-local` e' ora locale: all'ente va l'istante in UTC.
+        dataOraSospensione: new Date(this.sostaSospensione).toISOString(),
+        dataOraRipresa: new Date(this.sostaRipresa).toISOString(),
+      })
+      .subscribe({
+        next: esito => {
+          this.sostaInCorso.set(false)
+          this.sostaDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Sosta tecnica inviata a RENTRI',
+            detail: "L'ente ha registrato la sosta tecnica.",
+          })
+          if (esito.firma.esito === 'DA_COMPLETARE') {
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Firma RENTRI da completare',
+              detail: esito.firma.avviso,
+            })
+          } else {
+            this.mostraEsitoFirma(esito.firma)
+          }
+          this.reload()
+        },
+        error: err => {
+          this.sostaInCorso.set(false)
+          if (this.codiceErrore(err) === 'SOSTA_TECNICA_ESITO_INCERTO') {
+            // Esito ignoto: niente secondo invio a caldo (v. annotazione). Il dialog si chiude e si ricarica.
+            this.sostaDialogVisible.set(false)
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Esito della sosta tecnica da verificare',
+              detail: this.extractError(err, 'L’esito della sosta tecnica non è noto.'),
+              life: 12000,
+            })
+            this.reload()
+            return
+          }
+          // Il messaggio resta nel dialog: i dati scritti non si perdono.
+          this.sostaErrore.set(
+            this.extractError(err, "Errore nell'invio della sosta tecnica a RENTRI")
+          )
+          this.reload()
+        },
+      })
+  }
+
+  firmaSostaTecnica(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaSostaTecnica(fir.id).subscribe({
+      next: esito => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(esito)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile firmare la sosta tecnica su RENTRI'),
+        })
+        this.reload()
+      },
+    })
+  }
+
+  // --- Trasbordo totale (FIR in viaggio, P6) ---
+
+  /** Il pulsante nasce SOLO da `/azioni` (`TrasbordoTotale`), per un FIR legato, un ruolo abilitato e senza una firma gia' in attesa. */
+  canDichiararTrasbordoTotale(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('TrasbordoTotale') &&
+      !this.sessioneFirma()
+    )
+  }
+
+  /**
+   * La firma e' del NUOVO trasportatore: il banner compare solo se l'ente la propone e NOI non abbiamo dichiarato
+   * quel trasbordo (chi lo ha dichiarato attende, non firma). Il backend ricontrolla che l'azienda sia davvero il
+   * nuovo trasportatore mostrato dall'ente.
+   */
+  canFirmareTrasbordoTotale(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaTrasbordoTotale') &&
+      !this.sessioneFirma() &&
+      this.trasbordoInSospeso() === null
+    )
+  }
+
+  /** Abbiamo dichiarato noi un trasbordo che aspetta ancora la firma del nuovo trasportatore. */
+  trasbordoInAttesaDelNuovo(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      this.canManageRENTRI() &&
+      this.haOperazioneRentri('AcquisizioneFirmaTrasbordoTotale') &&
+      this.trasbordoInSospeso() !== null
+    )
+  }
+
+  /** Nuovo trasportatore e inizio del trasbordo dichiarato da noi, dal payload dello storico. */
+  protected trasbordoDichiarato(): string {
+    const p = this.trasbordoInSospeso()?.payload as
+      | {
+          trasportatore?: { denominazione?: unknown }
+          presa_in_carico?: { data_ora_inizio_trasporto?: unknown }
+        }
+      | null
+      | undefined
+    const nome =
+      typeof p?.trasportatore?.denominazione === 'string' ? p.trasportatore.denominazione : null
+    const inizio =
+      typeof p?.presa_in_carico?.data_ora_inizio_trasporto === 'string'
+        ? p.presa_in_carico.data_ora_inizio_trasporto
+        : null
+    return nome
+      ? `a ${nome}${inizio ? ` dal ${formattaIstante(inizio)}` : ''}`
+      : 'a un nuovo trasportatore'
+  }
+
+  /**
+   * Il pulsante «Verifica con l'ente» c'e' finche' l'ultimo invio nostro e' senza esito, qualunque cosa proponga
+   * `/azioni` (il nuovo trasportatore puo' avere gia' firmato). Ruolo abilitato e FIR legato, come le altre azioni.
+   */
+  canVerificareTrasbordoTotale(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI() && this.trasbordoDaVerificare()
+  }
+
+  /** L'esito dell'invio e' ignoto (INVIATA/INCERTA): si chiude con «Verifica con l'ente». */
+  protected trasbordoDaVerificare(): boolean {
+    const esito = this.trasbordoInSospeso()?.esito
+    return esito === 'INVIATA' || esito === 'INCERTA'
+  }
+
+  /**
+   * Come il backend: l'ultimo invio NOSTRO dopo l'ultima firma, reset o rollback accettati. ACCETTATA = nostro e
+   * accettato; INVIATA/INCERTA = esito ignoto; RIFIUTATA = chiuso (si guarda l'invio precedente).
+   */
+  private trasbordoInSospeso(): EventoFirRentri | null {
+    for (const e of this.eventi()) {
+      if (e.operazione === 'AcquisizioneFirmaTrasbordoTotale' && e.esito === 'ACCETTATA')
+        return null
+      if (
+        (e.operazione === 'Reset' || e.operazione === 'RollbackFirma') &&
+        e.esito === 'ACCETTATA'
+      ) {
+        return null
+      }
+      if (e.operazione === 'TrasbordoTotale' && e.esito !== 'RIFIUTATA') return e
+    }
+    return null
+  }
+
+  apriDialogTrasbordoTotale(_fir: FIR): void {
+    this.tbTrasportatoreId = null
+    this.tbNome = ''
+    this.tbCognome = ''
+    this.tbTargaAutomezzo = ''
+    this.tbTargaRimorchio = ''
+    this.tbPercorso = ''
+    this.tbRimorchioPrecedente = false
+    this.tbInizio = this.adessoPerDatetimeLocal()
+    this.trasbordoErrore.set(null)
+    this.trasbordoTrasportatori.set([])
+    this.trasbordoTrasportatoriTotale.set(0)
+    this.trasbordoDialogVisible.set(true)
+    // Il nuovo trasportatore si sceglie dall'anagrafica dell'azienda (snapshot letto dal backend).
+    this.registryService.getTrasportatori(1, 100).subscribe({
+      next: r => {
+        this.trasbordoTrasportatori.set(r.items)
+        this.trasbordoTrasportatoriTotale.set(r.total ?? r.items.length)
+      },
+      error: () =>
+        this.trasbordoErrore.set(
+          "Impossibile caricare l'elenco dei trasportatori dall'anagrafica: chiudi e riprova."
+        ),
+    })
+  }
+
+  /** Adesso, in ora locale, nel formato di `datetime-local` (`2026-11-18T13:00`). */
+  private adessoPerDatetimeLocal(): string {
+    const d = new Date()
+    const due = (n: number): string => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}T${due(d.getHours())}:${due(d.getMinutes())}`
+  }
+
+  /** Nuovo trasportatore, conducente (nome e cognome), almeno una targa e un inizio valido: quanto chiede l'ente. */
+  trasbordoValido(): boolean {
+    return (
+      !!this.tbTrasportatoreId &&
+      this.trasbordoTrasportatori().some(t => t.id === this.tbTrasportatoreId) &&
+      this.tbNome.trim() !== '' &&
+      this.tbCognome.trim() !== '' &&
+      (this.tbTargaAutomezzo.trim() !== '' || this.tbTargaRimorchio.trim() !== '') &&
+      this.tbInizio !== '' &&
+      !Number.isNaN(new Date(this.tbInizio).getTime())
+    )
+  }
+
+  confermaTrasbordoTotale(): void {
+    const fir = this.fir()
+    if (!fir || !this.trasbordoValido() || this.trasbordoInCorso()) return
+    this.trasbordoInCorso.set(true)
+    this.trasbordoErrore.set(null)
+    this.rentriFirLifecycleService
+      .dichiaraTrasbordoTotale(fir.id, {
+        trasportatoreId: this.tbTrasportatoreId as string,
+        conducenteNome: this.tbNome.trim(),
+        conducenteCognome: this.tbCognome.trim(),
+        targaAutomezzo: this.tbTargaAutomezzo.trim().toUpperCase() || undefined,
+        targaRimorchio: this.tbTargaRimorchio.trim() || undefined,
+        percorso: this.tbPercorso.trim() || undefined,
+        // `datetime-local` e' ora locale: all'ente va l'istante in UTC.
+        dataOraInizioTrasporto: new Date(this.tbInizio).toISOString(),
+        ...(this.tbRimorchioPrecedente ? { presaInCaricoRimorchioPrecedente: true } : {}),
+      })
+      .subscribe({
+        next: esito => {
+          this.trasbordoInCorso.set(false)
+          this.trasbordoDialogVisible.set(false)
+          this.messageService.add({
+            severity: esito.trattaLocaleCreata ? 'success' : 'warn',
+            summary: 'Trasbordo totale inviato a RENTRI',
+            detail: esito.trattaLocaleCreata
+              ? "L'ente ha registrato il trasbordo totale."
+              : "L'ente ha registrato il trasbordo, ma qui il nuovo trasportatore non è stato aggiunto al formulario: il formulario presso l'ente è corretto, la copia locale va completata.",
+          })
+          this.messageService.add({
+            severity: 'info',
+            summary: 'Firma del nuovo trasportatore',
+            detail: esito.firma.avviso,
+          })
+          this.reload()
+        },
+        error: err => {
+          this.trasbordoInCorso.set(false)
+          if (this.codiceErrore(err) === 'TRASBORDO_TOTALE_ESITO_INCERTO') {
+            // Esito ignoto: niente secondo invio a caldo. Si chiude il dialog e si ricarica; la verifica con
+            // l'ente si chiede dal pulsante «Verifica con l'ente».
+            this.trasbordoDialogVisible.set(false)
+            this.messageService.add({
+              severity: 'warn',
+              summary: 'Esito del trasbordo da verificare',
+              detail: this.extractError(err, "L'esito del trasbordo totale non è noto."),
+              life: 12000,
+            })
+            this.reload()
+            return
+          }
+          // Il messaggio resta nel dialog: i dati scritti non si perdono.
+          this.trasbordoErrore.set(
+            this.extractError(err, "Errore nell'invio del trasbordo totale a RENTRI")
+          )
+          this.reload()
+        },
+      })
+  }
+
+  /** `codice` stabile dell'errore HTTP del backend (es. `ANNOTAZIONE_ESITO_INCERTO`), se c'e'. */
+  private codiceErrore(err: unknown): string | undefined {
+    return (err as { error?: { codice?: string } })?.error?.codice
+  }
+
+  verificaTrasbordoTotale(fir: FIR): void {
+    if (this.verificaTrasbordoInCorso()) return
+    this.verificaTrasbordoInCorso.set(true)
+    this.rentriFirLifecycleService.verificaTrasbordoTotale(fir.id).subscribe({
+      next: esito => {
+        this.verificaTrasbordoInCorso.set(false)
+        const messaggi = {
+          PRESENTE:
+            esito.trattaLocaleCreata === false
+              ? {
+                  severity: 'warn',
+                  detail:
+                    "L'ente ha registrato il trasbordo totale, ma qui il nuovo trasportatore non è stato aggiunto al formulario: il formulario presso l'ente è corretto, la copia locale va completata.",
+                }
+              : {
+                  severity: 'success',
+                  detail:
+                    "L'ente ha registrato il trasbordo totale: il nuovo trasportatore è stato aggiunto al formulario.",
+                },
+          ASSENTE: {
+            severity: 'warn',
+            detail:
+              "L'ente non mostra nessun trasbordo totale: l'invio è chiuso come non riuscito e puoi dichiararlo di nuovo.",
+          },
+          ALTRO_TRASBORDO: {
+            severity: 'warn',
+            detail:
+              "L'ente non mostra il trasbordo inviato dalla tua azienda: l'invio è chiuso come non riuscito. Controlla il formulario sul portale RENTRI prima di dichiararlo di nuovo.",
+          },
+          NIENTE_DA_VERIFICARE: {
+            severity: 'info',
+            detail: 'Non c’è nessun invio da verificare.',
+          },
+        } as const
+        this.messageService.add({
+          summary: 'Verifica con l’ente',
+          ...messaggi[esito.esito],
+        })
+        this.reload()
+      },
+      error: err => {
+        this.verificaTrasbordoInCorso.set(false)
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Verifica con l’ente non conclusa',
+          detail: this.extractError(err, 'Impossibile verificare il trasbordo totale con l’ente'),
+          life: 10000,
+        })
+        this.reload()
+      },
+    })
+  }
+
+  firmaTrasbordoTotale(fir: FIR): void {
+    this.firmaInCorso.set(true)
+    this.rentriFirLifecycleService.firmaTrasbordoTotale(fir.id).subscribe({
+      next: esito => {
+        this.firmaInCorso.set(false)
+        this.mostraEsitoFirma(esito)
+        this.reload()
+      },
+      error: err => {
+        this.firmaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile firmare il trasbordo totale su RENTRI'),
         })
         this.reload()
       },
@@ -2515,6 +3359,14 @@ export class FirDetailComponent implements OnInit {
         return 'Annotazione aggiunta'
       case 'AcquisizioneFirmaAnnotazione':
         return 'Annotazione firmata'
+      case 'SostaTecnica':
+        return 'Sosta tecnica dichiarata'
+      case 'AcquisizioneFirmaSostaTecnica':
+        return 'Sosta tecnica firmata'
+      case 'TrasbordoTotale':
+        return 'Trasbordo totale dichiarato'
+      case 'AcquisizioneFirmaTrasbordoTotale':
+        return 'Trasbordo totale firmato'
       default:
         return operazione
     }

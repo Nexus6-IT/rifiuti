@@ -75,6 +75,7 @@
     "stripe": "^17.7.0",
     "uuid": "^9.0.0",
     "winston": "^3.18.3",
+    "xml-crypto": "6.4.0",
     "xmllint-wasm": "5.3.0",
     "xpath": "0.0.32"
   },

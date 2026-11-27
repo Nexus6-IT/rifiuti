@@ -1,11 +1,15 @@
-import { mappaQuantitaRifiuto, mappaDatiTrasportoTerrestre } from './mappa-viaggio'
+import {
+  mappaQuantitaRifiuto,
+  mappaDatiTrasportoTerrestre,
+  mappaTrasbordoTotale,
+} from './mappa-viaggio'
 import { DatoMancantePerRentriError } from './mappa-parti'
 import { ValoreNonTraducibilePerRentriError } from './mappa-rifiuto'
 
 // Il giudice e' il validatore del finto RENTRI, generato dal contratto (v. mappa-nuovo-formulario.spec).
 const ORACOLO = '../../../../../../tools/rentri-fake/src/dominio/operazioni-viaggio'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { validaQuantita, validaTrasportoTerrestre } = require(ORACOLO)
+const { validaQuantita, validaTrasportoTerrestre, validaTrasbordoTotale } = require(ORACOLO)
 
 describe('mappaQuantitaRifiuto (POST /{numero_fir}/quantita)', () => {
   it("con i colli: quantita' convertita, colli come testo, niente rinfusa", () => {
@@ -117,6 +121,94 @@ describe('mappaDatiTrasportoTerrestre (POST /{numero_fir}/trasporto)', () => {
   it('rifiuta una data non valida', () => {
     expect(() =>
       mappaDatiTrasportoTerrestre({ ...base, dataOraInizioTrasporto: new Date('non-una-data') })
+    ).toThrow(DatoMancantePerRentriError)
+  })
+})
+
+describe('mappaTrasbordoTotale (POST /{numero_fir}/trasbordo-totale)', () => {
+  const base = {
+    trasportatore: {
+      ragioneSociale: ' Trasporti Verdi Srl ',
+      partitaIva: '01234567890',
+      numeroIscrizioneAlbo: 'MI/7490',
+    },
+    presaInCarico: {
+      conducenteNome: 'Luca',
+      conducenteCognome: 'Bianchi',
+      targaAutomezzo: ' fg456hi ',
+      dataOraInizioTrasporto: new Date('2026-11-18T12:00:00.000Z'),
+    },
+  }
+
+  it("nuovo trasportatore terrestre dall'anagrafica + presa in carico: valido per il contratto", () => {
+    const corpo = mappaTrasbordoTotale(base)
+    expect(corpo).toEqual({
+      trasportatore: {
+        denominazione: 'Trasporti Verdi Srl',
+        codice_fiscale: '01234567890',
+        tipo_trasporto: 'Terrestre',
+        numero_iscrizione_albo: 'MI/007490',
+      },
+      presa_in_carico: {
+        data_ora_inizio_trasporto: '2026-11-18T12:00:00.000Z',
+        conducente: { nome: 'Luca', cognome: 'Bianchi' },
+        targa_automezzo: 'FG456HI',
+      },
+    })
+    expect(validaTrasbordoTotale(corpo)).toBeNull()
+  })
+
+  it('il flag del rimorchio precedente va nella presa in carico solo se indicato', () => {
+    const corpo = mappaTrasbordoTotale({
+      ...base,
+      presaInCarico: { ...base.presaInCarico, presaInCaricoRimorchioPrecedente: true },
+    })
+    expect(corpo.presa_in_carico.presa_in_carico_rimorchio_precedente).toBe(true)
+    expect(validaTrasbordoTotale(corpo)).toBeNull()
+    expect(mappaTrasbordoTotale(base).presa_in_carico).not.toHaveProperty(
+      'presa_in_carico_rimorchio_precedente'
+    )
+  })
+
+  it("senza partita IVA usa il codice fiscale; senza nessuno dei due e' un dato mancante", () => {
+    const conCf = mappaTrasbordoTotale({
+      ...base,
+      trasportatore: {
+        ragioneSociale: 'Mario Rossi',
+        partitaIva: '',
+        codiceFiscale: 'RSSMRA80A01H501U',
+      },
+    })
+    expect(conCf.trasportatore.codice_fiscale).toBe('RSSMRA80A01H501U')
+    expect(() =>
+      mappaTrasbordoTotale({
+        ...base,
+        trasportatore: { ragioneSociale: 'Senza codici', partitaIva: '' },
+      })
+    ).toThrow(DatoMancantePerRentriError)
+  })
+
+  it('i dati del trasporto sono fail-closed come per /trasporto (conducente, targa)', () => {
+    expect(() =>
+      mappaTrasbordoTotale({
+        ...base,
+        presaInCarico: { ...base.presaInCarico, conducenteNome: '  ' },
+      })
+    ).toThrow(DatoMancantePerRentriError)
+    expect(() =>
+      mappaTrasbordoTotale({
+        ...base,
+        presaInCarico: { ...base.presaInCarico, targaAutomezzo: undefined },
+      })
+    ).toThrow(/targa/)
+  })
+
+  it("il numero di iscrizione all'Albo non normalizzabile e' un dato mancante", () => {
+    expect(() =>
+      mappaTrasbordoTotale({
+        ...base,
+        trasportatore: { ...base.trasportatore, numeroIscrizioneAlbo: 'boh' },
+      })
     ).toThrow(DatoMancantePerRentriError)
   })
 })

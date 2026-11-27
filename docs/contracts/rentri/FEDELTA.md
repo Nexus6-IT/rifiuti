@@ -683,6 +683,80 @@ sarebbe mai adottata (fail-closed: si sblocca con il `reset`).
 Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' annotazioni consecutive
 sono ammesse (la fake le ammette tutte, una alla volta), se l'ente rifiuta un CF fuori dal formulario con 400 o 403.
 
+### 8.4 Sosta tecnica (2026-11-23, FIR in viaggio, P5)
+
+`sosta-tecnica` completata con successo: il formulario passa a `FirmaSostaTecnica` e la fake ricorda lo stato
+di prima (`pendingOperazione` di tipo `SostaTecnica`); `acquisizione-firma` completata lo riporta a quello
+stato (gli stati di viaggio `InserimentoAccettazione` e `InserimentoTrasportoSuccessivo`, i soli in cui il
+contratto ammette la sosta, `formulari.yaml` `/{numero_fir}/sosta-tecnica`); `reset` in `FirmaSostaTecnica`
+annulla la sosta non firmata; `rollback-firma` la riporta a non firmata. Ipotesi dedotta dai NOMI degli stati,
+da verificare sulla demo. Il corpo e' validato con `DatiSostaTecnicaModel` (`luogo_stazionamento` 1..1000,
+`data_ora_sospensione` e `data_ora_ripresa` date-time) e, oltre al contratto, con ripresa > sospensione.
+
+Soste nel dettaglio (`GET /{numero_fir}`): `dati_soste_tecniche` (`DatiSostaTecnicaResultModel`: luogo, date,
+`dati_firma`, `trasportatore_id`). Una sosta accettata entra con `dati_firma: null`; la firma la valorizza (la
+fake mette solo `data_firma`); la fake NON valorizza `trasportatore_id`. WasteFlow ci riconcilia un invio rimasto
+senza esito (INCERTA, o INVIATA di un processo morto) e ci verifica, prima di ogni authorize, che ci sia UNA sola
+sosta non firmata con lo stesso luogo e gli stessi istanti di quella dichiarata da noi (le date si confrontano come
+istanti, non come stringhe: l'ente puo' rinormalizzare il formato).
+
+Limiti noti della fake (stessi dell'annotazione, §8.3): controlla lo stato solo al POST (la transizione avviene
+all'elaborazione: per questo WasteFlow serializza gli invii con una prenotazione locale), non verifica che la
+sosta sia dichiarata dal trasportatore che ha in carico il rifiuto (il contratto dice cosi': WasteFlow controlla
+prima dell'invio che il CF del tenant sia di un trasportatore del FIR, principale o aggiuntivo; non puo' sapere
+quale dei trasportatori abbia in carico il rifiuto, lo decide l'ente con 403) e non modella «copia gia'
+restituita con accettazione totale -> non consentita». Il POST `/sosta-tecnica` non si ritenta mai su
+5xx/timeout (esito incerto, come la creazione: la sosta si AGGIUNGE).
+
+Da chiedere alla demo: se lo stato dopo la firma e' davvero quello di prima, se piu' soste consecutive sono
+ammesse (la fake le ammette tutte, una alla volta), se il dettaglio riporta le soste non ancora firmate con il
+luogo identico a quello inviato, se la firma `AcquisizioneFirmaSostaTecnica` e' sempre del trasportatore che ha
+in carico il rifiuto (e quindi se l'utenza con visibilita' su un trasportatore diverso viene rifiutata), come
+l'ente tratta le date con frazioni di secondo.
+
+### 8.5 Trasbordo totale (2026-11-23, FIR in viaggio, P6)
+
+`trasbordo-totale` completato con successo: il formulario passa a `FirmaTrasbordoTotale` e la fake ricorda lo
+stato di prima (`pendingOperazione` di tipo `TrasbordoTotale`); `acquisizione-firma` completata lo riporta a
+quello stato (`InserimentoAccettazione` o `InserimentoTrasportoSuccessivo`, i soli in cui il contratto ammette
+l'operazione); `reset` in `FirmaTrasbordoTotale` toglie il trasbordo non firmato; `rollback-firma` lo riporta a
+non firmato. Il corpo e' validato con `DatiTrasbordoTotaleModel` (nuovo trasportatore + `presa_in_carico`
+terrestre, che include gia' conducente e data di inizio).
+
+Nel dettaglio (`GET /{numero_fir}`): `dati_trasbordo_totale` (`DatiTrasbordoTotaleResultModel`), **UNO solo**,
+come nel contratto: entra con `presa_in_carico.dati_firma_trasportatore: null`, la firma lo valorizza. Un
+secondo trasbordo totale non si propone in `/azioni` e la POST risponde 403 (ipotesi: il contratto parla di
+«eventuale trasbordo totale» al singolare). La fake NON valorizza `trasportatore_id`.
+
+Chi firma: la descrizione dello stato (`FirmaTrasbordoTotale`) dice «firma del trasportatore che prende in carico
+il rifiuto con l'operazione di trasbordo totale», cioe' il NUOVO trasportatore, non quello che ha inviato il
+trasbordo. La fake non distingue i soggetti (`/azioni` e `authorize` ignorano l'utenza). WasteFlow invece
+controlla da se' che il CF dell'azienda sia quello del nuovo trasportatore mostrato dall'ente, prima di ogni
+`authorize`. Il confronto usa sia il CF sia la P.IVA del tenant (`identificativiTenant`): al trasbordo WasteFlow
+invia `codice_fiscale = P.IVA || CF` dell'anagrafica, e per una ditta individuale il CF del tenant puo' essere quello
+personale. Identificativi esteri senza CF ne' P.IVA nel tenant restano fuori (il tenant ha sempre la P.IVA).
+
+Esito incerto: il POST non si ritenta e la tratta locale non nasce. La riconciliazione (invio nuovo, `firma`, o il
+pulsante «Verifica con l'ente», `POST .../trasbordo-totale/verifica`) confronta SOLO l'identita' (CF del nuovo
+trasportatore, inizio, conducente), firmato o no: la firma e' del nuovo trasportatore e puo' arrivare prima.
+
+Da verificare alla demo (secondo trasbordo): `dati_trasbordo_totale` e' UNO solo. Se il nostro invio incerto e'
+stato registrato e firmato e il nuovo trasportatore ne fa a sua volta un altro, la verifica del mittente vede un
+trasbordo «diverso»: senza `transazioneId` chiude l'invio come RIFIUTATA (esito `ALTRO_TRASBORDO`, nessuna tratta),
+con `transazioneId` resta 409 `TRASBORDO_TOTALE_IN_VERIFICA` perche' lo stato della transazione si legge solo come
+«in elaborazione o no». Se la demo conferma che un secondo trasbordo e' ammesso, usare l'esito della transazione.
+
+Limiti noti (stessi dell'annotazione, §8.3, e della sosta, §8.4): lo stato si controlla solo al POST; non si
+verifica che l'invio sia del trasportatore che ha in carico il rifiuto; non si modella «copia gia' restituita con
+accettazione totale -> non consentita»; il POST `/trasbordo-totale` non si ritenta mai su 5xx/timeout (esito
+incerto, il trasbordo AGGIUNGE un trasportatore).
+
+Da chiedere alla demo: se dopo la firma lo stato e' davvero quello di prima o `InserimentoTrasportoSuccessivo`
+(il plan ipotizza un `/trasporto` successivo, ma il contratto mette gia' la presa in carico nel POST); chi firma
+(solo il nuovo trasportatore o anche chi ha in carico); se un secondo trasbordo totale e' ammesso e cosa
+sostituisce; se il dettaglio mostra il trasbordo non ancora firmato con gli stessi dati inviati; come cambia
+`/azioni` per il vecchio trasportatore dopo il trasbordo.
+
 ## 9. Registri dell'operatore (2026-11-19, piano `2026-11-18-registro-eregi.md`, E1)
 
 Rotte aggiunte a `anagrafiche` (`routes/anagrafiche-registri.ts`, stato in
@@ -725,3 +799,36 @@ generati con `npm run genera-schema:crea-registro` / `:modifica-registro` e guar
   il valore della fixture. Il significato di `Ref`/digest per la catena delle esportazioni resta
   l'ipotesi R1 del piano, da provare sul demo.
 - Paginazione dell'elenco registri: applicata davvero (a differenza delle altre rotte `anagrafiche`).
+
+## 10. Firma XMLDSig del registro in `/valida` (2026-11-20, piano `2026-11-18-registro-eregi.md`, E5)
+
+`POST /dati-registri/v1.0/operatore/{registro}/valida` resta NONBLOCK_PULL con esito deciso dal
+canale di controllo, ma se il file (XML, o ZIP con un solo XML) e' un `reg:Registro` la fake, al
+completamento della transazione, verifica davvero (`dominio/verifica-firma-registro.ts`, libreria
+`xml-crypto`) e aggiunge i messaggi all'esito:
+- `firmaNonPresente` (Avvertimento) se manca la `ds:Signature` di radice;
+- `firmaNonValida` (Errore) se la firma non copre tutto il documento (`Reference URI=""`, enveloped,
+  C14N 1.0, SHA-256, RSA o ECDSA P1363) o non si verifica col certificato del `KeyInfo`;
+- `catenaDigestNonValida` (Errore) se `Ref[0]` non e' il `DigestValue` del `Reference
+  URI="#eREGI-CS-0"` dell'eREGI incorporato.
+
+**Divergenze dichiarate.** Coerenza interna, nessuna catena di fiducia verso una CA. Dei `Ref`
+successivi al primo (esportazioni precedenti) non si controlla nulla. Non si ricalcola il digest
+dell'eREGI (la fake non lo canonicalizza, v. §9) e non si verifica la sua firma. Un file che non e'
+un `reg:Registro` non riceve alcun giudizio.
+
+### 10.1 Catena di 3 esportazioni contro `/valida` (2026-11-21, eREGI E6)
+
+`apps/backend/src/application/rentri/registro/esportazioni-registro-rentri.oracolo.spec.ts` prova, con
+l'eREGI scaricato dalla fake, una catena di 3 esportazioni costruite con il codice di produzione
+(`costruisciEsportazioneRegistro`): la fake non segnala messaggi su nessuna delle tre. Prove in
+negativo: file alterato dopo la firma (`firmaNonValida`), primo `Ref` sbagliato
+(`catenaDigestNonValida`), file non firmato (`firmaNonPresente`).
+
+**Divergenza della fake scoperta in E6.** Le unita' locali di fixture (`MI00001234-002`) non rispettano
+il pattern `NumIscrSito` dell'XSD (`OP` + 4 cifre + 3 alfanumerici + 6 cifre + `-` + 2 lettere + 4
+cifre): l'eREGI che la fake rilascia per quei siti, inserito in un `reg:Registro`, NON passa la
+validazione XSD. L'oracolo ne sostituisce il solo valore con uno conforme. Da correggere nelle fixture
+quando si potra' rinumerare i siti senza rompere gli altri test. Come in §10, dei `Ref` oltre il primo
+la fake non controlla nulla: che le esportazioni successive citino il digest della precedente e' provato
+solo da `verificaCatenaEsportazioni` (nostro codice), non da un'implementazione indipendente.

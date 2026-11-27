@@ -86,4 +86,20 @@ describe('descrizioneAutorizzazioneFirma', () => {
       `Firma del formulario BCDFGH00001JK - firma di partenza ${veste}`
     )
   })
+
+  it('sosta tecnica: il testo sul telefono dice che si firma la sosta come trasportatore (niente underscore)', () => {
+    const testo = descrizioneAutorizzazioneFirma('BCDFGH00001JK', 'SOSTA_TECNICA')
+    expect(testo).toBe(
+      'Firma del formulario BCDFGH00001JK - firma della sosta tecnica come trasportatore'
+    )
+    expect(testo).not.toContain('_')
+  })
+
+  it('trasbordo totale: il testo sul telefono dice che si firma come nuovo trasportatore (niente underscore)', () => {
+    const testo = descrizioneAutorizzazioneFirma('BCDFGH00001JK', 'TRASBORDO_TOTALE')
+    expect(testo).toBe(
+      'Firma del formulario BCDFGH00001JK - firma del trasbordo totale come nuovo trasportatore'
+    )
+    expect(testo).not.toContain('_')
+  })
 })

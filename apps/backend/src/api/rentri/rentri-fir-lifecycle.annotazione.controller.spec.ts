@@ -40,7 +40,9 @@ describe('RentriFirLifecycleController — annotazione', () => {
       {} as any,
       {} as any,
       {} as any,
-      annotazione as any
+      annotazione as any,
+      {} as any, // SostaTecnicaRentriUseCase
+      {} as any // TrasbordoTotaleRentriUseCase
     )
   })
 
@@ -88,6 +90,7 @@ describe('RentriFirLifecycleController — annotazione', () => {
       'ANNOTAZIONE_DA_FIRMARE',
       'SESSIONE_FIRMA_IN_CORSO',
       'ANNOTAZIONE_IN_VERIFICA',
+      'ANNOTAZIONE_ESITO_INCERTO',
       'ANNOTAZIONE_DI_ALTRO_SOGGETTO',
     ])('%s: 409 con codice stabile e messaggio per l utente', async codice => {
       annotazione.invia.mockRejectedValue(
