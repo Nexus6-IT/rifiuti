@@ -265,6 +265,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     motivo: 'RENTRI: modalita di legame',
   },
   'api/rentri/rentri-registro.controller.ts': { chiavi: ['rentri'], motivo: 'RENTRI: registro' },
+  'api/rentri/rentri-registro-esportazioni.controller.ts': {
+    chiavi: ['rentri'],
+    motivo: 'RENTRI: esportazione XML firmata del registro (eREGI E6)',
+  },
   'api/rentri/rentri-registro-collegamento.controller.ts': {
     chiavi: ['rentri'],
     motivo: 'RENTRI: collegare o aprire il registro su RENTRI (eREGI)',

@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   ConflictException,
@@ -15,7 +14,6 @@ import {
   Put,
   Req,
   Res,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
@@ -63,7 +61,7 @@ import {
   TrasmissioneNonModificabileError,
 } from '../../application/rentri/registro/errori-azioni-rentri-registro'
 import type { ImpostazioniRegistro } from '../../application/rentri/registro/impostazioni-rentri-registro.service'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
+import { traduciRentriApiError } from './traduci-rentri-api-error'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import {
   ApriRegistroRentriDto,
@@ -130,24 +128,8 @@ export class RentriRegistroCollegamentoController {
     ) {
       return new ConflictException(err.message)
     }
-    if (err instanceof RentriApiError) {
-      if (err.status === 403) {
-        return new ForbiddenException(
-          "RENTRI non consente l'accesso a questa risorsa: verifica il certificato della tua azienda e che il registro appartenga alla tua azienda."
-        )
-      }
-      if (err.retryable || err.status >= 500) {
-        return new ServiceUnavailableException(
-          'RENTRI non risponde in questo momento: riprova tra qualche minuto.'
-        )
-      }
-      if (err.status === 400 || err.status === 404 || err.status === 422) {
-        return new BadRequestException(
-          `RENTRI ha rifiutato la richiesta${err.problemTitle ? `: ${err.problemTitle}` : '.'}`
-        )
-      }
-      return new BadGatewayException('RENTRI ha risposto in modo inatteso: riprova più tardi.')
-    }
+    const http = traduciRentriApiError(err)
+    if (http) return http
     return err
   }
 

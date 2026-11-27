@@ -306,7 +306,7 @@ function intestazione(autore: string, identificativoTemporale: string): string {
 /**
  * Serializza UNA registrazione: `<reg:Movimento>` oppure `<reg:AnnullamentoMovimento>` (secondo la
  * forma del corpo). Il frammento usa i prefissi `reg`, `mov` e `xsi`, che devono essere dichiarati
- * dall'elemento che lo contiene (lo fa {@link serializzaRegistro}).
+ * dall'elemento che lo contiene (lo fa `reg:Registrazioni` in {@link serializzaRegistro}).
  */
 export function serializzaMovimento(
   corpo: Record<string, unknown>,
@@ -365,7 +365,7 @@ export function serializzaMovimento(
  * Toglie dichiarazione XML e spazi esterni all'eREGI e lo restituisce IDENTICO, byte per byte, per
  * il resto. Non lo parsa ne' lo ri-serializza: e' firmato da RENTRI e ogni byte conta.
  */
-function eregiVerbatim(xml: string): string {
+export function eregiVerbatim(xml: string): string {
   if (typeof xml !== 'string') errore("l'eREGI deve essere un testo")
   if (/<!DOCTYPE/i.test(xml)) errore("l'eREGI non puo' contenere un DOCTYPE")
   const s = (xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml)
@@ -404,7 +404,9 @@ function gruppo(g: GruppoRegistrazioni): string {
     ` ProgressivoA="${intero(g.progressivoA, 'progressivoA')}"` +
     ` NumeroRegistrazioni="${attesi}"` +
     ` DataCreazione="${dataAttributo(g.dataCreazione, 'dataCreazione')}"`
-  return `<reg:Registrazioni${attributi}>${g.voci
+  // `mov` e `xsi` sono dichiarati qui e non sulla radice: cosi' l'eREGI incorporato eredita solo
+  // `reg` e la sua firma resta valida anche se l'ente l'ha calcolata con C14N inclusiva (M5, E5).
+  return `<reg:Registrazioni xmlns:mov="${NS_MOVIMENTI}" xmlns:xsi="${NS_XSI}"${attributi}>${g.voci
     .map(v => serializzaMovimento(v.corpo, v.autore, v.identificativoTemporale))
     .join('')}</reg:Registrazioni>`
 }
@@ -439,7 +441,7 @@ export function serializzaRegistro(input: InputSerializzaRegistro): string {
   })
   return (
     DICHIARAZIONE_XML +
-    `<reg:Registro xmlns:reg="${NS_REGISTRI}" xmlns:mov="${NS_MOVIMENTI}" xmlns:xsi="${NS_XSI}">` +
+    `<reg:Registro xmlns:reg="${NS_REGISTRI}">` +
     eregiVerbatim(input.eregXml) +
     (input.riferimenti.length > 0
       ? el('reg:RiferimentiPrecedenti', input.riferimenti.map(riferimento).join(''))

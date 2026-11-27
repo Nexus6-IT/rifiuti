@@ -5,6 +5,11 @@ import {
   identificativoRegistroValido,
   PATTERN_IDENTIFICATIVO_REGISTRO,
 } from '../dominio/identificativo-registro'
+import {
+  controllaFirmaERegistro,
+  estraiXmlDaFile,
+  type MessaggioFirmaRegistro,
+} from '../dominio/verifica-firma-registro'
 import { validaElencoMovimenti, validaRichiestaValidaRegistro } from '../dominio/movimento'
 import { Registri, MovimentoRegistrato, EsitoMessaggio } from '../stato/registri'
 
@@ -140,7 +145,9 @@ interface QueryElencoMovimenti {
  *   dall'ambito di un oracolo che verifica la FORMA delle chiamate HTTP, non
  *   il contenuto di un file XML. L'esito (`errore`/`validazione`) resta una
  *   decisione del canale di controllo, come ogni altro ciclo NONBLOCK_PULL di
- *   questa fake.
+ *   questa fake. UNICA eccezione (eREGI E5): se il file e' un `reg:Registro`, la fake verifica
+ *   davvero la firma XMLDSig enveloped e il `Ref[0]` della catena
+ *   (`dominio/verifica-firma-registro.ts`) e aggiunge i messaggi all'esito.
  */
 export function registraRotteDatiRegistri(app: FastifyInstance): void {
   const registri = new Registri()
@@ -170,9 +177,23 @@ export function registraRotteDatiRegistri(app: FastifyInstance): void {
       return inviaProblemDetails(risposta, 404, { title: 'Transazione non trovata' })
     }
 
+    // `POST .../valida`: oltre all'esito deciso dal test, la fake verifica DAVVERO firma e catena
+    // del `reg:Registro` inviato (v. `dominio/verifica-firma-registro.ts`). Su un file che non e'
+    // un `reg:Registro` non aggiunge nulla.
+    let controlli: MessaggioFirmaRegistro[] = []
+    if (transazione.contesto.tipo === 'ValidaRegistro') {
+      const { file_content: contenuto, nome_file: nomeFile } = transazione.contesto.richiesta as {
+        file_content: string
+        nome_file: string
+      }
+      const xml = await estraiXmlDaFile(contenuto, nomeFile)
+      controlli = (xml !== undefined ? controllaFirmaERegistro(xml) : undefined) ?? []
+    }
+    const validazione = [...(richiesta.body.validazione ?? []), ...controlli]
+
     registri.completaTransazione(richiesta.body.transazione_id, {
-      errore: richiesta.body.errore ?? false,
-      validazione: richiesta.body.validazione ?? [],
+      errore: (richiesta.body.errore ?? false) || controlli.some(m => m.tipo === 'Errore'),
+      validazione,
       tipo: richiesta.body.tipo,
       tempo_elaborazione: richiesta.body.tempo_elaborazione,
       esito: richiesta.body.esito,

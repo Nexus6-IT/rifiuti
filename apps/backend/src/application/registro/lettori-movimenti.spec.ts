@@ -131,6 +131,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo: 'ogni annotazione e una registrazione RENTRI; i riferimenti di carico usano le vigenti',
   },
+  'application/rentri/registro/genera-esportazione-registro-rentri.use-case.ts': {
+    scelta: 'tutte',
+    motivo:
+      "l'esportazione XML contiene OGNI annotazione del registro (anche non vigenti): legge solo numeri, anno e autore per delimitare l'intervallo contiguo; i dati li legge lettore-annotazioni-rentri",
+  },
   'application/registro/causali/causali-registro.service.ts': {
     scelta: 'tutte',
     motivo:
@@ -184,6 +189,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo:
       'fixture degli spec Postgres della Fase 3: crea un movimento importato con la sua riga di blocco; non calcola nulla',
+  },
+  'test-support/esportazioni-registro-di-prova.ts': {
+    scelta: 'tutte',
+    motivo:
+      'fixture di test: scrive annotazioni numerate per provare le esportazioni XML del registro',
   },
   'test-support/fatturazione-annullo-di-test.ts': {
     scelta: 'tutte',
