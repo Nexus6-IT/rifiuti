@@ -95,6 +95,12 @@ export interface OpzioniGenerazione {
   creataDa: string | null
   /** Avvia la validazione verso RENTRI dopo la generazione (predefinito `true`). */
   valida?: boolean
+  /**
+   * Esclude le annotazioni con data di annotazione (`registrationDate`) pari o successiva a questo
+   * istante: l'esportazione mensile automatica la usa per fermarsi all'inizio del mese corrente (o
+   * del mese della piu' vecchia annotazione ancora non confermata da RENTRI). Assente = nessun limite.
+   */
+  fino?: Date
 }
 
 const selezioneSintesi = {
@@ -288,7 +294,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     }
 
     // Cursore: anno e primo progressivo ancora da esportare.
-    const cursore = await this.trovaCursore(tx, tenantId, registroId, ultima)
+    const cursore = await this.trovaCursore(tx, tenantId, registroId, ultima, opzioni.fino)
     if (cursore === null) {
       return {
         esito: 'NIENTE_DA_ESPORTARE',
@@ -307,6 +313,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
           gte: cursore.progressivo,
           lt: cursore.progressivo + this.tetto,
         },
+        ...(opzioni.fino ? { registrationDate: { lt: opzioni.fino } } : {}),
       },
       orderBy: { progressiveNumber: 'asc' },
       select: {
@@ -415,8 +422,10 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     tx: Tx,
     tenantId: string,
     registroId: string,
-    ultima: { anno: number; progressivoA: number } | null
+    ultima: { anno: number; progressivoA: number } | null,
+    fino?: Date
   ): Promise<{ anno: number; progressivo: number } | null> {
+    const entroLimite = fino ? { registrationDate: { lt: fino } } : {}
     if (ultima) {
       const stessoAnno = await tx.wasteMovement.findFirst({
         where: {
@@ -424,6 +433,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
           registroId,
           progressiveYear: ultima.anno,
           progressiveNumber: { gt: ultima.progressivoA },
+          ...entroLimite,
         },
         select: { id: true },
       })
@@ -434,13 +444,14 @@ export class GeneraEsportazioneRegistroRentriUseCase {
         tenantId,
         registroId,
         ...(ultima ? { progressiveYear: { gt: ultima.anno } } : {}),
+        ...entroLimite,
       },
       _min: { progressiveYear: true },
     })
     const anno = primoAnno._min.progressiveYear
     if (anno === null) return null
     const primoNumero = await tx.wasteMovement.aggregate({
-      where: { tenantId, registroId, progressiveYear: anno },
+      where: { tenantId, registroId, progressiveYear: anno, ...entroLimite },
       _min: { progressiveNumber: true },
     })
     const progressivo = primoNumero._min.progressiveNumber
