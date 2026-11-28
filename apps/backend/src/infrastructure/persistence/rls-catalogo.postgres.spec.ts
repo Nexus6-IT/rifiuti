@@ -94,7 +94,10 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // 101 dal web push (P7): `sottoscrizioni_push` e `preferenze_push`, provate in `application/campo/push-campo.postgres.spec.ts`.
     // 102 dalle esportazioni XML del registro (eREGI E6): `esportazioni_registro_rentri`, provata in
     // `application/rentri/registro/esportazioni-registro-rentri.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(102)
+    // 105 dalla riconciliazione dell'import (I8): `rapporti_riconciliazione`, `campioni_riconciliazione` e
+    // `verbali_riconciliazione`, provate per nome in
+    // `application/migrazione/riconciliazione/riconciliazione.schema.postgres.spec.ts`.
+    expect(righe.length).toBe(105)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,

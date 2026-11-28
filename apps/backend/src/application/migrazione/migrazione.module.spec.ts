@@ -12,6 +12,8 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { senzaCommenti } from '../../test-support/sorgenti-controller'
 import { CaricaPacchettoService } from './caricamento/carica-pacchetto.service'
 import { MigrazioneModule } from './migrazione.module'
+import { MigrazioneRiconciliaModule } from './riconciliazione/migrazione-riconcilia.module'
+import { RiconciliazioneService } from './riconciliazione/riconciliazione.service'
 
 const SRC = join(__dirname, '..', '..')
 const ACCESSO_AL_SISTEMA =
@@ -35,6 +37,16 @@ describe('migrazione: solo il client applicativo', () => {
     const ref = await Test.createTestingModule({ imports: [MigrazioneModule] }).compile()
     expect(ref.get(CaricaPacchettoService)).toBeDefined()
     expect(ref.get(PrismaService, { strict: false })).toBeDefined()
+    expect(() => ref.get(PrismaSistemaService, { strict: false })).toThrow()
+    await ref.close()
+  })
+
+  it('la riconciliazione ha il suo modulo con il solo client applicativo', async () => {
+    const imports: unknown[] =
+      Reflect.getMetadata(MODULE_METADATA.IMPORTS, MigrazioneRiconciliaModule) ?? []
+    expect(imports).not.toContain(PrismaModule)
+    const ref = await Test.createTestingModule({ imports: [MigrazioneRiconciliaModule] }).compile()
+    expect(ref.get(RiconciliazioneService)).toBeDefined()
     expect(() => ref.get(PrismaSistemaService, { strict: false })).toThrow()
     await ref.close()
   })

@@ -174,6 +174,28 @@ export class EvidenzeDbService implements LettoreEvidenze {
     return 'nessuna violazione della numerazione delle fatture'
   }
 
+  /**
+   * Voce di stato delle trasmissioni SDI (4.5f T1): solleva se ci sono trasmissioni `INCERTA` (esito
+   * dell'invio ignoto) o `IN_INVIO` (presa in carico e mai conclusa: il job e' morto a meta') ferme da
+   * oltre un'ora, su tutte le aziende. Scarti ed errori d'invio sono lavoro dell'azienda (avvisi in-app
+   * agli ADMIN), non guasti della piattaforma: qui non contano. Solo conteggi, mai id o nomi.
+   */
+  async verificaTrasmissioniSdi(): Promise<string> {
+    const [r] = await this.sistema.$queryRaw<{ incerte: number; bloccate: number }[]>`
+      SELECT count(*) FILTER (WHERE stato = 'INCERTA')::int AS incerte,
+             count(*) FILTER (WHERE stato = 'IN_INVIO')::int AS bloccate
+      FROM trasmissioni_sdi
+      WHERE stato IN ('INCERTA', 'IN_INVIO') AND updated_at < now() - interval '1 hour'`
+    const incerte = Number(r?.incerte ?? 0)
+    const bloccate = Number(r?.bloccate ?? 0)
+    if (incerte + bloccate > 0) {
+      throw new Error(
+        `Trasmissioni SDI ferme da oltre un'ora: ${incerte} con esito incerto, ${bloccate} in invio`
+      )
+    }
+    return "nessuna trasmissione SDI ferma da oltre un'ora"
+  }
+
   private async misuraBackup(): Promise<MisuraFreschezza> {
     const pianificazione = await this.sistema.backupSchedule.findFirst({
       where: { isActive: true },

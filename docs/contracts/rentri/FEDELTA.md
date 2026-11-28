@@ -832,3 +832,19 @@ validazione XSD. L'oracolo ne sostituisce il solo valore con uno conforme. Da co
 quando si potra' rinumerare i siti senza rompere gli altri test. Come in §10, dei `Ref` oltre il primo
 la fake non controlla nulla: che le esportazioni successive citino il digest della precedente e' provato
 solo da `verificaCatenaEsportazioni` (nostro codice), non da un'implementazione indipendente.
+
+### 10.2 Cosa copre E7 e cosa resta da provare sul demo (2026-11-28, eREGI E7)
+
+E7 aggiunge il pannello, il job mensile (spento di predefinito, `RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE`) e
+l'e2e Playwright `e2e/tests/rentri/registro-esportazioni.spec.ts` (trasmissione, esportazione,
+validazione della fake, download, rettifica, seconda esportazione con una `Reference` in piu'). **Nessun
+comportamento nuovo della fake e nessun nuovo contratto**: il job riusa `/valida` come E6.
+
+Ancora **da provare sul demo RENTRI** prima di accendere il job (guida: `docs/rentri/esportazione-xml-registro.md`):
+- R1: significato di `Ref` oltre il primo (digest dell'eREGI, poi `DigestValue` dei file precedenti);
+  la fake non controlla nulla oltre il primo `Ref` (§10, §10.1).
+- R2: canonicalizzazione dell'eREGI incorporato (prefisso diverso da `reg`).
+- R3: `Autore` (nome e cognome dell'utente che ha registrato, oppure `WasteFlow`) e
+  `IdentificativoTemporale` (`created_at` dell'annotazione).
+- R9: che `/operatore/registri` risponda sul demo (la fake lo espone; `openapi.json` lo dichiara «non esposto»).
+- Primo progressivo di un anno = primo numero esistente, non forzato a 1.

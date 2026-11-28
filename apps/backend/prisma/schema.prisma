@@ -149,6 +149,9 @@ model Tenant {
   collegamentiAccesso   CollegamentoAccesso[]
   agentiPesa            AgentePesa[]
   lottiImport           LottoImport[]
+  rapportiRiconciliazione  RapportoRiconciliazione[]
+  campioniRiconciliazione  CampioneRiconciliazione[]
+  verbaliRiconciliazione   VerbaleRiconciliazione[]
   lettureAgentePesa     LetturaPesa[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
@@ -5338,6 +5341,110 @@ model LottoImport {
   @@unique([id, tenantId], map: "lotti_import_id_tenant_id_key")
   @@index([tenantId], map: "lotti_import_tenant_id_idx")
   @@map("lotti_import")
+}
+
+/// Import WinWaste, I8 (piano import 3.6): una riga per VERSIONE del rapporto di riconciliazione di uno o piu'
+/// lotti. Insert-only per esiti, lotti e impronta (una modifica e' una versione nuova); l'unica modifica
+/// ammessa e' APERTO -> CHIUSO sull'ultima versione. `lottiImportIds` non ha FK (array). Trigger, CHECK e
+/// RLS stanno solo nella migration `20261128100000_riconciliazione_import`. Nessun valore personale
+/// negli esiti: solo codici, conteggi, totali e identificativi tecnici.
+model RapportoRiconciliazione {
+  id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                       @map("tenant_id") @db.Uuid
+  /// Prima versione del rapporto (se stessa per la versione 1).
+  radiceId       String                       @map("radice_id") @db.Uuid
+  versione       Int
+  lottiImportIds String[]                     @map("lotti_import_ids") @db.Uuid
+  /// `EsitiRiconciliazione` (domain/migrazione/riconciliazione/tipi.ts).
+  esiti          Json
+  hashRapporto   String                       @map("hash_rapporto") @db.Char(64)
+  /// Impronta del rapporto sorgente WinWaste da cui e' partito il confronto.
+  hashSorgente   String                       @map("hash_sorgente") @db.Char(64)
+  stato          StatoRapportoRiconciliazione @default(APERTO)
+  creatoDa       String?                      @map("creato_da") @db.Uuid
+  chiusoDa       String?                      @map("chiuso_da") @db.Uuid
+  chiusoIl       DateTime?                    @map("chiuso_il") @db.Timestamptz(3)
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "rapporti_riconciliazione_tenant_fkey")
+  radice   RapportoRiconciliazione   @relation("VersioniRapporto", fields: [radiceId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "rapporti_riconciliazione_radice_fkey")
+  versioni RapportoRiconciliazione[] @relation("VersioniRapporto")
+  campioni CampioneRiconciliazione[]
+  verbali  VerbaleRiconciliazione[]
+
+  @@unique([id, tenantId], map: "rapporti_riconciliazione_id_tenant_id_key")
+  @@unique([radiceId, versione], map: "rapporti_riconciliazione_radice_versione_key")
+  @@index([tenantId], map: "rapporti_riconciliazione_tenant_id_idx")
+  @@map("rapporti_riconciliazione")
+}
+
+/// I8: riga scelta a caso (con seme registrato nel rapporto) per il confronto a mano fra WinWaste e
+/// WasteFlow. Legata alla radice del rapporto, quindi vale per tutte le versioni. L'esito si da o si corregge
+/// finche' il rapporto non e' chiuso.
+model CampioneRiconciliazione {
+  id               String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                        @map("tenant_id") @db.Uuid
+  rapportoRadiceId String                        @map("rapporto_radice_id") @db.Uuid
+  tipo             TipoCampioneRiconciliazione
+  /// Id del movimento o del FIR (nessuna FK: la tabella e' di due tipi).
+  riferimentoId    String                        @map("riferimento_id") @db.Uuid
+  legacyKey        String?                       @map("legacy_key") @db.VarChar(200)
+  esito            EsitoCampioneRiconciliazione?
+  nota             String?                       @db.VarChar(500)
+  esitoDa          String?                       @map("esito_da") @db.Uuid
+  esitoIl          DateTime?                     @map("esito_il") @db.Timestamptz(3)
+  createdAt        DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "campioni_riconciliazione_tenant_fkey")
+  rapporto RapportoRiconciliazione @relation(fields: [rapportoRadiceId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "campioni_riconciliazione_rapporto_fkey")
+
+  @@unique([rapportoRadiceId, tipo, riferimentoId], map: "campioni_riconciliazione_riferimento_key")
+  @@index([tenantId], map: "campioni_riconciliazione_tenant_id_idx")
+  @@map("campioni_riconciliazione")
+}
+
+/// I8: verbale firmato (PDF) con la sua impronta SHA-256. Insert-only. Niente storage a oggetti nel
+/// progetto: il PDF sta nella riga (massimo 10 MB, CHECK nella migration).
+model VerbaleRiconciliazione {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  rapportoRadiceId String   @map("rapporto_radice_id") @db.Uuid
+  versioneRapporto Int      @map("versione_rapporto")
+  nomeFile         String   @map("nome_file") @db.VarChar(255)
+  mime             String   @db.VarChar(100)
+  dimensione       Int
+  sha256           String   @db.Char(64)
+  contenuto        Bytes
+  caricatoDa       String?  @map("caricato_da") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "verbali_riconciliazione_tenant_fkey")
+  rapporto RapportoRiconciliazione @relation(fields: [rapportoRadiceId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "verbali_riconciliazione_rapporto_fkey")
+
+  @@unique([rapportoRadiceId, sha256], map: "verbali_riconciliazione_sha256_key")
+  @@index([tenantId], map: "verbali_riconciliazione_tenant_id_idx")
+  @@map("verbali_riconciliazione")
+}
+
+enum StatoRapportoRiconciliazione {
+  APERTO
+  CHIUSO
+
+  @@map("stato_rapporto_riconciliazione")
+}
+
+enum TipoCampioneRiconciliazione {
+  MOVIMENTO
+  FIR
+
+  @@map("tipo_campione_riconciliazione")
+}
+
+enum EsitoCampioneRiconciliazione {
+  CORRISPONDE
+  NON_CORRISPONDE
+
+  @@map("esito_campione_riconciliazione")
 }
 
 enum StatoSessioneFirmaRentri {

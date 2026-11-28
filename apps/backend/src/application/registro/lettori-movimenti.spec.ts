@@ -117,6 +117,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'accodamento manuale e dichiarazione: ogni annotazione, anche una correzione, e una registrazione RENTRI',
   },
+  'application/rentri/registro/limite-esportazione-mensile.ts': {
+    scelta: 'tutte',
+    motivo:
+      "data di annotazione piu vecchia ancora non confermata da RENTRI per registro (limite dell'esportazione mensile): ogni annotazione e una registrazione RENTRI, anche una correzione; nessun conteggio di giacenze",
+  },
   'application/rentri/registro/scadenza-trasmissione-rentri.ts': {
     scelta: 'tutte',
     motivo:
@@ -213,6 +218,16 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
   'infrastructure/rentri/rentri-unita-locale.service.ts': {
     scelta: 'tutte',
     motivo: 'una sede con qualunque riga nel registro non si elimina',
+  },
+  'application/migrazione/riconciliazione/leggi-destinazione.ts': {
+    scelta: 'tutte',
+    motivo:
+      "riconciliazione dell'import (I8): conta le righe che portano l'id del lotto (tutte ORDINARIE per costruzione: le correzioni F2-3 non hanno il lotto), con totali, numerazione e stato RENTRI, solo per il confronto col rapporto sorgente; non calcola giacenze ne' MUD",
+  },
+  'application/migrazione/riconciliazione/riconciliazione.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      "riconciliazione dell'import (I8): sceglie le righe del campione a mano fra quelle del lotto (ordinate per l'impronta del seme), senza contarle come dato vigente",
   },
 }
 

@@ -397,6 +397,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // Riconciliazione dell'import WinWaste (I8): governa l'import di tutte le aziende, quindi
+        // solo SUPER_ADMIN; l'enforcement reale e' sul backend (riconciliazione-import.controller.ts).
+        path: 'admin/riconciliazione-import',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/admin/import/riconciliazione-import.component').then(
+            m => m.RiconciliazioneImportComponent
+          ),
+      },
+      {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
         canActivate: [moduloGuard],

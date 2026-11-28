@@ -22,6 +22,7 @@ import { SostituisciEsportazioneRegistroRentriUseCase } from './sostituisci-espo
 import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentri.service'
 import { RentriRegistroEsportazioniController } from '../../../api/rentri/rentri-registro-esportazioni.controller'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
+import { RentriRegistroEsportazioneJob } from '../../../infrastructure/jobs/rentri-registro-esportazione.job'
 
 /**
  * DI smoke test: i provider reali (nessun override) si risolvono. Senza `.init()`, quindi senza
@@ -44,6 +45,7 @@ describe('RegistroRentriModule (DI wiring)', () => {
       VerificaTrasmissioneRentriUseCase,
       ImpostazioniRentriRegistroService,
       RentriRegistroTrasmissioneJob,
+      RentriRegistroEsportazioneJob,
       RentriRegistroController,
       DettaglioTrasmissioneRentriService,
       CandidatiRegistroRentriUseCase,

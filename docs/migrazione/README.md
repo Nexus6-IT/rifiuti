@@ -74,6 +74,41 @@ si rifiuta). Un'azienda alla volta. Se il lotto fallisce (uscita 1) il lotto e' 
 numero del blocco e la classe dell'errore; correggere la causa e rilanciare: i blocchi gia' scritti
 restano e vengono saltati.
 
+## 4b. Riconciliare (prima dello sblocco dell'invio)
+
+I movimenti e i FIR importati restano bloccati all'invio a RENTRI finche' la riconciliazione non e'
+chiusa (lo sblocco e' di I9). Il rapporto si genera sul server, nell'immagine del backend, col ruolo
+applicativo, un'azienda alla volta:
+
+```
+node dist/cli/migrazione-riconcilia.js --tenant <uuid> --rapporto-sorgente <rapporto.json> \
+  [--giacenze-attese <attese.json>] [--lotti <uuid,...>] [--campione 10] [--seme <testo>] [--operatore <uuid>]
+node dist/cli/migrazione-riconcilia.js --tenant <uuid> --rapporto-sorgente <rapporto.json> --rapporto <uuid radice>   # ricalcolo
+```
+
+- `--rapporto-sorgente` e' il JSON del rapporto sorgente (`migrazione:analizza`), senza dati personali.
+  Senza `--lotti` si usano i lotti `COMPLETATO` dell'archivio del rapporto.
+- `--giacenze-attese` e' un JSON `[{ "cer": "15 01 01", "kg": 720 }]` con la giacenza attesa al taglio per
+  CER (la somma dei registri), presa dalle giacenze del pacchetto. Senza, il confronto 3 e'
+  `NON_VERIFICATO` e resta una differenza da accettare con un motivo.
+- I sei confronti: (1) conteggi per ambito/verso, (2) totali per CER, anno e verso con kg e m3 separati,
+  (3) giacenza al taglio, soglia 0,001 kg, (4) numerazione (conteggio, buchi, collisioni), (5) blocco
+  dell'invio e identificativi RENTRI, (6) campione a mano scelto con un seme registrato (la scelta si
+  rifa dallo stesso seme). Un confronto che non si applica ai lotti caricati e' `NON_APPLICABILE`.
+- Il rapporto e' **versionato**: ogni differenza accettata (con motivo, una per una) o ricalcolo con esito
+  diverso crea una versione nuova; un ricalcolo identico non crea nulla. Le accettazioni valgono solo
+  finche' i valori della voce non cambiano.
+- Si chiude (pagina «Riconciliazione import» del SUPER_ADMIN, o API `admin/import/rapporti`) solo con
+  tutti i confronti `OK` o accettati e tutto il campione confrontato con esito positivo (una riga non
+  corrispondente non si accetta: si correggono i dati). Il verbale firmato (PDF, impronta SHA-256) si
+  carica dalla pagina.
+- La verifica su RENTRI e' **in sola lettura** (`dettaglioMovimentoPerIdentificativo`, mai una POST). La CLI non
+  ha le credenziali RENTRI del cliente: senza un client, il confronto 5 con identificativi importati e'
+  `NON_VERIFICATO`.
+
+Codici di uscita: 0 rapporto generato (anche se non chiudibile: lo dice l'ultima riga), 1 errore
+imprevisto, 2 input non valido o lotti inesistenti, 64 uso errato.
+
 ## 5. Cancellazione
 
 A fine lotto **conservare** `manifest.json` e `mappa-import.json` (non contengono dati personali, per

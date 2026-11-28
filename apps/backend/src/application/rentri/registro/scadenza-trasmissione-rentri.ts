@@ -82,7 +82,7 @@ export function scadenzaTrasmissione(
  * regole in un posto solo, cosi' chiudere un registro non lascia mai scoperte annotazioni che il
  * termine mensile conterebbe.
  */
-const PREDICATO_DA_TRASMETTERE = Prisma.sql`(
+export const PREDICATO_DA_TRASMETTERE = Prisma.sql`(
     t."id" IS NOT NULL AND t."stato"::text IN (${Prisma.join([...STATI_DA_TRASMETTERE_PER_TERMINE])})
     OR (
       t."id" IS NULL

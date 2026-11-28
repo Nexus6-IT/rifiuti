@@ -8,6 +8,7 @@ import { InvioSdiService } from '../../application/sdi/invio-sdi.service'
 import { LetturaSdiService } from '../../application/sdi/lettura-sdi.service'
 import { RegistraNotificheSdiService } from '../../application/sdi/registra-notifiche-sdi.service'
 import { RiconciliaNotificheSdiService } from '../../application/sdi/riconcilia-notifiche-sdi.service'
+import { SondaSdiService } from '../../application/sdi/sonda-sdi.service'
 import { RisoluzioneTenantSdiService } from '../../application/sdi/risoluzione-tenant-sdi.service'
 import { WebhookSdiService } from '../../application/sdi/webhook-sdi.service'
 import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
@@ -16,6 +17,7 @@ import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { SdiEventiJob } from '../../infrastructure/jobs/sdi-eventi.job'
 import { SdiInvioJob } from '../../infrastructure/jobs/sdi-invio.job'
 import { SdiRiconciliazioneJob } from '../../infrastructure/jobs/sdi-riconciliazione.job'
+import { SdiSondaJob } from '../../infrastructure/jobs/sdi-sonda.job'
 import { ProviderSdiFake } from '../../infrastructure/sdi/fake/provider-sdi-fake'
 import { FatturazioneModule } from '../fatturazione/fatturazione.module'
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
@@ -53,10 +55,12 @@ import { WebhookSdiController } from './webhook-sdi.controller'
     RegistraNotificheSdiService,
     ElaboraEventiSdiService,
     RiconciliaNotificheSdiService,
+    SondaSdiService,
     // Solo provider (nessun export): il suo `@Cron` non si registra due volte.
     SdiInvioJob,
     SdiEventiJob,
     SdiRiconciliazioneJob,
+    SdiSondaJob,
   ],
   exports: [RegistroProviderSdi, ConfigurazioneSdiService],
 })
