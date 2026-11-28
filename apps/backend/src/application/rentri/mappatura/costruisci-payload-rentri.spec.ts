@@ -274,7 +274,7 @@ describe('CostruisciPayloadRentri', () => {
   })
 
   describe('numero vidimato della scorta', () => {
-    const servizioConScorta = (consumato: { numeroFir: string } | null) => {
+    const servizioConScorta = (consumato: { numeroFir: string; numIscrSito?: string } | null) => {
       const scorta = { trovaConsumatoDaFir: jest.fn(async () => consumato) }
       const servizio = new CostruisciPayloadRentri(
         prismaFinto() as never,
@@ -298,6 +298,21 @@ describe('CostruisciPayloadRentri', () => {
       expect(scorta.trovaConsumatoDaFir).toHaveBeenCalledWith('tenant-1', 'fir-1')
       expect(corpo.dati_partenza.numero_fir).toBe('BCDFG 000042 L')
       expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it('num_iscr_sito e quello della sede del numero consumato, non la principale attuale', async () => {
+      const { servizio } = servizioConScorta({
+        numeroFir: 'BCDFG 000042 L',
+        numIscrSito: 'SEDE-ORIGINALE',
+      })
+      const corpo = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as any
+      expect(corpo.num_iscr_sito).toBe('SEDE-ORIGINALE')
+    })
+
+    it('senza numero consumato num_iscr_sito resta quello della principale', async () => {
+      const { servizio } = servizioConScorta(null)
+      const corpo = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as any
+      expect(corpo.num_iscr_sito).toBe('OP1234ABC000001-AB0001')
     })
 
     it('FIR senza numero consumato (MANUALE, importato): nessun numero_fir, lo assegna l ente', async () => {

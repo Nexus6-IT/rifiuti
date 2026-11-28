@@ -68,7 +68,9 @@ export class CostruisciPayloadRentri {
 
     return mappaNuovoFormulario(
       {
-        numIscrSito: sede.numIscrSito,
+        // Il numero appartiene al blocco della sede da cui e' stato consumato: se la principale
+        // e' cambiata dopo l'emissione, num_iscr_sito resta quello del numero (mai A con numero di B).
+        numIscrSito: vidimato?.numIscrSito ?? sede.numIscrSito,
         numeroFir: vidimato?.numeroFir ?? null,
         provenienza: this.codiceProvenienza(fir),
         tipoTrasporto,
