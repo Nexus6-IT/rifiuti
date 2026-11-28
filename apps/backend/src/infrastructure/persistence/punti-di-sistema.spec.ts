@@ -51,6 +51,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-registro-trasmissione.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
+  'infrastructure/jobs/rentri-registro-esportazione.job.ts':
+    'elenco di tutte le aziende attive col modulo rentri, poi ogni azienda nel suo contesto (esportazione mensile del registro, spenta di predefinito)',
   'infrastructure/jobs/rentri-rifornimento-scorta.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-trasmissioni-sospese.job.ts':

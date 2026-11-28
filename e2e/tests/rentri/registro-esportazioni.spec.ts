@@ -14,9 +14,12 @@ import { attendiAbilitato, cliccaEAttendi } from '../../utils/attese'
  *
  * Premesse che nessuna fixture nota può garantire (azienda con credenziale RENTRI, registro con
  * sede nota alla fake e senza annotazioni già partite): quando mancano il test fa `test.skip()` a
- * runtime con il motivo. NON eseguito in CI (come le altre spec di tests/rentri/: la fake non è
- * avviata nel job E2E). Il job mensile automatico NON si prova qui: è spento di predefinito e si
- * accende solo dopo la prova sul demo RENTRI.
+ * runtime con il motivo (la rettifica NON si salta: se fallisce il test fallisce). NON eseguito in
+ * CI (come le altre spec di tests/rentri/, la fake non e' avviata nel job E2E). Per girarci servono
+ * ANCHE: una unita' locale dell'azienda con `numIscrSito` conforme all'XSD del registro e noto alla
+ * fake (le unita' di fixture `MI00001234-00x` NON lo sono: la generazione risponde 422, FEDELTA
+ * §10.1) e una credenziale RENTRI dell'azienda. Il job mensile automatico NON si prova qui: e'
+ * spento di predefinito e si accende solo dopo la prova sul demo RENTRI.
  */
 
 interface RegistroRentri {
@@ -198,7 +201,10 @@ test.describe('RENTRI — esportazione XML del registro (sulla fake)', () => {
         unit: 'KG',
       },
     })
-    test.skip(!rett.ok(), `Rettifica non registrabile in questo tenant (${rett.status()}).`)
+    expect(
+      rett.ok(),
+      `Rettifica non riuscita (${rett.status()}): ${await rett.text()}`
+    ).toBeTruthy()
 
     await page.reload()
     await expect(sezione).toBeVisible({ timeout: 15_000 })
