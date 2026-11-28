@@ -312,7 +312,8 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
       await admin.$disconnect()
     }
     fs.rmSync(cartellaTmp, { recursive: true, force: true })
-  })
+    // DROP DATABASE ... WITH (FORCE) sul runner carico supera i 30 s di predefinito
+  }, 120_000)
 
   it('stessa P.IVA in due ruoli: UNA ditta, due sedi, principale = quella della riga piu recente', async () => {
     const ditte = (await ditteDi(A)).filter(d => d.partita_iva === X)
