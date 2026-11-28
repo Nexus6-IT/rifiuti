@@ -11,7 +11,7 @@ import {
   tokenAzienda,
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
-import { ATTESA_SERVER, attendiRisposta, percorsoApi } from '../../utils/attese'
+import { ATTESA_SERVER, attendiAbilitato, attendiRisposta, percorsoApi } from '../../utils/attese'
 import { chiama, giornoItaliano } from '../../utils/legami-api'
 import { conPrefissoUnico } from '../../utils/run-id'
 
@@ -175,7 +175,7 @@ test.describe('Comunicazioni O.R.SO.', () => {
 
     // Genera
     const genera = page.getByTestId('comunicazioni-genera')
-    await expect(genera).toBeEnabled()
+    await attendiAbilitato(genera)
     const risposta = await attendiRisposta(page, () => genera.click(), {
       metodo: 'POST',
       percorso: '/comunicazioni/orso',

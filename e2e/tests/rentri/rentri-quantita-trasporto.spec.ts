@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAndSaveState, skipReason, currentTargetIsProduction } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl } from '../../utils/env'
+import { attendiAbilitato } from '../../utils/attese'
 import { FirDetailPage } from '../../pages/fir-detail.page'
 
 /**
@@ -80,7 +81,7 @@ test.describe('RENTRI — quantita e dati di trasporto del FIR in viaggio', () =
     await expect(detail.quantitaConferma).toBeDisabled()
 
     await detail.quantitaRinfusa.click()
-    await expect(detail.quantitaConferma).toBeEnabled()
+    await attendiAbilitato(detail.quantitaConferma)
     await detail.quantitaConferma.click()
 
     await expect(page.getByText('Quantità inviata a RENTRI')).toBeVisible({ timeout: 20_000 })
@@ -114,7 +115,7 @@ test.describe('RENTRI — quantita e dati di trasporto del FIR in viaggio', () =
     await detail.trasportoNome.fill('Mario')
     await detail.trasportoCognome.fill('De Rossi')
     await detail.trasportoTarga.fill('AB123CD')
-    await expect(detail.trasportoConferma).toBeEnabled()
+    await attendiAbilitato(detail.trasportoConferma)
     await detail.trasportoConferma.click()
 
     await expect(page.getByText('Dati di trasporto inviati a RENTRI')).toBeVisible({

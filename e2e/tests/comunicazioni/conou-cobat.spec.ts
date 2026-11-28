@@ -8,7 +8,7 @@ import {
   eliminaAziendaDiTest,
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
-import { ATTESA_SERVER, attendiRisposta, percorsoApi } from '../../utils/attese'
+import { ATTESA_SERVER, attendiAbilitato, attendiRisposta, percorsoApi } from '../../utils/attese'
 import { giornoItaliano } from '../../utils/legami-api'
 import { conPrefissoUnico } from '../../utils/run-id'
 
@@ -364,7 +364,7 @@ test.describe('Comunicazioni CONOU e COBAT', () => {
     await expect(page.getByTestId('tracciato-bloccanti')).toHaveCount(0)
 
     const genera = page.getByTestId('tracciato-genera')
-    await expect(genera).toBeEnabled()
+    await attendiAbilitato(genera)
     const risposta = await attendiRisposta(page, () => genera.click(), {
       metodo: 'POST',
       percorso: '/comunicazioni/conou',
@@ -438,7 +438,7 @@ test.describe('Comunicazioni CONOU e COBAT', () => {
     await expect(page.getByTestId('tracciato-bloccanti')).toHaveCount(0)
 
     const genera = page.getByTestId('tracciato-genera')
-    await expect(genera).toBeEnabled()
+    await attendiAbilitato(genera)
     const risposta = await attendiRisposta(page, () => genera.click(), {
       metodo: 'POST',
       percorso: '/comunicazioni/cobat',
