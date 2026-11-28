@@ -483,7 +483,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     const esportate = catena.reduce((somma, e) => somma + e.numeroRegistrazioni, 0)
     if (prima !== esportate) {
       throw new CatenaEsportazioniNonCoerenteError(
-        'ci sono annotazioni precedenti non incluse in nessuna esportazione'
+        'ci sono annotazioni precedenti non incluse in nessuna esportazione (per esempio un’annotazione con numero o anno già esportato, registrata dopo l’esportazione). Non si ripara dal pannello: serve l’assistenza'
       )
     }
   }

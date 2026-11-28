@@ -406,7 +406,10 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
         `ALTER TABLE esportazioni_registro_rentri ENABLE TRIGGER esportazioni_registro_rentri_immutabile`
       )
     }
-    await expect(genera(s)).rejects.toBeInstanceOf(CatenaEsportazioniNonCoerenteError)
+    const errore = await genera(s).catch((e: unknown) => e)
+    expect(errore).toBeInstanceOf(CatenaEsportazioniNonCoerenteError)
+    // Il messaggio dice cosa fare: non e un vicolo cieco muto (rilievo 6 della review E6).
+    expect((errore as Error).message).toMatch(/già esportato.*assistenza/s)
     expect(await righe(s)).toHaveLength(1)
   })
 
