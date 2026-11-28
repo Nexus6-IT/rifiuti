@@ -63,13 +63,20 @@ describe('chiusura', () => {
   })
   it('accettata una per una si chiude', () => {
     const v = valutaChiusura(
-      { ...esiti, accettazioni: { '1:x': { motivo: 'FIR digitali', da: 'u', il: 'now' } } },
+      {
+        ...esiti,
+        accettazioni: {
+          '1:x': { motivo: 'FIR digitali', da: 'u', il: 'now', sorgente: 1, destinazione: 2 },
+        },
+      },
       campioniOk
     )
     expect(v.chiudibile).toBe(true)
   })
   it('un campione senza esito o non corrispondente blocca, anche con differenze accettate', () => {
-    const acc = { '1:x': { motivo: 'FIR digitali', da: 'u', il: 'now' } }
+    const acc = {
+      '1:x': { motivo: 'FIR digitali', da: 'u', il: 'now', sorgente: 1, destinazione: 2 },
+    }
     expect(
       valutaChiusura(
         { ...esiti, accettazioni: acc },
