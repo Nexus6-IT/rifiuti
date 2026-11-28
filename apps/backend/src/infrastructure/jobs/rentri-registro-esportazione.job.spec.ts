@@ -160,7 +160,11 @@ describe('RentriRegistroEsportazioneJob', () => {
 
     it('un solo file per registro e per giro (niente anelli impilati senza esito)', async () => {
       const { job, genera } = build({ t1: ['r1'] })
-      genera.genera.mockResolvedValue({ esito: 'CREATA', esportazione: { id: 'e1' }, fermataA: null })
+      genera.genera.mockResolvedValue({
+        esito: 'CREATA',
+        esportazione: { id: 'e1' },
+        fermataA: null,
+      })
       await job.eseguiEsportazione()
       expect(genera.genera).toHaveBeenCalledTimes(1)
     })
@@ -252,7 +256,10 @@ describe('RentriRegistroEsportazioneJob', () => {
       const { job, genera } = build({ t1: ['r1'] })
       let sblocca!: () => void
       genera.genera.mockImplementationOnce(
-        () => new Promise(r => (sblocca = () => r({ esito: 'NIENTE_DA_ESPORTARE', esportazione: null })))
+        () =>
+          new Promise(
+            r => (sblocca = () => r({ esito: 'NIENTE_DA_ESPORTARE', esportazione: null }))
+          )
       )
       const primo = job.eseguiEsportazione()
       await new Promise(r => setImmediate(r))

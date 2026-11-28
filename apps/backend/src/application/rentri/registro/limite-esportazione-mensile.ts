@@ -28,10 +28,7 @@ export function inizioMeseItaliano(istante: Date): Date {
  * @returns istante di cui le annotazioni da esportare devono essere strettamente anteriori
  * @throws Error se una data non e' valida (meglio nessun file di un limite inventato)
  */
-export function limiteEsportazioneMensile(
-  piuVecchiaNonConfermata: Date | null,
-  oggi: Date
-): Date {
+export function limiteEsportazioneMensile(piuVecchiaNonConfermata: Date | null, oggi: Date): Date {
   const inizioCorrente = inizioMeseItaliano(oggi)
   if (piuVecchiaNonConfermata === null) return inizioCorrente
   const inizioDelMese = inizioMeseItaliano(piuVecchiaNonConfermata)

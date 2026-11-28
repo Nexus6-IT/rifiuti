@@ -29,14 +29,14 @@ describe('limiteEsportazioneMensile', () => {
     expect(limiteEsportazioneMensile(null, oggi).toISOString()).toBe(inizioNovembre)
   })
   it('un mese precedente con annotazioni ancora non confermate ferma l esportazione prima di quel mese', () => {
-    expect(
-      limiteEsportazioneMensile(new Date('2026-09-12T10:00:00Z'), oggi).toISOString()
-    ).toBe('2026-08-31T22:00:00.000Z')
+    expect(limiteEsportazioneMensile(new Date('2026-09-12T10:00:00Z'), oggi).toISOString()).toBe(
+      '2026-08-31T22:00:00.000Z'
+    )
   })
   it('una non confermata del mese corrente non anticipa il limite', () => {
-    expect(
-      limiteEsportazioneMensile(new Date('2026-11-03T10:00:00Z'), oggi).toISOString()
-    ).toBe(inizioNovembre)
+    expect(limiteEsportazioneMensile(new Date('2026-11-03T10:00:00Z'), oggi).toISOString()).toBe(
+      inizioNovembre
+    )
   })
   it('una data non valida e un errore, mai un limite inventato', () => {
     expect(() => limiteEsportazioneMensile(new Date('x'), oggi)).toThrow()

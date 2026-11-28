@@ -461,7 +461,9 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
       await aggiungiAnnotazioni(owner, s, 2026, 1, 2)
       await datai(await aggiungiAnnotazioni(owner, s, 2027, 1, 2), '2027-02-10T10:00:00Z')
       expect((await conLimite(s, new Date('2027-01-01T00:00:00Z'))).esito).toBe('CREATA')
-      expect((await conLimite(s, new Date('2027-01-01T00:00:00Z'))).esito).toBe('NIENTE_DA_ESPORTARE')
+      expect((await conLimite(s, new Date('2027-01-01T00:00:00Z'))).esito).toBe(
+        'NIENTE_DA_ESPORTARE'
+      )
       const dopo = await conLimite(s, new Date('2027-03-01T00:00:00Z'))
       expect(dopo.esito).toBe('CREATA')
       if (dopo.esito !== 'CREATA') return

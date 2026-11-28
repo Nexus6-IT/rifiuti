@@ -64,7 +64,9 @@ describe('RentriRegistroEsportazioneJob — Postgres reale, ruolo wasteflow_app'
           .fn()
           .mockResolvedValue({ nomeFile: 'e.xml', mime: 'application/xml', xml: eregiDiProva() }),
       } as never,
-      { resolve: jest.fn().mockResolvedValue({ ...materialeFirmaDiProva(), source: 'tenant' }) } as never,
+      {
+        resolve: jest.fn().mockResolvedValue({ ...materialeFirmaDiProva(), source: 'tenant' }),
+      } as never,
       valida as never,
       logger
     )
@@ -95,7 +97,11 @@ describe('RentriRegistroEsportazioneJob — Postgres reale, ruolo wasteflow_app'
     return ids
   }
 
-  async function trasmissione(s: ScenarioEsportazioni, movimentoId: string, stato: StatoTrasmissioneRentri) {
+  async function trasmissione(
+    s: ScenarioEsportazioni,
+    movimentoId: string,
+    stato: StatoTrasmissioneRentri
+  ) {
     const bloccata = ['TRASMESSA', 'GIA_SU_RENTRI'].includes(stato)
     await owner.movimentoTrasmissioneRentri.create({
       data: {
@@ -221,7 +227,9 @@ describe('RentriRegistroEsportazioneJob — Postgres reale, ruolo wasteflow_app'
     await job.eseguiEsportazione()
     expect(await righe(s)).toHaveLength(1)
     expect(logger.error).not.toHaveBeenCalled()
-    expect(logger.warn.mock.calls.some((c: unknown[]) => /rifiutata/i.test(String(c[0])))).toBe(true)
+    expect(logger.warn.mock.calls.some((c: unknown[]) => /rifiutata/i.test(String(c[0])))).toBe(
+      true
+    )
   })
 
   it('un registro chiuso su RENTRI o in chiusura non viene esportato dal job', async () => {
