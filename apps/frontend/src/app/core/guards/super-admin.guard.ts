@@ -6,6 +6,7 @@ import { AuthService } from '../services/auth.service'
 const NOMI_PAGINE: Record<string, string> = {
   '/abbonamento': 'Abbonamento',
   '/admin/stato-sistema': 'Stato del sistema',
+  '/admin/riconciliazione-import': 'Riconciliazione import',
   '/reference-data': 'Dati di riferimento',
 }
 

@@ -425,6 +425,20 @@ export function ordinaAziendePerGruppo(
                 <span class="nav-item__label">Stato del sistema</span>
               </a>
             </li>
+            <li>
+              <a
+                routerLink="/admin/riconciliazione-import"
+                class="nav-item"
+                [class.nav-item--active]="voceAttiva() === '/admin/riconciliazione-import'"
+                [attr.aria-current]="
+                  voceAttiva() === '/admin/riconciliazione-import' ? 'page' : null
+                "
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon pi pi-check-square" aria-hidden="true"></i>
+                <span class="nav-item__label">Riconciliazione import</span>
+              </a>
+            </li>
           }
         </ul>
       }
@@ -1489,6 +1503,7 @@ export class LayoutComponent implements OnInit {
     { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
     { label: 'Utenti', route: '/admin/utenti' },
     { label: 'Stato del sistema', route: '/admin/stato-sistema' },
+    { label: 'Riconciliazione import', route: '/admin/riconciliazione-import' },
     { label: 'Abbonamento', route: '/abbonamento' },
   ])
 

@@ -302,6 +302,7 @@ export const BASE: Record<string, string> = {
   'api/me/membership.controller.ts': "Appartenenza dell'utente alle aziende e selezione azienda",
   'api/admin/access-request-admin.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',
   'api/admin/audit-piattaforma.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',
+  'api/admin/riconciliazione-import.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',
   'api/admin/system-health.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',
   'api/admin/tenant.controller.ts': 'Gestione delle aziende e dei loro moduli (SUPER_ADMIN)',
   'api/admin/user-admin.controller.ts': 'Gestione utenti',

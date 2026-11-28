@@ -45,6 +45,7 @@ import { RegistroRentriModule } from './application/rentri/registro/registro-ren
 import { AdminTenantModule } from './application/admin/admin-tenant.module'
 import { AdminUserModule } from './application/admin/admin-user.module'
 import { AdminSystemHealthModule } from './application/admin/admin-system-health.module'
+import { AdminImportModule } from './application/admin/admin-import.module'
 // Endpoint "self" utente autenticato (feature abilitate dal piano)
 import { MeModule } from './api/me/me.module'
 import { RuoloEffettivoModule } from './api/me/ruolo-effettivo.module'
@@ -148,6 +149,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     // Pagina «Stato del sistema» (SUPER_ADMIN): stato verificato di
     // infrastruttura, code, job schedulati e credenziali.
     AdminSystemHealthModule,
+    AdminImportModule,
 
     // Endpoint "self" utente autenticato
     MeModule,

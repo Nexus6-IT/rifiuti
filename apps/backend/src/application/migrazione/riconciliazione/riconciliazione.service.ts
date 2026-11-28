@@ -98,6 +98,19 @@ export interface RapportoLetto {
   readonly valutazione: ValutazioneChiusura
 }
 
+export interface RiepilogoRapporto {
+  readonly radiceId: string
+  readonly versione: number
+  readonly stato: 'APERTO' | 'CHIUSO'
+  readonly archivio: string
+  readonly lottiImportIds: readonly string[]
+  readonly creatoIl: Date
+  readonly chiudibile: boolean
+  readonly differenzeAperte: number
+  readonly campioniSenzaEsito: number
+  readonly verbali: number
+}
+
 export interface EsitoGenerazione {
   readonly rapporto: RapportoLetto
   /** `false` se il ricalcolo ha dato lo stesso rapporto (stessa impronta): nessuna versione nuova. */
@@ -449,6 +462,35 @@ export class RiconciliazioneService {
       const ultima = await this.ultimaVersione(tx, tenantId, radiceId)
       if (!ultima) throw new RapportoNonTrovatoError()
       return await this.leggiVersione(tx, tenantId, ultima)
+    })
+  }
+
+  /** Rapporti dell'azienda: l'ultima versione di ciascuno, dal piu' recente. Solo il riepilogo. */
+  async elenca(tenantId: string): Promise<RiepilogoRapporto[]> {
+    return await this.nelTenant(tenantId, async tx => {
+      const radici = await tx.rapportoRiconciliazione.findMany({
+        where: { tenantId, versione: 1 },
+        select: { id: true },
+      })
+      const riepiloghi: RiepilogoRapporto[] = []
+      for (const r of radici) {
+        const ultima = await this.ultimaVersione(tx, tenantId, r.id)
+        if (!ultima) continue
+        const l = await this.leggiVersione(tx, tenantId, ultima)
+        riepiloghi.push({
+          radiceId: l.radiceId,
+          versione: l.versione,
+          stato: l.stato,
+          archivio: l.esiti.archivioSorgente,
+          lottiImportIds: l.lottiImportIds,
+          creatoIl: ultima.createdAt,
+          chiudibile: l.valutazione.chiudibile,
+          differenzeAperte: l.valutazione.differenzeAperte.length,
+          campioniSenzaEsito: l.valutazione.campioniSenzaEsito,
+          verbali: l.verbali.length,
+        })
+      }
+      return riepiloghi.sort((a, b) => b.creatoIl.getTime() - a.creatoIl.getTime())
     })
   }
 
