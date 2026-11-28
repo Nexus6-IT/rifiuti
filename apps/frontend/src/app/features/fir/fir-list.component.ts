@@ -1677,6 +1677,7 @@ export class FirListComponent implements OnInit {
    * nessun avviso (scorta abbondante, emissione che non consuma scorta, controllo non riuscito).
    */
   readonly avvisoScorta = signal<AvvisoScorta | null>(null)
+  private richiestaAvvisoScorta = 0
   /** Pubblico: il template decide se offrire la consegna dal netto di un accesso di pesa. */
   readonly ff = inject(FeatureFlagsService)
   private readonly router = inject(Router)
@@ -2022,9 +2023,15 @@ export class FirListComponent implements OnInit {
    */
   private caricaAvvisoScorta(): void {
     if (!this.ff.has('rentri')) return
+    // Una risposta arrivata dopo una riapertura piu' recente non deve sovrascriverla.
+    const richiesta = ++this.richiestaAvvisoScorta
     this.rentriBlocchiService.emissionePossibile().subscribe({
-      next: esito => this.avvisoScorta.set(avvisoScortaDa(esito)),
-      error: () => this.avvisoScorta.set(null),
+      next: esito => {
+        if (richiesta === this.richiestaAvvisoScorta) this.avvisoScorta.set(avvisoScortaDa(esito))
+      },
+      error: () => {
+        if (richiesta === this.richiestaAvvisoScorta) this.avvisoScorta.set(null)
+      },
     })
   }
 
@@ -2219,6 +2226,8 @@ export class FirListComponent implements OnInit {
     this.aggiornaSedi('produttore')
     this.aggiornaSedi('destinatario')
     this.firErrors = {}
+    this.richiestaAvvisoScorta++
+    this.avvisoScorta.set(null)
     this.displayCreateDialog = true
     return true
   }

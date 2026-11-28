@@ -46,5 +46,10 @@ FIR non bloccato all'invio (importato), sede principale presente. Sede = princip
 - **FIR cartaceo (futuro).** Un FIR stampato da WasteFlow nel formato vidimato virtualmente deve portare
   sul PDF il numero dell'ente e il suo QR (`qr_code_bytes` in scorta, Base64 -> Base45): la convivenza
   vale solo per il digitale. Sara' il pezzo PDF/QR, insieme al consumo in MANUALE.
-- Pezzi a se', prima di P7 (decisione 28/11): avvisi nel form e cruscotto (Task 3-4 del piano) e la verifica
-  che il numero inviato coincida con quello ricevuto dall'ente.
+- **Numero restituito diverso da quello inviato (decisione Graziano 28/11).** Il contratto attribuisce il
+  numero richiesto, quindi non dovrebbe succedere. Se succede: nessun legame, FIR fermo con
+  `RENTRI_NUMERO_FIR_DIVERSO` (non ritentabile) e l'avviso «verifica sul portale». L'utente annulla sul
+  portale il formulario creato e annulla/rifa' il FIR; il numero vidimato resta consumato. Nessuna
+  riapertura (una nuova POST creerebbe un doppione) e nessuna «accettazione» del numero dell'ente.
+- Avvisi (fatti): form Nuovo FIR e voce cruscotto usano la stessa regola (`perTenant`): avviso/critico solo
+  se l'emissione consuma davvero, e per il cruscotto solo per la sede da cui si consuma.

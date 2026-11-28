@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { FIRStatus, RENTRISyncStatus } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
+import { SorgenteNumeroVidimato } from '../rentri/scorta/numero-vidimato-per-emissione'
 import type { FeatureKey } from '../admin/feature-catalog'
 import { VoceAttenzione, AttenzioneResult } from './raccogli-attenzione.use-case'
 
@@ -59,7 +60,8 @@ const STATI_ESCLUSI_DA_TRASMETTERE: FIRStatus[] = [
 export class RaccogliIndicatoriAzioneUseCase {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly scortaRepo: RentriScortaRepository
+    private readonly scortaRepo: RentriScortaRepository,
+    private readonly sorgenteScorta: SorgenteNumeroVidimato
   ) {}
 
   /**
@@ -157,19 +159,23 @@ export class RaccogliIndicatoriAzioneUseCase {
       return []
     }
 
+    // Come il form: l'emissione consuma solo dalla sede principale e solo in AUTOMATICA/IBRIDA con
+    // certificato. Altrove una scorta a zero non blocca nulla, quindi non e' mai `critico`.
+    const consumo = await this.sorgenteScorta.perTenant(tenantId)
+
     return Promise.all(
       unita.map(async sede => {
         const disponibili = await this.scortaRepo.contaTotaleDisponibili(tenantId, sede.numIscrSito)
         // Garantito non nullo dal filtro Prisma sopra (`{ not: null }`).
         const soglia = sede.dimensioneScortaDesiderata as number
         const sottoSoglia = disponibili < soglia
-        // A scorta esaurita non si emette piu' (con modulo rentri in AUTOMATICA/IBRIDA): non e'
-        // un avviso, e' un blocco.
         const esaurita = disponibili === 0
+        // A scorta esaurita DELLA SEDE DA CUI SI CONSUMA non si emette piu': e' un blocco.
+        const bloccante = esaurita && consumo?.numIscrSito === sede.numIscrSito
 
         return {
           chiave: `scorta-vidimata-${sede.numIscrSito}`,
-          gravita: esaurita ? 'critico' : sottoSoglia ? 'avviso' : 'informativo',
+          gravita: bloccante ? 'critico' : sottoSoglia || esaurita ? 'avviso' : 'informativo',
           titolo: esaurita
             ? `Numeri vidimati esauriti — ${sede.denominazione}`
             : sottoSoglia

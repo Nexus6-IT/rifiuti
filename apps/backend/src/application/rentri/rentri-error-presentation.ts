@@ -163,7 +163,7 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
       // automatico (sarebbe una correzione silenziosa) e nessun «Riprova» (un doppione).
       return {
         messaggio:
-          'RENTRI ha creato il formulario con un numero diverso da quello vidimato inviato: il FIR non è stato collegato. Controlla sul portale RENTRI il formulario creato prima di fare altro; non ritrasmettere, creeresti un doppione.',
+          'RENTRI ha creato il formulario con un numero diverso da quello vidimato inviato: il FIR non è stato collegato. Annulla sul portale RENTRI il formulario creato e poi annulla questo FIR e rifallo: non ritrasmettere, creeresti un doppione.',
         azione: 'VERIFICA_SU_RENTRI',
       }
 

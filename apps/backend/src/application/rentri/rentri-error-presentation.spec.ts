@@ -86,6 +86,7 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('VERIFICA_SU_RENTRI')
     expect(risultato.messaggio).toContain('numero diverso')
     expect(risultato.messaggio).toContain('doppione')
+    expect(risultato.messaggio).toContain('Annulla sul portale')
   })
 
   it('trasmissione incerta (RENTRI_TRASMISSIONE_INCERTA): controllare sul portale, poi ritrasmettere o collegare', () => {

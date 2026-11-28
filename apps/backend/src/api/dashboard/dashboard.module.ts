@@ -5,6 +5,7 @@ import { AndamentoController } from './andamento.controller'
 import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
 import { AnalyticsModule } from '../../application/analytics/analytics.module'
 import { RaccogliAttenzioneUseCase } from '../../application/dashboard/raccogli-attenzione.use-case'
+import { RentriSyncModule } from '../../application/rentri/rentri-sync.module'
 import { RaccogliIndicatoriAzioneUseCase } from '../../application/dashboard/raccogli-indicatori-azione.use-case'
 import { RaccogliAndamentoMensileUseCase } from '../../application/dashboard/raccogli-andamento-mensile.use-case'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
@@ -38,7 +39,7 @@ import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-
  * "Nest can't resolve dependencies of RentriScortaRepository").
  */
 @Module({
-  imports: [AnalyticsModule, PrismaModule, ModuliAttiviModule],
+  imports: [AnalyticsModule, PrismaModule, ModuliAttiviModule, RentriSyncModule],
   controllers: [DashboardController, AttenzioneController, AndamentoController],
   providers: [
     RaccogliAttenzioneUseCase,

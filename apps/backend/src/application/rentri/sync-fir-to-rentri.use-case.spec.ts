@@ -1181,6 +1181,43 @@ describe('SyncFIRToRENTRIUseCase', () => {
         expect(fir.rentriNumeroFir).toBe('bcdfgh-000123-xy')
       })
 
+      it('IBRIDA (richiedeConferma) con numero diverso: nessun legame proposto, stesso fallimento', async () => {
+        const fir = firReale()
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: 'BCDFGH 000999 XY' },
+        })
+        const uc = usecaseCon({
+          costruisci: jest.fn().mockResolvedValue(corpoConNumero()),
+          numeroVidimatoInviato: jest.fn(),
+        })
+
+        const result = await uc.execute(fir.id, tenantId, undefined, { richiedeConferma: true })
+
+        expect(result).toMatchObject({ success: false, willRetry: false })
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_NUMERO_FIR_DIVERSO')
+        expect(result.inAttesaDiConferma).toBeUndefined()
+      })
+
+      it('numero inviato ma esito senza numero: resta RENTRI_MISSING_NUMERO_FIR, non DIVERSO', async () => {
+        const fir = firReale()
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue({ errore: false, validazione: [] })
+        const uc = usecaseCon({
+          costruisci: jest.fn().mockResolvedValue(corpoConNumero()),
+          numeroVidimatoInviato: jest.fn(),
+        })
+
+        await uc.execute(fir.id, tenantId)
+
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_MISSING_NUMERO_FIR')
+      })
+
       it('nessun numero inviato (lo assegna l ente): qualunque numero restituito e accettato', async () => {
         const fir = firReale()
         mockFIRRepository.findById.mockResolvedValue(fir)

@@ -23,6 +23,12 @@ function buildPrisma(overrides: any = {}): PrismaService {
   } as unknown as PrismaService
 }
 
+const SEDE = 'OP0001AAA000001-MI0001'
+/** Sorgente del consumo: di default AUTOMATICA con `SEDE` come principale. */
+function buildSorgente(consumo: { numIscrSito: string } | null = { numIscrSito: SEDE }) {
+  return { perTenant: jest.fn().mockResolvedValue(consumo) } as any
+}
+
 function buildScortaRepo(overrides: any = {}) {
   return {
     contaTotaleDisponibili: jest.fn().mockResolvedValue(0),
@@ -40,7 +46,11 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
             .mockResolvedValue([{ rentriSyncStatus: 'PENDING', _count: { _all: 3 } }]),
         },
       })
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo(),
+        buildSorgente()
+      )
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -67,7 +77,11 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
           ]),
         },
       })
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo(),
+        buildSorgente()
+      )
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -79,7 +93,11 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
 
     it('senza formulari da trasmettere non genera alcuna voce', async () => {
       const prisma = buildPrisma()
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo(),
+        buildSorgente()
+      )
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -88,7 +106,11 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
 
     it('esclude i formulari ANNULLATI dal conteggio (un documento chiuso non va trasmesso)', async () => {
       const prisma = buildPrisma()
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo(),
+        buildSorgente()
+      )
 
       await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -111,7 +133,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
         },
       })
       const scortaRepo = buildScortaRepo({ contaTotaleDisponibili: jest.fn().mockResolvedValue(2) })
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
+      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo, buildSorgente())
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -142,7 +164,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
         },
       })
       const scortaRepo = buildScortaRepo({ contaTotaleDisponibili: jest.fn().mockResolvedValue(0) })
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
+      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo, buildSorgente())
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -151,6 +173,34 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       expect(voce.titolo).toMatch(/esaurit/i)
       expect(voce.titolo).toMatch(/Sede di Milano/)
       expect(voce.azione?.rotta).toBe('/rentri/blocchi')
+    })
+
+    it.each([
+      ['emissione che non consuma scorta (MANUALE, senza certificato...)', null],
+      ['sede diversa da quella da cui si consuma (non principale)', { numIscrSito: 'ALTRA-SEDE' }],
+    ])('scorta a zero con %s: avviso, mai critico', async (_nome, consumo) => {
+      const prisma = buildPrisma({
+        rentriUnitaLocale: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              {
+                numIscrSito: SEDE,
+                denominazione: 'Sede di Milano',
+                dimensioneScortaDesiderata: 10,
+              },
+            ]),
+        },
+      })
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo({ contaTotaleDisponibili: jest.fn().mockResolvedValue(0) }),
+        buildSorgente(consumo)
+      )
+
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
+
+      expect(risultato.voci[0].gravita).toBe('avviso')
     })
 
     it('con una sede sopra la soglia configurata restituisce una voce di gravità informativo', async () => {
@@ -168,7 +218,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const scortaRepo = buildScortaRepo({
         contaTotaleDisponibili: jest.fn().mockResolvedValue(25),
       })
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
+      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo, buildSorgente())
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
@@ -178,7 +228,11 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
 
     it('senza sedi con soglia configurata non genera alcuna voce', async () => {
       const prisma = buildPrisma()
-      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+      const useCase = new RaccogliIndicatoriAzioneUseCase(
+        prisma,
+        buildScortaRepo(),
+        buildSorgente()
+      )
 
       const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 

@@ -364,6 +364,37 @@ describe('FirListComponent — avviso scorta vidimata nel dialogo "Nuovo FIR"', 
     expect(banner()).toBeNull()
   })
 
+  it('aprendo una bozza in modifica dopo "Nuovo" il banner precedente non resta', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(
+      of(esito({ possibile: false, numeriDisponibili: 0, motivo: 'Scorta vuota.' }))
+    )
+    avvio()
+    component.showCreateDialog()
+    fixture.detectChanges()
+    expect(banner()).not.toBeNull()
+
+    const aperto = component.showEditDialog({
+      id: 'f1',
+      numeroProgressivo: null,
+      anno: 2026,
+      stato: FIRStato.BOZZA,
+      versione: 3,
+      modificabile: true,
+      motivoNonModificabile: null,
+      produttoreId: 'p',
+      trasportatoreId: 't',
+      destinatarioId: 'd',
+      provenienza: 'SPECIALE',
+      tipoTrattaPrincipale: 'TERRESTRE',
+      rifiuto: { cerCode: '150101', quantita: 10, unitaMisura: 't' },
+      createdAt: '2026-07-01T10:00:00.000Z',
+    } as FIR)
+    fixture.detectChanges()
+
+    expect(aperto).toBeTrue()
+    expect(banner()).toBeNull()
+  })
+
   it('riaprendo il dialogo un avviso vecchio non resta: si riparte da zero', () => {
     rentriBlocchiService.emissionePossibile.and.returnValue(
       of(esito({ possibile: false, numeriDisponibili: 0, motivo: 'Scorta vuota.' }))

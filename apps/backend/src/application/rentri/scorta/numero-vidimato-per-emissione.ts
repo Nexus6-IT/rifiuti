@@ -15,4 +15,7 @@ export interface RichiestaNumeroVidimato {
  */
 export abstract class SorgenteNumeroVidimato {
   abstract perEmissione(fir: FIR, tenantId: string): Promise<RichiestaNumeroVidimato | null>
+
+  /** Le stesse condizioni senza un FIR (avvisi preventivi: form e cruscotto). */
+  abstract perTenant(tenantId: string): Promise<RichiestaNumeroVidimato | null>
 }

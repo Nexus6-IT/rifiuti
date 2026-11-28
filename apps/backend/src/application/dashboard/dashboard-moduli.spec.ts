@@ -63,10 +63,11 @@ describe('RaccogliIndicatoriAzioneUseCase: voci per modulo', () => {
 
   it('senza rentri: nessuna voce e nessuna lettura', async () => {
     const { db, prisma } = prismaFinto()
-    const r = await new RaccogliIndicatoriAzioneUseCase(prisma, scorta as never).raccogli(
-      TENANT,
-      moduliDi('fir', 'anagrafiche')
-    )
+    const r = await new RaccogliIndicatoriAzioneUseCase(
+      prisma,
+      scorta as never,
+      { perTenant: jest.fn().mockResolvedValue(null) } as never
+    ).raccogli(TENANT, moduliDi('fir', 'anagrafiche'))
     expect(r).toEqual({ voci: [] })
     expect(db.fIR.groupBy).not.toHaveBeenCalled()
     expect(db.rentriUnitaLocale.findMany).not.toHaveBeenCalled()
@@ -74,10 +75,11 @@ describe('RaccogliIndicatoriAzioneUseCase: voci per modulo', () => {
 
   it('con rentri: formulari da trasmettere e scorta', async () => {
     const { prisma } = prismaFinto()
-    const r = await new RaccogliIndicatoriAzioneUseCase(prisma, scorta as never).raccogli(
-      TENANT,
-      moduliDi('rentri')
-    )
+    const r = await new RaccogliIndicatoriAzioneUseCase(
+      prisma,
+      scorta as never,
+      { perTenant: jest.fn().mockResolvedValue(null) } as never
+    ).raccogli(TENANT, moduliDi('rentri'))
     expect(r.voci.map(v => v.chiave).sort()).toEqual([
       'formulari-da-trasmettere',
       'scorta-vidimata-S1',
