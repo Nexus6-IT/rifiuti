@@ -6,7 +6,7 @@
  * motivo, versioni, campione riproducibile, verbale, chiusura, e che la verifica RENTRI non invia mai.
  */
 import { PrismaClient } from '@prisma/client'
-import { mkdtemp, rm } from 'fs/promises'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
@@ -21,6 +21,7 @@ process.env.DATABASE_URL = urlComeRuolo(
 )
 
 import { eseguiCli } from '../../../cli/migrazione-carica'
+import { eseguiCli as eseguiRiconcilia } from '../../../cli/migrazione-riconcilia'
 import { scegliCampione } from '../../../domain/migrazione/riconciliazione/campione'
 import { hashCanonico } from '../../../domain/migrazione/riconciliazione/hash-rapporto'
 import { SorgenteRiconciliazione } from '../../../domain/migrazione/riconciliazione/confronti'
@@ -334,6 +335,61 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
       hashSorgente: hashCanonico(sorgente),
     })
     expect(dopo.rapporto.valutazione.differenzeAperte).toEqual(['1:lotto-anagrafiche'])
+  })
+
+  it('CLI migrazione:riconcilia: rapporto chiudibile sui dati sintetici e non chiudibile con una differenza iniettata', async () => {
+    const az = await azienda()
+    const c = await caricaGiacenze(az)
+    const dir = await mkdtemp(join(radice, 'ric-'))
+    const fSorgente = join(dir, 'sorgente.json')
+    const fAttese = join(dir, 'attese.json')
+    await writeFile(fSorgente, JSON.stringify(c.sorgente))
+    await writeFile(fAttese, JSON.stringify(c.attese))
+    const esegui = async (...extra: string[]) => {
+      const out: string[] = []
+      const err: string[] = []
+      const codice = await eseguiRiconcilia(
+        [
+          '--tenant',
+          az.tenantId,
+          '--rapporto-sorgente',
+          fSorgente,
+          '--giacenze-attese',
+          fAttese,
+          '--operatore',
+          az.operatoreId,
+          ...extra,
+        ],
+        { scrivi: m => out.push(m), errore: m => err.push(m) },
+        riconcilia
+      )
+      return { codice, out: out.join('\n'), err: err.join('\n') }
+    }
+    // Senza --lotti: i lotti COMPLETATO dell'archivio del rapporto sorgente.
+    const pulito = await esegui('--seme', 'seme-cli')
+    expect(pulito.codice).toBe(0)
+    expect(pulito.out).toContain('versione 1 APERTO')
+    expect(pulito.out).toContain('chiudibile: si (differenze aperte: 0)')
+    expect(pulito.out).not.toContain('DIFFERENZA')
+    const radiceId = /rapporto (\S+) versione 1/.exec(pulito.out)![1]
+
+    const riga = await owner.giacenzaIniziale.findFirstOrThrow({
+      where: { tenantId: az.tenantId, cerCode: '15 01 02' },
+    })
+    await owner.giacenzaIniziale.update({
+      where: { id: riga.id },
+      data: { quantita: Number(riga.quantita) - 1 },
+    })
+    const rotto = await esegui('--rapporto', radiceId)
+    expect(rotto.codice).toBe(0)
+    expect(rotto.out).toContain('versione 2 APERTO')
+    expect(rotto.out).toContain('DIFFERENZA 3:cer|15 01 02 sorgente=80 destinazione=79')
+    expect(rotto.out).toContain('chiudibile: no (differenze aperte: 1)')
+    // Ripetuto senza cambiamenti: nessuna versione nuova.
+    const uguale = await esegui('--rapporto', radiceId)
+    expect(uguale.out).toContain('versione 2 APERTO (invariato)')
+    // Nessun valore di record nell'output: solo codici e conteggi.
+    expect(pulito.out + rotto.out).not.toMatch(/Registro A|Riconcilia I8/)
   })
 
   it('una differenza iniettata rende il rapporto non chiudibile; si accetta una per una con motivo', async () => {

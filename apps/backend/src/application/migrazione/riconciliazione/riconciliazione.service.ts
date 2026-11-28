@@ -452,6 +452,19 @@ export class RiconciliazioneService {
     })
   }
 
+  /** I lotti `COMPLETATO` dell'archivio per l'azienda: l'insieme predefinito di un rapporto. */
+  async lottiCompletati(tenantId: string, archivio: string): Promise<string[]> {
+    return await this.nelTenant(tenantId, async tx =>
+      (
+        await tx.lottoImport.findMany({
+          where: { tenantId, archivio, stato: 'COMPLETATO' },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        })
+      ).map(l => l.id)
+    )
+  }
+
   // --- Interni -------------------------------------------------------------------------------
 
   private async ultimaVersione(tx: Tx, tenantId: string, radiceId: string) {

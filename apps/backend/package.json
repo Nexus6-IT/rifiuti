@@ -29,6 +29,7 @@
     "migrazione:analizza": "ts-node -r tsconfig-paths/register src/cli/migrazione-analizza.ts",
     "migrazione:prepara": "ts-node -r tsconfig-paths/register src/cli/migrazione-prepara.ts",
     "migrazione:carica": "ts-node -r tsconfig-paths/register src/cli/migrazione-carica.ts",
+    "migrazione:riconcilia": "ts-node -r tsconfig-paths/register src/cli/migrazione-riconcilia.ts",
     "migrazione:riacquisisci-fir": "ts-node -r tsconfig-paths/register src/cli/migrazione-riacquisisci-fir.ts"
   },
   "dependencies": {
