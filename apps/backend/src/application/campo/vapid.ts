@@ -70,7 +70,8 @@ export function caricaChiaviVapid(env: {
       },
       format: 'jwk',
     })
-    return { pubblica, soggetto, chiavePrivata }
+    // Forma canonica: una base64url con bit di coda non nulli darebbe gli stessi byte.
+    return { pubblica: pub.toString('base64url'), soggetto, chiavePrivata }
   } catch {
     return null
   }
