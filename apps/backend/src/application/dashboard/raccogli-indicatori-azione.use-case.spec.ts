@@ -181,15 +181,13 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
     ])('scorta a zero con %s: avviso, mai critico', async (_nome, consumo) => {
       const prisma = buildPrisma({
         rentriUnitaLocale: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                numIscrSito: SEDE,
-                denominazione: 'Sede di Milano',
-                dimensioneScortaDesiderata: 10,
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              numIscrSito: SEDE,
+              denominazione: 'Sede di Milano',
+              dimensioneScortaDesiderata: 10,
+            },
+          ]),
         },
       })
       const useCase = new RaccogliIndicatoriAzioneUseCase(
