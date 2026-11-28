@@ -4,6 +4,7 @@ import { RentriUnitaLocaleService } from '../../../infrastructure/rentri/rentri-
 import { LoggerService } from '../../../core/logger/logger.service'
 import { FIR, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
 import { IDatiViaggioFirRepository } from '../dati-viaggio-fir.port'
+import { RentriScortaRepository } from '../../../infrastructure/persistence/rentri-scorta.repository'
 import { RisolutoreComuneIstat } from './risolutore-comune-istat'
 import { mappaNuovoFormulario } from './mappa-nuovo-formulario'
 import { DatoMancantePerRentriError, TipoTrasporto } from './mappa-parti'
@@ -31,7 +32,9 @@ export class CostruisciPayloadRentri {
     private readonly prisma: PrismaService,
     private readonly unitaLocale: RentriUnitaLocaleService,
     private readonly logger: LoggerService,
-    private readonly datiViaggio: IDatiViaggioFirRepository
+    private readonly datiViaggio: IDatiViaggioFirRepository,
+    /** Scorta vidimata: il numero consumato all'emissione entra nel corpo di creazione. */
+    private readonly scorta?: RentriScortaRepository
   ) {
     this.logger.setContext('CostruisciPayloadRentri')
     this.risolutoreComune = new RisolutoreComuneIstat(this.prisma)
@@ -58,9 +61,15 @@ export class CostruisciPayloadRentri {
     const rifiutoFir = fir.rifiuto
     const targaAutomezzo = fir.trasportatore?.targaVeicolo?.trim() ?? ''
 
+    // Numero dell'ente consumato dalla scorta all'emissione (stesso FIR = stesso numero a ogni
+    // nuovo tentativo di invio: la ricerca e' per firId, non un nuovo consumo). Senza, lo
+    // assegna l'ente (`numero_fir` e' opzionale nel contratto).
+    const vidimato = await this.scorta?.trovaConsumatoDaFir(tenantId, fir.id)
+
     return mappaNuovoFormulario(
       {
         numIscrSito: sede.numIscrSito,
+        numeroFir: vidimato?.numeroFir ?? null,
         provenienza: this.codiceProvenienza(fir),
         tipoTrasporto,
         caratteristichePericolo: rifiutoFir?.caratteristichePericolo ?? null,

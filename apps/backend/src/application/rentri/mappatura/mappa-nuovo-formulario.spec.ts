@@ -168,4 +168,39 @@ describe('mappaNuovoFormulario', () => {
       await expect(mappaNuovoFormulario(fir, risolutoreComune)).rejects.toThrow(/targa_automezzo/)
     })
   })
+
+  describe('numero_fir vidimato dall ente (scorta)', () => {
+    it('lo mette in dati_partenza.numero_fir e il validatore del contratto accetta', async () => {
+      const corpo = (await mappaNuovoFormulario(
+        { ...firCompleto(), numeroFir: 'BCDFG 000123 L' },
+        risolutoreComune
+      )) as { dati_partenza: { numero_fir?: string } }
+
+      expect(corpo.dati_partenza.numero_fir).toBe('BCDFG 000123 L')
+      expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it('senza numero vidimato il campo non c e (lo assegna l ente, il contratto lo ammette)', async () => {
+      const corpo = (await mappaNuovoFormulario(firCompleto(), risolutoreComune)) as {
+        dati_partenza: Record<string, unknown>
+      }
+
+      expect('numero_fir' in corpo.dati_partenza).toBe(false)
+      expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it('un numero non conforme al pattern del contratto si rifiuta, non si invia', async () => {
+      await expect(
+        mappaNuovoFormulario({ ...firCompleto(), numeroFir: 'FIR-2026-000001' }, risolutoreComune)
+      ).rejects.toThrow(/numero_fir/)
+    })
+
+    it('un numero vuoto o di soli spazi equivale a nessun numero', async () => {
+      const corpo = (await mappaNuovoFormulario(
+        { ...firCompleto(), numeroFir: '   ' },
+        risolutoreComune
+      )) as { dati_partenza: Record<string, unknown> }
+      expect('numero_fir' in corpo.dati_partenza).toBe(false)
+    })
+  })
 })

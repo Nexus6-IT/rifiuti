@@ -272,6 +272,50 @@ describe('CostruisciPayloadRentri', () => {
 
     await expect(servizio.costruisci(firFinto() as never, 'tenant-1')).rejects.toThrow(/registro/i)
   })
+
+  describe('numero vidimato della scorta', () => {
+    const servizioConScorta = (consumato: { numeroFir: string } | null) => {
+      const scorta = { trovaConsumatoDaFir: jest.fn(async () => consumato) }
+      const servizio = new CostruisciPayloadRentri(
+        prismaFinto() as never,
+        unitaLocale as never,
+        logger() as never,
+        datiViaggio,
+        scorta as never
+      )
+      return { servizio, scorta }
+    }
+
+    it('il numero consumato dal FIR entra in dati_partenza.numero_fir e il contratto lo accetta', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { validaNuovoFormulario } = require(ORACOLO)
+      const { servizio, scorta } = servizioConScorta({ numeroFir: 'BCDFG 000042 L' })
+
+      const corpo = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as {
+        dati_partenza: { numero_fir?: string }
+      }
+
+      expect(scorta.trovaConsumatoDaFir).toHaveBeenCalledWith('tenant-1', 'fir-1')
+      expect(corpo.dati_partenza.numero_fir).toBe('BCDFG 000042 L')
+      expect(validaNuovoFormulario(corpo)).toBeNull()
+    })
+
+    it('FIR senza numero consumato (MANUALE, importato): nessun numero_fir, lo assegna l ente', async () => {
+      const { servizio } = servizioConScorta(null)
+      const corpo = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as {
+        dati_partenza: Record<string, unknown>
+      }
+      expect('numero_fir' in corpo.dati_partenza).toBe(false)
+    })
+
+    it('un nuovo tentativo di invio ricostruisce lo STESSO numero (nessun secondo consumo)', async () => {
+      const { servizio, scorta } = servizioConScorta({ numeroFir: 'BCDFG 000042 L' })
+      const a = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as any
+      const b = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as any
+      expect(a.dati_partenza.numero_fir).toBe(b.dati_partenza.numero_fir)
+      expect(scorta.trovaConsumatoDaFir).toHaveBeenCalledTimes(2)
+    })
+  })
 })
 
 const ORACOLO = '../../../../../../tools/rentri-fake/src/dominio/nuovo-formulario'

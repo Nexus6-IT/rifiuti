@@ -38,6 +38,13 @@ export interface DatiFirPerRentri {
   /** Numero di iscrizione dell'unita' locale del tenant che emette il FIR. */
   numIscrSito: string
   /**
+   * Numero vidimato dall'ente prelevato dalla scorta all'emissione (`DatiPartenzaModel.numero_fir`:
+   * «numero di vidimazione da attribuire al nuovo FIR digitale; se non specificato, il sistema ne
+   * assegna uno»). Assente = lo assegna l'ente. Presente ma non conforme al pattern del contratto
+   * = si rifiuta l'invio: un numero sbagliato a un ente pubblico non si «aggiusta» al volo.
+   */
+  numeroFir?: string | null
+  /**
    * Urbano o Speciale. Non e' un dato che il modello FIR possiede oggi:
    * arriva dal chiamante e, se manca, l'invio viene rifiutato.
    */
@@ -66,6 +73,13 @@ export interface DatiFirPerRentri {
   datiTrasportoPartenza?: DatiTrasportoTerrestreInput | null
 }
 
+/**
+ * Pattern di `DatiPartenzaModel.numero_fir` (`docs/contracts/rentri/formulari.yaml`, stesso di
+ * `tools/rentri-fake/src/dominio/numero-fir.ts`): 4-6 consonanti, progressivo, 1-2 consonanti.
+ */
+const PATTERN_NUMERO_FIR =
+  /^([BCDFGHJKLMNPQRSTVWXYZ]{4,6})[ \t-/_]*([0-9]+)[ \t-/_]*([BCDFGHJKLMNPQRSTVWXYZ]{1,2})$/
+
 export async function mappaNuovoFormulario(
   fir: DatiFirPerRentri,
   risolutoreComune: RisolutoreComune
@@ -85,6 +99,15 @@ export async function mappaNuovoFormulario(
     throw new DatoMancantePerRentriError('trasportatore', 'tipo_trasporto')
   }
 
+  const numeroFir = fir.numeroFir?.trim()
+  if (numeroFir && !PATTERN_NUMERO_FIR.test(numeroFir)) {
+    throw new DatoMancantePerRentriError(
+      'formulario',
+      'numero_fir',
+      `il numero vidimato "${numeroFir}" non rispetta il formato del contratto RENTRI`
+    )
+  }
+
   const produttore = await mappaProduttore(fir.produttore, risolutoreComune)
   const destinatario = await mappaDestinatario(fir.destinatario, risolutoreComune)
   // Ogni tratta ha la sua modalita' (FIR intermodale); senza indicazione vale quella del formulario.
@@ -102,6 +125,7 @@ export async function mappaNuovoFormulario(
   return {
     num_iscr_sito: fir.numIscrSito,
     dati_partenza: {
+      ...(numeroFir ? { numero_fir: numeroFir } : {}),
       produttore,
       destinatario,
       trasportatori,
