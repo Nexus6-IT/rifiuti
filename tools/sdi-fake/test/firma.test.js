@@ -14,7 +14,10 @@ test('firma HMAC-SHA256 di "<t>.<corpo>" con vettore noto', () => {
         .update('1700000000.{"id":"evt-1"}')
         .digest('hex')
   )
-  assert.equal(firma, 't=1700000000,v1=afa1c743636aba3cff6ab0eac143d6533c1bb0fb29468c915d97b60eeff305e6')
+  assert.equal(
+    firma,
+    't=1700000000,v1=afa1c743636aba3cff6ab0eac143d6533c1bb0fb29468c915d97b60eeff305e6'
+  )
   assert.match(firma, /^t=1700000000,v1=[0-9a-f]{64}$/)
 })
 

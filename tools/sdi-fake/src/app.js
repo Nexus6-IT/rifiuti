@@ -191,7 +191,10 @@ function creaServer(opzioni = {}) {
     const xml = Buffer.from(c.xmlBase64, 'base64')
     const scenario = scenarioDaXml(xml)
     if (scenario === null) {
-      return json(res, 422, { codice: 'XML_NON_VALIDO', messaggio: 'Cessionario non identificabile' })
+      return json(res, 422, {
+        codice: 'XML_NON_VALIDO',
+        messaggio: 'Cessionario non identificabile',
+      })
     }
     if (scenario === 'TRANSITORIO') {
       return json(res, 503, { codice: 'HTTP_503' }, { 'retry-after': '1' })

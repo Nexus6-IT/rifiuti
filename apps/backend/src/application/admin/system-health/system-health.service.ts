@@ -141,6 +141,12 @@ export class SystemHealthService {
         verifica: () => this.evidenze.verificaNumerazioneFatturazione(),
       },
       {
+        key: 'sdi-trasmissioni',
+        label: "Trasmissioni SDI ferme da oltre un'ora",
+        configurato: true,
+        verifica: () => this.evidenze.verificaTrasmissioniSdi(),
+      },
+      {
         key: 'catalogo-causali',
         label: 'Catalogo causali del registro',
         configurato: true,

@@ -28,13 +28,22 @@ async function ricevitore(stato = 200) {
 }
 
 async function avvia(opzioni = {}) {
-  const fake = creaServer({ ritardoWebhookMs: 0, tentativiWebhook: 3, attesaRitentoMs: 5, ...opzioni })
+  const fake = creaServer({
+    ritardoWebhookMs: 0,
+    tentativiWebhook: 3,
+    attesaRitentoMs: 5,
+    ...opzioni,
+  })
   await new Promise(r => fake.server.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${fake.server.address().port}`
   const chiama = (metodo, percorso, corpo, intestazioni = {}) =>
     fetch(base + percorso, {
       method: metodo,
-      headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json', ...intestazioni },
+      headers: {
+        authorization: `Bearer ${KEY}`,
+        'content-type': 'application/json',
+        ...intestazioni,
+      },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
     })
   return { ...fake, base, chiama, chiudi: () => fake.chiudi() }
@@ -101,8 +110,12 @@ test('configurazione: formato della P.IVA e dell URL', async () => {
   const f = await avvia()
   assert.equal((await f.chiama('PUT', '/v1/configurazioni/123', { segreto: 'x' })).status, 400)
   assert.equal(
-    (await f.chiama('PUT', `/v1/configurazioni/${CEDENTE}`, { webhookUrl: 'ftp://x', segreto: 'x' }))
-      .status,
+    (
+      await f.chiama('PUT', `/v1/configurazioni/${CEDENTE}`, {
+        webhookUrl: 'ftp://x',
+        segreto: 'x',
+      })
+    ).status,
     400
   )
   await f.chiudi()
@@ -144,7 +157,10 @@ test('webhook RC firmato e verificabile, con il percorso configurato', async () 
   assert.equal(w.url, '/sdi/webhook/fake/tok123')
   const esito = verificaFirma(w.intestazioni['x-sdi-signature'], w.corpo, SEGRETO, new Date())
   assert.equal(esito, 'OK')
-  assert.equal(verificaFirma(w.intestazioni['x-sdi-signature'], w.corpo, 'altro', new Date()), 'FIRMA')
+  assert.equal(
+    verificaFirma(w.intestazioni['x-sdi-signature'], w.corpo, 'altro', new Date()),
+    'FIRMA'
+  )
   const corpo = JSON.parse(w.corpo.toString())
   assert.equal(corpo.idProvider, idProvider)
   assert.equal(corpo.notifica.tipo, 'RC')
@@ -189,7 +205,11 @@ test('XML senza cessionario: 422 XML_NON_VALIDO', async () => {
   const r = await f.chiama(
     'POST',
     '/v1/fatture',
-    { nomeFile: 'a.xml', xmlBase64: Buffer.from('<x/>').toString('base64'), cedentePartitaIva: CEDENTE },
+    {
+      nomeFile: 'a.xml',
+      xmlBase64: Buffer.from('<x/>').toString('base64'),
+      cedentePartitaIva: CEDENTE,
+    },
     { 'idempotency-key': 'k' }
   )
   assert.equal(r.status, 422)
@@ -219,7 +239,10 @@ test('INCERTO_PERSO (6): connessione chiusa, nulla registrato, ricerca 404', asy
 test('ricerca anche per nome file', async () => {
   const f = await configurata('http://127.0.0.1:1/x')
   await invia(f, '12345678900', 'k1')
-  const t = await f.chiama('GET', `/v1/fatture?chiaveIdempotenza=altra&nomeFile=IT${CEDENTE}_k1.xml`)
+  const t = await f.chiama(
+    'GET',
+    `/v1/fatture?chiaveIdempotenza=altra&nomeFile=IT${CEDENTE}_k1.xml`
+  )
   assert.equal(t.status, 200)
   await f.chiudi()
 })
@@ -252,7 +275,10 @@ test('consegnaWebhook=false: nessun webhook, il polling funziona (webhook perso)
   const { idProvider } = await (await invia(f, '12345678900', 'k1')).json()
   await new Promise(r => setTimeout(r, 100))
   assert.equal(rx.ricevuti.length, 0)
-  assert.equal((await (await f.chiama('GET', `/v1/fatture/${idProvider}/notifiche`)).json()).length, 1)
+  assert.equal(
+    (await (await f.chiama('GET', `/v1/fatture/${idProvider}/notifiche`)).json()).length,
+    1
+  )
   await f.chiudi()
   rx.chiudi()
 })
