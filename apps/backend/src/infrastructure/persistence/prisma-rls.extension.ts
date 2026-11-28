@@ -101,6 +101,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'MovimentoTrasmissioneRentri',
   // Esportazioni XML firmate del registro con la catena dei digest (eREGI E6): dato dell'azienda.
   'EsportazioneRegistroRentri',
+  // Riconciliazione dell'import WinWaste (I8): rapporti versionati, campione a mano e verbali, dato dell'azienda.
+  'RapportoRiconciliazione',
+  'CampioneRiconciliazione',
+  'VerbaleRiconciliazione',
   // Abbinamenti carico-scarico (4.6): dato dell'azienda.
   'AbbinamentoCaricoScarico',
   // Tabelle di fatturazione (Fase 4 pezzo 1): dato dell'azienda.
