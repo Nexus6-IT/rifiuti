@@ -402,8 +402,10 @@ export class RiconciliazioneService {
       throw new VerbaleNonValidoError('oltre i 10 MB')
     if (contenuto.subarray(0, 5).toString('latin1') !== '%PDF-')
       throw new VerbaleNonValidoError('non e un PDF')
-    const nome = richiesta.nomeFile
-      .replace(/[\\/\u0000-\u001f]/g, '_')
+    const nome = Array.from(richiesta.nomeFile, c =>
+      c === '\\' || c === '/' || c.charCodeAt(0) < 32 ? '_' : c
+    )
+      .join('')
       .trim()
       .slice(0, 255)
     if (!nome) throw new VerbaleNonValidoError('nome del file mancante')

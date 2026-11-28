@@ -411,8 +411,9 @@ export class RiconciliazioneImportComponent {
   /** 409: il rapporto e' cambiato mentre lo guardavi, si rilegge invece di sovrascrivere. */
   private gestisciErrore(e: unknown, radiceId: string): void {
     if (e instanceof HttpErrorResponse && e.status === 409) {
-      this.errore.set('Il rapporto e cambiato: ricaricato, ricontrolla prima di procedere.')
+      // `rileggi` azzera l'errore all'avvio (in modo sincrono): il messaggio va impostato dopo.
       this.rileggi(radiceId)
+      this.errore.set('Il rapporto e cambiato: ricaricato, ricontrolla prima di procedere.')
       return
     }
     this.errore.set(this.messaggio(e))

@@ -214,6 +214,16 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo: 'una sede con qualunque riga nel registro non si elimina',
   },
+  'application/migrazione/riconciliazione/leggi-destinazione.ts': {
+    scelta: 'tutte',
+    motivo:
+      "riconciliazione dell'import (I8): conta le righe che portano l'id del lotto (tutte ORDINARIE per costruzione: le correzioni F2-3 non hanno il lotto), con totali, numerazione e stato RENTRI, solo per il confronto col rapporto sorgente; non calcola giacenze ne' MUD",
+  },
+  'application/migrazione/riconciliazione/riconciliazione.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      "riconciliazione dell'import (I8): sceglie le righe del campione a mano fra quelle del lotto (ordinate per l'impronta del seme), senza contarle come dato vigente",
+  },
 }
 
 function sorgenti(dir: string): string[] {
