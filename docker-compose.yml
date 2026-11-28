@@ -110,6 +110,22 @@ services:
       timeout: 3s
       retries: 5
 
+  # Provider SDI finto (tools/sdi-fake): solo collaudo e CI, mai in produzione. Nessuna dipendenza
+  # npm, immagine node:20-alpine. Il backend lo raggiungera' con SDI_FAKE_URL (adattatore reale, 4.5e T2).
+  sdi-fake:
+    build:
+      context: ./tools/sdi-fake
+    container_name: wasteflow-sdi-fake
+    ports:
+      - "4020:4020"
+    networks:
+      - wasteflow-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4020/__salute"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: wasteflow-pgadmin

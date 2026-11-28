@@ -197,3 +197,11 @@ describe('ProviderSdiFake.interpretaWebhook (firma HMAC e timestamp)', () => {
     })
   })
 })
+
+describe('firmaWebhookFake: vettore condiviso con tools/sdi-fake', () => {
+  it('produce la stessa firma del server finto HTTP (stesso vettore in tools/sdi-fake/test/firma.test.js)', () => {
+    expect(firmaWebhookFake(Buffer.from('{"id":"evt-1"}'), 'segreto-di-prova', 1700000000)).toBe(
+      't=1700000000,v1=afa1c743636aba3cff6ab0eac143d6533c1bb0fb29468c915d97b60eeff305e6'
+    )
+  })
+})
