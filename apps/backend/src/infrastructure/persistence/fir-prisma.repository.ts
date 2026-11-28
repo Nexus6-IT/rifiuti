@@ -27,6 +27,7 @@ import {
   IFIRRepository,
   FIRSearchFilters,
   OpzioniSalvataggioFir,
+  OpzioniEmissioneConNumerazione,
 } from '../../domain/fir/repositories/fir-repository.interface'
 import {
   IFIRModificaBozzaRepository,
@@ -54,6 +55,8 @@ import {
   STATO_RENTRI_ANNULLATO,
 } from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
+import { consumaProssimoDisponibileCon } from './rentri-scorta.repository'
+import { scortaRentriVuota } from '../../domain/rentri/scorta-rentri-vuota'
 import { PrismaSistemaService } from './prisma-sistema.service'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
@@ -722,7 +725,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
   async emettiConNumerazione(
     fir: FIR,
     anno: number,
-    applicaEmissione: (numeroProgressivo: string) => void
+    applicaEmissione: (numeroProgressivo: string) => void,
+    opzioni?: OpzioniEmissioneConNumerazione
   ): Promise<string> {
     // Stesso tenant che salvaCon scrive (toPersistence): fallback a produttoreId per i FIR legacy.
     const tenantId = fir.tenantId || fir.produttoreId
@@ -753,6 +757,18 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
           FROM firs
           WHERE tenant_id = ${tenantId}::uuid AND fir_number LIKE ${'FIR-' + anno + '-%'}`
         const numero = formattaNumeroFir(anno, (max_num ?? 0) + 1)
+
+        // Numero dell'ente (scorta vidimata): consumato nella stessa transaction, DOPO i controlli
+        // di stato (una corsa persa non consuma nulla) e PRIMA di applicare l'emissione. Se la
+        // scorta e' vuota o l'emissione fallisce, il rollback lascia il numero DISPONIBILE.
+        if (opzioni?.numeroVidimato) {
+          const consumato = await consumaProssimoDisponibileCon(tx, tenantId, {
+            numIscrSito: opzioni.numeroVidimato.numIscrSito,
+            codiceBlocco: opzioni.numeroVidimato.codiceBlocco,
+            firId: fir.id,
+          })
+          if (!consumato) throw scortaRentriVuota()
+        }
 
         // Un'eccezione del dominio qui annulla l'intera transaction.
         applicaEmissione(numero)

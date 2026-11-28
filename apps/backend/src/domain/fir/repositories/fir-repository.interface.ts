@@ -24,6 +24,16 @@ export interface OpzioniSalvataggioFir {
   verificaVersione?: boolean
 }
 
+/**
+ * Opzioni dell'emissione. `numeroVidimato`: il FIR e' soggetto a RENTRI, quindi nella STESSA
+ * transaction si consuma dalla scorta vidimata il prossimo numero della sede (e del blocco, se
+ * indicato). Scorta esaurita -> errore SCORTA_RENTRI_VUOTA e nessuna emissione; emissione
+ * fallita -> il numero resta disponibile (la transaction lo restituisce da sola).
+ */
+export interface OpzioniEmissioneConNumerazione {
+  numeroVidimato?: { numIscrSito: string; codiceBlocco?: string }
+}
+
 export interface IFIRRepository {
   /**
    * Find FIR by ID
@@ -131,7 +141,8 @@ export interface IFIRRepository {
   emettiConNumerazione(
     fir: FIR,
     anno: number,
-    applicaEmissione: (numeroProgressivo: string) => void
+    applicaEmissione: (numeroProgressivo: string) => void,
+    opzioni?: OpzioniEmissioneConNumerazione
   ): Promise<string>
 
   /**

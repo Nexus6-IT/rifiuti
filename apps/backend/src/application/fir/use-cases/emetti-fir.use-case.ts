@@ -31,6 +31,11 @@ import { EmettiFIRCommand } from '../commands/emetti-fir.command'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../../rentri/trasmetti-fir-secondo-modalita.use-case'
+import { SorgenteNumeroVidimato } from '../../rentri/scorta/numero-vidimato-per-emissione'
+import {
+  CODICE_SCORTA_RENTRI_VUOTA,
+  eScortaRentriVuota,
+} from '../../../domain/rentri/scorta-rentri-vuota'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import {
@@ -51,7 +56,12 @@ export class EmettiFIRUseCase {
     private readonly cryptoFirRepository: CryptoFIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly trasmissioneRentri: TrasmettiFIRSecondoModalitaUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    /**
+     * Collegamento scorta vidimata -> emissione. Assente = nessun FIR consuma scorta (test e
+     * contesti senza RENTRI); presente, decide caso per caso se il FIR e' soggetto a RENTRI.
+     */
+    private readonly sorgenteNumeroVidimato?: SorgenteNumeroVidimato
   ) {}
 
   async execute(command: EmettiFIRCommand): Promise<Result<FIR>> {
@@ -79,14 +89,32 @@ export class EmettiFIRUseCase {
     // 3-5. Numero progressivo, transizione di dominio e salvataggio in UNA transaction
     //    del repository, serializzata per tenant e anno di emissione (anno solare
     //    italiano dell'istante di emissione, non quello UTC del processo).
-    //    È qui che il piano della scorta innesterà il consumo del numero vidimato
-    //    (Decisione 7).
+    //    Se il FIR e' soggetto a RENTRI, nella STESSA transaction si consuma il numero
+    //    vidimato dalla scorta (ADR 2026-11-28): scorta vuota = nessuna emissione; emissione
+    //    fallita = rollback, il numero resta disponibile. Il numero dell'ente CONVIVE col
+    //    progressivo locale (non lo sostituisce) e finisce nel payload di creazione RENTRI.
     //    Se fallisce, `applicaEmissione` può aver già mutato `fir` in memoria: l'aggregate
     //    NON si riusa né si salva, si restituisce l'errore.
     const anno = annoSolareItaliano(new Date())
+    const richiestaNumero = await this.sorgenteNumeroVidimato?.perEmissione(
+      fir,
+      fir.tenantId ?? fir.produttoreId
+    )
     try {
-      await this.firRepository.emettiConNumerazione(fir, anno, numero => fir.emetti(numero, firma))
+      await this.firRepository.emettiConNumerazione(
+        fir,
+        anno,
+        numero => fir.emetti(numero, firma),
+        richiestaNumero ? { numeroVidimato: richiestaNumero } : undefined
+      )
     } catch (error) {
+      // Scorta vidimata esaurita: errore chiaro per l'utente (cosa fare), non un 500.
+      if (eScortaRentriVuota(error)) {
+        return Result.fail<FIR>(
+          error.metadata?.details ?? error.message,
+          CODICE_SCORTA_RENTRI_VUOTA
+        )
+      }
       // Conflitti di concorrenza: non sono un input sbagliato (400) ma una corsa persa (409,
       // risposta del filtro globale).
       if (

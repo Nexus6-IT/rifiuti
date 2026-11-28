@@ -29,6 +29,7 @@ import { RentriSyncModule } from '../application/rentri/rentri-sync.module'
 import { FIR_REPOSITORY, FIRRepository as CryptoFIRRepository } from '../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../application/signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../application/rentri/trasmetti-fir-secondo-modalita.use-case'
+import { SorgenteNumeroVidimato } from '../application/rentri/scorta/numero-vidimato-per-emissione'
 import { LoggerService } from '../core/logger/logger.service'
 import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
 
@@ -95,14 +96,16 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         cryptoFirRepo: CryptoFIRRepository,
         signatureService: DigitalSignatureService,
         trasmissioneRentri: TrasmettiFIRSecondoModalitaUseCase,
-        logger: LoggerService
+        logger: LoggerService,
+        sorgenteNumeroVidimato: SorgenteNumeroVidimato
       ) => {
         return new EmettiFIRUseCase(
           firRepo,
           cryptoFirRepo,
           signatureService,
           trasmissioneRentri,
-          logger
+          logger,
+          sorgenteNumeroVidimato
         )
       },
       inject: [
@@ -111,6 +114,7 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         DigitalSignatureService,
         TrasmettiFIRSecondoModalitaUseCase,
         LoggerService,
+        SorgenteNumeroVidimato,
       ],
     },
     {

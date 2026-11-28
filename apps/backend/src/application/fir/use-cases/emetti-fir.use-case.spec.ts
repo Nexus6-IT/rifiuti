@@ -9,7 +9,10 @@
 
 import { EmettiFIRUseCase } from './emetti-fir.use-case'
 import { EmettiFIRCommand } from '../commands/emetti-fir.command'
-import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
+import {
+  IFIRRepository,
+  OpzioniEmissioneConNumerazione,
+} from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
 import {
   CODICE_CERTIFICATO_MANCANTE,
@@ -21,6 +24,7 @@ import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { scortaRentriVuota } from '../../../domain/rentri/scorta-rentri-vuota'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import {
   FirAnnullatoNelFrattempoError,
@@ -92,7 +96,8 @@ class MockFIRRepository implements IFIRRepository {
   async emettiConNumerazione(
     fir: FIR,
     anno: number,
-    applica: (n: string) => void
+    applica: (n: string) => void,
+    _opzioni?: OpzioniEmissioneConNumerazione
   ): Promise<string> {
     this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
     const numero = formattaNumeroFir(anno, this.progressiveCounter)
@@ -671,5 +676,73 @@ describe('EmettiFIRUseCase', () => {
         }
       }
     )
+  })
+
+  describe('numero vidimato dalla scorta RENTRI', () => {
+    const preparaConSorgente = (sorgente: { perEmissione: jest.Mock }) => {
+      const fir = createBozzaFIR()
+      repository.addFIR(fir)
+      cryptoRepository = new FakeCryptoFIRRepository(fir.id)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger,
+        sorgente as any
+      )
+      return fir
+    }
+
+    it('FIR soggetto a RENTRI: la richiesta di consumo viaggia nella transaction di emissione', async () => {
+      const sorgente = {
+        perEmissione: jest.fn().mockResolvedValue({ numIscrSito: 'SITO-1', codiceBlocco: 'BLK' }),
+      }
+      const fir = preparaConSorgente(sorgente)
+      const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+      const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+      expect(r.isSuccess).toBe(true)
+      expect(sorgente.perEmissione).toHaveBeenCalledWith(fir, TENANT_ID)
+      expect(spy.mock.calls[0][3]).toEqual({
+        numeroVidimato: { numIscrSito: 'SITO-1', codiceBlocco: 'BLK' },
+      })
+    })
+
+    it('FIR non soggetto a RENTRI: nessuna opzione, emissione come prima', async () => {
+      const sorgente = { perEmissione: jest.fn().mockResolvedValue(null) }
+      const fir = preparaConSorgente(sorgente)
+      const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+      const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+      expect(r.isSuccess).toBe(true)
+      expect(spy.mock.calls[0][3]).toBeUndefined()
+    })
+
+    it('scorta vuota: Result.fail con codice SCORTA_RENTRI_VUOTA, FIR in bozza, RENTRI non avviato', async () => {
+      const sorgente = { perEmissione: jest.fn().mockResolvedValue({ numIscrSito: 'SITO-1' }) }
+      const fir = preparaConSorgente(sorgente)
+      jest.spyOn(repository, 'emettiConNumerazione').mockRejectedValue(scortaRentriVuota())
+
+      const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+      expect(r.isFailure).toBe(true)
+      expect(r.code).toBe('SCORTA_RENTRI_VUOTA')
+      expect(r.error).toContain('vidima un lotto')
+      expect((await repository.findById(fir.id))?.stato).toBe(FIRStato.BOZZA)
+      expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+    })
+
+    it('la configurazione RENTRI illeggibile non fa inventare nulla: l errore si propaga, il FIR resta in bozza', async () => {
+      const sorgente = { perEmissione: jest.fn().mockRejectedValue(new Error('db giu')) }
+      const fir = preparaConSorgente(sorgente)
+
+      await expect(
+        useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+      ).rejects.toThrow('db giu')
+      expect((await repository.findById(fir.id))?.stato).toBe(FIRStato.BOZZA)
+    })
   })
 })

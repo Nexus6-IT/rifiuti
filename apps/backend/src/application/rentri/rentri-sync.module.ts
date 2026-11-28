@@ -67,6 +67,8 @@ import { AvviaVidimazioneScortaUseCase } from './scorta/avvia-vidimazione-scorta
 import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefinito.use-case'
 import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
 import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
+import { SorgenteNumeroVidimato } from './scorta/numero-vidimato-per-emissione'
+import { RisolviNumeroVidimatoPerEmissione } from './scorta/risolvi-numero-vidimato-per-emissione'
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
 import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
@@ -803,6 +805,9 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     ImpostaBloccoPredefinitoUseCase,
     VerificaEmissionePossibileRentriUseCase,
     ConsumaNumeroVidimatoUseCase,
+    // Collegamento scorta -> emissione: l'EmettiFIRUseCase (modulo `fir`) lo chiede per sapere se un
+    // FIR e' soggetto a RENTRI e da quale sede/blocco consumare il numero.
+    { provide: SorgenteNumeroVidimato, useClass: RisolviNumeroVidimatoPerEmissione },
     RentriRifornimentoScortaJob,
     // Ripresa periodica delle trasmissioni rimaste in SYNCING (solo provider:
     // nessun export, così il suo @Cron non viene registrato due volte).
@@ -839,6 +844,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     RentriRifornimentoScortaJob,
     RentriScortaRepository,
     ConsumaNumeroVidimatoUseCase,
+    SorgenteNumeroVidimato,
   ],
 })
 export class RentriSyncModule {}

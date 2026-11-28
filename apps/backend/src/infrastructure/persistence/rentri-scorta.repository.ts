@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { RentriNumeroVidimatoStato } from '@prisma/client'
+import { Prisma, RentriNumeroVidimatoStato } from '@prisma/client'
 import { PrismaService } from './prisma.service'
 
 /** Riga della scorta di numeri FIR pre-vidimati dall'ente RENTRI (R6). */
@@ -141,43 +141,80 @@ export class RentriScortaRepository {
     tenantId: string,
     opzioni: { numIscrSito?: string; codiceBlocco?: string; firId: string }
   ): Promise<NumeroVidimatoRow | null> {
-    const numIscrSito = opzioni.numIscrSito ?? null
-    const codiceBlocco = opzioni.codiceBlocco ?? null
-
-    const righe = await this.prisma.$queryRaw<RawRow[]>`
-      UPDATE rentri_numeri_vidimati
-      SET stato = 'USATO', fir_id = ${opzioni.firId}::uuid, data_consumo = now(), updated_at = now()
-      WHERE id = (
-        SELECT id FROM rentri_numeri_vidimati
-        WHERE tenant_id = ${tenantId}::uuid
-          AND stato = 'DISPONIBILE'
-          AND (${numIscrSito}::text IS NULL OR num_iscr_sito = ${numIscrSito}::text)
-          AND (${codiceBlocco}::text IS NULL OR codice_blocco = ${codiceBlocco}::text)
-        ORDER BY progressivo ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      )
-      RETURNING id, tenant_id, num_iscr_sito, codice_blocco, progressivo, numero_fir,
-                qr_code_bytes, stato, fir_id, data_vidimazione, data_consumo
-    `
-
-    const riga = righe[0]
-    return riga ? this.toPlain(riga) : null
+    return consumaProssimoDisponibileCon(this.prisma, tenantId, opzioni)
   }
 
-  private toPlain(row: RawRow): NumeroVidimatoRow {
+  /** Numero vidimato consumato dal FIR (stato USATO), se ne ha uno. */
+  async trovaConsumatoDaFir(tenantId: string, firId: string): Promise<NumeroVidimatoRow | null> {
+    const riga = await this.prisma.rentriNumeroVidimato.findFirst({
+      where: { tenantId, firId, stato: RentriNumeroVidimatoStato.USATO },
+    })
+    if (!riga) return null
     return {
-      id: row.id,
-      tenantId: row.tenant_id,
-      numIscrSito: row.num_iscr_sito,
-      codiceBlocco: row.codice_blocco,
-      progressivo: row.progressivo,
-      numeroFir: row.numero_fir,
-      qrCodeBytes: row.qr_code_bytes,
-      stato: row.stato,
-      firId: row.fir_id,
-      dataVidimazione: row.data_vidimazione,
-      dataConsumo: row.data_consumo,
+      id: riga.id,
+      tenantId: riga.tenantId,
+      numIscrSito: riga.numIscrSito,
+      codiceBlocco: riga.codiceBlocco,
+      progressivo: riga.progressivo,
+      numeroFir: riga.numeroFir,
+      qrCodeBytes: riga.qrCodeBytes,
+      stato: riga.stato,
+      firId: riga.firId,
+      dataVidimazione: riga.dataVidimazione,
+      dataConsumo: riga.dataConsumo,
     }
   }
+}
+
+/** Client Prisma o transazione: la query raw e' la stessa in entrambi i casi. */
+type ClientRaw = Pick<Prisma.TransactionClient, '$queryRaw'>
+
+function toPlain(row: RawRow): NumeroVidimatoRow {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    numIscrSito: row.num_iscr_sito,
+    codiceBlocco: row.codice_blocco,
+    progressivo: row.progressivo,
+    numeroFir: row.numero_fir,
+    qrCodeBytes: row.qr_code_bytes,
+    stato: row.stato,
+    firId: row.fir_id,
+    dataVidimazione: row.data_vidimazione,
+    dataConsumo: row.data_consumo,
+  }
+}
+
+/**
+ * Consumo atomico (un solo statement, `FOR UPDATE SKIP LOCKED`) eseguibile su un client
+ * qualunque: passando la transazione dell'emissione, il numero torna DISPONIBILE da solo se la
+ * transazione viene annullata (nessun numero bruciato da un'emissione fallita).
+ */
+export async function consumaProssimoDisponibileCon(
+  client: ClientRaw,
+  tenantId: string,
+  opzioni: { numIscrSito?: string; codiceBlocco?: string; firId: string }
+): Promise<NumeroVidimatoRow | null> {
+  const numIscrSito = opzioni.numIscrSito ?? null
+  const codiceBlocco = opzioni.codiceBlocco ?? null
+
+  const righe = await client.$queryRaw<RawRow[]>`
+    UPDATE rentri_numeri_vidimati
+    SET stato = 'USATO', fir_id = ${opzioni.firId}::uuid, data_consumo = now(), updated_at = now()
+    WHERE id = (
+      SELECT id FROM rentri_numeri_vidimati
+      WHERE tenant_id = ${tenantId}::uuid
+        AND stato = 'DISPONIBILE'
+        AND (${numIscrSito}::text IS NULL OR num_iscr_sito = ${numIscrSito}::text)
+        AND (${codiceBlocco}::text IS NULL OR codice_blocco = ${codiceBlocco}::text)
+      ORDER BY progressivo ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING id, tenant_id, num_iscr_sito, codice_blocco, progressivo, numero_fir,
+              qr_code_bytes, stato, fir_id, data_vidimazione, data_consumo
+  `
+
+  const riga = righe[0]
+  return riga ? toPlain(riga) : null
 }

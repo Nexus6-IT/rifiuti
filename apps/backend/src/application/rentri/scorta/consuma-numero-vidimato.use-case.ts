@@ -3,7 +3,7 @@ import {
   RentriScortaRepository,
   NumeroVidimatoRow,
 } from '../../../infrastructure/persistence/rentri-scorta.repository'
-import { DomainException } from '../../../domain/shared/domain-exception'
+import { scortaRentriVuota } from '../../../domain/rentri/scorta-rentri-vuota'
 
 /**
  * Consuma atomicamente il prossimo numero FIR pre-vidimato disponibile in
@@ -32,11 +32,7 @@ export class ConsumaNumeroVidimatoUseCase {
     })
 
     if (!numero) {
-      throw DomainException.businessRuleViolation(
-        'SCORTA_RENTRI_VUOTA',
-        'Nessun numero FIR RENTRI pre-vidimato disponibile: vidima un lotto dalla sezione Blocchi ' +
-          'RENTRI o attendi il rifornimento automatico prima di emettere.'
-      )
+      throw scortaRentriVuota()
     }
 
     return numero
