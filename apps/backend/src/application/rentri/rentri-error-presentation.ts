@@ -158,6 +158,15 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
         azione: 'VERIFICA_SU_RENTRI',
       }
 
+    case 'RENTRI_NUMERO_FIR_DIVERSO':
+      // L'ente ha creato il formulario con un numero diverso da quello inviato: nessun legame
+      // automatico (sarebbe una correzione silenziosa) e nessun «Riprova» (un doppione).
+      return {
+        messaggio:
+          'RENTRI ha creato il formulario con un numero diverso da quello vidimato inviato: il FIR non è stato collegato. Controlla sul portale RENTRI il formulario creato prima di fare altro; non ritrasmettere, creeresti un doppione.',
+        azione: 'VERIFICA_SU_RENTRI',
+      }
+
     case 'RENTRI_TRASMISSIONE_INCERTA':
       // La POST è partita ma non sappiamo se RENTRI l'ha ricevuta (timeout, rete
       // caduta dopo l'invio): ritrasmettere alla cieca può creare un doppione.

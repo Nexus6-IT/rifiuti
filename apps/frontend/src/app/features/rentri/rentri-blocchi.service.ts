@@ -54,6 +54,12 @@ export interface RentriEmissionePossibile {
   possibile: boolean
   motivo?: string
   numeriDisponibili: number
+  /** L'emissione consuma un numero dalla scorta (AUTOMATICA/IBRIDA con certificato): senza, nessun avviso. */
+  scortaRichiesta: boolean
+  /** Scorta non vuota ma sotto la soglia configurata della sede. */
+  inEsaurimento: boolean
+  /** Soglia della sede, null se non configurata. */
+  soglia: number | null
 }
 
 /**

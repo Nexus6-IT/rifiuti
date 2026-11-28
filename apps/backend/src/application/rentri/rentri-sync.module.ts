@@ -807,7 +807,9 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     ConsumaNumeroVidimatoUseCase,
     // Collegamento scorta -> emissione: l'EmettiFIRUseCase (modulo `fir`) lo chiede per sapere se un
     // FIR e' soggetto a RENTRI e da quale sede/blocco consumare il numero.
-    { provide: SorgenteNumeroVidimato, useClass: RisolviNumeroVidimatoPerEmissione },
+    // Stessa istanza anche per l'avviso preventivo (`VerificaEmissionePossibileRentriUseCase`).
+    RisolviNumeroVidimatoPerEmissione,
+    { provide: SorgenteNumeroVidimato, useExisting: RisolviNumeroVidimatoPerEmissione },
     RentriRifornimentoScortaJob,
     // Ripresa periodica delle trasmissioni rimaste in SYNCING (solo provider:
     // nessun export, così il suo @Cron non viene registrato due volte).

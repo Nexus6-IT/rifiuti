@@ -63,6 +63,10 @@ export class RENTRISyncStatus {
     // Transazione elaborata ma esito privo di numero_fir: la creazione è
     // avvenuta, rilanciarla duplicherebbe il formulario.
     'RENTRI_MISSING_NUMERO_FIR',
+    // L'ente ha creato il formulario con un numero diverso da quello inviato (vidimato
+    // dall'azienda): una nuova POST creerebbe un doppione. Non si riapre da sola: il FIR esiste
+    // sull'ente con un altro numero e va sistemato lì (v. rentri-error-presentation).
+    'RENTRI_NUMERO_FIR_DIVERSO',
     // Transazione accettata dall'ente ma esito illeggibile a tentativi finiti
     // (o 403 sul polling): la transazione resta salvata e si rilegge solo su
     // richiesta dell'utente («Rileggi esito»), senza nuova POST.

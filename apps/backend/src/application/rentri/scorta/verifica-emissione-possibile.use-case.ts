@@ -4,11 +4,22 @@ import { RentriUnitaLocaleService } from '../../../infrastructure/rentri/rentri-
 import { RentriScortaRepository } from '../../../infrastructure/persistence/rentri-scorta.repository'
 import { RentriVidimazioneClient } from '../../../infrastructure/rentri/rentri-vidimazione.client'
 import { risolviCfTenant } from './risolvi-cf-tenant'
+import { RisolviNumeroVidimatoPerEmissione } from './risolvi-numero-vidimato-per-emissione'
 
 export interface EsitoEmissionePossibile {
   possibile: boolean
   motivo?: string
   numeriDisponibili: number
+  /**
+   * L'emissione di un FIR di questo tenant consuma un numero dalla scorta (modulo rentri,
+   * AUTOMATICA/IBRIDA, certificato, sede principale). Se false, `possibile`/`motivo` descrivono la
+   * scorta ma NON bloccano l'emissione: la UI non deve avvisare.
+   */
+  scortaRichiesta: boolean
+  /** Scorta non vuota ma sotto la soglia configurata della sede (`dimensioneScortaDesiderata`). */
+  inEsaurimento: boolean
+  /** Soglia della sede; null se non configurata (nessuna soglia inventata: mai «in esaurimento»). */
+  soglia: number | null
 }
 
 /**
@@ -38,10 +49,20 @@ export class VerificaEmissionePossibileRentriUseCase {
     private readonly prisma: PrismaService,
     private readonly unitaLocaleService: RentriUnitaLocaleService,
     private readonly scortaRepo: RentriScortaRepository,
-    private readonly vidimazioneClient: RentriVidimazioneClient
+    private readonly vidimazioneClient: RentriVidimazioneClient,
+    private readonly sorgenteScorta: RisolviNumeroVidimatoPerEmissione
   ) {}
 
   async execute(tenantId: string, numIscrSito?: string): Promise<EsitoEmissionePossibile> {
+    const scortaRichiesta = (await this.sorgenteScorta.perTenant(tenantId)) !== null
+    const esito = await this.verifica(tenantId, numIscrSito)
+    return { ...esito, scortaRichiesta }
+  }
+
+  private async verifica(
+    tenantId: string,
+    numIscrSito?: string
+  ): Promise<Omit<EsitoEmissionePossibile, 'scortaRichiesta'>> {
     const unitaLocale = numIscrSito
       ? ((await this.unitaLocaleService.listForTenant(tenantId)).find(
           u => u.numIscrSito === numIscrSito
@@ -63,6 +84,8 @@ export class VerificaEmissionePossibileRentriUseCase {
       return {
         possibile: false,
         numeriDisponibili: 0,
+        inEsaurimento: false,
+        soglia: null,
         motivo: esisteAlmenoUnaSede
           ? 'Nessuna unità locale RENTRI è marcata come principale per questo tenant: impostane una come principale prima di poter emettere un formulario.'
           : 'Nessuna unità locale RENTRI configurata per questo tenant: configurala prima di poter emettere un formulario.',
@@ -74,8 +97,15 @@ export class VerificaEmissionePossibileRentriUseCase {
       unitaLocale.numIscrSito
     )
 
+    const soglia = unitaLocale.dimensioneScortaDesiderata ?? null
+
     if (numeriDisponibili > 0) {
-      return { possibile: true, numeriDisponibili }
+      return {
+        possibile: true,
+        numeriDisponibili,
+        inEsaurimento: soglia !== null && numeriDisponibili < soglia,
+        soglia,
+      }
     }
 
     if (!unitaLocale.codiceBloccoPredefinito) {
@@ -90,6 +120,8 @@ export class VerificaEmissionePossibileRentriUseCase {
         return {
           possibile: false,
           numeriDisponibili: 0,
+          inEsaurimento: false,
+          soglia,
           motivo:
             `Nessun blocco virtuale attivo per la sede "${unitaLocale.denominazione}": va creato sul ` +
             'portale RENTRI (Interoperabilità → Gestione blocchi virtuali dei FIR).',
@@ -99,6 +131,8 @@ export class VerificaEmissionePossibileRentriUseCase {
       return {
         possibile: false,
         numeriDisponibili: 0,
+        inEsaurimento: false,
+        soglia,
         motivo:
           `Ci sono blocchi attivi per la sede "${unitaLocale.denominazione}" ma nessun numero è ancora ` +
           'stato vidimato: imposta un blocco predefinito e vidima un lotto dalla sezione Blocchi RENTRI.',
@@ -108,6 +142,8 @@ export class VerificaEmissionePossibileRentriUseCase {
     return {
       possibile: false,
       numeriDisponibili: 0,
+      inEsaurimento: false,
+      soglia,
       motivo:
         `Nessun numero FIR vidimato disponibile per la sede "${unitaLocale.denominazione}": vidima un ` +
         'lotto dalla sezione Blocchi RENTRI, oppure attendi il rifornimento automatico.',

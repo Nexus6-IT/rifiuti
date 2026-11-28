@@ -47,6 +47,8 @@ import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { AuthService } from '../../core/services/auth.service'
+import { RentriBlocchiService } from '../rentri/rentri-blocchi.service'
+import { AvvisoScorta, avvisoScortaDa } from './avviso-scorta'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ConsegnaDaAccessoComponent, SceltaConsegna } from './consegna-da-accesso.component'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
@@ -361,14 +363,18 @@ interface OpzioneSede {
         "
       >
         <div class="fir-form p-fluid">
-          <!-- L'avviso "emissione non possibile" (GET /rentri/emissione-possibile) è
-               stato tolto da qui il 2026-09-11: ConsumaNumeroVidimatoUseCase non ha
-               ancora alcun chiamante (v. la sua classe), quindi l'emissione reale non
-               consuma mai dalla scorta e questo controllo era un falso allarme
-               permanente per ogni tenant senza R6 configurato, cioè tutti oggi.
-               Il banner tornerà qui quando il consumo sarà ricablato in
-               EmettiFIRUseCase (v. verifica-emissione-possibile.use-case.ts, che
-               resta e viene ancora usato per l'endpoint). -->
+          <!-- Avviso PRIMA di compilare: se l'emissione consumera' un numero vidimato e la scorta e'
+               vuota o in esaurimento lo diciamo qui, non dopo che l'utente ha compilato tutto
+               (GET /rentri/emissione-possibile; il backend dice se l'emissione consuma scorta,
+               quindi in MANUALE non compare mai). -->
+          @if (avvisoScorta(); as avviso) {
+            <p-message
+              [severity]="avviso.gravita"
+              [text]="avviso.testo"
+              styleClass="w-full mb-3"
+              data-testid="fir-create-avviso-scorta"
+            />
+          }
           <p class="fir-form__legend">
             I campi contrassegnati con <span class="req">*</span> sono obbligatori.
           </p>
@@ -1664,6 +1670,13 @@ export class FirListComponent implements OnInit {
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly rentriFirLifecycleService = inject(RentriFirLifecycleService)
   private readonly authService = inject(AuthService)
+  private readonly rentriBlocchiService = inject(RentriBlocchiService)
+
+  /**
+   * Avviso sulla scorta di numeri vidimati, calcolato all'apertura del dialogo "Nuovo FIR". `null` =
+   * nessun avviso (scorta abbondante, emissione che non consuma scorta, controllo non riuscito).
+   */
+  readonly avvisoScorta = signal<AvvisoScorta | null>(null)
   /** Pubblico: il template decide se offrire la consegna dal netto di un accesso di pesa. */
   readonly ff = inject(FeatureFlagsService)
   private readonly router = inject(Router)
@@ -1996,7 +2009,23 @@ export class FirListComponent implements OnInit {
     this.showTrasportatoriAggiuntivi = false
     this.reimpostaSedi(null)
     this.firErrors = {}
+    this.avvisoScorta.set(null)
     this.displayCreateDialog = true
+    this.caricaAvvisoScorta()
+  }
+
+  /**
+   * Controlla PRIMA della compilazione la scorta di numeri vidimati. Senza il modulo `rentri` la
+   * chiamata non parte (403 per l'azienda TRIAL). Se fallisce non blocchiamo il form: meglio
+   * scoprire un'eventuale indisponibilita' all'emissione (il 400 ha un messaggio che dice cosa
+   * fare) che impedire di lavorare per un errore di rete sul controllo stesso.
+   */
+  private caricaAvvisoScorta(): void {
+    if (!this.ff.has('rentri')) return
+    this.rentriBlocchiService.emissionePossibile().subscribe({
+      next: esito => this.avvisoScorta.set(avvisoScortaDa(esito)),
+      error: () => this.avvisoScorta.set(null),
+    })
   }
 
   /** Pulisce l'errore inline di un campo del form FIR mentre l'utente lo corregge. */

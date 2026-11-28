@@ -20,6 +20,8 @@ const { corpoNuovoFormularioValido } = require(AIUTO_ORACOLO)
 export function costruttorePayloadFinto(): CostruisciPayloadRentri {
   return {
     costruisci: async () => corpoNuovoFormularioValido(),
+    // Nessun numero dell'ente consumato: lo assegna l'ente (`numero_fir` opzionale nel contratto).
+    numeroVidimatoInviato: async () => null,
   } as unknown as CostruisciPayloadRentri
 }
 

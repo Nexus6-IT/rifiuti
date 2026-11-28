@@ -29,7 +29,15 @@ export class RisolviNumeroVidimatoPerEmissione extends SorgenteNumeroVidimato {
 
   async perEmissione(fir: FIR, tenantId: string): Promise<RichiestaNumeroVidimato | null> {
     if (fir.bloccatoInvio) return null
+    return this.perTenant(tenantId)
+  }
 
+  /**
+   * Le stesse condizioni senza un FIR in mano: serve all'avviso preventivo nel form («questa
+   * emissione consumera' la scorta?»), che non deve mai promettere un blocco che l'emissione
+   * non applica (in MANUALE nessun consumo, quindi nessun avviso).
+   */
+  async perTenant(tenantId: string): Promise<RichiestaNumeroVidimato | null> {
     const attivi = await this.moduli.moduliAttivi(tenantId)
     if (!attivi.includes('rentri')) return null
 

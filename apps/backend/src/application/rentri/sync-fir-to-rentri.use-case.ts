@@ -39,6 +39,23 @@ export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
  */
 export const ETA_MASSIMA_PENDING_RENTRI_MS = 30 * 24 * 60 * 60 * 1000
 
+/** `dati_partenza.numero_fir` del corpo spedito, se il corpo e' noto e lo porta. */
+function numeroDaPayload(payload: Record<string, unknown> | null | undefined): string | null {
+  const partenza = payload?.dati_partenza
+  if (!partenza || typeof partenza !== 'object') return null
+  const numero = (partenza as { numero_fir?: unknown }).numero_fir
+  return typeof numero === 'string' && numero.trim() !== '' ? numero : null
+}
+
+/**
+ * Il contratto ammette separatori fra le tre parti del numero (spazi, trattini, barre, underscore)
+ * e l'ente puo' riscriverlo: due scritture della STESSA vidimazione non sono una discordanza.
+ */
+function stessoNumeroFir(inviato: string, restituito: string): boolean {
+  const normalizza = (n: string): string => n.replace(/[\s\-/_]/g, '').toUpperCase()
+  return normalizza(inviato) === normalizza(restituito)
+}
+
 /**
  * Sync FIR to RENTRI Use Case
  *
@@ -310,6 +327,51 @@ export class SyncFIRToRENTRIUseCase {
               willRetry,
               attempts: fir.rentriSyncStatus.getAttempts(),
               nextRetryAt: willRetry ? fir.getNextRENTRIRetryAt() : undefined,
+            }
+          }
+
+          // Verifica del numero (rilievo M2): se si è inviato un numero vidimato, il contratto
+          // (`DatiPartenzaModel.numero_fir`) dice che l'ente attribuisce QUEL numero. Un numero
+          // diverso non si accetta e non si «corregge»: il formulario esiste già sull'ente, quindi
+          // niente legame e niente nuova POST, e l'utente è avvisato di verificare sul portale.
+          const numeroInviato =
+            numeroDaPayload(payload) ??
+            (await this.costruisciPayload.numeroVidimatoInviato(firId, tenantId))
+          if (numeroInviato && !stessoNumeroFir(numeroInviato, numeroFir)) {
+            const errorMessage = `RENTRI ha creato il formulario con il numero '${numeroFir}' invece del numero vidimato inviato '${numeroInviato}': nessun legame registrato, verificare sul portale RENTRI`
+
+            fir.chiudiTransazioneInAttesa()
+            fir.markRENTRISyncFailed(errorMessage, 'RENTRI_NUMERO_FIR_DIVERSO', correlationId)
+
+            const failureLog = syncLog.markAsFailure({
+              responsePayload: rispostaDaRegistrare(esito, transazionePersa),
+              errorMessage,
+              errorCode: 'RENTRI_NUMERO_FIR_DIVERSO',
+              durationMs: Date.now() - startTime,
+            })
+
+            const annullatoNumeroDiverso = await this.salvaFirSeNonAnnullato(
+              fir,
+              failureLog,
+              ESITO_NON_SALVATO,
+              { firId, transazioneId }
+            )
+            if (annullatoNumeroDiverso) return annullatoNumeroDiverso
+            await this.syncLogRepository.save(failureLog)
+            await this.publishDomainEvents(fir)
+
+            this.logger.warn(`FIR creato su RENTRI con un numero diverso da quello inviato`, {
+              firId,
+              transazioneId,
+              numeroInviato,
+              numeroRestituito: numeroFir,
+            })
+
+            return {
+              success: false,
+              error: errorMessage,
+              willRetry: false,
+              attempts: fir.rentriSyncStatus.getAttempts(),
             }
           }
 

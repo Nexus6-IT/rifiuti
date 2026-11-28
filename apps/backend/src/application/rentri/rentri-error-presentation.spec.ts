@@ -77,6 +77,17 @@ describe('traduciErroreRentri', () => {
     })
   })
 
+  it('numero restituito diverso da quello inviato (RENTRI_NUMERO_FIR_DIVERSO): verificare sul portale, nessun riprova', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'RENTRI_NUMERO_FIR_DIVERSO',
+      errorMessage: 'numeri diversi',
+    })
+
+    expect(risultato.azione).toBe('VERIFICA_SU_RENTRI')
+    expect(risultato.messaggio).toContain('numero diverso')
+    expect(risultato.messaggio).toContain('doppione')
+  })
+
   it('trasmissione incerta (RENTRI_TRASMISSIONE_INCERTA): controllare sul portale, poi ritrasmettere o collegare', () => {
     const risultato = traduciErroreRentri({ errorCode: 'RENTRI_TRASMISSIONE_INCERTA' })
 

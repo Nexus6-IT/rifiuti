@@ -3,6 +3,7 @@ import { Archivio, EsitoMessaggio, Formulario } from '../stato/archivio'
 import { inviaProblemDetails } from '../errori/problem-details'
 import { OperazioneRegistro } from '../stato/registri-operatore'
 import { siti } from '../stato/fixture-anagrafiche'
+import { applicaNumeroRichiesto } from '../dominio/esito-creazione'
 
 /**
  * Apparato di prova: prefisso __controllo, inesistente in RENTRI e
@@ -24,6 +25,8 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
       esito?: unknown
       tipo?: string
       tempo_elaborazione?: string
+      /** Simula un ente difettoso: ammette un numero_fir diverso da quello richiesto. */
+      esito_non_conforme?: boolean
     }
   }>('/__controllo/completa-transazione', async (richiesta, risposta) => {
     const transazione = archivio.leggiTransazione(richiesta.body.transazione_id)
@@ -31,8 +34,25 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
       return inviaProblemDetails(risposta, 404, { title: 'Transazione non trovata' })
     }
 
+    let esito = richiesta.body.esito
+    // Creazione riuscita: il numero e' quello richiesto (contratto), mai uno diverso in silenzio.
+    if (
+      !(richiesta.body.errore ?? false) &&
+      transazione.richiestaCreazione &&
+      !richiesta.body.esito_non_conforme
+    ) {
+      const verifica = applicaNumeroRichiesto(transazione.richiestaCreazione, esito)
+      if (!verifica.conforme) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Esito non conforme al contratto',
+          detail: verifica.motivo,
+        })
+      }
+      esito = verifica.esito
+    }
+
     archivio.completaTransazione(richiesta.body.transazione_id, {
-      esito: richiesta.body.esito,
+      esito,
       tipo: richiesta.body.tipo,
       validazione: richiesta.body.validazione ?? [],
       errore: richiesta.body.errore ?? false,
@@ -115,10 +135,18 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
   // idempotente la POST di apertura: il registro esiste, il client non lo sa.
   // Diverso da `/__controllo/guasto`, che fallisce PRIMA di elaborare.
   app.post<{
-    Body: { operazione: OperazioneRegistro; tipo: '5xx' | 'timeout'; stato?: number; volte?: number }
+    Body: {
+      operazione: OperazioneRegistro
+      tipo: '5xx' | 'timeout'
+      stato?: number
+      volte?: number
+    }
   }>('/__controllo/registri/esito-perso', async (richiesta, risposta) => {
     const { operazione, tipo, stato, volte } = richiesta.body
-    if (!['apri', 'modifica', 'chiudi'].includes(operazione) || !['5xx', 'timeout'].includes(tipo)) {
+    if (
+      !['apri', 'modifica', 'chiudi'].includes(operazione) ||
+      !['5xx', 'timeout'].includes(tipo)
+    ) {
       return inviaProblemDetails(risposta, 400, { title: 'Parametri non validi' })
     }
     archivio.registriOperatore.impostaEsitoPerso(operazione, {

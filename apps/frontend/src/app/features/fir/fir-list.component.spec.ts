@@ -13,7 +13,7 @@ import { AuthService } from '../../core/services/auth.service'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AccessoRiepilogo, PeseService } from '../pese/pese.service'
-import { RentriBlocchiService } from '../rentri/rentri-blocchi.service'
+import { RentriBlocchiService, RentriEmissionePossibile } from '../rentri/rentri-blocchi.service'
 
 /**
  * TDD per i due nuovi campi obbligatori RENTRI nel form "Nuovo FIR":
@@ -200,21 +200,28 @@ describe('FirListComponent — campi RENTRI obbligatori (provenienza, tratta pri
 })
 
 /**
- * L'avviso "PRIMA della compilazione" (GET /rentri/emissione-possibile) è
- * stato tolto dal dialogo "Nuovo FIR" (revisione finale del ramo
- * feat/scadenzario-cruscotto, R6): `ConsumaNumeroVidimatoUseCase` non ha
- * ancora alcun chiamante (l'emissione FIR reale non consuma dalla scorta),
- * quindi il controllo restituiva un falso allarme ad OGNI apertura del
- * dialogo per qualunque tenant senza R6 configurato — cioè tutti, oggi.
- * L'endpoint e lo use case restano (v. `verifica-emissione-possibile.use-case.ts`):
- * il banner tornerà quando il consumo sarà ricablato in `EmettiFIRUseCase`.
+ * Avviso PRIMA della compilazione (piano scorta -> emissione, Task 3): all'apertura del dialogo
+ * "Nuovo FIR" si interroga `GET /rentri/emissione-possibile` e, se l'emissione consumera' un
+ * numero vidimato e la scorta e' vuota o in esaurimento, lo si dice subito, non al salvataggio.
+ * Il banner non compare quando l'emissione non consuma scorta (MANUALE, senza certificato), e la
+ * chiamata non parte nemmeno senza il modulo `rentri` (403 per l'azienda TRIAL).
  */
-describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nuovo FIR"', () => {
+describe('FirListComponent — avviso scorta vidimata nel dialogo "Nuovo FIR"', () => {
   let fixture: ComponentFixture<FirListComponent>
   let component: FirListComponent
   let rentriBlocchiService: jasmine.SpyObj<RentriBlocchiService>
+  let moduloRentri: boolean
 
-  beforeEach(() => {
+  const esito = (o: Partial<RentriEmissionePossibile> = {}): RentriEmissionePossibile => ({
+    possibile: true,
+    numeriDisponibili: 20,
+    scortaRichiesta: true,
+    inEsaurimento: false,
+    soglia: null,
+    ...o,
+  })
+
+  function avvio(): void {
     const firService = jasmine.createSpyObj('FirService', [
       'getFIRList',
       'createFIR',
@@ -235,10 +242,6 @@ describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nu
     registryService.getTrasportatori.and.returnValue(of({ items: [], total: 0 }))
     registryService.getDestinatari.and.returnValue(of({ items: [], total: 0 }))
 
-    rentriBlocchiService = jasmine.createSpyObj<RentriBlocchiService>('RentriBlocchiService', [
-      'emissionePossibile',
-    ])
-
     const authServiceStub = {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: 'ADMIN' }),
     }
@@ -250,6 +253,7 @@ describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nu
         { provide: RegistryService, useValue: registryService },
         { provide: AuthService, useValue: authServiceStub },
         { provide: RentriBlocchiService, useValue: rentriBlocchiService },
+        { provide: FeatureFlagsService, useValue: { has: () => moduloRentri } },
         {
           provide: RENTRISyncService,
           useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
@@ -264,20 +268,116 @@ describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nu
     fixture = TestBed.createComponent(FirListComponent)
     component = fixture.componentInstance
     fixture.detectChanges()
+  }
+
+  const banner = (): HTMLElement | null =>
+    (fixture.nativeElement as HTMLElement).querySelector('[data-testid="fir-create-avviso-scorta"]')
+
+  beforeEach(() => {
+    moduloRentri = true
+    rentriBlocchiService = jasmine.createSpyObj<RentriBlocchiService>('RentriBlocchiService', [
+      'emissionePossibile',
+    ])
+    rentriBlocchiService.emissionePossibile.and.returnValue(of(esito()))
   })
 
-  it('non interroga più emissione-possibile quando si apre il dialogo "Nuovo FIR"', () => {
+  it('interroga emissione-possibile all apertura del dialogo, non prima', () => {
+    avvio()
+    expect(rentriBlocchiService.emissionePossibile).not.toHaveBeenCalled()
+
     component.showCreateDialog()
 
-    expect(rentriBlocchiService.emissionePossibile).not.toHaveBeenCalled()
+    expect(rentriBlocchiService.emissionePossibile).toHaveBeenCalledTimes(1)
   })
 
-  it('non mostra mai il banner di emissione non possibile, anche se il dialogo è aperto', () => {
+  it('scorta vuota: il banner compare all apertura con il motivo del backend', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(
+      of(esito({ possibile: false, numeriDisponibili: 0, motivo: 'Nessun numero FIR vidimato.' }))
+    )
+    avvio()
+
     component.showCreateDialog()
     fixture.detectChanges()
 
-    const html: HTMLElement = fixture.nativeElement
-    expect(html.querySelector('[data-testid="fir-create-emissione-non-possibile"]')).toBeNull()
+    expect(banner()?.textContent).toContain('Nessun numero FIR vidimato.')
+  })
+
+  it('scorta in esaurimento: il banner compare con quanti numeri restano', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(
+      of(esito({ numeriDisponibili: 3, inEsaurimento: true, soglia: 10 }))
+    )
+    avvio()
+
+    component.showCreateDialog()
+    fixture.detectChanges()
+
+    expect(banner()?.textContent).toContain('3')
+    expect(banner()?.textContent).toContain('10')
+  })
+
+  it('scorta abbondante: nessun banner', () => {
+    avvio()
+
+    component.showCreateDialog()
+    fixture.detectChanges()
+
+    expect(banner()).toBeNull()
+  })
+
+  it('l emissione non consuma scorta (MANUALE): nessun banner anche con la scorta vuota', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(
+      of(
+        esito({
+          scortaRichiesta: false,
+          possibile: false,
+          numeriDisponibili: 0,
+          motivo: 'Nessuna unità locale RENTRI configurata.',
+        })
+      )
+    )
+    avvio()
+
+    component.showCreateDialog()
+    fixture.detectChanges()
+
+    expect(banner()).toBeNull()
+  })
+
+  it('senza il modulo rentri la chiamata non parte (403 per l azienda TRIAL)', () => {
+    moduloRentri = false
+    avvio()
+
+    component.showCreateDialog()
+
+    expect(rentriBlocchiService.emissionePossibile).not.toHaveBeenCalled()
+    expect(banner()).toBeNull()
+  })
+
+  it('errore del controllo: il form resta utilizzabile, nessun banner', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(throwError(() => new Error('rete')))
+    avvio()
+
+    component.showCreateDialog()
+    fixture.detectChanges()
+
+    expect(component.displayCreateDialog).toBeTrue()
+    expect(banner()).toBeNull()
+  })
+
+  it('riaprendo il dialogo un avviso vecchio non resta: si riparte da zero', () => {
+    rentriBlocchiService.emissionePossibile.and.returnValue(
+      of(esito({ possibile: false, numeriDisponibili: 0, motivo: 'Scorta vuota.' }))
+    )
+    avvio()
+    component.showCreateDialog()
+    fixture.detectChanges()
+    expect(banner()).not.toBeNull()
+
+    rentriBlocchiService.emissionePossibile.and.returnValue(of(esito()))
+    component.showCreateDialog()
+    fixture.detectChanges()
+
+    expect(banner()).toBeNull()
   })
 })
 

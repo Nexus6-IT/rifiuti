@@ -129,6 +129,30 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       )
     })
 
+    it('con la scorta ESAURITA (0 disponibili) la gravità è critico: a quel punto non si emette più', async () => {
+      const prisma = buildPrisma({
+        rentriUnitaLocale: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              numIscrSito: 'OP0001AAA000001-MI0001',
+              denominazione: 'Sede di Milano',
+              dimensioneScortaDesiderata: 10,
+            },
+          ]),
+        },
+      })
+      const scortaRepo = buildScortaRepo({ contaTotaleDisponibili: jest.fn().mockResolvedValue(0) })
+      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
+
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
+
+      const [voce] = risultato.voci
+      expect(voce.gravita).toBe('critico')
+      expect(voce.titolo).toMatch(/esaurit/i)
+      expect(voce.titolo).toMatch(/Sede di Milano/)
+      expect(voce.azione?.rotta).toBe('/rentri/blocchi')
+    })
+
     it('con una sede sopra la soglia configurata restituisce una voce di gravità informativo', async () => {
       const prisma = buildPrisma({
         rentriUnitaLocale: {

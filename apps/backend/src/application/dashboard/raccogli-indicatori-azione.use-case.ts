@@ -163,13 +163,18 @@ export class RaccogliIndicatoriAzioneUseCase {
         // Garantito non nullo dal filtro Prisma sopra (`{ not: null }`).
         const soglia = sede.dimensioneScortaDesiderata as number
         const sottoSoglia = disponibili < soglia
+        // A scorta esaurita non si emette piu' (con modulo rentri in AUTOMATICA/IBRIDA): non e'
+        // un avviso, e' un blocco.
+        const esaurita = disponibili === 0
 
         return {
           chiave: `scorta-vidimata-${sede.numIscrSito}`,
-          gravita: sottoSoglia ? 'avviso' : 'informativo',
-          titolo: sottoSoglia
-            ? `Numeri vidimati in esaurimento — ${sede.denominazione}`
-            : `Numeri vidimati pronti — ${sede.denominazione}`,
+          gravita: esaurita ? 'critico' : sottoSoglia ? 'avviso' : 'informativo',
+          titolo: esaurita
+            ? `Numeri vidimati esauriti — ${sede.denominazione}`
+            : sottoSoglia
+              ? `Numeri vidimati in esaurimento — ${sede.denominazione}`
+              : `Numeri vidimati pronti — ${sede.denominazione}`,
           dettaglio: `${disponibili} pronti su una soglia di ${soglia}`,
           azione: { etichetta: 'Vedi scorta', rotta: '/rentri/blocchi' },
         } satisfies VoceAttenzione

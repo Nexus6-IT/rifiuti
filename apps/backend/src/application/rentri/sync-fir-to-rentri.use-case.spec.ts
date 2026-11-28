@@ -1,5 +1,5 @@
 import { SyncFIRToRENTRIUseCase, SOGLIA_STALLO_RENTRI_MS } from './sync-fir-to-rentri.use-case'
-import { costruttorePayloadFinto } from './mappatura/aiuti-test'
+import { corpoFormularioValido, costruttorePayloadFinto } from './mappatura/aiuti-test'
 import {
   RentriApiError,
   TrasmissioneRentriIncertaError,
@@ -1102,6 +1102,115 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
       expect(fir.rentriTransazioneInAttesa).toBeNull()
       expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+    })
+
+    describe('numero restituito da RENTRI diverso da quello inviato (rilievo M2)', () => {
+      const NUMERO_INVIATO = 'BCDFGH 000123 XY'
+
+      function usecaseCon(costruisci: unknown) {
+        return new SyncFIRToRENTRIUseCase(
+          mockFIRRepository,
+          mockRENTRIApiClient,
+          mockSyncLogRepository,
+          mockDomainEvents,
+          mockLogger,
+          costruisci as any
+        )
+      }
+
+      const corpoConNumero = () =>
+        corpoFormularioValido({
+          dati_partenza: {
+            ...(corpoFormularioValido().dati_partenza as Record<string, unknown>),
+            numero_fir: NUMERO_INVIATO,
+          },
+        })
+
+      it('numero diverso: nessun legame, fallimento non ritentabile con codice chiaro e numeri nel messaggio', async () => {
+        const fir = firReale()
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: 'BCDFGH 000999 XY' },
+        })
+        const uc = usecaseCon({
+          costruisci: jest.fn().mockResolvedValue(corpoConNumero()),
+          numeroVidimatoInviato: jest.fn(),
+        })
+
+        const result = await uc.execute(fir.id, tenantId)
+
+        expect(result).toMatchObject({ success: false, willRetry: false })
+        expect(result.error).toContain('BCDFGH 000123 XY')
+        expect(result.error).toContain('BCDFGH 000999 XY')
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_NUMERO_FIR_DIVERSO')
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+        expect(mockSyncLogRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'FAILURE', errorCode: 'RENTRI_NUMERO_FIR_DIVERSO' })
+        )
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('numero'),
+          expect.objectContaining({
+            numeroInviato: NUMERO_INVIATO,
+            numeroRestituito: 'BCDFGH 000999 XY',
+          })
+        )
+      })
+
+      it('stesso numero con separatori diversi: e lo stesso numero, legame normale', async () => {
+        const fir = firReale()
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: 'bcdfgh-000123-xy' },
+        })
+        const uc = usecaseCon({
+          costruisci: jest.fn().mockResolvedValue(corpoConNumero()),
+          numeroVidimatoInviato: jest.fn(),
+        })
+
+        const result = await uc.execute(fir.id, tenantId)
+
+        expect(result.success).toBe(true)
+        expect(fir.rentriNumeroFir).toBe('bcdfgh-000123-xy')
+      })
+
+      it('nessun numero inviato (lo assegna l ente): qualunque numero restituito e accettato', async () => {
+        const fir = firReale()
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+        const result = await useCase.execute(fir.id, tenantId)
+
+        expect(result.success).toBe(true)
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
+      })
+
+      it('ripresa del polling: il numero inviato si rilegge dalla scorta e il confronto vale lo stesso', async () => {
+        const fir = firConTransazioneFallita('t-vecchia')
+        mockFIRRepository.findById.mockResolvedValue(fir)
+        mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: 'BCDFGH 000999 XY' },
+        })
+        const numeroVidimatoInviato = jest.fn().mockResolvedValue(NUMERO_INVIATO)
+        const uc = usecaseCon({ costruisci: jest.fn(), numeroVidimatoInviato })
+
+        const result = await uc.execute(fir.id, tenantId)
+
+        expect(numeroVidimatoInviato).toHaveBeenCalledWith(fir.id, tenantId)
+        expect(result).toMatchObject({ success: false, willRetry: false })
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_NUMERO_FIR_DIVERSO')
+        expect(fir.rentriNumeroFir).toBeNull()
+      })
     })
 
     it('esito senza numero_fir → willRetry false', async () => {

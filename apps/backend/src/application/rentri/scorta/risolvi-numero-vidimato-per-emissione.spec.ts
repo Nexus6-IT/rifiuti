@@ -50,4 +50,19 @@ describe('RisolviNumeroVidimatoPerEmissione', () => {
     expect(await r.perEmissione(fir(true), 't1')).toBeNull()
     expect(moduli.moduliAttivi).not.toHaveBeenCalled()
   })
+
+  describe('perTenant (avviso preventivo: l emissione consumera la scorta?)', () => {
+    it('stesse condizioni di perEmissione, senza un FIR', async () => {
+      expect(await costruisci().perTenant('t1')).toEqual({ numIscrSito: 'SITO-1' })
+    })
+
+    it.each([
+      ['modulo rentri non attivo', { moduli: ['fatturazione'] }],
+      ['modalita MANUALE', { modalita: 'MANUALE' }],
+      ['certificato mancante', { certificato: false }],
+      ['nessuna sede principale', { sede: null }],
+    ])('%s: null', async (_nome, opts) => {
+      expect(await costruisci(opts).perTenant('t1')).toBeNull()
+    })
+  })
 })

@@ -40,6 +40,16 @@ export class CostruisciPayloadRentri {
     this.risolutoreComune = new RisolutoreComuneIstat(this.prisma)
   }
 
+  /**
+   * Numero dell'ente inviato (o da inviare) per il FIR: lo stesso che `costruisci` mette in
+   * `dati_partenza.numero_fir`. Serve alla verifica dell'esito quando il corpo non si ricostruisce
+   * (ripresa del polling). `null` = nessun numero inviato, lo assegna l'ente.
+   */
+  async numeroVidimatoInviato(firId: string, tenantId: string): Promise<string | null> {
+    const vidimato = await this.scorta?.trovaConsumatoDaFir(tenantId, firId)
+    return vidimato?.numeroFir ?? null
+  }
+
   async costruisci(fir: FIR, tenantId: string): Promise<Record<string, unknown>> {
     const sede = await this.unitaLocale.getPrincipale(tenantId)
     if (!sede?.numIscrSito) {
