@@ -45,7 +45,15 @@ import { validaMappa } from '../pacchetto/mappa-import'
 import { preparaGiacenze } from '../pacchetto/prepara-giacenze'
 import { preparaPacchetto } from '../pacchetto/prepara-pacchetto'
 import { apriStaging } from '../staging/lettore-staging'
-import { RapportoChiusoError, RapportoNonChiudibileError, VersioneCambiataError } from './errori'
+import {
+  AccettazioneNonConsentitaError,
+  ArchivioDiversoError,
+  CampioneNonValidoError,
+  LottoNonCompletatoError,
+  RapportoChiusoError,
+  RapportoNonChiudibileError,
+  VersioneCambiataError,
+} from './errori'
 import { RiconciliazioneService } from './riconciliazione.service'
 import { LettoreRentri } from './verifica-rentri'
 
@@ -424,6 +432,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
     // Motivo troppo corto: rifiutato. Chiave inesistente: rifiutata.
     await expect(
       riconcilia.accettaDifferenza({
+        ruolo: 'SUPER_ADMIN',
         tenantId: az.tenantId,
         radiceId: rapporto.radiceId,
         versione: 1,
@@ -434,6 +443,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
     ).rejects.toThrow(/motivo/)
     await expect(
       riconcilia.accettaDifferenza({
+        ruolo: 'SUPER_ADMIN',
         tenantId: az.tenantId,
         radiceId: rapporto.radiceId,
         versione: 1,
@@ -444,6 +454,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
     ).rejects.toThrow(/nessuna differenza/)
 
     const v2 = await riconcilia.accettaDifferenza({
+      ruolo: 'SUPER_ADMIN',
       tenantId: az.tenantId,
       radiceId: rapporto.radiceId,
       versione: 1,
@@ -567,6 +578,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
       for (const [i, camp] of rapporto.campioni.entries()) {
         await riconcilia.registraEsitoCampione({
           tenantId: az.tenantId,
+          radiceId: rapporto.radiceId,
           campioneId: camp.id,
           esito: i === 0 ? 'NON_CORRISPONDE' : 'CORRISPONDE',
           nota: i === 0 ? 'quantita diversa' : null,
@@ -586,6 +598,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
       ).rejects.toBeInstanceOf(RapportoNonChiudibileError)
       await riconcilia.registraEsitoCampione({
         tenantId: az.tenantId,
+        radiceId: rapporto.radiceId,
         campioneId: rapporto.campioni[0].id,
         esito: 'CORRISPONDE',
         utenteId: az.operatoreId,
@@ -601,6 +614,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
       await expect(
         riconcilia.registraEsitoCampione({
           tenantId: az.tenantId,
+          radiceId: rapporto.radiceId,
           campioneId: rapporto.campioni[0].id,
           esito: 'NON_CORRISPONDE',
           utenteId: az.operatoreId,
@@ -616,7 +630,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
         lottiIds: [lottoId],
         sorgente,
         hashSorgente: hashCanonico(sorgente),
-        dimensioneCampione: 0,
+        dimensioneCampione: 1,
       })
       expect(rapporto.valutazione.chiudibile).toBe(false)
       expect(rapporto.valutazione.differenzeAperte).toEqual(
@@ -642,7 +656,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
         lottiIds: [lottoId],
         sorgente,
         hashSorgente: hashCanonico(sorgente),
-        dimensioneCampione: 0,
+        dimensioneCampione: 1,
       })
       expect(rapporto.valutazione.differenzeAperte).toContain('5:non-bloccati')
     })
@@ -676,7 +690,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
           lottiIds: [lottoId],
           sorgente,
           hashSorgente: hashCanonico(sorgente),
-          dimensioneCampione: 0,
+          dimensioneCampione: 1,
           lettoreRentri: lettore,
           pausaRentriMs: 0,
           ...extra,
@@ -696,10 +710,174 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
         lottiIds: [lottoId],
         sorgente,
         hashSorgente: hashCanonico(sorgente),
-        dimensioneCampione: 0,
+        dimensioneCampione: 1,
         radiceId: ok.rapporto.radiceId,
       })
       expect(senza.rapporto.esiti.confronti[4].esito).toBe('NON_VERIFICATO')
+    })
+
+    it('B1: un lotto FALLITO, ANNULLATO o IN_CORSO non da mai un rapporto', async () => {
+      const sorgente = sorgenteMovimenti(2, 0)
+      for (const stato of ['FALLITO', 'ANNULLATO', 'IN_CORSO'] as const) {
+        const { az, lottoId } = await conMovimenti(2)
+        await owner.$transaction(async tx => {
+          await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = 'replica'`)
+          await tx.lottoImport.update({ where: { id: lottoId }, data: { stato } })
+        })
+        await expect(
+          riconcilia.genera({
+            tenantId: az.tenantId,
+            lottiIds: [lottoId],
+            sorgente,
+            hashSorgente: hashCanonico(sorgente),
+          })
+        ).rejects.toBeInstanceOf(LottoNonCompletatoError)
+        expect(
+          await owner.rapportoRiconciliazione.count({ where: { tenantId: az.tenantId } })
+        ).toBe(0)
+      }
+    })
+
+    it('M4: l archivio del rapporto sorgente deve essere quello dei lotti', async () => {
+      const { az, lottoId } = await conMovimenti(1)
+      const altro = { ...sorgenteMovimenti(1, 0), archivio: 'WW00022026' }
+      await expect(
+        riconcilia.genera({
+          tenantId: az.tenantId,
+          lottiIds: [lottoId],
+          sorgente: altro,
+          hashSorgente: hashCanonico(altro),
+        })
+      ).rejects.toBeInstanceOf(ArchivioDiversoError)
+    })
+
+    it('M2: un campione di 0 righe e rifiutato', async () => {
+      const { az, lottoId } = await conMovimenti(1)
+      const sorgente = sorgenteMovimenti(1, 0)
+      await expect(
+        riconcilia.genera({
+          tenantId: az.tenantId,
+          lottiIds: [lottoId],
+          sorgente,
+          hashSorgente: hashCanonico(sorgente),
+          dimensioneCampione: 0,
+        })
+      ).rejects.toBeInstanceOf(CampioneNonValidoError)
+    })
+
+    it('B-1: l esito di un campione si da solo dal suo rapporto', async () => {
+      const { az, lottoId } = await conMovimenti(2)
+      const sorgente = sorgenteMovimenti(2, 0)
+      const { rapporto } = await riconcilia.genera({
+        tenantId: az.tenantId,
+        lottiIds: [lottoId],
+        sorgente,
+        hashSorgente: hashCanonico(sorgente),
+        dimensioneCampione: 1,
+      })
+      await expect(
+        riconcilia.registraEsitoCampione({
+          tenantId: az.tenantId,
+          radiceId: '99999999-9999-4999-8999-999999999999',
+          campioneId: rapporto.campioni[0].id,
+          esito: 'CORRISPONDE',
+          utenteId: az.operatoreId,
+        })
+      ).rejects.toThrow(/campione inesistente/)
+    })
+
+    it('M3: il non verificato lo accetta solo il SUPER_ADMIN e ogni ricalcolo annulla l accettazione', async () => {
+      const { az, lottoId } = await conMovimenti(1, true)
+      const sorgente: SorgenteRiconciliazione = {
+        ...sorgenteMovimenti(1, 0),
+        confronto5: { renRegistrazioni: { presente: true, conIdRentri: 1 } },
+      }
+      // Nessun lettore RENTRI: confronto 5 NON_VERIFICATO.
+      const genera = (radiceId?: string) =>
+        riconcilia.genera({
+          tenantId: az.tenantId,
+          lottiIds: radiceId ? [] : [lottoId],
+          sorgente,
+          hashSorgente: hashCanonico(sorgente),
+          dimensioneCampione: 1,
+          radiceId,
+        })
+      const { rapporto } = await genera()
+      const base = {
+        tenantId: az.tenantId,
+        radiceId: rapporto.radiceId,
+        versione: 1,
+        chiave: '5:non-verificato',
+        motivo: 'verifica RENTRI rimandata allo sblocco',
+        utenteId: az.operatoreId,
+      }
+      await expect(
+        riconcilia.accettaDifferenza({ ...base, ruolo: 'ADMIN' })
+      ).rejects.toBeInstanceOf(AccettazioneNonConsentitaError)
+      const v2 = await riconcilia.accettaDifferenza({ ...base, ruolo: 'SUPER_ADMIN' })
+      expect(v2.esiti.accettazioni['5:non-verificato']).toMatchObject({ ruolo: 'SUPER_ADMIN' })
+      expect(v2.valutazione.differenzeAperte).not.toContain('5:non-verificato')
+      // Il ricalcolo (anche senza cambiamenti nei dati) annulla l'accettazione.
+      const ricalcolo = await genera(rapporto.radiceId)
+      expect(ricalcolo.nuovaVersione).toBe(true)
+      expect(ricalcolo.rapporto.esiti.accettazioni['5:non-verificato']).toBeUndefined()
+      expect(ricalcolo.rapporto.valutazione.differenzeAperte).toContain('5:non-verificato')
+    })
+
+    it('M1: la chiusura aspetta chi tiene la radice e poi vede l esito del campione', async () => {
+      const { az, lottoId } = await conMovimenti(2)
+      const sorgente = sorgenteMovimenti(2, 0)
+      const { rapporto } = await riconcilia.genera({
+        tenantId: az.tenantId,
+        lottiIds: [lottoId],
+        sorgente,
+        hashSorgente: hashCanonico(sorgente),
+        dimensioneCampione: 1,
+      })
+      await riconcilia.registraEsitoCampione({
+        tenantId: az.tenantId,
+        radiceId: rapporto.radiceId,
+        campioneId: rapporto.campioni[0].id,
+        esito: 'CORRISPONDE',
+        utenteId: az.operatoreId,
+      })
+      let rilascia!: () => void
+      const tenuto = new Promise<void>(r => (rilascia = r))
+      let bloccato!: () => void
+      const èBloccato = new Promise<void>(r => (bloccato = r))
+      // Un altro scrittore tiene la radice e, prima di rilasciarla, segna un campione non corrispondente.
+      const altro = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT id FROM rapporti_riconciliazione WHERE id = ${rapporto.radiceId}::uuid FOR UPDATE`
+          bloccato()
+          await tenuto
+          await tx.campioneRiconciliazione.update({
+            where: { id: rapporto.campioni[0].id },
+            data: { esito: 'NON_CORRISPONDE', esitoIl: new Date() },
+          })
+        },
+        { timeout: 20000 }
+      )
+      await èBloccato
+      let finita = false
+      const chiusura = riconcilia
+        .chiudi({
+          tenantId: az.tenantId,
+          radiceId: rapporto.radiceId,
+          versione: 1,
+          utenteId: az.operatoreId,
+        })
+        .then(
+          () => (finita = true),
+          e => ((finita = true), e)
+        )
+      await new Promise(r => setTimeout(r, 500))
+      expect(finita).toBe(false) // aspetta il lock
+      rilascia()
+      await altro
+      const esito = await chiusura
+      expect(esito).toBeInstanceOf(RapportoNonChiudibileError) // vede il campione non corrispondente
+      expect((await riconcilia.leggi(az.tenantId, rapporto.radiceId)).stato).toBe('APERTO')
     })
 
     it('un altra azienda non vede ne il rapporto ne i lotti', async () => {
@@ -719,7 +897,7 @@ describe('Riconciliazione dell import — Postgres reale, ruolo wasteflow_app', 
         lottiIds: [lottoId],
         sorgente,
         hashSorgente: hashCanonico(sorgente),
-        dimensioneCampione: 0,
+        dimensioneCampione: 1,
       })
       await expect(riconcilia.leggi(altra.tenantId, rapporto.radiceId)).rejects.toThrow(
         /inesistente/

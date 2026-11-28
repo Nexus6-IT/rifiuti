@@ -11,6 +11,7 @@ import {
   BadRequestException,
   Body,
   ConflictException,
+  ForbiddenException,
   Controller,
   Get,
   HttpCode,
@@ -32,6 +33,7 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import {
+  AccettazioneNonConsentitaError,
   CampioneInesistenteError,
   DifferenzaInesistenteError,
   MotivoNonValidoError,
@@ -65,6 +67,7 @@ export function comeEccezioneHttp(e: unknown): unknown {
       codice: 'VERSIONE_CAMBIATA',
       versioneAttuale: e.attuale,
     })
+  if (e instanceof AccettazioneNonConsentitaError) return new ForbiddenException(e.message)
   if (e instanceof RapportoChiusoError) return new ConflictException(e.message)
   if (e instanceof VerbaleGiaCaricatoError) return new ConflictException(e.message)
   if (e instanceof RapportoNonChiudibileError)
@@ -135,7 +138,7 @@ export class RiconciliazioneImportController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Esito a mano di una riga del campione (confronto 6)' })
   async esitoCampione(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Param('campioneId', ParseUUIDPipe) campioneId: string,
     @Body() dto: EsitoCampioneDto,
     @CurrentUser() utente: CurrentUserPayload
@@ -143,6 +146,7 @@ export class RiconciliazioneImportController {
     await this.esegui(() =>
       this.servizio.registraEsitoCampione({
         tenantId: dto.tenantId,
+        radiceId: id,
         campioneId,
         esito: dto.esito,
         nota: dto.nota,
@@ -168,6 +172,7 @@ export class RiconciliazioneImportController {
         chiave: dto.chiave,
         motivo: dto.motivo,
         utenteId: utente.id,
+        ruolo: utente.role,
       })
     )
   }

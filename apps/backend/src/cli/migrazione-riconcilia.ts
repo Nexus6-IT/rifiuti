@@ -27,6 +27,9 @@ import { hashCanonico } from '../domain/migrazione/riconciliazione/hash-rapporto
 import { GiacenzaAttesa } from '../domain/migrazione/riconciliazione/tipi'
 import { MigrazioneRiconciliaModule } from '../application/migrazione/riconciliazione/migrazione-riconcilia.module'
 import {
+  ArchivioDiversoError,
+  CampioneNonValidoError,
+  LottoNonCompletatoError,
   RapportoChiusoError,
   RapportoNonTrovatoError,
   VersioneCambiataError,
@@ -94,7 +97,7 @@ export function leggiArgomenti(argv: readonly string[]): ArgomentiRiconcilia | n
   let campione: number | undefined
   if (v['--campione'] !== undefined) {
     campione = Number(v['--campione'])
-    if (!Number.isInteger(campione) || campione < 0 || campione > 1000) return null
+    if (!Number.isInteger(campione) || campione < 1 || campione > 1000) return null
   }
   return {
     tenant: tenant.toLowerCase(),
@@ -230,6 +233,9 @@ export async function eseguiCli(
     if (
       e instanceof InputNonValidoError ||
       e instanceof LottiNonTrovatiError ||
+      e instanceof LottoNonCompletatoError ||
+      e instanceof ArchivioDiversoError ||
+      e instanceof CampioneNonValidoError ||
       e instanceof RapportoNonTrovatoError ||
       e instanceof RapportoChiusoError ||
       e instanceof VersioneCambiataError

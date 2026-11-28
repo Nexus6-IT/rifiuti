@@ -24,7 +24,7 @@
 -- Ripristino a mano (solo se non esistono rapporti da conservare: sono la traccia dello sblocco, I9):
 --   DROP TABLE verbali_riconciliazione, campioni_riconciliazione, rapporti_riconciliazione;
 --   DROP FUNCTION rapporti_riconciliazione_immutabile(), rapporti_riconciliazione_nuova_versione(),
---     riconciliazione_no_modifica(), riconciliazione_no_delete(), campioni_riconciliazione_immutabile();
+--     riconciliazione_no_modifica(), riconciliazione_no_delete(), campioni_riconciliazione_immutabile(), campioni_riconciliazione_nuovo();
 --   DROP TYPE stato_rapporto_riconciliazione, tipo_campione_riconciliazione,
 --     esito_campione_riconciliazione;
 --   DELETE FROM _prisma_migrations WHERE migration_name = '20261128100000_riconciliazione_import';
@@ -237,6 +237,24 @@ END $$;
 CREATE TRIGGER "campioni_riconciliazione_immutabile"
   BEFORE UPDATE ON "campioni_riconciliazione"
   FOR EACH ROW EXECUTE FUNCTION campioni_riconciliazione_immutabile();
+
+-- Nessun campione nuovo dopo la chiusura del rapporto.
+CREATE FUNCTION campioni_riconciliazione_nuovo() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM rapporti_riconciliazione r
+    WHERE r.radice_id = NEW.rapporto_radice_id AND r.tenant_id = NEW.tenant_id AND r.stato = 'CHIUSO'
+  ) THEN
+    RAISE EXCEPTION 'campioni_riconciliazione: il rapporto e'' chiuso, non si aggiungono campioni'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER "campioni_riconciliazione_nuovo"
+  BEFORE INSERT ON "campioni_riconciliazione"
+  FOR EACH ROW EXECUTE FUNCTION campioni_riconciliazione_nuovo();
 
 -- Il verbale non si modifica mai (UPDATE vietato per intero).
 CREATE FUNCTION riconciliazione_no_modifica() RETURNS trigger

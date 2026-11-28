@@ -77,6 +77,7 @@ describe('RiconciliazioneImportController', () => {
       UTENTE
     )
     expect(servizio.accettaDifferenza).toHaveBeenCalledWith({
+      ruolo: 'SUPER_ADMIN',
       tenantId: T,
       radiceId: R,
       versione: 3,

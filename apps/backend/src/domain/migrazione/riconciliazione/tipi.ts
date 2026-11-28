@@ -110,6 +110,7 @@ export interface GiacenzaAttesa {
 export interface Accettazione {
   readonly motivo: string
   readonly da: string
+  readonly ruolo?: string
   readonly il: string
   /** I valori accettati: se cambiano a un nuovo calcolo, l'accettazione non vale piu'. */
   readonly sorgente: Valore

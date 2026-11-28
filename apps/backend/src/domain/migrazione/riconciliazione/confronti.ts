@@ -209,6 +209,7 @@ export function confronto2(i: IngressiConfronti): ConfrontoRiconciliazione {
   const titolo = 'Totali per CER, anno, verso e unita'
   if (!ambitiPresenti(i.destinazione).has('REGISTRO'))
     return nonApplicabile(2, titolo, 'nessun lotto del registro')
+  let senzaAnno = 0
   const attesi = new Map<string, { kg: number; m3: number }>()
   const somma = (chiave: string, kg: number, m3: number) => {
     const v = attesi.get(chiave) ?? { kg: 0, m3: 0 }
@@ -217,13 +218,20 @@ export function confronto2(i: IngressiConfronti): ConfrontoRiconciliazione {
     attesi.set(chiave, v)
   }
   for (const r of i.sorgente.confronto2.righe) {
-    if (r.anno === null) continue
+    if (r.anno === null) {
+      senzaAnno += r.movimenti
+      continue
+    }
     if (comeCarico(r.tipo)) somma(`${r.anno}|${r.cer}|CARICO`, r.kgnum, r.mcnum)
     if (comeScarico(r.tipo)) somma(`${r.anno}|${r.cer}|SCARICO`, r.kgnum, r.mcnum)
   }
   const trovati = new Map<string, { kg: number; m3: number }>()
   for (const t of i.destinazione.totali) trovati.set(`${t.anno}|${t.cer}|${t.verso}`, t)
   const voci: VoceConfronto[] = []
+  if (senzaAnno > 0)
+    voci.push(
+      voce('senza-anno', 'Movimenti WinWaste senza data (non confrontabili per anno)', senzaAnno, 0)
+    )
   for (const k of [...new Set([...attesi.keys(), ...trovati.keys()])].sort()) {
     const a = attesi.get(k)
     const t = trovati.get(k)

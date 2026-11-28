@@ -34,7 +34,11 @@ import {
   VerificaRentri,
 } from '../../../domain/migrazione/riconciliazione/tipi'
 import {
+  AccettazioneNonConsentitaError,
+  ArchivioDiversoError,
   CampioneInesistenteError,
+  CampioneNonValidoError,
+  LottoNonCompletatoError,
   DifferenzaInesistenteError,
   MotivoNonValidoError,
   RapportoChiusoError,
@@ -136,6 +140,12 @@ export class RiconciliazioneService {
 
   async genera(richiesta: GeneraRapporto): Promise<EsitoGenerazione> {
     const { tenantId } = richiesta
+    // M2: il confronto 6 non si salta.
+    if (
+      richiesta.dimensioneCampione !== undefined &&
+      (!Number.isInteger(richiesta.dimensioneCampione) || richiesta.dimensioneCampione < 1)
+    )
+      throw new CampioneNonValidoError()
     // 1. Letture (nessuna scrittura): destinazione e rapporto precedente.
     const precedente = richiesta.radiceId
       ? await this.nelTenant(tenantId, tx => this.ultimaVersione(tx, tenantId, richiesta.radiceId!))
@@ -148,6 +158,16 @@ export class RiconciliazioneService {
     const destinazione = await this.nelTenant(tenantId, tx =>
       leggiDestinazione(tx, tenantId, lottiIds)
     )
+
+    // B1: solo lotti COMPLETATO. M4: stesso archivio del rapporto sorgente.
+    const nonFiniti = destinazione.lotti.filter(l => l.stato !== 'COMPLETATO')
+    if (nonFiniti.length > 0) {
+      const stati: Record<string, number> = {}
+      for (const l of nonFiniti) stati[l.stato] = (stati[l.stato] ?? 0) + 1
+      throw new LottoNonCompletatoError(stati)
+    }
+    if (destinazione.lotti.some(l => l.archivio !== richiesta.sorgente.archivio))
+      throw new ArchivioDiversoError()
 
     // 2. Verifica RENTRI in sola lettura, fuori da ogni transazione (rete).
     let verifiche: VerificaRentri[] | undefined
@@ -168,9 +188,12 @@ export class RiconciliazioneService {
 
     // 3. Scrittura: una versione nuova solo se il rapporto e' cambiato.
     return await this.nelTenant(tenantId, async tx => {
+      // M1: la radice si blocca prima di rileggere l'ultima versione.
+      if (precedente) await this.bloccaRadice(tx, tenantId, precedente.radiceId)
       const ultima = precedente
         ? await this.ultimaVersione(tx, tenantId, precedente.radiceId)
         : null
+      if (ultima?.stato === 'CHIUSO') throw new RapportoChiusoError()
       if (ultima && ultima.versione !== precedente!.versione) {
         throw new VersioneCambiataError(precedente!.versione, ultima.versione)
       }
@@ -293,6 +316,8 @@ export class RiconciliazioneService {
     for (const c of confronti)
       for (const v of c.voci) {
         if (v.esito !== 'DIFFERENZA') continue
+        // M3: ogni ricalcolo annulla l'accettazione di un confronto non verificato.
+        if (v.chiave === 'non-verificato') continue
         const k = chiaveDifferenza(c.numero, v.chiave)
         const a = precedenti[k]
         if (a && a.sorgente === v.sorgente && a.destinazione === v.destinazione) valide[k] = a
@@ -309,6 +334,8 @@ export class RiconciliazioneService {
     chiave: string
     motivo: unknown
     utenteId: string
+    /** Ruolo di chi accetta: un `non-verificato` lo accetta solo il SUPER_ADMIN. */
+    ruolo: string
   }): Promise<RapportoLetto> {
     const motivo = motivoValido(richiesta.motivo)
     if (!motivo) throw new MotivoNonValidoError()
@@ -320,6 +347,8 @@ export class RiconciliazioneService {
         .find(x => x.k === richiesta.chiave)
       if (!voce || voce.v.esito !== 'DIFFERENZA')
         throw new DifferenzaInesistenteError(richiesta.chiave)
+      if (voce.v.chiave === 'non-verificato' && richiesta.ruolo !== 'SUPER_ADMIN')
+        throw new AccettazioneNonConsentitaError()
       const nuovi: EsitiRiconciliazione = {
         ...esiti,
         accettazioni: {
@@ -327,6 +356,7 @@ export class RiconciliazioneService {
           [richiesta.chiave]: {
             motivo,
             da: richiesta.utenteId,
+            ruolo: richiesta.ruolo,
             il: new Date().toISOString(),
             sorgente: voce.v.sorgente,
             destinazione: voce.v.destinazione,
@@ -358,6 +388,8 @@ export class RiconciliazioneService {
 
   async registraEsitoCampione(richiesta: {
     tenantId: string
+    /** B-1: il campione deve essere di QUESTO rapporto. */
+    radiceId: string
     campioneId: string
     esito: EsitoCampione
     nota?: string | null
@@ -366,10 +398,15 @@ export class RiconciliazioneService {
     if (richiesta.nota && richiesta.nota.length > 500) throw new MotivoNonValidoError()
     await this.nelTenant(richiesta.tenantId, async tx => {
       const c = await tx.campioneRiconciliazione.findFirst({
-        where: { id: richiesta.campioneId, tenantId: richiesta.tenantId },
+        where: {
+          id: richiesta.campioneId,
+          tenantId: richiesta.tenantId,
+          rapportoRadiceId: richiesta.radiceId,
+        },
         select: { id: true, rapportoRadiceId: true },
       })
       if (!c) throw new CampioneInesistenteError()
+      await this.bloccaRadice(tx, richiesta.tenantId, c.rapportoRadiceId)
       const chiuso = await tx.rapportoRiconciliazione.count({
         where: { radiceId: c.rapportoRadiceId, tenantId: richiesta.tenantId, stato: 'CHIUSO' },
       })
@@ -511,6 +548,13 @@ export class RiconciliazioneService {
 
   // --- Interni -------------------------------------------------------------------------------
 
+  /** M1: serializza le scritture sullo stesso rapporto (i trigger non vedono le righe non committate). */
+  private async bloccaRadice(tx: Tx, tenantId: string, radiceId: string): Promise<void> {
+    await tx.$queryRaw`
+      SELECT id FROM rapporti_riconciliazione
+      WHERE id = ${radiceId}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE`
+  }
+
   private async ultimaVersione(tx: Tx, tenantId: string, radiceId: string) {
     return await tx.rapportoRiconciliazione.findFirst({
       where: { tenantId, radiceId },
@@ -523,6 +567,7 @@ export class RiconciliazioneService {
     tx: Tx,
     r: { tenantId: string; radiceId: string; versione: number }
   ) {
+    await this.bloccaRadice(tx, r.tenantId, r.radiceId)
     const ultima = await this.ultimaVersione(tx, r.tenantId, r.radiceId)
     if (!ultima) throw new RapportoNonTrovatoError()
     if (ultima.stato === 'CHIUSO') throw new RapportoChiusoError()

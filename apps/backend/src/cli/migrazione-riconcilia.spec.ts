@@ -35,6 +35,7 @@ describe('migrazione:riconcilia, argomenti', () => {
     ['lotto non UUID', [...base, '--lotti', 'abc']],
     ['ripetuto', [...base, '--tenant', T]],
     ['campione negativo', [...base, '--campione', '-1']],
+    ['campione zero', [...base, '--campione', '0']],
     ['campione non intero', [...base, '--campione', '2.5']],
     ['ricalcolo con lotti', [...base, '--rapporto', L, '--lotti', T]],
     ['opzione sconosciuta', [...base, '--forza']],

@@ -70,3 +70,39 @@ export class VerbaleGiaCaricatoError extends Error {
     this.name = 'VerbaleGiaCaricatoError'
   }
 }
+
+/** B1: un rapporto si fa solo su lotti `COMPLETATO` (un lotto fallito, annullato o in corso non e' un import finito). */
+export class LottoNonCompletatoError extends Error {
+  constructor(readonly stati: Readonly<Record<string, number>>) {
+    super(
+      `i lotti devono essere COMPLETATO: ${Object.entries(stati)
+        .map(([s, n]) => `${n} ${s}`)
+        .join(', ')}`
+    )
+    this.name = 'LottoNonCompletatoError'
+  }
+}
+
+/** M4: il rapporto sorgente e i lotti devono essere dello stesso archivio. */
+export class ArchivioDiversoError extends Error {
+  constructor() {
+    super('l archivio del rapporto sorgente non e quello dei lotti')
+    this.name = 'ArchivioDiversoError'
+  }
+}
+
+/** M2: il campione a mano non si salta. */
+export class CampioneNonValidoError extends Error {
+  constructor() {
+    super('il campione a mano deve avere almeno 1 riga per tipo')
+    this.name = 'CampioneNonValidoError'
+  }
+}
+
+/** M3: un confronto non verificato lo accetta solo il SUPER_ADMIN. */
+export class AccettazioneNonConsentitaError extends Error {
+  constructor() {
+    super('un confronto non verificato si accetta solo da SUPER_ADMIN')
+    this.name = 'AccettazioneNonConsentitaError'
+  }
+}
