@@ -828,6 +828,12 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
   riaccensione parte tutto quello che si e' accumulato in coda: controllare prima il numero di
   righe `DA_TRASMETTERE` (`SELECT count(*) FROM movimenti_trasmissione_rentri WHERE stato =
   'DA_TRASMETTERE' AND escluso_il IS NULL`).
+- **Esportazione XML mensile automatica del registro** (eREGI E7): variabile
+  `RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE`, **SPENTA di predefinito** (solo il testo esatto `true` la
+  accende; il compose di produzione la imposta a `false`). **Non accenderla finche' la catena dei
+  digest non e' provata sull'ambiente demo RENTRI** (piano eREGI Q6). Nessuna migration in E7. Guida
+  completa, comportamento del job e come accenderlo: `docs/rentri/esportazione-xml-registro.md`.
+  Dal pannello del registro «Genera esportazione» funziona comunque (non dipende dall'interruttore).
 - **Controllo dei moduli nel backend**: variabile `MODULI_BACKEND_MODALITA`, default del codice `blocca`;
   in produzione il compose la porta a `registra` per il primo rilascio (09/11), da riportare a `blocca` dopo i log;
   (403 `MODULO_NON_ATTIVO` sulle rotte di un modulo non attivo per l'azienda); `registra` lascia
