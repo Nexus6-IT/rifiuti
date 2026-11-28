@@ -12,12 +12,15 @@ SUFFISSO="${GITHUB_RUN_ID:-locale}-${GITHUB_JOB:-job}"
 PID_FILE="/tmp/sdi-fake-${SUFFISSO}.pid"
 LOG_FILE="/tmp/sdi-fake-${SUFFISSO}.log"
 RADICE="$(cd "$(dirname "$0")/../.." && pwd)"
+# Uso locale senza runner: nessun $GITHUB_ENV, se ne usa uno temporaneo.
+GITHUB_ENV="${GITHUB_ENV:-$(mktemp)}"
+export GITHUB_ENV
 
 case "${1:-}" in
   avvia)
-    GITHUB_ENV="${GITHUB_ENV:-/dev/null}" bash "$RADICE/scripts/ci/porta-libera.sh" SDI_FAKE_PORT
+    bash "$RADICE/scripts/ci/porta-libera.sh" SDI_FAKE_PORT
     PORTA=$(grep -E '^SDI_FAKE_PORT=' "$GITHUB_ENV" | tail -1 | cut -d= -f2)
-    PORT="$PORTA" nohup node "$RADICE/tools/sdi-fake/src/server.js" > "$LOG_FILE" 2>&1 &
+    HOST=127.0.0.1 PORT="$PORTA" nohup node "$RADICE/tools/sdi-fake/src/server.js" > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     for i in $(seq 1 20); do
       if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORTA}/__salute" || true)" = "200" ]; then

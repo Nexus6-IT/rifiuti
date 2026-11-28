@@ -106,6 +106,17 @@ test('P.IVA non configurata: lettura 404, invio 422 PIVA_NON_CONFIGURATA', async
   await f.chiudi()
 })
 
+test('configurazione con JSON non valido: 400', async () => {
+  const f = await avvia()
+  const r = await fetch(f.base + `/v1/configurazioni/${CEDENTE}`, {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+    body: '{non json',
+  })
+  assert.equal(r.status, 400)
+  await f.chiudi()
+})
+
 test('configurazione: formato della P.IVA e dell URL', async () => {
   const f = await avvia()
   assert.equal((await f.chiama('PUT', '/v1/configurazioni/123', { segreto: 'x' })).status, 400)

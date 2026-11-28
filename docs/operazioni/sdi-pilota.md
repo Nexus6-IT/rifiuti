@@ -56,7 +56,7 @@ trasmissione allo SDI dipende dal provider (rischio R6 del piano, fuori perimetr
 - **Stato del sistema** (SUPER_ADMIN): la voce «Trasmissioni SDI ferme da oltre un'ora» è in errore se
   c'è almeno una trasmissione `INCERTA` o `IN_INVIO` ferma da più di un'ora, su tutte le aziende. Il
   dettaglio riporta solo i conteggi.
-- **Avvisi in-app agli ADMIN dell'azienda** (sonda, ogni 10 minuti, uno per trasmissione):
+- **Avvisi in-app agli ADMIN dell'azienda** (sonda, ogni 10 minuti, uno per trasmissione e per stato: una INCERTA avvisata e poi scartata riceve anche l'avviso di scarto):
   - «Invio allo SDI incerto»: `INCERTA` da oltre un'ora;
   - «Fattura scartata dallo SDI»: `SCARTATA`, con i codici dello scarto;
   - «Invio allo SDI non riuscito»: `ERRORE_INVIO` (rete di sicurezza dell'avviso immediato).
@@ -83,7 +83,7 @@ Resta `INCERTA` oltre un'ora solo se il provider non risponde alla ricerca. Quin
 2. **Non rinviare a mano e non annullare il documento** finché lo stato è `INCERTA`: l'invio potrebbe
    essere partito, e un secondo invio produrrebbe una fattura doppia presso lo SDI (scarto 00404/00002
    nel migliore dei casi).
-3. Se il provider è tornato e la trasmissione non si sblocca entro un giro (15 minuti), cercare nel
+3. Se il provider è tornato e la trasmissione non si sblocca entro due minuti (il job d'invio gira ogni minuto), cercare nel
    pannello del provider un invio con il nome file riportato nell'avviso. Trovato: aspettare le ricevute.
    Non trovato dopo la sua conferma scritta: la trasmissione tornerà `DA_INVIARE` da sola al giro dopo.
 

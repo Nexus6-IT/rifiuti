@@ -84,7 +84,10 @@ function creaServer(opzioni = {}) {
         // rete o timeout: si ritenta, come un provider che garantisce «almeno una volta»
       }
       await new Promise(r => {
-        const h = setTimeout(r, attesaRitentoMs * i)
+        const h = setTimeout(() => {
+          timer.delete(h)
+          r()
+        }, attesaRitentoMs * i)
         timer.add(h)
       })
     }
@@ -132,7 +135,12 @@ function creaServer(opzioni = {}) {
         return json(res, 200, { partitaIva: piva, webhookUrl: c.webhookUrl ?? null })
       }
       if (metodo === 'PUT') {
-        const c = JSON.parse((await leggiCorpo(req)).toString('utf8') || '{}')
+        let c
+        try {
+          c = JSON.parse((await leggiCorpo(req)).toString('utf8') || '{}')
+        } catch {
+          return json(res, 400, { codice: 'CORPO_NON_VALIDO' })
+        }
         if (c.webhookUrl !== undefined && !/^https?:\/\//.test(String(c.webhookUrl))) {
           return json(res, 400, { codice: 'WEBHOOK_URL_NON_VALIDO' })
         }

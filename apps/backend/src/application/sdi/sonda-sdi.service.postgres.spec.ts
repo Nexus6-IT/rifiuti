@@ -217,6 +217,37 @@ describe('SondaSdiService — Postgres reale, ruolo wasteflow_app', () => {
     expect((await sonda.giroAzienda(con.t, T0)).avvisiCreati).toBe(0)
   }, 60_000)
 
+  it('INCERTA avvisata, poi la stessa trasmissione diventa SCARTATA: un secondo avviso, quello di scarto', async () => {
+    const az = await azienda()
+    const id = await trasmissione(
+      az,
+      'INCERTA',
+      new Date(T0.getTime() - SOGLIA_INCERTA_SDI_MS - 60_000)
+    )
+    expect((await sonda.giroAzienda(az.t, T0)).avvisiCreati).toBe(1)
+    // La riconciliazione la trova (INVIATA), poi arriva lo scarto.
+    for (const stato of ['INVIATA', 'SCARTATA']) {
+      await owner.$executeRawUnsafe(
+        `UPDATE trasmissioni_sdi SET stato = $2::stato_trasmissione_sdi, id_provider = 'prov-1',
+           updated_at = now() WHERE id = $1::uuid`,
+        id,
+        stato
+      )
+    }
+    await owner.$executeRawUnsafe(
+      `INSERT INTO notifiche_sdi (tenant_id, trasmissione_id, tipo, codici_errore, fonte, chiave_dedup)
+       VALUES ($1::uuid, $2::uuid, 'NS', ARRAY['00305'], 'WEBHOOK', $3)`,
+      az.t,
+      id,
+      `k-${id}`
+    )
+    expect((await sonda.giroAzienda(az.t, T0)).avvisiCreati).toBe(1)
+    const titoli = (await avvisi(az)).map(x => x.title)
+    expect(titoli).toEqual(['Invio allo SDI incerto', 'Fattura scartata dallo SDI'])
+    // E ora basta: niente ripetizioni per lo stesso stato.
+    expect((await sonda.giroAzienda(az.t, T0)).avvisiCreati).toBe(0)
+  }, 60_000)
+
   it('un documento annullato non genera avvisi', async () => {
     const az = await azienda()
     await trasmissione(az, 'SCARTATA', new Date(T0.getTime() - 5 * 60_000))

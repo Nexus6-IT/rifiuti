@@ -1,18 +1,24 @@
 // Sonda delle trasmissioni SDI di UNA azienda (4.5f T1, piano §4.5f): avvisa in-app gli ADMIN quando una
 // fattura ha bisogno di una persona. La chiama `SdiSondaJob` ogni 10 minuti.
 //
-// Cosa segnala (una sola volta per trasmissione, mai per documenti annullati o gia' rifatturati):
+// Cosa segnala (una volta per trasmissione e per stato, mai per documenti annullati o gia' rifatturati):
 //   - `INCERTA` da oltre un'ora: non si sa se il provider ha ricevuto l'invio, non rinviare alla cieca;
 //   - `SCARTATA`: lo SDI ha rifiutato il file, va annullata e rifatturata (con i codici dello scarto);
 //   - `ERRORE_INVIO`: rete di sicurezza dell'avviso immediato di `ElaboraInvioSdiService`, che puo'
 //     fallire in silenzio; non si ripete se quell'avviso esiste gia'.
-// Idempotenza: l'avviso porta `related_entity_type = 'TrasmissioneSdi'` e l'id della trasmissione; una
-// trasmissione con un avviso del genere non viene segnalata di nuovo. Le notifiche scadono dopo 30 giorni
+// Idempotenza: l'avviso porta `related_entity_type = 'TrasmissioneSdi'`, l'id della trasmissione e il titolo
+// dello stato segnalato: una volta per trasmissione E PER STATO (un INCERTA avvisato e poi SCARTATO
+// riceve anche l'avviso di scarto). Le notifiche scadono dopo 30 giorni
 // (cleanup generale): una trasmissione ancora irrisolta dopo tanto riceve un secondo avviso, e va bene
 // cosi' (promemoria). Solo SYSTEM_ERROR: nessun nuovo valore dell'enum, nessuna migration.
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import {
+  TITOLO_AVVISO_SDI_ERRORE_INVIO,
+  TITOLO_AVVISO_SDI_INCERTA,
+  TITOLO_AVVISO_SDI_SCARTATA,
+} from './titoli-avvisi-sdi'
 
 /** `INCERTA` da cosi' tanto senza esito: serve una persona. */
 export const SOGLIA_INCERTA_SDI_MS = 3_600_000
@@ -63,13 +69,17 @@ export class SondaSdiService {
           AND NOT EXISTS (SELECT 1 FROM "notifications" nt
                           WHERE nt.tenant_id = t.tenant_id
                             AND nt.related_entity_type = 'TrasmissioneSdi'
-                            AND nt.related_entity_id = t.id)
+                            AND nt.related_entity_id = t.id
+                            AND nt.title = CASE t.stato::text
+                                WHEN 'INCERTA' THEN ${TITOLO_AVVISO_SDI_INCERTA}
+                                WHEN 'SCARTATA' THEN ${TITOLO_AVVISO_SDI_SCARTATA}
+                                ELSE ${TITOLO_AVVISO_SDI_ERRORE_INVIO} END)
           -- Avviso immediato dell'invio fallito gia' consegnato.
           AND NOT (t.stato = 'ERRORE_INVIO' AND EXISTS (
                           SELECT 1 FROM "notifications" im
                           WHERE im.tenant_id = t.tenant_id
                             AND im.related_entity_id = t.documento_id
-                            AND im.title = 'Invio allo SDI non riuscito'
+                            AND im.title = ${TITOLO_AVVISO_SDI_ERRORE_INVIO}
                             AND im.created_at >= COALESCE(t.chiusa_il, t.updated_at)))
         ORDER BY t.updated_at, t.id
         LIMIT ${LIMITE_PER_GIRO}::int`
@@ -116,21 +126,21 @@ function descrivi(p: Problema): {
   switch (p.stato) {
     case 'INCERTA':
       return {
-        titolo: 'Invio allo SDI incerto',
+        titolo: TITOLO_AVVISO_SDI_INCERTA,
         gravita: 'WARNING',
         messaggio: `Non è certo che la fattura (file ${p.nomeFile}) sia arrivata al provider: l'esito non è noto da oltre un'ora. Apri la cronologia del documento e verifica prima di rinviarla, per non emettere due volte la stessa fattura.`,
       }
     case 'SCARTATA': {
       const codici = p.codici && p.codici.length > 0 ? ` (codici ${p.codici.join(', ')})` : ''
       return {
-        titolo: 'Fattura scartata dallo SDI',
+        titolo: TITOLO_AVVISO_SDI_SCARTATA,
         gravita: 'ERROR',
         messaggio: `Lo SDI ha scartato la fattura (file ${p.nomeFile})${codici}. Apri il documento: puoi annullarla e rifatturarla.`,
       }
     }
     case 'ERRORE_INVIO':
       return {
-        titolo: 'Invio allo SDI non riuscito',
+        titolo: TITOLO_AVVISO_SDI_ERRORE_INVIO,
         gravita: 'ERROR',
         messaggio: `La fattura (file ${p.nomeFile}) non è stata inviata allo SDI${p.errore ? ` (codice ${p.errore})` : ''}. Controlla il documento e riprova l'invio.`,
       }
