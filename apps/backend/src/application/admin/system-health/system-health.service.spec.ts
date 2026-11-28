@@ -145,4 +145,35 @@ describe('SystemHealthService', () => {
     await numerazione?.verifica()
     expect(evidenze.verificaNumerazioneFatturazione).toHaveBeenCalledTimes(1)
   })
+  it('espone fra i controlli le trasmissioni SDI ferme da oltre un\x27ora', async () => {
+    const evidenze = {
+      verificaConnessione: jest.fn(),
+      verificaCatalogoCausali: jest.fn(),
+      verificaNumerazioneFatturazione: jest.fn(),
+      verificaTrasmissioniSdi: jest.fn().mockResolvedValue('ok'),
+    }
+    const s = new SystemHealthService(
+      evidenze as never,
+      {} as never,
+      { get: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      codeProbe as never,
+      jobProbe as never,
+      infraProbe as never,
+      freschezzaProbe as never,
+      credenzialiProbe as never,
+      flagProbe as never,
+      new Map()
+    )
+    await s.stato()
+    const controlli = infraProbe.raccogli.mock.calls[0][0] as {
+      key: string
+      verifica: () => Promise<string>
+    }[]
+    const sdi = controlli.find(c => c.key === 'sdi-trasmissioni')
+    expect(sdi).toBeDefined()
+    await sdi?.verifica()
+    expect(evidenze.verificaTrasmissioniSdi).toHaveBeenCalledTimes(1)
+  })
 })

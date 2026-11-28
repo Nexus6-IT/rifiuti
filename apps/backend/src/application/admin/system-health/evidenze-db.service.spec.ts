@@ -76,4 +76,20 @@ describe('EvidenzeDbService', () => {
       expect((errore as Error).message).not.toContain('azienda-segreta')
     })
   })
+  describe('verificaTrasmissioniSdi', () => {
+    it('senza trasmissioni bloccate la voce e\x27 sana', async () => {
+      const sistema = { $queryRaw: jest.fn().mockResolvedValue([{ incerte: 0, bloccate: 0 }]) }
+      const service = new EvidenzeDbService(sistema as never)
+      await expect(service.verificaTrasmissioniSdi()).resolves.toContain('nessuna')
+    })
+
+    it('con trasmissioni ferme solleva riportando solo i conteggi', async () => {
+      const sistema = { $queryRaw: jest.fn().mockResolvedValue([{ incerte: 2, bloccate: 1 }]) }
+      const service = new EvidenzeDbService(sistema as never)
+      const errore = await service.verificaTrasmissioniSdi().catch((e: Error) => e)
+      expect((errore as Error).message).toBe(
+        'Trasmissioni SDI ferme da oltre un\x27ora: 2 con esito incerto, 1 in invio'
+      )
+    })
+  })
 })
