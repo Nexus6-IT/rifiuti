@@ -101,6 +101,12 @@ export interface OpzioniGenerazione {
    * del mese della piu' vecchia annotazione ancora non confermata da RENTRI). Assente = nessun limite.
    */
   fino?: Date
+  /**
+   * Sotto lock, genera solo se non ci sono esportazioni vive o l'ultima e' `VALIDATA`/`VALIDATA_CON_AVVISI`
+   * (un anello alla volta). Lo usa il job: due giri insieme, o un «Genera» manuale concomitante, non
+   * impilano due file senza esito.
+   */
+  richiediUltimaConfermata?: boolean
 }
 
 const selezioneSintesi = {
@@ -291,6 +297,15 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     if (catena.some(e => e.stato === 'RIFIUTATA')) throw new EsportazioneRifiutataInCatenaError()
     if (catena.some(e => !e.firmato || e.digestValue === null)) {
       throw new CatenaEsportazioniNonCoerenteError('contiene un anello non firmato')
+    }
+
+    if (
+      opzioni.richiediUltimaConfermata &&
+      ultima &&
+      ultima.stato !== 'VALIDATA' &&
+      ultima.stato !== 'VALIDATA_CON_AVVISI'
+    ) {
+      return { esito: 'NIENTE_DA_ESPORTARE', esportazione: this.sintesi(ultima) }
     }
 
     // Cursore: anno e primo progressivo ancora da esportare.

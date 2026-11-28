@@ -413,6 +413,24 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
     expect(await righe(s)).toHaveLength(1)
   })
 
+  it('richiediUltimaConfermata: con l ultima senza esito non genera, con l ultima validata si', async () => {
+    const s = await scenario()
+    await aggiungiAnnotazioni(owner, s, 2026, 1, 2)
+    const opz = { creataDa: null, valida: false, richiediUltimaConfermata: true }
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe('CREATA')
+    await aggiungiAnnotazioni(owner, s, 2026, 3, 4)
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe(
+      'NIENTE_DA_ESPORTARE'
+    )
+    expect(await righe(s)).toHaveLength(1)
+    await owner.esportazioneRegistroRentri.updateMany({
+      where: { registroId: s.registroId },
+      data: { stato: 'VALIDATA' },
+    })
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe('CREATA')
+    expect(await righe(s)).toHaveLength(2)
+  })
+
   describe('limite di data (`fino`, per l esportazione mensile)', () => {
     /** Sposta la data di annotazione delle annotazioni indicate (scritta dal proprietario). */
     async function datai(ids: string[], iso: string) {

@@ -334,14 +334,18 @@ export class RentriRegistroEsportazioniComponent implements OnInit, OnChanges {
   }
 
   carica(): void {
-    this.servizio.elenco(this.registroId).subscribe({
+    const registroId = this.registroId
+    this.servizio.elenco(registroId).subscribe({
       next: r => {
+        // Risposta di un registro già lasciato: si scarta.
+        if (registroId !== this.registroId) return
         this.esportazioni.set(r.esportazioni)
         this.automaticaAttiva.set(r.automaticaAttiva === true)
         this.errore.set(null)
         this.caricato.set(true)
       },
       error: err => {
+        if (registroId !== this.registroId) return
         this.esportazioni.set([])
         this.errore.set(messaggioErroreRentri(err))
         this.caricato.set(true)
@@ -367,7 +371,7 @@ export class RentriRegistroEsportazioniComponent implements OnInit, OnChanges {
   private notificaGenerazione(esito: EsitoGenerazione): void {
     if (esito.esito === 'CREATA') {
       const n = esito.esportazione.numeroRegistrazioni
-      const base = `Esportazione generata e firmata: ${n} ${n === 1 ? 'registrazione' : 'registrazioni'}, validazione di RENTRI avviata.`
+      const base = `Esportazione generata e firmata: ${n} ${n === 1 ? 'registrazione' : 'registrazioni'}.`
       if (esito.fermataA) {
         this.toast.warn(
           `${base} Si ferma al numero ${esito.fermataA.progressivo}: ${esito.fermataA.motivi.join(' ')}`

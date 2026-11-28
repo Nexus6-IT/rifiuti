@@ -2,14 +2,20 @@ import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
+import {
+  CatenaEsportazioniNonCoerenteError,
+  EsportazioneRifiutataInCatenaError,
+} from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import { esportazioniAutomaticheAttive } from '../../application/rentri/registro/esportazioni-automatiche-attive'
 import { GeneraEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/genera-esportazione-registro-rentri.use-case'
 import { inviiRegistroAttivi } from '../../application/rentri/registro/invii-registro-attivi'
 import {
+  inizioMeseItaliano,
   limiteEsportazioneMensile,
   piuVecchiaNonConfermataPerRegistro,
 } from '../../application/rentri/registro/limite-esportazione-mensile'
 import { ValidaEsportazioneRegistroRentriUseCase } from '../../application/rentri/registro/valida-esportazione-registro-rentri.use-case'
+import { giornoItaliano } from '../../core/time/anno-italiano'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 import { TenantContext } from '../../core/context/tenant-context'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -204,8 +210,19 @@ export class RentriRegistroEsportazioneJob {
         if (ultima && !STATI_CONFERMATI.includes(ultima.stato)) continue
 
         const fino = limiteEsportazioneMensile(nonConfermate.get(registro.id) ?? null, oggi)
+        if (fino.getTime() < inizioMeseItaliano(oggi).getTime()) {
+          // Il limite e' arretrato: annotazioni non confermate da RENTRI tengono fermo il registro.
+          this.logger.warn(
+            'Esportazione del registro RENTRI ferma al mese della piu vecchia annotazione non confermata',
+            { tenantId, registroId: registro.id, mese: giornoItaliano(fino).slice(0, 7) }
+          )
+        }
         const esito = await nelTenant(() =>
-          this.genera.genera(tenantId, registro.id, { creataDa: null, fino })
+          this.genera.genera(tenantId, registro.id, {
+            creataDa: null,
+            fino,
+            richiediUltimaConfermata: true,
+          })
         )
         if (esito.esito === 'CREATA') {
           this.logger.info('Registro RENTRI: esportazione mensile generata', {
@@ -223,6 +240,18 @@ export class RentriRegistroEsportazioneJob {
           })
         }
       } catch (error: unknown) {
+        if (
+          error instanceof EsportazioneRifiutataInCatenaError ||
+          error instanceof CatenaEsportazioniNonCoerenteError
+        ) {
+          // Serve una persona (sostituzione o assistenza): un avviso al giorno, non un errore in Bugsink.
+          this.logger.warn('Esportazione del registro RENTRI ferma: serve una decisione', {
+            tenantId,
+            registroId: registro.id,
+            tipo: error.name,
+          })
+          continue
+        }
         errore('generazione', error, { registroId: registro.id })
       }
     }

@@ -14,7 +14,7 @@
  */
 import type { Prisma } from '@prisma/client'
 import { giornoItaliano, inizioGiornoItaliano } from '../../../core/time/anno-italiano'
-import { annotazioniPiuVecchieDaTrasmettere } from './scadenza-trasmissione-rentri'
+import { PREDICATO_DA_TRASMETTERE } from './scadenza-trasmissione-rentri'
 
 /** Primo istante (00:00 a Roma) del mese di calendario di Roma che contiene `istante`. */
 export function inizioMeseItaliano(istante: Date): Date {
@@ -43,7 +43,23 @@ export async function piuVecchiaNonConfermataPerRegistro(
   tx: Prisma.TransactionClient,
   tenantId: string
 ): Promise<Map<string, Date>> {
-  const risultato = await annotazioniPiuVecchieDaTrasmettere(tx, tenantId)
+  // Stesso predicato del termine E0, MA senza le righe escluse dall'invio da un ADMIN (si
+  // trasmettono per altra via: non arrivera' mai una conferma) e senza le NON_TRASMISSIBILE (non
+  // si confermano da sole): altrimenti una sola riga cosi' fermerebbe l'esportazione per sempre.
+  const righe = await tx.$queryRaw<Array<{ registro_id: string; piu_vecchia: Date }>>`
+    SELECT m."registro_id", MIN(m."registration_date") AS "piu_vecchia"
+    FROM "waste_movements" m
+    JOIN "registri_rifiuti" r ON r."id" = m."registro_id" AND r."tenant_id" = m."tenant_id"
+    LEFT JOIN "waste_movements" p
+      ON p."id" = m."movimento_rettificato_id" AND p."tenant_id" = m."tenant_id"
+    LEFT JOIN "movimenti_trasmissione_rentri" t
+      ON t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id"
+    WHERE m."tenant_id" = ${tenantId}::uuid
+      AND r."rentri_chiuso_il" IS NULL
+      AND (t."id" IS NULL OR (t."escluso_il" IS NULL AND t."stato"::text <> 'NON_TRASMISSIBILE'))
+      AND ${PREDICATO_DA_TRASMETTERE}
+    GROUP BY m."registro_id"`
+  const risultato = new Map(righe.map(g => [g.registro_id, g.piu_vecchia]))
   const inCorso = await tx.$queryRaw<Array<{ registro_id: string; piu_vecchia: Date }>>`
     SELECT m."registro_id", MIN(m."registration_date") AS "piu_vecchia"
     FROM "movimenti_trasmissione_rentri" t

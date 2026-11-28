@@ -1,5 +1,9 @@
 import * as Sentry from '@sentry/node'
 import { RentriRegistroEsportazioneJob } from './rentri-registro-esportazione.job'
+import {
+  CatenaEsportazioniNonCoerenteError,
+  EsportazioneRifiutataInCatenaError,
+} from '../../application/rentri/registro/errori-esportazioni-registro-rentri'
 import { VARIABILE_INVII_REGISTRO } from '../../application/rentri/registro/invii-registro-attivi'
 import { VARIABILE_ESPORTAZIONI_AUTOMATICHE } from '../../application/rentri/registro/esportazioni-automatiche-attive'
 
@@ -238,6 +242,36 @@ describe('RentriRegistroEsportazioneJob', () => {
           },
         })
       )
+    })
+
+    it('chiede la generazione solo se l ultima e confermata (controllo sotto lock)', async () => {
+      const { job, genera } = build({ t1: ['r1'] })
+      await job.eseguiEsportazione()
+      expect(genera.genera.mock.calls[0][2].richiediUltimaConfermata).toBe(true)
+    })
+
+    it.each([
+      ['rifiutata in mezzo alla catena', () => new EsportazioneRifiutataInCatenaError()],
+      ['catena non coerente', () => new CatenaEsportazioniNonCoerenteError('prova')],
+    ])('%s: un avviso, non un errore segnalato', async (_nome, crea) => {
+      const { job, genera } = build({ t1: ['r1', 'r2'] })
+      genera.genera.mockRejectedValueOnce(crea())
+      await job.eseguiEsportazione()
+      expect(genera.genera).toHaveBeenCalledTimes(2)
+      expect(logger.error).not.toHaveBeenCalled()
+      expect(Sentry.captureException).not.toHaveBeenCalled()
+      expect(logger.warn.mock.calls.some(c => /serve una decisione/i.test(c[0]))).toBe(true)
+    })
+
+    it('limite arretrato da annotazioni non confermate: avviso con registro e mese', async () => {
+      ;(piuVecchiaNonConfermataPerRegistro as jest.Mock).mockResolvedValue(
+        new Map([['r1', new Date('2026-09-12T10:00:00Z')]])
+      )
+      const { job } = build({ t1: ['r1', 'r2'] })
+      await job.eseguiEsportazione()
+      const avvisi = logger.warn.mock.calls.filter(c => /ferma al mese/i.test(c[0]))
+      expect(avvisi).toHaveLength(1)
+      expect(avvisi[0][1]).toMatchObject({ registroId: 'r1', mese: '2026-09' })
     })
 
     it('un errore su un registro non ferma gli altri e viene segnalato', async () => {

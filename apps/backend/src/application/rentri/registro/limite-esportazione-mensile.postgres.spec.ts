@@ -125,6 +125,20 @@ describe('piuVecchiaNonConfermataPerRegistro — Postgres reale, ruolo wasteflow
     expect((await leggi(s)).get(s.registroId)?.toISOString()).toBe('2026-03-15T10:00:00.000Z')
   })
 
+  it("una riga esclusa dall'invio e una NON_TRASMISSIBILE non fermano il limite", async () => {
+    const s = await scenario()
+    const esclusa = await movimento(s, '2026-01-10T10:00:00Z', 'DA_TRASMETTERE')
+    await owner.movimentoTrasmissioneRentri.update({
+      where: { movimentoId: esclusa.id },
+      data: { esclusoIl: new Date(), motivoEsclusione: 'si trasmette dal portale' },
+    })
+    await movimento(s, '2026-02-10T10:00:00Z', 'NON_TRASMISSIBILE')
+    expect((await leggi(s)).get(s.registroId)).toBeUndefined()
+    // Una rifiutata (si puo ritrasmettere) continua invece a pesare.
+    await movimento(s, '2026-03-10T10:00:00Z', 'RIFIUTATA')
+    expect((await leggi(s)).get(s.registroId)?.toISOString()).toBe('2026-03-10T10:00:00.000Z')
+  })
+
   it('un altra azienda non vede i registri di questa (RLS)', async () => {
     const a = await scenario()
     const b = await scenario()
