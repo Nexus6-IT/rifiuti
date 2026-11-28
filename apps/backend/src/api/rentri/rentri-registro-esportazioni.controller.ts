@@ -23,6 +23,8 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 import { RegistroNonTrovatoError } from '../../application/registro/registri.service'
 import { RUOLI_SCRITTURA_RENTRI } from '../../application/rentri/verifica-ruolo-scrittura-rentri'
+import { esportazioniAutomaticheAttive } from '../../application/rentri/registro/esportazioni-automatiche-attive'
+import { inviiRegistroAttivi } from '../../application/rentri/registro/invii-registro-attivi'
 import { EsportazioneRegistroNonValidaError } from '../../application/rentri/registro/costruisci-esportazione-registro'
 import {
   RegistroNonCollegatoRentriError,
@@ -140,14 +142,20 @@ export class RentriRegistroEsportazioniController {
 
   @Get('registri/:registroId/esportazioni')
   @ApiOperation({ summary: 'Esportazioni XML del registro, dalla più recente' })
-  @ApiResponse({ status: 200, description: 'Elenco con stato, intervallo e digest abbreviato' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Elenco con stato, intervallo e digest abbreviato; automaticaAttiva: il job mensile e acceso',
+  })
   async elenca(
     @Param('registroId', uuidRegistro) registroId: string,
     @Req() req: any
-  ): Promise<{ esportazioni: VoceElencoEsportazione[] }> {
+  ): Promise<{ esportazioni: VoceElencoEsportazione[]; automaticaAttiva: boolean }> {
     const tenantId = requireRequestTenantId(req)
     return {
       esportazioni: await this.conErrori(() => this.esportazioni.elenca(tenantId, registroId)),
+      // Il job mensile gira solo con il suo interruttore acceso E gli invii del registro attivi.
+      automaticaAttiva: esportazioniAutomaticheAttive() && inviiRegistroAttivi(),
     }
   }
 
