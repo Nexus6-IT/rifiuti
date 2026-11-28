@@ -11,6 +11,7 @@ import { RentriRegistroCollegamentoController } from '../../../api/rentri/rentri
 import { RentriRegistroEsportazioniController } from '../../../api/rentri/rentri-registro-esportazioni.controller'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
+import { RentriRegistroEsportazioneJob } from '../../../infrastructure/jobs/rentri-registro-esportazione.job'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-case'
@@ -70,6 +71,7 @@ import { EsportazioniRegistroRentriService } from './esportazioni-registro-rentr
     SostituisciEsportazioneRegistroRentriUseCase,
     EsportazioniRegistroRentriService,
     RentriRegistroTrasmissioneJob,
+    RentriRegistroEsportazioneJob,
   ],
   exports: [
     AccodaTrasmissioneRentriUseCase,

@@ -116,6 +116,10 @@ services:
       # Interruttore di emergenza degli invii del registro a RENTRI: solo il testo
       # esatto "false" li sospende (ops/README, F2-9). Default: attivi.
       RENTRI_REGISTRO_INVII_ATTIVI: ${RENTRI_REGISTRO_INVII_ATTIVI:-true}
+      # Esportazione XML mensile automatica del registro (eREGI E7): SPENTA. Solo il testo
+      # esatto "true" la accende; resta spenta finche' la prova sul demo RENTRI non conferma la
+      # catena dei digest (ops/README, piano eREGI Q6).
+      RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE: ${RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE:-false}
       # Moduli commerciali chiusi nel backend: blocca | registra (solo avviso nel log).
       # Primo rilascio in produzione in `registra` (decisione del 09/11): si passa a `blocca`
       # cambiando questo default dopo la lettura dei log.

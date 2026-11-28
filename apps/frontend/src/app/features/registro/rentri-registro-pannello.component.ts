@@ -40,6 +40,7 @@ import {
   messaggioErroreRentri,
 } from './rentri-registro.service'
 import { RentriRegistroImpostazioniDialogComponent } from './rentri-registro-impostazioni-dialog.component'
+import { RentriRegistroEsportazioniComponent } from './rentri-registro-esportazioni.component'
 import {
   STATI_RENTRI,
   StatoRentri,
@@ -417,6 +418,7 @@ type TipoConferma = 'selezionati' | 'storico'
     NumeroItalianoDirective,
     TagModule,
     RentriRegistroImpostazioniDialogComponent,
+    RentriRegistroEsportazioniComponent,
   ],
   template: `
     <section
@@ -534,6 +536,13 @@ type TipoConferma = 'selezionati' | 'storico'
           Riprova fra poco.
         </ng-template>
       </p>
+
+      <app-rentri-registro-esportazioni
+        *ngIf="r.identificativoRentri"
+        [registroId]="r.registroId"
+        [puoGenerare]="puoTrasmettere()"
+        [puoSostituire]="puoConfigurare()"
+      ></app-rentri-registro-esportazioni>
 
       <p class="rentri-nota" data-testid="rentri-nota-obbligo">
         L'obbligo di trasmettere il registro dipende dalla categoria dell'azienda (DM 59/2023):

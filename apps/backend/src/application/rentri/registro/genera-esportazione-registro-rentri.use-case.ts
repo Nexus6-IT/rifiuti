@@ -95,6 +95,18 @@ export interface OpzioniGenerazione {
   creataDa: string | null
   /** Avvia la validazione verso RENTRI dopo la generazione (predefinito `true`). */
   valida?: boolean
+  /**
+   * Esclude le annotazioni con data di annotazione (`registrationDate`) pari o successiva a questo
+   * istante: l'esportazione mensile automatica la usa per fermarsi all'inizio del mese corrente (o
+   * del mese della piu' vecchia annotazione ancora non confermata da RENTRI). Assente = nessun limite.
+   */
+  fino?: Date
+  /**
+   * Sotto lock, genera solo se non ci sono esportazioni vive o l'ultima e' `VALIDATA`/`VALIDATA_CON_AVVISI`
+   * (un anello alla volta). Lo usa il job: due giri insieme, o un «Genera» manuale concomitante, non
+   * impilano due file senza esito.
+   */
+  richiediUltimaConfermata?: boolean
 }
 
 const selezioneSintesi = {
@@ -287,8 +299,17 @@ export class GeneraEsportazioneRegistroRentriUseCase {
       throw new CatenaEsportazioniNonCoerenteError('contiene un anello non firmato')
     }
 
+    if (
+      opzioni.richiediUltimaConfermata &&
+      ultima &&
+      ultima.stato !== 'VALIDATA' &&
+      ultima.stato !== 'VALIDATA_CON_AVVISI'
+    ) {
+      return { esito: 'NIENTE_DA_ESPORTARE', esportazione: this.sintesi(ultima) }
+    }
+
     // Cursore: anno e primo progressivo ancora da esportare.
-    const cursore = await this.trovaCursore(tx, tenantId, registroId, ultima)
+    const cursore = await this.trovaCursore(tx, tenantId, registroId, ultima, opzioni.fino)
     if (cursore === null) {
       return {
         esito: 'NIENTE_DA_ESPORTARE',
@@ -307,6 +328,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
           gte: cursore.progressivo,
           lt: cursore.progressivo + this.tetto,
         },
+        ...(opzioni.fino ? { registrationDate: { lt: opzioni.fino } } : {}),
       },
       orderBy: { progressiveNumber: 'asc' },
       select: {
@@ -415,8 +437,10 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     tx: Tx,
     tenantId: string,
     registroId: string,
-    ultima: { anno: number; progressivoA: number } | null
+    ultima: { anno: number; progressivoA: number } | null,
+    fino?: Date
   ): Promise<{ anno: number; progressivo: number } | null> {
+    const entroLimite = fino ? { registrationDate: { lt: fino } } : {}
     if (ultima) {
       const stessoAnno = await tx.wasteMovement.findFirst({
         where: {
@@ -424,6 +448,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
           registroId,
           progressiveYear: ultima.anno,
           progressiveNumber: { gt: ultima.progressivoA },
+          ...entroLimite,
         },
         select: { id: true },
       })
@@ -434,13 +459,14 @@ export class GeneraEsportazioneRegistroRentriUseCase {
         tenantId,
         registroId,
         ...(ultima ? { progressiveYear: { gt: ultima.anno } } : {}),
+        ...entroLimite,
       },
       _min: { progressiveYear: true },
     })
     const anno = primoAnno._min.progressiveYear
     if (anno === null) return null
     const primoNumero = await tx.wasteMovement.aggregate({
-      where: { tenantId, registroId, progressiveYear: anno },
+      where: { tenantId, registroId, progressiveYear: anno, ...entroLimite },
       _min: { progressiveNumber: true },
     })
     const progressivo = primoNumero._min.progressiveNumber
@@ -472,7 +498,7 @@ export class GeneraEsportazioneRegistroRentriUseCase {
     const esportate = catena.reduce((somma, e) => somma + e.numeroRegistrazioni, 0)
     if (prima !== esportate) {
       throw new CatenaEsportazioniNonCoerenteError(
-        'ci sono annotazioni precedenti non incluse in nessuna esportazione'
+        'ci sono annotazioni precedenti non incluse in nessuna esportazione (per esempio un’annotazione con numero o anno già esportato, registrata dopo l’esportazione). Non si ripara dal pannello: serve l’assistenza'
       )
     }
   }

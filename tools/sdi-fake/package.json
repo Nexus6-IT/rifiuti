@@ -1,0 +1,14 @@
+{
+  "name": "sdi-fake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Provider SDI finto (HTTP): invio, lettura, configurazione P.IVA e webhook firmato. Solo collaudo.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

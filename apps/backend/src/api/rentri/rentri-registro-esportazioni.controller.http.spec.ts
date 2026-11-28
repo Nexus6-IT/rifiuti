@@ -171,6 +171,32 @@ describe('RentriRegistroEsportazioniController — catena HTTP', () => {
     })
   })
 
+  describe("elenco: stato dell'esportazione automatica mensile", () => {
+    const VARIABILI = ['RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE', 'RENTRI_REGISTRO_INVII_ATTIVI']
+    const salvate: Record<string, string | undefined> = {}
+    beforeEach(() => VARIABILI.forEach(v => ((salvate[v] = process.env[v]), delete process.env[v])))
+    afterEach(() =>
+      VARIABILI.forEach(v =>
+        salvate[v] === undefined ? delete process.env[v] : (process.env[v] = salvate[v])
+      )
+    )
+
+    it('di predefinito e spenta: l elenco lo dice al pannello', async () => {
+      await avvia('VIEWER')
+      const r = await cliente(http().get(elenco))
+      expect(r.body.automaticaAttiva).toBe(false)
+      expect(r.body.esportazioni).toEqual([{ id: ESPORTAZIONE }])
+    })
+
+    it('accesa solo con l interruttore a "true" e gli invii attivi', async () => {
+      process.env.RENTRI_ESPORTAZIONI_AUTOMATICHE_ATTIVE = 'true'
+      await avvia('VIEWER')
+      expect((await cliente(http().get(elenco))).body.automaticaAttiva).toBe(true)
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      expect((await cliente(http().get(elenco))).body.automaticaAttiva).toBe(false)
+    })
+  })
+
   it('senza annotazioni da esportare o bloccata: 200 con l esito, non un errore', async () => {
     await avvia('ADMIN')
     genera.genera.mockResolvedValue({ esito: 'NIENTE_DA_ESPORTARE', esportazione: null })

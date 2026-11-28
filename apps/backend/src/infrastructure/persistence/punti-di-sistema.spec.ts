@@ -51,6 +51,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-registro-trasmissione.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
+  'infrastructure/jobs/rentri-registro-esportazione.job.ts':
+    'elenco di tutte le aziende attive col modulo rentri, poi ogni azienda nel suo contesto (esportazione mensile del registro, spenta di predefinito)',
   'infrastructure/jobs/rentri-rifornimento-scorta.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-trasmissioni-sospese.job.ts':
@@ -59,6 +61,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     "token del webhook SDI: l'azienda e' ignota prima della lettura (una sola findUnique per hash)",
   'infrastructure/jobs/sdi-eventi.job.ts':
     'elenco delle aziende con eventi del webhook SDI da elaborare, poi ogni azienda nel suo contesto',
+  'infrastructure/jobs/sdi-sonda.job.ts':
+    'elenco delle aziende con trasmissioni SDI da sorvegliare (INCERTA, SCARTATA), poi ogni azienda nel suo contesto',
   'infrastructure/jobs/sdi-riconciliazione.job.ts':
     'elenco delle aziende attive con configurazione SDI, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/sdi-invio.job.ts':

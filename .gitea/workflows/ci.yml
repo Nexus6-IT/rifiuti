@@ -116,6 +116,11 @@ jobs:
           XMLSEC1_OBBLIGATORIO: '1'
         run: npm run test:cov
 
+      # Provider SDI finto (tools/sdi-fake): solo moduli built-in di Node, nessun install. Pochi secondi.
+      - name: Test tools/sdi-fake (node --test)
+        working-directory: tools/sdi-fake
+        run: npm test
+
       # Script di backup/restore (ops/): test bash senza database.
       - name: Test script di backup (bash)
         working-directory: ${{ github.workspace }}
@@ -516,6 +521,12 @@ jobs:
       - name: Avvia Redis (porta assegnata dal kernel)
         run: bash scripts/ci/redis-job.sh avvia
 
+      # Provider SDI finto (tools/sdi-fake), un processo Node da pochi MB su porta libera: esporta
+      # SDI_FAKE_URL. Il backend lo usera' con l'adattatore reale (4.5e T2); oggi l'e2e SDI usa il
+      # provider `fake` in-process e questo passo verifica soltanto che il server parta.
+      - name: Avvia sdi-fake (porta assegnata dal kernel)
+        run: bash scripts/ci/sdi-fake-job.sh avvia
+
       - name: Build backend (nest build)
         working-directory: apps/backend
         run: npm run build
@@ -783,6 +794,7 @@ jobs:
         run: |
           bash scripts/ci/postgres-job.sh ferma || true
           bash scripts/ci/redis-job.sh ferma || true
+          bash scripts/ci/sdi-fake-job.sh ferma || true
           docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
           # Due possibili backend in vita a seconda di dove si e' fermato il
           # job (passata 1 sola, o anche la 2): entrambi i pid file, kill

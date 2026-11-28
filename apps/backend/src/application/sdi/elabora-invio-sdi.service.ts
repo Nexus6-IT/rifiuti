@@ -24,6 +24,7 @@ import type { EsitoInvio, ProviderSdi } from '../fatturazione/sdi/provider-sdi.p
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { TITOLO_AVVISO_SDI_ERRORE_INVIO } from './titoli-avvisi-sdi'
 import { ConfigurazioneSdiService, type ConfigurazionePerInvio } from './configurazione-sdi.service'
 
 /** `IN_INVIO` fermo da piu' di cosi' e' considerato interrotto. */
@@ -448,7 +449,7 @@ export class ElaboraInvioSdiService {
             tenantId,
             userId: u.id,
             type: 'SYSTEM_ERROR' as const,
-            title: 'Invio allo SDI non riuscito',
+            title: TITOLO_AVVISO_SDI_ERRORE_INVIO,
             message: `La fattura (file ${t.nomeFile}) non è stata inviata allo SDI (codice ${codice}). Controlla il documento e riprova l'invio.`,
             severity: 'ERROR' as const,
             relatedEntityId: t.documentoId,

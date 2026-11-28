@@ -406,8 +406,87 @@ describe('GeneraEsportazioneRegistroRentriUseCase — Postgres reale, ruolo wast
         `ALTER TABLE esportazioni_registro_rentri ENABLE TRIGGER esportazioni_registro_rentri_immutabile`
       )
     }
-    await expect(genera(s)).rejects.toBeInstanceOf(CatenaEsportazioniNonCoerenteError)
+    const errore = await genera(s).catch((e: unknown) => e)
+    expect(errore).toBeInstanceOf(CatenaEsportazioniNonCoerenteError)
+    // Il messaggio dice cosa fare: non e un vicolo cieco muto (rilievo 6 della review E6).
+    expect((errore as Error).message).toMatch(/già esportato.*assistenza/s)
     expect(await righe(s)).toHaveLength(1)
+  })
+
+  it('richiediUltimaConfermata: con l ultima senza esito non genera, con l ultima validata si', async () => {
+    const s = await scenario()
+    await aggiungiAnnotazioni(owner, s, 2026, 1, 2)
+    const opz = { creataDa: null, valida: false, richiediUltimaConfermata: true }
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe('CREATA')
+    await aggiungiAnnotazioni(owner, s, 2026, 3, 4)
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe(
+      'NIENTE_DA_ESPORTARE'
+    )
+    expect(await righe(s)).toHaveLength(1)
+    await owner.esportazioneRegistroRentri.updateMany({
+      where: { registroId: s.registroId },
+      data: { stato: 'VALIDATA' },
+    })
+    expect((await creaUseCase().genera(s.tenantId, s.registroId, opz)).esito).toBe('CREATA')
+    expect(await righe(s)).toHaveLength(2)
+  })
+
+  describe('limite di data (`fino`, per l esportazione mensile)', () => {
+    /** Sposta la data di annotazione delle annotazioni indicate (scritta dal proprietario). */
+    async function datai(ids: string[], iso: string) {
+      await owner.wasteMovement.updateMany({
+        where: { id: { in: ids } },
+        data: { registrationDate: new Date(iso) },
+      })
+    }
+    const aprile = new Date('2026-04-01T00:00:00Z')
+    const maggio = new Date('2026-05-01T00:00:00Z')
+    const conLimite = (s: ScenarioEsportazioni, fino: Date) =>
+      creaUseCase().genera(s.tenantId, s.registroId, { creataDa: null, valida: false, fino })
+
+    it('esporta solo le annotazioni anteriori al limite e prosegue quando il limite avanza', async () => {
+      const s = await scenario()
+      await aggiungiAnnotazioni(owner, s, 2026, 1, 3) // marzo
+      await datai(await aggiungiAnnotazioni(owner, s, 2026, 4, 5), '2026-04-10T10:00:00Z')
+
+      const primo = await conLimite(s, aprile)
+      expect(primo.esito).toBe('CREATA')
+      if (primo.esito !== 'CREATA') return
+      expect(primo.esportazione).toMatchObject({ progressivoDa: 1, progressivoA: 3 })
+
+      // Stesso limite: niente di nuovo (idempotente, nessun doppione).
+      const ancora = await conLimite(s, aprile)
+      expect(ancora.esito).toBe('NIENTE_DA_ESPORTARE')
+      expect(await righe(s)).toHaveLength(1)
+
+      const secondo = await conLimite(s, maggio)
+      expect(secondo.esito).toBe('CREATA')
+      if (secondo.esito !== 'CREATA') return
+      expect(secondo.esportazione).toMatchObject({ progressivoDa: 4, progressivoA: 5 })
+      expect(secondo.esportazione.precedenteId).toBe(primo.esportazione.id)
+    })
+
+    it('limite precedente a tutte le annotazioni: niente da esportare, nessun file', async () => {
+      const s = await scenario()
+      await aggiungiAnnotazioni(owner, s, 2026, 1, 3)
+      const esito = await conLimite(s, new Date('2026-03-01T00:00:00Z'))
+      expect(esito.esito).toBe('NIENTE_DA_ESPORTARE')
+      expect(await righe(s)).toHaveLength(0)
+    })
+
+    it('con il limite si passa all anno seguente solo per le annotazioni anteriori', async () => {
+      const s = await scenario()
+      await aggiungiAnnotazioni(owner, s, 2026, 1, 2)
+      await datai(await aggiungiAnnotazioni(owner, s, 2027, 1, 2), '2027-02-10T10:00:00Z')
+      expect((await conLimite(s, new Date('2027-01-01T00:00:00Z'))).esito).toBe('CREATA')
+      expect((await conLimite(s, new Date('2027-01-01T00:00:00Z'))).esito).toBe(
+        'NIENTE_DA_ESPORTARE'
+      )
+      const dopo = await conLimite(s, new Date('2027-03-01T00:00:00Z'))
+      expect(dopo.esito).toBe('CREATA')
+      if (dopo.esito !== 'CREATA') return
+      expect(dopo.esportazione).toMatchObject({ anno: 2027, progressivoDa: 1, progressivoA: 2 })
+    })
   })
 
   it('con il contesto di un altra azienda non si genera ne si vede nulla del registro', async () => {
